@@ -50,4 +50,14 @@ final class TenantResolutionTest extends TestCase
                 'organization_id' => $organization->id,
             ]);
     }
+
+    public function test_super_admin_cannot_access_operational_client_routes_without_a_tenant(): void
+    {
+        $superAdmin = User::factory()->superAdmin()->create();
+
+        $this
+            ->actingAs($superAdmin)
+            ->get('/clients')
+            ->assertForbidden();
+    }
 }
