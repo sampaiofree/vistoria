@@ -2,9 +2,14 @@
 
 namespace Database\Seeders;
 
+use App\Enums\OrganizationStatus;
+use App\Enums\UserAccountType;
+use App\Enums\UserStatus;
+use App\Models\Organization;
 use App\Models\User;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Hash;
 
 class DatabaseSeeder extends Seeder
 {
@@ -15,11 +20,24 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // User::factory(10)->create();
+        $organization = Organization::query()->firstOrCreate(
+            ['document' => '00000000000000'],
+            [
+                'name' => 'Empresa de Inspecao',
+                'legal_name' => 'Empresa de Inspecao LTDA',
+                'status' => OrganizationStatus::Active->value,
+            ],
+        );
 
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
-        ]);
+        User::query()->updateOrCreate(
+            ['email' => 'admin@vistoria.test'],
+            [
+                'organization_id' => $organization->id,
+                'name' => 'Administrador',
+                'password' => Hash::make('password'),
+                'account_type' => UserAccountType::CompanyAdmin->value,
+                'status' => UserStatus::Active->value,
+            ],
+        );
     }
 }
