@@ -1541,24 +1541,29 @@ Confirmar que:
 
 # 25. Critérios de aceite
 
-Esta etapa será considerada concluída quando:
+## 25.1 Resultado da conferência estática
 
-- [ ] migration `organizations` executa sem erro;
-- [ ] usuários possuem vínculo opcional com organização;
-- [ ] organização possui `public_id`;
-- [ ] usuário possui `public_id`;
-- [ ] enums funcionam nos casts;
-- [ ] superadministrador pode existir sem organização;
-- [ ] administrador interno possui organização;
-- [ ] usuário inativo não acessa rotas protegidas;
-- [ ] organização suspensa não opera;
-- [ ] TenantContext resolve a organização;
-- [ ] TenantContext é limpo ao fim da requisição;
-- [ ] seed local funciona;
-- [ ] factories funcionam;
-- [ ] testes passam;
-- [ ] build do frontend passa;
-- [ ] documentação reflete o código real.
+**Estado geral: Em validação, com implementação parcial.** A conferência comparou este documento às migrations `2026_07_29_000001` e `2026_07_29_000002`, models, middlewares de tenancy, policies existentes e testes. `Implementado` abaixo significa apenas que há evidência estática no repositório; `Pendente de validação` exige execução ou inspeção manual posterior.
+
+| Critério | Implementação encontrada | Validação | Resultado da conferência |
+|---|---|---|---|
+| Migration `organizations` executa sem erro | Migration `000001` cria a tabela, status, timestamps e soft delete | Pendente executar migrations | Em validação |
+| Usuários possuem vínculo opcional com organização | Migration `000002` adiciona FK anulável com exclusão restrita e o model define o relacionamento | Pendente executar migrations | Implementado estaticamente |
+| Organização possui `public_id` | A migration `000001` e o model `Organization` não possuem `public_id` nem usam `HasPublicId` | Não validável antes da correção | **Pendente de implementação** |
+| Usuário possui `public_id` | A migration `000002` e o model `User` não possuem `public_id` nem usam `HasPublicId` | Não validável antes da correção | **Pendente de implementação** |
+| Enums funcionam nos casts | `Organization` e `User` declaram casts para os enums previstos | Pendente executar testes | Implementado estaticamente |
+| Superadministrador pode existir sem organização | `User::booted()` permite esse caso e impede tenant; há factory e testes relacionados | Pendente executar testes | Implementado estaticamente |
+| Administrador interno possui organização | `User::booted()` rejeita contas não super-admin sem organização | Pendente executar testes | Implementado estaticamente |
+| Usuário inativo não acessa rotas protegidas | `EnsureUserIsActive` encerra a sessão; existe `UserStatusAccessTest` | Pendente executar suíte e validar sessão manualmente | Em validação |
+| Organização suspensa não opera | `EnsureOrganizationIsActive` encerra a sessão; existe `OrganizationStatusAccessTest` | Pendente executar suíte e validar manualmente | Em validação |
+| `TenantContext` resolve a organização | Classe, binding `scoped`, middleware e `TenantResolutionTest` foram encontrados | Pendente executar testes | Em validação |
+| `TenantContext` é limpo ao fim da requisição | `ResolveTenant` limpa o contexto em `finally`; há testes de resolução | Pendente executar testes | Em validação |
+| Seed local funciona | `DevelopmentSeeder` e chamada condicionada no `DatabaseSeeder` foram encontrados | Pendente executar o seeder | Em validação |
+| Factories funcionam | `OrganizationFactory` e `UserFactory` existem | Pendente executar testes/factories | Em validação |
+| Policies iniciais existem | Não há policy de organização ou usuário; as policies encontradas pertencem ao documento 04 | Pendente definir a necessidade e implementar | **Pendente de implementação** |
+| Testes passam | Há testes feature de fundação e tenancy e teste unitário do contexto | Pendente executar a suíte | **Pendente de validação** |
+| Build do frontend passa | Configuração e script de build existem | Pendente executar `npm run build` | **Pendente de validação** |
+| Documentação reflete o código real | Divergência de `public_id` e ausência das policies iniciais foram registradas nesta conferência | Pendente corrigir as lacunas | Parcial |
 
 ---
 
@@ -1609,22 +1614,24 @@ O backend deve usar o TenantContext.
 
 # 27. Checklist de execução
 
-- [ ] Criar model, factory e migration de organização.
-- [ ] Criar enums.
-- [ ] Criar migration dos usuários.
-- [ ] Atualizar `Organization`.
-- [ ] Atualizar `User`.
-- [ ] Atualizar factories.
-- [ ] Criar `TenantContext`.
-- [ ] Registrar `TenantContext` como scoped.
-- [ ] Criar middleware de usuário ativo.
-- [ ] Criar middleware de organização ativa.
-- [ ] Criar middleware de tenant.
-- [ ] Registrar aliases.
-- [ ] Aplicar middleware às rotas.
-- [ ] Criar seeder local.
-- [ ] Criar testes unitários.
-- [ ] Criar testes de acesso.
+- [x] Criar model, factory e migration de organização, **exceto o `public_id` previsto**.
+- [x] Criar enums.
+- [x] Criar migration dos usuários, **exceto o `public_id` previsto**.
+- [x] Atualizar `Organization`, **ainda sem `public_id`/`HasPublicId`**.
+- [x] Atualizar `User`, **ainda sem `public_id`/`HasPublicId`**.
+- [x] Atualizar factories.
+- [x] Criar `TenantContext`.
+- [x] Registrar `TenantContext` como scoped.
+- [x] Criar middleware de usuário ativo.
+- [x] Criar middleware de organização ativa.
+- [x] Criar middleware de tenant.
+- [x] Registrar aliases.
+- [x] Aplicar middleware às rotas.
+- [x] Criar seeder local.
+- [x] Criar testes unitários.
+- [x] Criar testes de acesso.
+- [ ] Adicionar `public_id` a organizações e usuários e ajustar models/factories/testes.
+- [ ] Criar as policies iniciais previstas ou registrar formalmente que não se aplicam a este módulo.
 - [ ] Executar migrations.
 - [ ] Executar Pint.
 - [ ] Executar testes.
@@ -1646,9 +1653,7 @@ git commit -m "feat: implement multi-tenant organization foundation"
 
 # 29. Próximo documento
 
-```text
-04-CLIENTES-E-ESTRUTURA-OPERACIONAL.md
-```
+O resultado da conferência foi registrado acima. O documento seguinte na sequência é `04-CLIENTES-E-ESTRUTURA-OPERACIONAL.md`, mas o documento 03 **não está concluído** enquanto as lacunas de implementação e as validações pendentes não forem resolvidas.
 
 O próximo documento definirá:
 

@@ -2446,27 +2446,52 @@ O código antigo não deve ser reutilizado silenciosamente.
 
 # 32. Checklist de execução
 
-- [ ] Criar enum de status.
-- [ ] Criar normalizador.
-- [ ] Criar trait de organização.
-- [ ] Criar models e migrations.
-- [ ] Revisar ordem das migrations.
+## 32.1 Resultado da conferência estática
+
+**Estado geral: Em validação.** A conferência encontrou a implementação planejada nas migrations `000003` a `000006`, Actions, Controllers, Form Requests, páginas Vue e testes em `tests/Feature/OperationalStructure/`. Isso não comprova que migrations, suíte, build ou fluxos manuais funcionam no ambiente alvo.
+
+| Item conferido | Evidência encontrada | Resultado |
+|---|---|---|
+| Enum, normalização e vínculo ao tenant | `RegistrationStatus`, `TextNormalizer` e trait `BelongsToOrganization` | Implementado estaticamente |
+| Tabelas e ordem de criação | `000003` clientes, `000004` unidades, `000005` áreas e `000006` subáreas, nessa ordem | Implementado; execução pendente |
+| Integridade e unicidade | FKs compostas impedem pais de outro tenant; índices únicos cobrem documento e códigos normalizados por escopo | Implementado; validação no banco pendente |
+| Models e relacionamentos | `Client`, `ClientUnit`, `Area` e `Subarea`, além dos relacionamentos em `Organization` | Implementado estaticamente |
+| Factories e seeder | Factories dos quatro níveis e hierarquia no `DevelopmentSeeder` | Implementado; execução pendente |
+| Actions | Actions de criar, atualizar e alterar status para os quatro níveis | Implementado estaticamente |
+| Form Requests | Requests de criação/edição por nível e request compartilhado de status | Implementado estaticamente |
+| Policies | Policies dos quatro recursos restringem escrita ao administrador interno e conferem organização | Implementado; testes pendentes de execução |
+| Controllers e resolução da árvore | Quatro controllers e concern `ResolvesTenantStructure` | Implementado estaticamente |
+| Rotas | Resources aninhados com scoped bindings, rotas rasas e alteração de status | Implementado estaticamente |
+| Páginas Vue | Páginas de criar, editar e exibir por nível, mais índice de clientes e componentes de formulários/listas | Implementado; validação visual/manual pendente |
+| CRUD e autorização de clientes | `ClientCrudTest` cobre criação, normalização, autorização, página Inertia, isolamento e inativação | Teste existe; execução pendente |
+| Hierarquia e pais inativos | `HierarchyCrudTest` cobre criação dos três níveis filhos, autorização e bloqueio por pai inativo | Teste existe; execução pendente |
+| Constraints, escopos e unicidade | `OperationalStructureTest` cobre árvore, escopo do tenant, unicidades e vínculo cruzado | Teste existe; execução pendente |
+| Cobertura específica por recurso | Clientes têm arquivo próprio; unidade, área e subárea estão agrupadas em `HierarchyCrudTest` e `OperationalStructureTest` | Cobertura estática encontrada; execução pendente |
+| Validação manual | Nenhuma evidência registrada | **Pendente** |
+
+## 32.2 Itens de execução
+
+- [x] Criar enum de status.
+- [x] Criar normalizador.
+- [x] Criar trait de organização.
+- [x] Criar models e migrations.
+- [x] Revisar ordem das migrations por conferência estática.
 - [ ] Executar migrations.
-- [ ] Criar relacionamentos.
-- [ ] Atualizar `Organization`.
-- [ ] Criar factories.
-- [ ] Criar Actions.
-- [ ] Criar Form Requests.
-- [ ] Criar Policies.
-- [ ] Criar Controllers.
-- [ ] Criar rotas.
-- [ ] Criar páginas Vue.
-- [ ] Criar testes de cliente.
-- [ ] Criar testes de unidade.
-- [ ] Criar testes de área.
-- [ ] Criar testes de subárea.
-- [ ] Criar teste de constraint cruzada.
-- [ ] Atualizar seeder.
+- [x] Criar relacionamentos.
+- [x] Atualizar `Organization`.
+- [x] Criar factories.
+- [x] Criar Actions.
+- [x] Criar Form Requests.
+- [x] Criar Policies.
+- [x] Criar Controllers.
+- [x] Criar rotas.
+- [x] Criar páginas Vue.
+- [x] Criar testes de cliente.
+- [x] Criar testes de unidade.
+- [x] Criar testes de área.
+- [x] Criar testes de subárea.
+- [x] Criar teste de constraint cruzada.
+- [x] Atualizar seeder.
 - [ ] Executar Pint.
 - [ ] Executar testes.
 - [ ] Executar build.
@@ -2487,9 +2512,7 @@ git commit -m "feat: add clients and operational hierarchy"
 
 # 34. Próximo documento
 
-```text
-05-EQUIPAMENTOS-E-DOCUMENTOS.md
-```
+O resultado da conferência foi registrado acima. O documento 05 **ainda não está liberado como próximo passo concluído**: primeiro devem ser registradas a execução das migrations, a suíte automatizada, o build e a validação manual deste módulo. Depois dessas evidências, o próximo documento será `05-EQUIPAMENTOS-E-DOCUMENTOS.md`.
 
 O próximo documento definirá:
 

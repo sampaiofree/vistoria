@@ -1395,6 +1395,8 @@ Serão decididas nos documentos específicos:
 
 ## 31. Critérios de aceite deste documento
 
+**Estado: Documentado.** As marcações abaixo registram decisões arquiteturais descritas, não a comprovação de que cada padrão foi implementado. Migrations, suíte automatizada, build e validação manual permanecem **não validados nesta conferência**.
+
 - [x] estilo arquitetural definido;
 - [x] fluxo de requisição definido;
 - [x] responsabilidades das camadas definidas;
@@ -1463,6 +1465,8 @@ Mitigação:
 ---
 
 ## 33. Próximo documento
+
+O encadeamento documental aponta para o documento 03, sem declarar concluída a implementação ou a validação executável da arquitetura.
 
 ```text
 03-MODELAGEM-MULTIEMPRESA.md

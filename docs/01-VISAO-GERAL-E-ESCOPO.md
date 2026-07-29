@@ -739,6 +739,8 @@ Mitigação:
 
 ## 15. Checklist deste documento
 
+**Estado: Documentado.** Os itens abaixo confirmam somente que o conteúdo foi definido neste documento. Os critérios executáveis do MVP, inclusive isolamento, fluxo completo, PDF e testes automatizados, **não foram validados nesta conferência**.
+
 - [x] Objetivo do produto definido.
 - [x] Hierarquia principal definida.
 - [x] Conceitos do domínio definidos.
@@ -754,6 +756,8 @@ Mitigação:
 ---
 
 ## 16. Próximo documento
+
+O encadeamento documental aponta para o documento 02, sem declarar concluída a implementação ou a validação dos critérios acima.
 
 ```text
 02-ARQUITETURA-E-PADROES.md
