@@ -1,0 +1,4 @@
+<?php
+namespace App\Actions\Inspections;
+use App\Models\{Inspection,InspectionResponsible,User}; use Illuminate\Validation\ValidationException;
+final class AssignInspectionResponsible {public function handle(Inspection $i,int $actor,array $data):InspectionResponsible{$u=User::find($data['user_id']);if(!$u||!$u->isActive()||$u->isSuperAdmin()||(int)$u->organization_id!==(int)$i->organization_id)throw ValidationException::withMessages(['user_id'=>'O responsável deve ser um usuário ativo da organização.']);if($data['is_primary']??false)$i->responsibles()->where('responsibility',$data['responsibility'])->update(['is_primary'=>false]);return $i->responsibles()->updateOrCreate(['user_id'=>$u->id,'responsibility'=>$data['responsibility']],['organization_id'=>$i->organization_id,'is_primary'=>$data['is_primary']??false,'assigned_by'=>$actor,'assigned_at'=>now()]);}}

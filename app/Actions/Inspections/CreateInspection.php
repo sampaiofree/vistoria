@@ -1,0 +1,4 @@
+<?php
+namespace App\Actions\Inspections;
+use App\Enums\InspectionStatus; use App\Models\Inspection; use Illuminate\Support\Facades\DB;
+final class CreateInspection { public function handle(int $organizationId,int $actorId,array $data):Inspection{return DB::transaction(function()use($organizationId,$actorId,$data){$nested=$data;unset($nested['responsibles'],$nested['reference_document_ids']);$i=Inspection::create([...$nested,'organization_id'=>$organizationId,'status'=>InspectionStatus::Planned,'context_snapshot'=>$nested['context_snapshot']??[],'created_by'=>$actorId,'updated_by'=>$actorId]);$i->update(['number'=>sprintf('INS-%s-%06d',now()->year,$i->id)]);foreach($data['responsibles']??[] as $r){app(AssignInspectionResponsible::class)->handle($i,$actorId,$r);}foreach($data['reference_document_ids']??[] as $id){app(SyncInspectionReferences::class)->add($i,$actorId,(int)$id);}return $i;});} }

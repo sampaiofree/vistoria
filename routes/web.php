@@ -4,6 +4,10 @@ use App\Http\Controllers\AreaController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\ClientUnitController;
+use App\Http\Controllers\InspectionController;
+use App\Http\Controllers\InspectionResponsibleController;
+use App\Http\Controllers\InspectionReferenceDocumentController;
+use App\Http\Controllers\InspectionTransitionController;
 use App\Http\Controllers\SubareaController;
 use Illuminate\Support\Facades\Route;
 
@@ -76,6 +80,22 @@ Route::middleware([
             [SubareaController::class, 'updateStatus'],
         )->name('subareas.status');
     });
+
+    Route::resource('inspections', InspectionController::class)->except(['destroy']);
+
+    Route::post('inspections/{inspection}/responsibles', [InspectionResponsibleController::class, 'store'])->name('inspections.responsibles.store');
+    Route::put('inspections/{inspection}/responsibles/{responsible}', [InspectionResponsibleController::class, 'update'])->name('inspections.responsibles.update');
+    Route::delete('inspections/{inspection}/responsibles/{responsible}', [InspectionResponsibleController::class, 'destroy'])->name('inspections.responsibles.destroy');
+    Route::post('inspections/{inspection}/references', [InspectionReferenceDocumentController::class, 'store'])->name('inspections.references.store');
+    Route::delete('inspections/{inspection}/references/{reference}', [InspectionReferenceDocumentController::class, 'destroy'])->name('inspections.references.destroy');
+
+    Route::post('inspections/{inspection}/start', [InspectionTransitionController::class, 'start'])->name('inspections.start');
+    Route::post('inspections/{inspection}/submit-for-review', [InspectionTransitionController::class, 'submitForReview'])->name('inspections.submit-for-review');
+    Route::post('inspections/{inspection}/return-for-correction', [InspectionTransitionController::class, 'returnForCorrection'])->name('inspections.return-for-correction');
+    Route::post('inspections/{inspection}/complete-review', [InspectionTransitionController::class, 'completeReview'])->name('inspections.complete-review');
+    Route::post('inspections/{inspection}/approve', [InspectionTransitionController::class, 'approve'])->name('inspections.approve');
+    Route::post('inspections/{inspection}/release', [InspectionTransitionController::class, 'release'])->name('inspections.release');
+    Route::post('inspections/{inspection}/cancel', [InspectionTransitionController::class, 'cancel'])->name('inspections.cancel');
 
     Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
 });
