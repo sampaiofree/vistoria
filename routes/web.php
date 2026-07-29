@@ -1,6 +1,10 @@
 <?php
 
+use App\Http\Controllers\AreaController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
+use App\Http\Controllers\ClientController;
+use App\Http\Controllers\ClientUnitController;
+use App\Http\Controllers\SubareaController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -23,6 +27,55 @@ Route::middleware([
     Route::get('/dashboard', function () {
         return view('dashboard');
     })->name('dashboard');
+
+    Route::resource('clients', ClientController::class)
+        ->except(['destroy']);
+
+    Route::patch(
+        'clients/{client}/status',
+        [ClientController::class, 'updateStatus'],
+    )->name('clients.status');
+
+    Route::scopeBindings()->group(function (): void {
+        Route::resource('clients.units', ClientUnitController::class)
+            ->parameters([
+                'clients' => 'client',
+                'units' => 'unit',
+            ])
+            ->shallow()
+            ->except(['destroy']);
+
+        Route::patch(
+            'units/{unit}/status',
+            [ClientUnitController::class, 'updateStatus'],
+        )->name('units.status');
+
+        Route::resource('units.areas', AreaController::class)
+            ->parameters([
+                'units' => 'unit',
+                'areas' => 'area',
+            ])
+            ->shallow()
+            ->except(['destroy']);
+
+        Route::patch(
+            'areas/{area}/status',
+            [AreaController::class, 'updateStatus'],
+        )->name('areas.status');
+
+        Route::resource('areas.subareas', SubareaController::class)
+            ->parameters([
+                'areas' => 'area',
+                'subareas' => 'subarea',
+            ])
+            ->shallow()
+            ->except(['destroy']);
+
+        Route::patch(
+            'subareas/{subarea}/status',
+            [SubareaController::class, 'updateStatus'],
+        )->name('subareas.status');
+    });
 
     Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
 });

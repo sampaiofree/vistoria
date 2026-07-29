@@ -38,7 +38,6 @@ final class StoreClientUnitRequest extends FormRequest
 
         return [
             'name' => ['required', 'string', 'max:150'],
-            'code' => ['nullable', 'string', 'max:80'],
             'timezone' => ['nullable', 'timezone'],
             'address_line' => ['nullable', 'string', 'max:200'],
             'address_number' => ['nullable', 'string', 'max:30'],

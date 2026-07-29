@@ -41,7 +41,7 @@ Fora do primeiro MVP:
 | 01 | `01-VISAO-GERAL-E-ESCOPO.md` | Consolidar produto, usuários, limites e critérios do MVP | Pendente |
 | 02 | `02-ARQUITETURA-E-PADROES.md` | Definir arquitetura Laravel, módulos, convenções e segurança | Pendente |
 | 03 | `03-MODELAGEM-MULTIEMPRESA.md` | Criar organizações, usuários e isolamento por empresa | Pendente |
-| 04 | `04-CLIENTES-E-ESTRUTURA-OPERACIONAL.md` | Criar clientes, unidades, áreas e subáreas | Pendente |
+| 04 | `04-CLIENTES-E-ESTRUTURA-OPERACIONAL.md` | Criar clientes, unidades, áreas e subáreas | Em andamento |
 | 05 | `05-EQUIPAMENTOS-E-DOCUMENTOS.md` | Criar equipamentos, TAGs, desenhos e documentos | Pendente |
 | 06 | `06-INSPECOES-E-FLUXO.md` | Criar inspeções, responsáveis, estados e histórico | Pendente |
 | 07 | `07-AVARIAS-E-REINSPECOES.md` | Modelar avarias permanentes e avaliações históricas | Pendente |
@@ -88,4 +88,4 @@ A documentação deve refletir o sistema implementado. Quando uma regra mudar, o
 
 ## Próximo documento
 
-`01-VISAO-GERAL-E-ESCOPO.md`
+`05-EQUIPAMENTOS-E-DOCUMENTOS.md`

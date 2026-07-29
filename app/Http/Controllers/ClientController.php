@@ -11,6 +11,7 @@ use App\Http\Requests\Clients\StoreClientRequest;
 use App\Http\Requests\Clients\UpdateClientRequest;
 use App\Http\Requests\UpdateRegistrationStatusRequest;
 use App\Models\Client;
+use App\Models\ClientUnit;
 use App\Services\Tenancy\TenantContext;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -90,7 +91,11 @@ final class ClientController extends Controller
             ->with('success', 'Cliente criado.');
     }
 
-    public function show(TenantContext $tenant, Client $client): InertiaResponse
+    public function show(
+        TenantContext $tenant,
+        Request $request,
+        Client $client,
+    ): InertiaResponse
     {
         $client = $this->tenantClient($tenant, $client);
 
@@ -130,8 +135,8 @@ final class ClientController extends Controller
             ],
             'units' => $units,
             'can' => [
-                'create_unit' => $request->user()->can('create', Client::class),
-                'update' => $request?->user()?->can('update', $client) ?? false,
+                'create_unit' => $request->user()->can('create', ClientUnit::class),
+                'update' => $request->user()->can('update', $client),
             ],
         ]);
     }
@@ -149,6 +154,7 @@ final class ClientController extends Controller
                 'document' => $client->document,
                 'email' => $client->email,
                 'phone' => $client->phone,
+                'status' => $client->status->value,
                 'notes' => $client->notes,
             ],
             'action' => route('clients.update', $client),
@@ -185,7 +191,7 @@ final class ClientController extends Controller
 
         $action->handle(
             $client,
-            RegistrationStatus::from($request->string('status')->toString()),
+            RegistrationStatus::from($request->validated('status')),
         );
 
         return redirect()

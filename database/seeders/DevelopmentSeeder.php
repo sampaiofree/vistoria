@@ -12,6 +12,7 @@ use App\Models\ClientUnit;
 use App\Models\Organization;
 use App\Models\Subarea;
 use App\Models\User;
+use App\Support\TextNormalizer;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -53,6 +54,18 @@ class DevelopmentSeeder extends Seeder
             ],
         );
 
+        User::query()->updateOrCreate(
+            ['email' => 'member@vistoria.test'],
+            [
+                'organization_id' => $organization->id,
+                'name' => 'Membro da Empresa',
+                'password' => Hash::make('password'),
+                'account_type' => UserAccountType::Member->value,
+                'status' => UserStatus::Active->value,
+                'email_verified_at' => now(),
+            ],
+        );
+
         $client = Client::query()->firstOrCreate(
             [
                 'organization_id' => $organization->id,
@@ -60,9 +73,9 @@ class DevelopmentSeeder extends Seeder
             ],
             [
                 'public_id' => (string) Str::ulid(),
-                'name' => 'Cliente Piloto',
-                'legal_name' => 'Cliente Piloto LTDA',
-                'email' => 'contato@clientepiloto.test',
+                'name' => 'Samarco Mineracao S.A.',
+                'legal_name' => 'Samarco Mineracao S.A.',
+                'email' => 'contato@samarco.test',
                 'phone' => '(11) 99999-9999',
                 'status' => RegistrationStatus::Active->value,
                 'notes' => 'Cliente base para desenvolvimento local.',
@@ -73,12 +86,12 @@ class DevelopmentSeeder extends Seeder
             [
                 'organization_id' => $organization->id,
                 'client_id' => $client->id,
-                'normalized_code' => 'UN-001',
+                'normalized_code' => TextNormalizer::technicalCode('UBU'),
             ],
             [
                 'public_id' => (string) Str::ulid(),
-                'name' => 'Unidade Central',
-                'code' => 'UN-001',
+                'name' => 'Unidade de Ubu',
+                'code' => 'UBU',
                 'timezone' => 'America/Sao_Paulo',
                 'address_line' => 'Rua Principal',
                 'address_number' => '100',
@@ -96,12 +109,12 @@ class DevelopmentSeeder extends Seeder
             [
                 'organization_id' => $organization->id,
                 'client_unit_id' => $unit->id,
-                'normalized_code' => 'AR-001',
+                'normalized_code' => TextNormalizer::technicalCode('USINA III'),
             ],
             [
                 'public_id' => (string) Str::ulid(),
-                'name' => 'Area Operacional',
-                'code' => 'AR-001',
+                'name' => 'Usina III',
+                'code' => 'USINA III',
                 'status' => RegistrationStatus::Active->value,
                 'description' => null,
             ],
@@ -111,12 +124,12 @@ class DevelopmentSeeder extends Seeder
             [
                 'organization_id' => $organization->id,
                 'area_id' => $area->id,
-                'normalized_code' => 'SA-001',
+                'normalized_code' => TextNormalizer::technicalCode('FORNO DE ENDURECIMENTO'),
             ],
             [
                 'public_id' => (string) Str::ulid(),
-                'name' => 'Subarea Principal',
-                'code' => 'SA-001',
+                'name' => 'Forno de Endurecimento',
+                'code' => 'FORNO DE ENDURECIMENTO',
                 'status' => RegistrationStatus::Active->value,
                 'description' => null,
             ],

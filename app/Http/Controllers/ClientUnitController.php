@@ -10,10 +10,12 @@ use App\Http\Controllers\Concerns\ResolvesTenantStructure;
 use App\Http\Requests\ClientUnits\StoreClientUnitRequest;
 use App\Http\Requests\ClientUnits\UpdateClientUnitRequest;
 use App\Http\Requests\UpdateRegistrationStatusRequest;
+use App\Models\Area;
 use App\Models\Client;
 use App\Models\ClientUnit;
 use App\Services\Tenancy\TenantContext;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 
@@ -66,7 +68,11 @@ final class ClientUnitController extends Controller
             ->with('success', 'Unidade criada.');
     }
 
-    public function show(TenantContext $tenant, ClientUnit $unit): InertiaResponse
+    public function show(
+        TenantContext $tenant,
+        Request $request,
+        ClientUnit $unit,
+    ): InertiaResponse
     {
         $unit = $this->tenantUnit($tenant, $unit);
 
@@ -116,8 +122,8 @@ final class ClientUnitController extends Controller
             ],
             'areas' => $areas,
             'can' => [
-                'update' => $request?->user()?->can('update', $unit) ?? false,
-                'create_area' => $request?->user()?->can('create', ClientUnit::class) ?? false,
+                'update' => $request->user()->can('update', $unit),
+                'create_area' => $request->user()->can('create', Area::class),
             ],
         ]);
     }
@@ -140,6 +146,7 @@ final class ClientUnitController extends Controller
                 'city' => $unit->city,
                 'state' => $unit->state,
                 'country_code' => $unit->country_code,
+                'status' => $unit->status->value,
                 'notes' => $unit->notes,
             ],
             'action' => route('units.update', $unit),

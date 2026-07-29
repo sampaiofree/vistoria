@@ -42,6 +42,11 @@ return new class extends Migration
                 'subareas_org_area_code_unique',
             );
 
+            $table->unique(
+                ['organization_id', 'id'],
+                'subareas_org_id_unique',
+            );
+
             $table->index(
                 ['organization_id', 'area_id', 'status', 'name'],
                 'subareas_org_area_status_name_index',
