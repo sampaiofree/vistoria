@@ -20,11 +20,15 @@ class MultiTenantFoundationTest extends TestCase
         $this->seed();
 
         $organization = Organization::query()
-            ->where('document', '00000000000000')
+            ->where('document', '21798932000100')
             ->firstOrFail();
 
         $user = User::query()
             ->where('email', 'admin@vistoria.test')
+            ->firstOrFail();
+
+        $superAdmin = User::query()
+            ->where('email', 'superadmin@vistoria.test')
             ->firstOrFail();
 
         $this->assertSame(OrganizationStatus::Active, $organization->status);
@@ -33,6 +37,8 @@ class MultiTenantFoundationTest extends TestCase
         $this->assertSame($organization->id, $user->organization_id);
         $this->assertTrue($user->organization->is($organization));
         $this->assertTrue($organization->users->contains($user));
+        $this->assertTrue($superAdmin->isSuperAdmin());
+        $this->assertNull($superAdmin->organization_id);
     }
 
     public function test_super_admin_users_can_exist_without_an_organization(): void
@@ -45,6 +51,19 @@ class MultiTenantFoundationTest extends TestCase
         $this->assertTrue($user->isSuperAdmin());
         $this->assertFalse($user->isCompanyAdmin());
         $this->assertTrue($user->isActive());
+    }
+
+    public function test_super_admin_users_cannot_belong_to_an_organization(): void
+    {
+        $this->expectException(LogicException::class);
+
+        $organization = Organization::factory()->create();
+
+        User::factory()
+            ->superAdmin()
+            ->create([
+                'organization_id' => $organization->id,
+            ]);
     }
 
     public function test_non_super_admin_users_must_belong_to_an_organization(): void

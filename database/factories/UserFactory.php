@@ -47,6 +47,20 @@ class UserFactory extends Factory
         ]);
     }
 
+    public function inactive(): static
+    {
+        return $this->state(fn (): array => [
+            'status' => UserStatus::Inactive->value,
+        ]);
+    }
+
+    public function suspended(): static
+    {
+        return $this->state(fn (): array => [
+            'status' => UserStatus::Suspended->value,
+        ]);
+    }
+
     /**
      * Indicate that the model's email address should be unverified.
      */

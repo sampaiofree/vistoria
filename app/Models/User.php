@@ -65,6 +65,10 @@ class User extends Authenticatable
     protected static function booted(): void
     {
         static::saving(function (self $user): void {
+            if ($user->isSuperAdmin() && filled($user->organization_id)) {
+                throw new LogicException('Super-admin users must not belong to an organization.');
+            }
+
             if (! $user->isSuperAdmin() && blank($user->organization_id)) {
                 throw new LogicException('Non-super-admin users must belong to an organization.');
             }

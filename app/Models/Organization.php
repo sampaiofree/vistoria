@@ -32,4 +32,9 @@ class Organization extends Model
     {
         return $this->hasMany(User::class);
     }
+
+    public function isActive(): bool
+    {
+        return $this->status === OrganizationStatus::Active;
+    }
 }
