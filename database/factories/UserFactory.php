@@ -47,6 +47,13 @@ class UserFactory extends Factory
         ]);
     }
 
+    public function companyAdmin(): static
+    {
+        return $this->state(fn (): array => [
+            'account_type' => UserAccountType::CompanyAdmin->value,
+        ]);
+    }
+
     public function inactive(): static
     {
         return $this->state(fn (): array => [
