@@ -23,7 +23,7 @@ final class ResolveTenant
         if ($user->isSuperAdmin()) {
             $this->tenantContext->clear();
 
-            return $next($request);
+            abort(403, 'Superadministradores não podem acessar módulos operacionais sem uma organização selecionada.');
         }
 
         $organization = $user->organization;

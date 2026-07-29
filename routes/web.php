@@ -21,61 +21,68 @@ Route::middleware('guest')->group(function () {
 Route::middleware([
     'auth',
     'user.active',
-    'organization.active',
-    'tenant',
 ])->group(function () {
-    Route::get('/dashboard', function () {
+    // Rotas globais não dependem de um tenant. No MVP, o superadministrador
+    // não seleciona nem impersona uma organização.
+    Route::middleware('organization.active')->get('/dashboard', function () {
         return view('dashboard');
     })->name('dashboard');
 
-    Route::resource('clients', ClientController::class)
-        ->except(['destroy']);
-
-    Route::patch(
-        'clients/{client}/status',
-        [ClientController::class, 'updateStatus'],
-    )->name('clients.status');
-
-    Route::scopeBindings()->group(function (): void {
-        Route::resource('clients.units', ClientUnitController::class)
-            ->parameters([
-                'clients' => 'client',
-                'units' => 'unit',
-            ])
-            ->shallow()
-            ->except(['destroy']);
-
-        Route::patch(
-            'units/{unit}/status',
-            [ClientUnitController::class, 'updateStatus'],
-        )->name('units.status');
-
-        Route::resource('units.areas', AreaController::class)
-            ->parameters([
-                'units' => 'unit',
-                'areas' => 'area',
-            ])
-            ->shallow()
-            ->except(['destroy']);
-
-        Route::patch(
-            'areas/{area}/status',
-            [AreaController::class, 'updateStatus'],
-        )->name('areas.status');
-
-        Route::resource('areas.subareas', SubareaController::class)
-            ->parameters([
-                'areas' => 'area',
-                'subareas' => 'subarea',
-            ])
-            ->shallow()
-            ->except(['destroy']);
-
-        Route::patch(
-            'subareas/{subarea}/status',
-            [SubareaController::class, 'updateStatus'],
-        )->name('subareas.status');
-    });
-
     Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
+
+    // Módulos operacionais exigem uma organização resolvida. ResolveTenant
+    // rejeita explicitamente superadministradores, que não possuem tenant.
+    Route::middleware([
+        'organization.active',
+        'tenant',
+    ])->group(function (): void {
+        Route::resource('clients', ClientController::class)
+            ->except(['destroy']);
+
+        Route::patch(
+            'clients/{client}/status',
+            [ClientController::class, 'updateStatus'],
+        )->name('clients.status');
+
+        Route::scopeBindings()->group(function (): void {
+            Route::resource('clients.units', ClientUnitController::class)
+                ->parameters([
+                    'clients' => 'client',
+                    'units' => 'unit',
+                ])
+                ->shallow()
+                ->except(['destroy']);
+
+            Route::patch(
+                'units/{unit}/status',
+                [ClientUnitController::class, 'updateStatus'],
+            )->name('units.status');
+
+            Route::resource('units.areas', AreaController::class)
+                ->parameters([
+                    'units' => 'unit',
+                    'areas' => 'area',
+                ])
+                ->shallow()
+                ->except(['destroy']);
+
+            Route::patch(
+                'areas/{area}/status',
+                [AreaController::class, 'updateStatus'],
+            )->name('areas.status');
+
+            Route::resource('areas.subareas', SubareaController::class)
+                ->parameters([
+                    'areas' => 'area',
+                    'subareas' => 'subarea',
+                ])
+                ->shallow()
+                ->except(['destroy']);
+
+            Route::patch(
+                'subareas/{subarea}/status',
+                [SubareaController::class, 'updateStatus'],
+            )->name('subareas.status');
+        });
+    });
 });
