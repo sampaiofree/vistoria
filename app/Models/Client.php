@@ -37,6 +37,11 @@ class Client extends Model
         return $this->hasMany(ClientUnit::class);
     }
 
+    public function equipments(): HasMany
+    {
+        return $this->hasMany(Equipment::class);
+    }
+
     protected function casts(): array
     {
         return [

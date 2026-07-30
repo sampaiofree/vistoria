@@ -111,6 +111,27 @@ class InspectionResponsibleTest extends TestCase
         $this->assertDatabaseHas('inspection_responsibles', ['id' => $responsible->id]);
     }
 
+    public function test_responsible_changes_are_blocked_after_release(): void
+    {
+        $responsible = app(AssignInspectionResponsible::class)->handle(
+            $this->inspection,
+            User::factory()->create(['organization_id' => $this->organization]),
+            'inspector',
+            $this->actor,
+        );
+
+        $this->inspection->update(['status' => InspectionStatus::Released]);
+
+        $this->expectValidationFailure(fn () => app(AssignInspectionResponsible::class)->handle(
+            $this->inspection,
+            User::factory()->create(['organization_id' => $this->organization]),
+            'reviewer',
+            $this->actor,
+        ));
+        $this->expectValidationFailure(fn () => app(SetPrimaryInspectionResponsible::class)->handle($responsible, $this->actor));
+        $this->expectValidationFailure(fn () => app(RemoveInspectionResponsible::class)->handle($responsible, $this->actor));
+    }
+
     private function expectValidationFailure(callable $callback): void
     {
         try {

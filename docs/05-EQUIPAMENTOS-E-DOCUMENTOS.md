@@ -2106,27 +2106,27 @@ php artisan migrate:fresh --seed
 
 # 33. Critérios de aceite
 
-- [ ] tabela `equipments` criada;
-- [ ] tabela `equipment_documents` criada;
-- [ ] equipamento possui `public_id`;
-- [ ] documento possui `public_id`;
-- [ ] TAG é normalizado;
-- [ ] TAG é único por unidade;
-- [ ] hierarquia é validada;
-- [ ] estrutura inativa bloqueia novo equipamento;
-- [ ] equipamento inativo permanece no histórico;
-- [ ] descomissionamento não apaga dados;
-- [ ] upload privado funciona;
-- [ ] checksum é salvo;
-- [ ] documentos possuem revisão;
-- [ ] apenas uma revisão fica atual;
-- [ ] documento antigo continua disponível;
-- [ ] usuário de outra organização não acessa;
-- [ ] membro possui leitura;
-- [ ] administrador possui escrita;
-- [ ] testes passam;
-- [ ] build passa;
-- [ ] documentação corresponde ao código.
+- [x] tabela `equipments` criada;
+- [x] tabela `equipment_documents` criada;
+- [x] equipamento possui `public_id`;
+- [x] documento possui `public_id`;
+- [x] TAG é normalizado;
+- [x] TAG é único por unidade;
+- [x] hierarquia é validada;
+- [x] estrutura inativa bloqueia novo equipamento;
+- [x] equipamento inativo permanece no histórico;
+- [x] descomissionamento não apaga dados;
+- [x] upload privado funciona;
+- [x] checksum é salvo;
+- [x] documentos possuem revisão;
+- [x] apenas uma revisão fica atual;
+- [x] documento antigo continua disponível;
+- [x] usuário de outra organização não acessa;
+- [x] membro possui leitura;
+- [x] administrador possui escrita;
+- [x] testes passam;
+- [x] build passa;
+- [x] documentação corresponde ao código.
 
 ---
 
@@ -2239,41 +2239,42 @@ Não tornar serial único sem confirmação da regra de negócio.
 
 # 35. Checklist de execução
 
-- [ ] Criar enums.
-- [ ] Criar models e migrations.
-- [ ] Revisar constraints.
-- [ ] Atualizar relacionamentos.
-- [ ] Criar normalização do TAG.
-- [ ] Criar factories.
-- [ ] Criar Actions de equipamento.
-- [ ] Criar Actions de status.
-- [ ] Configurar disco privado.
-- [ ] Criar Action de documento.
-- [ ] Criar Form Requests.
-- [ ] Criar Policies.
-- [ ] Criar Controllers.
-- [ ] Criar rotas.
-- [ ] Criar páginas Vue.
-- [ ] Criar filtros.
-- [ ] Criar testes de cadastro.
-- [ ] Criar testes de isolamento.
-- [ ] Criar testes de documento.
-- [ ] Atualizar seeder.
-- [ ] Executar migrations.
-- [ ] Executar Pint.
-- [ ] Executar testes.
-- [ ] Executar build.
-- [ ] Validar manualmente.
-- [ ] Atualizar roadmap.
-- [ ] Criar commit.
+O módulo foi implementado e validado no banco alvo. A consolidação formal ocorre no mesmo corte dos módulos 06 e 06A porque rotas, seeder, hierarquia e layout são compartilhados.
+
+- [x] Criar enums.
+- [x] Criar models e migrations.
+- [x] Revisar constraints.
+- [x] Atualizar relacionamentos.
+- [x] Criar normalização do TAG.
+- [x] Criar factories.
+- [x] Criar Actions de equipamento.
+- [x] Criar Actions de status.
+- [x] Configurar disco privado.
+- [x] Criar Action de documento.
+- [x] Criar Form Requests.
+- [x] Criar Policies.
+- [x] Criar Controllers.
+- [x] Criar rotas.
+- [x] Criar páginas Vue.
+- [x] Criar filtros.
+- [x] Criar testes de cadastro.
+- [x] Criar testes de isolamento.
+- [x] Criar testes de documento.
+- [x] Atualizar seeder.
+- [x] Executar migrations.
+- [x] Executar Pint.
+- [x] Executar testes.
+- [x] Executar build.
+- [x] Validar manualmente.
+- [x] Atualizar roadmap.
+- [x] Preparar o corte para commit.
 
 ---
 
 # 36. Commit sugerido
 
 ```bash
-git add .
-git commit -m "feat: add equipment and technical document management"
+git commit -m "feat: complete equipment inspection and dashboard modules"
 ```
 
 ---

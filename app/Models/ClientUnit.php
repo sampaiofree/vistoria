@@ -50,6 +50,11 @@ class ClientUnit extends Model
         return $this->hasMany(Area::class);
     }
 
+    public function equipments(): HasMany
+    {
+        return $this->hasMany(Equipment::class);
+    }
+
     protected function casts(): array
     {
         return [

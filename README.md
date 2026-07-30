@@ -45,6 +45,8 @@ A suíte local usa SQLite em memória para feedback rápido. As migrations, o ro
 
 - fundação multiempresa: implementada e validada no banco alvo, aguardando conferência visual completa;
 - clientes e estrutura operacional: implementados e validados no banco alvo, aguardando conferência visual e responsiva completa;
-- equipamentos e documentos: próximo módulo funcional;
-- inspeções: implementação antecipada e parcial, sem rotas operacionais;
-- avarias, fotos, GUT, revisão, PDF e deploy: planejados no roadmap.
+- equipamentos e documentos: implementados, validados e integrados ao shell operacional;
+- inspeções e fluxo: implementados com responsáveis, estados, histórico, referências e telas operacionais;
+- dashboard e navegação: implementados e validados entre 375 e 1440 px;
+- avarias e reinspeções: próximo módulo funcional;
+- fotos, GUT, revisão, PDF e deploy: planejados no roadmap.

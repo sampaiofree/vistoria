@@ -53,8 +53,9 @@ Nas colunas de dimensão, **Concluída** significa que aquela dimensão terminou
 | 02 | `02-ARQUITETURA-E-PADROES.md` | Definir arquitetura Laravel, módulos, convenções e segurança | Concluída | Não aferida neste documento | Pendente | Documentado |
 | 03 | `03-MODELAGEM-MULTIEMPRESA.md` | Criar organizações, usuários e isolamento por empresa | Concluída | Concluída na conferência estática | Parcial | Em validação |
 | 04 | `04-CLIENTES-E-ESTRUTURA-OPERACIONAL.md` | Criar clientes, unidades, áreas e subáreas | Concluída | Concluída na conferência estática | Parcial | Em validação |
-| 05 | `05-EQUIPAMENTOS-E-DOCUMENTOS.md` | Criar equipamentos, TAGs, desenhos e documentos | Concluída | Pendente | Pendente | Documentado |
-| 06 | `06-INSPECOES-E-FLUXO.md` | Criar inspeções, responsáveis, estados e histórico | Concluída | Parcial e fora da sequência | Parcial | Em validação, com lacunas |
+| 05 | `05-EQUIPAMENTOS-E-DOCUMENTOS.md` | Criar equipamentos, TAGs, desenhos e documentos | Concluída | Concluída | Concluída | Concluído |
+| 06 | `06-INSPECOES-E-FLUXO.md` | Criar inspeções, responsáveis, estados e histórico | Concluída | Concluída | Concluída | Concluído |
+| 06A | `06A-DASHBOARD-E-NAVEGACAO.md` | Criar dashboard operacional, shell e navegação principal | Concluída | Concluída | Concluída | Concluído |
 | 07 | `07-AVARIAS-E-REINSPECOES.md` | Modelar avarias permanentes e avaliações históricas | Concluída | Pendente | Pendente | Documentado |
 | 08 | `08-FOTOS-E-ARMAZENAMENTO.md` | Definir captura, compressão, upload e armazenamento | Concluída | Pendente | Pendente | Documentado |
 | 09 | `09-CLASSIFICACAO-CIVIL-GUT.md` | Implementar regras GUT, CV, danos e recomendações | Concluída | Pendente | Pendente | Documentado |
@@ -99,19 +100,24 @@ A documentação deve refletir o sistema implementado. Quando uma regra mudar, o
 
 ## Próximo documento
 
-Ainda não liberado. Em 30/07/2026 foram registradas as seguintes evidências:
+Os módulos 05, 06 e 06A foram consolidados em 30/07/2026. O corte entrega:
 
-- lacunas de schema e `public_id` do documento 03 corrigidas;
-- migrations, rollback e seed idempotente executados em SQLite, MariaDB 12.2 e MySQL 8.4.11;
-- suíte com 47 testes aprovados e 1 teste de concorrência do módulo 06 ignorado por depender dos módulos 05/06 completos, inclusive no MySQL 8.4.11;
-- Pint e build do frontend executados com sucesso;
-- smoke HTTP pelo Herd confirmou login, leitura do membro, escrita do administrador e bloqueio do superadministrador nas rotas de tenant;
-- pipeline de CI preparado para MySQL 8 e Node 22.
+- equipamentos, status, documentos privados e versionamento;
+- inspeções, responsáveis, snapshots, referências, máquina de estados e histórico;
+- dashboard Inertia/Vue, navegação principal, indicadores pessoais ou da empresa e atividades recentes;
+- carregamento deferred independente com estado de erro e nova tentativa;
+- drill-down pessoal coerente com usuário e responsabilidade;
+- shell responsivo e acessível entre 375 e 1440 px.
 
-Permanecem pendentes:
+Evidências do fechamento:
 
-- validação visual e responsiva dos fluxos completos de autenticação, tenancy e estrutura operacional;
-- registro do commit de conclusão da etapa;
-- execução bem-sucedida do pipeline remoto após o envio do commit.
+- `php artisan test`: 82 testes, 81 aprovados, 1 ignorado e 817 assertions;
+- teste direcionado da dashboard: 4 testes e 242 assertions;
+- `vendor/bin/pint --test` e `npm run build` aprovados;
+- migration de índices da dashboard aplicada, revertida isoladamente e reaplicada no MySQL;
+- `php artisan migrate:fresh --seed` aprovado com as 17 migrations;
+- validação manual pelo Herd/Chrome com administrador, membro e superadministrador;
+- dashboard conferida em 1440, 1280, 1024, 768 e 375 px, sem overflow horizontal do documento;
+- regressão visual conferida nas páginas de inspeções, equipamentos e clientes.
 
-Somente após o registro dessas evidências o próximo documento será `05-EQUIPAMENTOS-E-DOCUMENTOS.md`.
+O próximo passo do MVP é iniciar `07-AVARIAS-E-REINSPECOES.md`, começando pela modelagem da identidade permanente da avaria e de suas avaliações históricas por inspeção.

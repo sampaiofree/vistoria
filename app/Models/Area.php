@@ -42,6 +42,11 @@ class Area extends Model
         return $this->hasMany(Subarea::class);
     }
 
+    public function equipments(): HasMany
+    {
+        return $this->hasMany(Equipment::class);
+    }
+
     protected function casts(): array
     {
         return [

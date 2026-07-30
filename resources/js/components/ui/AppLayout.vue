@@ -1,8 +1,11 @@
 <script setup>
-import { computed } from 'vue';
-import { Link, usePage } from '@inertiajs/vue3';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { usePage } from '@inertiajs/vue3';
+import AppSidebar from '@/components/ui/AppSidebar.vue';
+import AppTopbar from '@/components/ui/AppTopbar.vue';
+import PageHeader from '@/components/ui/PageHeader.vue';
 
-defineProps({
+const props = defineProps({
     title: {
         type: String,
         required: true,
@@ -11,93 +14,178 @@ defineProps({
         type: String,
         default: '',
     },
+    wide: {
+        type: Boolean,
+        default: false,
+    },
 });
 
 const page = usePage();
 
 const user = computed(() => page.props.auth?.user ?? null);
 const organization = computed(() => user.value?.organization ?? null);
-
-const navigation = computed(() => [
-    { label: 'Dashboard', href: '/dashboard', active: page.url.startsWith('/dashboard') },
-    { label: 'Clientes', href: '/clients', active: page.url.startsWith('/clients') },
-]);
+const navigation = computed(() => page.props.navigation ?? []);
+const dashboardUrl = computed(() => navigation.value.find((item) => item.icon === 'dashboard')?.href ?? '/');
+const logoutUrl = computed(() => page.props.auth?.logout_url ?? '');
 
 const flashSuccess = computed(() => page.props.flash?.success ?? '');
 const flashError = computed(() => page.props.flash?.error ?? '');
+
+const collapsed = ref(false);
+const mobileOpen = ref(false);
+const mobileMenuTrigger = ref(null);
+
+const storageKey = 'vistoria.sidebar.collapsed';
+
+function syncSidebarState() {
+    if (typeof window === 'undefined') {
+        return;
+    }
+
+    const stored = window.localStorage.getItem(storageKey);
+
+    if (stored !== null) {
+        collapsed.value = stored === '1';
+        return;
+    }
+
+    collapsed.value = window.innerWidth < 1280;
+}
+
+function toggleSidebar(event) {
+    if (mobileOpen.value) {
+        closeMobileSidebar();
+
+        return;
+    }
+
+    mobileMenuTrigger.value = event?.currentTarget ?? null;
+    mobileOpen.value = true;
+}
+
+function closeMobileSidebar(restoreFocus = true) {
+    mobileOpen.value = false;
+
+    if (restoreFocus) {
+        nextTick(() => mobileMenuTrigger.value?.focus());
+    }
+}
+
+function toggleCollapse() {
+    collapsed.value = !collapsed.value;
+}
+
+onMounted(() => {
+    syncSidebarState();
+
+    window.addEventListener('keydown', handleKeydown);
+});
+
+onBeforeUnmount(() => {
+    window.removeEventListener('keydown', handleKeydown);
+    document.body.style.overflow = '';
+});
+
+watch(
+    collapsed,
+    (value) => {
+        if (typeof window === 'undefined') {
+            return;
+        }
+
+        window.localStorage.setItem(storageKey, value ? '1' : '0');
+    },
+    { flush: 'post' },
+);
+
+watch(
+    () => page.url,
+    () => {
+        mobileOpen.value = false;
+    },
+);
+
+watch(mobileOpen, (open) => {
+    document.body.style.overflow = open ? 'hidden' : '';
+});
+
+function handleKeydown(event) {
+    if (event.key === 'Escape') {
+        closeMobileSidebar();
+    }
+}
+
+const shellStyle = computed(() => ({
+    '--sidebar-width': collapsed.value ? '4.5rem' : '16rem',
+}));
+
+const contentWidthClass = computed(() => (props.wide ? 'w-full' : 'mx-auto w-full max-w-7xl'));
 </script>
 
 <template>
-    <div class="min-h-screen bg-slate-100 text-slate-900">
-        <header class="border-b border-slate-200 bg-white">
-            <div class="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
-                <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                    <div class="flex flex-wrap items-center gap-3">
-                        <div>
-                            <div class="text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">
-                                Vistoria
-                            </div>
-                            <div class="text-lg font-semibold text-slate-900">
-                                {{ title }}
-                            </div>
-                        </div>
-                        <nav class="flex flex-wrap gap-2">
-                            <Link
-                                v-for="item in navigation"
-                                :key="item.href"
-                                :href="item.href"
-                                class="rounded-full border px-3 py-1.5 text-sm font-medium transition"
-                                :class="item.active
-                                    ? 'border-teal-600 bg-teal-50 text-teal-700'
-                                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900'"
-                            >
-                                {{ item.label }}
-                            </Link>
-                        </nav>
-                    </div>
+    <div class="min-h-screen bg-slate-100 text-slate-900" :style="shellStyle">
+        <a
+            href="#main-content"
+            class="fixed left-4 top-4 z-50 -translate-y-24 rounded-xl bg-white px-4 py-3 text-sm font-semibold text-slate-950 shadow-lg transition focus:translate-y-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
+        >
+            Pular para o conteúdo
+        </a>
 
-                    <div class="flex flex-wrap items-center gap-3 text-sm text-slate-600">
-                        <div class="text-right">
-                            <div class="font-medium text-slate-900">{{ user?.name }}</div>
-                            <div v-if="organization" class="text-slate-500">
-                                {{ organization.name }}
-                            </div>
-                        </div>
+        <AppSidebar
+            :items="navigation"
+            :user="user"
+            :organization="organization"
+            :collapsed="collapsed"
+            :mobile-open="mobileOpen"
+            :home-url="dashboardUrl"
+            @close-mobile="closeMobileSidebar"
+        />
 
-                        <Link
-                            href="/logout"
-                            method="post"
-                            as="button"
-                            class="rounded-full border border-slate-200 bg-white px-4 py-2 font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-900"
+        <div
+            class="min-h-screen lg:pl-[var(--sidebar-width)]"
+            :inert="mobileOpen ? '' : undefined"
+            :aria-hidden="mobileOpen ? 'true' : undefined"
+        >
+            <AppTopbar
+                :user="user"
+                :organization="organization"
+                :collapsed="collapsed"
+                :mobile-open="mobileOpen"
+                :logout-url="logoutUrl"
+                @toggle-sidebar="toggleSidebar"
+                @toggle-collapse="toggleCollapse"
+            />
+
+            <main id="main-content" tabindex="-1" class="px-4 py-6 outline-none sm:px-6 lg:px-8">
+                <div :class="contentWidthClass">
+                    <PageHeader :title="title" :description="subtitle">
+                        <template #actions>
+                            <slot name="actions" />
+                        </template>
+                    </PageHeader>
+
+                    <div v-if="flashSuccess || flashError" class="mt-6 space-y-3">
+                        <div
+                            v-if="flashSuccess"
+                            role="status"
+                            class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"
                         >
-                            Sair
-                        </Link>
+                            {{ flashSuccess }}
+                        </div>
+                        <div
+                            v-if="flashError"
+                            role="alert"
+                            class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800"
+                        >
+                            {{ flashError }}
+                        </div>
+                    </div>
+
+                    <div class="mt-6">
+                        <slot />
                     </div>
                 </div>
-
-                <p v-if="subtitle" class="max-w-4xl text-sm text-slate-600">
-                    {{ subtitle }}
-                </p>
-            </div>
-        </header>
-
-        <main class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-            <div v-if="flashSuccess || flashError" class="mb-6 space-y-3">
-                <div
-                    v-if="flashSuccess"
-                    class="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"
-                >
-                    {{ flashSuccess }}
-                </div>
-                <div
-                    v-if="flashError"
-                    class="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800"
-                >
-                    {{ flashError }}
-                </div>
-            </div>
-
-            <slot />
-        </main>
+            </main>
+        </div>
     </div>
 </template>

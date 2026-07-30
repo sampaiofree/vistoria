@@ -20,7 +20,7 @@ return new class extends Migration
         Schema::create('inspection_responsibles', function (Blueprint $table): void {
             $table->id();
             $table->foreignId('organization_id')->constrained()->restrictOnDelete();
-            $table->foreignId('inspection_id')->constrained()->restrictOnDelete();
+            $table->unsignedBigInteger('inspection_id');
             $table->foreignId('user_id')->constrained()->restrictOnDelete();
             $table->string('responsibility', 30);
             $table->boolean('is_primary')->default(false);
@@ -28,6 +28,13 @@ return new class extends Migration
             $table->timestamp('assigned_at');
             $table->timestamp('completed_at')->nullable();
             $table->timestamps();
+            $table->foreign(
+                ['organization_id', 'inspection_id'],
+                'inspection_responsibles_org_inspection_foreign',
+            )
+                ->references(['organization_id', 'id'])
+                ->on('inspections')
+                ->restrictOnDelete();
             $table->unique(['inspection_id', 'user_id', 'responsibility'], 'inspection_responsibles_unique');
             $table->index(['organization_id', 'inspection_id', 'responsibility'], 'inspection_responsibles_org_role_index');
         });

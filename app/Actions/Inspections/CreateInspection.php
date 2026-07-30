@@ -25,6 +25,12 @@ final class CreateInspection
 
     public function handle(User $actor, Equipment $equipment, array $data): Inspection
     {
+        if (! $actor->isActive() || $actor->isSuperAdmin() || ! $actor->belongsToOrganization($this->tenant->id())) {
+            throw ValidationException::withMessages([
+                'actor' => 'O usuário não pode criar inspeções na organização atual.',
+            ]);
+        }
+
         return DB::transaction(function () use ($actor, $equipment, $data): Inspection {
             // The equipment row is the serialization point. Locking the inspections
             // found by the query is not sufficient when no inspection exists yet.
@@ -72,7 +78,7 @@ final class CreateInspection
                 'external_report_number' => TextNormalizer::nullableText($data['external_report_number'] ?? null),
                 'procedure_number' => TextNormalizer::nullableText($data['procedure_number'] ?? null),
                 'atmospheric_classification' => TextNormalizer::nullableText($data['atmospheric_classification'] ?? null),
-                'scheduled_for' => $data['scheduled_for'] ?? null,
+                'scheduled_for' => $data['scheduled_for'] ?? $data['scheduled_at'] ?? null,
                 'context_snapshot' => $this->snapshotBuilder->build($equipment),
                 'snapshot_version' => InspectionSnapshotBuilder::VERSION,
                 'general_notes' => TextNormalizer::nullableText($data['general_notes'] ?? null),

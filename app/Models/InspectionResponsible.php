@@ -4,12 +4,15 @@ namespace App\Models;
 
 use App\Enums\InspectionResponsibility;
 use App\Models\Concerns\BelongsToOrganization;
+use Database\Factories\InspectionResponsibleFactory;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 final class InspectionResponsible extends Model
 {
-    use BelongsToOrganization;
+    /** @use HasFactory<InspectionResponsibleFactory> */
+    use BelongsToOrganization, HasFactory;
 
     protected $fillable = ['organization_id', 'inspection_id', 'user_id', 'responsibility', 'is_primary', 'assigned_by', 'assigned_at', 'completed_at'];
 

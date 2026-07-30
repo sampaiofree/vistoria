@@ -21,6 +21,10 @@ final class SetPrimaryInspectionResponsible
         }
         $this->validateUser($responsible->user, $organizationId);
 
+        if ($responsible->inspection->status->isFinal()) {
+            throw ValidationException::withMessages(['responsible' => 'Responsáveis não podem ser alterados em inspeções liberadas ou canceladas.']);
+        }
+
         return DB::transaction(function () use ($responsible): InspectionResponsible {
             $assignments = InspectionResponsible::query()
                 ->where('inspection_id', $responsible->inspection_id)

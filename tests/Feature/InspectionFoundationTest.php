@@ -85,6 +85,46 @@ final class InspectionFoundationTest extends TestCase
             ->count());
     }
 
+    public function test_creating_initial_inspection_generates_snapshot_number_and_history(): void
+    {
+        $organization = Organization::factory()->create();
+        $actor = User::factory()
+            ->for($organization)
+            ->create();
+        $equipment = Equipment::factory()
+            ->for($organization)
+            ->create();
+
+        $tenant = app(TenantContext::class);
+        $tenant->set($organization);
+
+        $inspection = app(CreateInspection::class)->handle(
+            $actor,
+            $equipment,
+            [
+                'inspection_type' => InspectionType::Initial->value,
+                'scheduled_at' => '2026-07-30',
+                'general_notes' => 'Notas de teste',
+            ],
+        );
+
+        $this->assertMatchesRegularExpression('/^INS-\d{4}-\d{6}$/', (string) $inspection->number);
+        $this->assertSame('planned', $inspection->status->value);
+        $this->assertSame('initial', $inspection->inspection_type->value);
+        $this->assertSame('2026-07-30', $inspection->scheduled_for?->toDateString());
+        $this->assertSame($equipment->tag, $inspection->context_snapshot['equipment']['tag']);
+        $this->assertSame(1, $inspection->statusHistories()->count());
+        $this->assertSame('Inspeção criada.', $inspection->statusHistories()->first()->reason);
+
+        $originalTag = $inspection->context_snapshot['equipment']['tag'];
+        $equipment->update(['tag' => 'EQ-ALTERADO']);
+
+        $this->assertSame(
+            $originalTag,
+            $inspection->refresh()->context_snapshot['equipment']['tag'],
+        );
+    }
+
     private function runCreationWorker(
         int $worker,
         int $organizationId,

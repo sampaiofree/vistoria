@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Enums\UserAccountType;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -19,7 +20,9 @@ final class HandleInertiaRequests extends Middleware
         $user = $request->user();
 
         return array_merge(parent::share($request), [
+            'navigation' => $this->navigation($request),
             'auth' => [
+                'logout_url' => $user ? route('logout') : null,
                 'user' => $user ? [
                     'name' => $user->name,
                     'email' => $user->email,
@@ -35,6 +38,52 @@ final class HandleInertiaRequests extends Middleware
             'flash' => [
                 'success' => fn (): ?string => $request->session()->get('success'),
                 'error' => fn (): ?string => $request->session()->get('error'),
+            ],
+        ]);
+    }
+
+    /**
+     * @return array<int, array{label:string, href:string, icon:string, active:bool}>
+     */
+    private function navigation(Request $request): array
+    {
+        $user = $request->user();
+
+        if ($user === null) {
+            return [];
+        }
+
+        $items = [
+            [
+                'label' => 'Dashboard',
+                'href' => route('dashboard'),
+                'icon' => 'dashboard',
+                'active' => $request->routeIs('dashboard'),
+            ],
+        ];
+
+        if ($user->account_type === UserAccountType::SuperAdmin) {
+            return $items;
+        }
+
+        return array_merge($items, [
+            [
+                'label' => 'Inspeções',
+                'href' => route('inspections.index'),
+                'icon' => 'inspections',
+                'active' => $request->routeIs('inspections.*'),
+            ],
+            [
+                'label' => 'Equipamentos',
+                'href' => route('equipments.index'),
+                'icon' => 'equipments',
+                'active' => $request->routeIs('equipments.*', 'equipment-documents.*'),
+            ],
+            [
+                'label' => 'Clientes',
+                'href' => route('clients.index'),
+                'icon' => 'clients',
+                'active' => $request->routeIs('clients.*', 'units.*', 'areas.*', 'subareas.*'),
             ],
         ]);
     }

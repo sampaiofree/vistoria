@@ -27,6 +27,10 @@ final class AssignInspectionResponsible
         $this->validateUser($user, $organizationId);
         $responsibility = $this->responsibility($responsibility);
 
+        if ($inspection->status->isFinal()) {
+            throw ValidationException::withMessages(['inspection' => 'Responsáveis não podem ser alterados em inspeções liberadas ou canceladas.']);
+        }
+
         return DB::transaction(function () use ($inspection, $user, $responsibility, $actor, $isPrimary, $completedAt, $organizationId): InspectionResponsible {
             Inspection::query()->whereKey($inspection->getKey())->lockForUpdate()->firstOrFail();
             $assignments = InspectionResponsible::query()

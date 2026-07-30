@@ -2446,28 +2446,28 @@ php artisan migrate:fresh --seed
 
 # 32. Critérios de aceite
 
-- [ ] tabela `inspections` criada;
-- [ ] tabela de responsáveis criada;
-- [ ] tabela de histórico criada;
-- [ ] tabela de referências criada;
-- [ ] número da inspeção é gerado;
-- [ ] snapshot é preservado;
-- [ ] inspeção inicial funciona;
-- [ ] reinspeção funciona;
-- [ ] apenas uma inspeção aberta por equipamento;
-- [ ] mesma pessoa pode ocupar várias funções;
-- [ ] vários inspetores são permitidos;
-- [ ] principal por função é controlado;
-- [ ] máquina de estados funciona;
-- [ ] transições inválidas são bloqueadas;
-- [ ] justificativas obrigatórias são validadas;
-- [ ] histórico registra todas as transições;
-- [ ] documentos de referência são preservados;
-- [ ] isolamento multiempresa funciona;
-- [ ] testes passam;
-- [ ] build passa;
-- [ ] documentos anteriores foram atualizados com `awaiting_approval`;
-- [ ] documentação corresponde ao código.
+- [x] tabela `inspections` criada;
+- [x] tabela de responsáveis criada;
+- [x] tabela de histórico criada;
+- [x] tabela de referências criada;
+- [x] número da inspeção é gerado;
+- [x] snapshot é preservado;
+- [x] inspeção inicial funciona;
+- [x] reinspeção funciona;
+- [x] apenas uma inspeção aberta por equipamento;
+- [x] mesma pessoa pode ocupar várias funções;
+- [x] vários inspetores são permitidos;
+- [x] principal por função é controlado;
+- [x] máquina de estados funciona;
+- [x] transições inválidas são bloqueadas;
+- [x] justificativas obrigatórias são validadas;
+- [x] histórico registra todas as transições;
+- [x] documentos de referência são preservados;
+- [x] isolamento multiempresa funciona;
+- [x] testes passam;
+- [x] build passa;
+- [x] documentos anteriores foram atualizados com `awaiting_approval`;
+- [x] documentação corresponde ao código.
 
 ---
 
@@ -2575,48 +2575,45 @@ Mitigação:
 
 ## 34.1 Estado da implementação antecipada
 
-Parte deste módulo foi incorporada antes da conclusão do documento 05. Existem os enums de status e responsabilidade, uma migration mínima de inspeções e responsáveis, models básicos, Actions de responsáveis, componentes/páginas Vue e testes correspondentes. A criação de inspeção ainda referencia dependências inexistentes do módulo 05, e não há Controllers, Form Requests, Policies, rotas, snapshots, histórico ou referências completos.
-
-O acesso pelo menu foi ocultado até que o backend esteja integrado. Os testes existentes passam; o teste de concorrência permanece ignorado explicitamente até a implementação de equipamentos e da fundação completa deste módulo.
+O módulo 06 está implementado e validado localmente. O fluxo completo de inspeções, responsáveis, estados, histórico, referências e edição planejada está integrado às rotas, ao backend e ao frontend. A suíte completa passou, o `migrate:fresh --seed` foi validado, o rollback total em MySQL passou sem erro e o build do frontend também ficou verde. O corte é consolidado com os módulos 05 e 06A por compartilharem rotas, seeder, hierarquia e shell.
 
 - [x] Atualizar documentos 01 e 02.
-- [ ] Completar enums; status e responsabilidade existem, tipo de inspeção permanece pendente.
-- [ ] Completar migrations; existem apenas tabelas mínimas de inspeções e responsáveis.
-- [ ] Adicionar índice composto aos documentos.
-- [ ] Completar models; `Inspection` e `InspectionResponsible` existem parcialmente.
-- [ ] Atualizar `Equipment`.
-- [ ] Criar snapshot builder.
-- [ ] Criar transition guard.
-- [ ] Completar Action de inspeção; a classe atual depende de tipos ainda inexistentes.
+- [x] Completar enums; status, responsabilidade e tipo de inspeção estão fechados.
+- [x] Completar migrations; a cadeia de inspeções e responsáveis está fechada.
+- [x] Adicionar índice composto aos documentos.
+- [x] Completar models; `Inspection`, `InspectionResponsible`, `InspectionStatusHistory` e `InspectionReferenceDocument` estão prontos.
+- [x] Atualizar `Equipment`.
+- [x] Criar snapshot builder.
+- [x] Criar transition guard.
+- [x] Completar Action de inspeção; a criação e a edição planejada estão integradas.
 - [x] Criar Actions de responsáveis.
-- [ ] Criar Actions de transição.
-- [ ] Criar Policies.
-- [ ] Criar Form Requests.
-- [ ] Criar Controllers.
-- [ ] Criar rotas.
-- [ ] Integrar as páginas Vue existentes às rotas e ao backend.
-- [ ] Completar factories; existe apenas a factory mínima de inspeção.
-- [ ] Criar testes de criação.
-- [ ] Criar testes de snapshot.
+- [x] Criar Actions de transição.
+- [x] Criar Policies.
+- [x] Criar Form Requests.
+- [x] Criar Controllers.
+- [x] Criar rotas.
+- [x] Integrar as páginas Vue existentes às rotas e ao backend.
+- [x] Completar factories; as fábricas de inspeção, responsáveis, histórico e referências estão prontas.
+- [x] Criar testes de criação.
+- [x] Criar testes de snapshot.
 - [x] Criar testes de responsáveis.
-- [ ] Criar testes de fluxo.
-- [ ] Criar testes de referências.
-- [ ] Atualizar seeder.
-- [ ] Executar migrations.
+- [x] Criar testes de fluxo.
+- [x] Criar testes de referências.
+- [x] Atualizar seeder.
+- [x] Executar migrations.
 - [x] Executar Pint sobre o código existente.
 - [x] Executar testes existentes.
 - [x] Executar build das páginas existentes.
-- [ ] Validar manualmente.
+- [x] Validar manualmente.
 - [x] Atualizar roadmap.
-- [ ] Criar commit.
+- [x] Preparar o corte para commit.
 
 ---
 
 # 35. Commit sugerido
 
 ```bash
-git add .
-git commit -m "feat: implement inspection lifecycle and responsibilities"
+git commit -m "feat: complete equipment inspection and dashboard modules"
 ```
 
 ---
@@ -2624,18 +2621,7 @@ git commit -m "feat: implement inspection lifecycle and responsibilities"
 # 36. Próximo documento
 
 ```text
-07-AVARIAS-E-REINSPECOES.md
+06A-DASHBOARD-E-NAVEGACAO.md
 ```
 
-O próximo documento definirá:
-
-- identidade permanente da avaria;
-- código único por organização;
-- avaliação por inspeção;
-- vínculo histórico;
-- situações da reinspeção;
-- nova avaria;
-- avaria reparada;
-- avaria agravada;
-- divisão e recorrência;
-- testes.
+O próximo corte entrega a central operacional, a navegação principal e os indicadores do fluxo antes do início de avarias e reinspeções.

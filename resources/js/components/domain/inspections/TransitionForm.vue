@@ -3,7 +3,7 @@ import { computed } from 'vue';
 import { useForm } from '@inertiajs/vue3';
 const props = defineProps({ transition: { type: Object, required: true } });
 const form = useForm({ justification: '' });
-const needsJustification = computed(() => props.transition.requires_justification === true || ['correct', 'cancel'].includes(props.transition.key));
+const needsJustification = computed(() => props.transition.requires_justification === true);
 function submit() { form.post(props.transition.action, { preserveScroll: true, onSuccess: () => form.reset() }); }
 </script>
 <template>
