@@ -780,6 +780,7 @@ planned
 in_progress
 awaiting_review
 in_correction
+awaiting_approval
 approved
 report_generated
 released

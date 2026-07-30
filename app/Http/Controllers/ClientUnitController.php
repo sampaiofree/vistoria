@@ -72,8 +72,7 @@ final class ClientUnitController extends Controller
         TenantContext $tenant,
         Request $request,
         ClientUnit $unit,
-    ): InertiaResponse
-    {
+    ): InertiaResponse {
         $unit = $this->tenantUnit($tenant, $unit);
 
         $this->authorize('view', $unit);
@@ -93,6 +92,7 @@ final class ClientUnitController extends Controller
                 'show_url' => route('areas.show', $area),
                 'edit_url' => route('areas.edit', $area),
                 'status_url' => route('areas.status', $area),
+                'can_update' => $request->user()->can('update', $area),
             ]);
 
         return Inertia::render('ClientUnits/Show', [

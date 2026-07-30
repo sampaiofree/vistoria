@@ -2,12 +2,14 @@
     "$schema": "https://www.schemastore.org/package.json",
     "private": true,
     "type": "module",
+    "engines": {
+        "node": "^20.19.0 || >=22.12.0"
+    },
     "scripts": {
         "build": "vite build",
         "dev": "vite"
     },
     "devDependencies": {
-        "@rolldown/binding-win32-x64-msvc": "^1.2.1",
         "@tailwindcss/vite": "^4.0.0",
         "@vitejs/plugin-vue": "^6.0.8",
         "concurrently": "^9.0.1",

@@ -13,9 +13,11 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Subarea extends Model
 {
+    use BelongsToOrganization;
+
     /** @use HasFactory<SubareaFactory> */
     use HasFactory;
-    use BelongsToOrganization;
+
     use HasPublicId;
     use SoftDeletes;
 

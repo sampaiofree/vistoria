@@ -10,7 +10,15 @@ final class UpdateRegistrationStatusRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return true;
+        foreach (['client', 'unit', 'area', 'subarea'] as $parameter) {
+            $resource = $this->route($parameter);
+
+            if ($resource !== null) {
+                return $this->user()?->can('changeStatus', $resource) ?? false;
+            }
+        }
+
+        return false;
     }
 
     protected function prepareForValidation(): void

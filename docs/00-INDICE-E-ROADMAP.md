@@ -48,16 +48,16 @@ Nas colunas de dimensão, **Concluída** significa que aquela dimensão terminou
 
 | Ordem | Documento | Objetivo | Documentação | Implementação | Validação | Estado geral |
 |---:|---|---|---|---|---|---|
-| 00 | `00-INDICE-E-ROADMAP.md` | Controlar a ordem e o andamento do projeto | Concluída | Não se aplica | Pendente | Em validação |
+| 00 | `00-INDICE-E-ROADMAP.md` | Controlar a ordem e o andamento do projeto | Concluída | Não se aplica | Parcial | Em validação |
 | 01 | `01-VISAO-GERAL-E-ESCOPO.md` | Consolidar produto, usuários, limites e critérios do MVP | Concluída | Não aferida neste documento | Pendente | Documentado |
 | 02 | `02-ARQUITETURA-E-PADROES.md` | Definir arquitetura Laravel, módulos, convenções e segurança | Concluída | Não aferida neste documento | Pendente | Documentado |
-| 03 | `03-MODELAGEM-MULTIEMPRESA.md` | Criar organizações, usuários e isolamento por empresa | Concluída | Parcial | Pendente | Em validação, com lacunas |
-| 04 | `04-CLIENTES-E-ESTRUTURA-OPERACIONAL.md` | Criar clientes, unidades, áreas e subáreas | Concluída | Concluída na conferência estática | Pendente | Em validação |
-| 05 | `05-EQUIPAMENTOS-E-DOCUMENTOS.md` | Criar equipamentos, TAGs, desenhos e documentos | Pendente | Pendente | Pendente | Pendente |
-| 06 | `06-INSPECOES-E-FLUXO.md` | Criar inspeções, responsáveis, estados e histórico | Pendente | Pendente | Pendente | Pendente |
-| 07 | `07-AVARIAS-E-REINSPECOES.md` | Modelar avarias permanentes e avaliações históricas | Pendente | Pendente | Pendente | Pendente |
-| 08 | `08-FOTOS-E-ARMAZENAMENTO.md` | Definir captura, compressão, upload e armazenamento | Pendente | Pendente | Pendente | Pendente |
-| 09 | `09-CLASSIFICACAO-CIVIL-GUT.md` | Implementar regras GUT, CV, danos e recomendações | Pendente | Pendente | Pendente | Pendente |
+| 03 | `03-MODELAGEM-MULTIEMPRESA.md` | Criar organizações, usuários e isolamento por empresa | Concluída | Concluída na conferência estática | Parcial | Em validação |
+| 04 | `04-CLIENTES-E-ESTRUTURA-OPERACIONAL.md` | Criar clientes, unidades, áreas e subáreas | Concluída | Concluída na conferência estática | Parcial | Em validação |
+| 05 | `05-EQUIPAMENTOS-E-DOCUMENTOS.md` | Criar equipamentos, TAGs, desenhos e documentos | Concluída | Pendente | Pendente | Documentado |
+| 06 | `06-INSPECOES-E-FLUXO.md` | Criar inspeções, responsáveis, estados e histórico | Concluída | Parcial e fora da sequência | Parcial | Em validação, com lacunas |
+| 07 | `07-AVARIAS-E-REINSPECOES.md` | Modelar avarias permanentes e avaliações históricas | Concluída | Pendente | Pendente | Documentado |
+| 08 | `08-FOTOS-E-ARMAZENAMENTO.md` | Definir captura, compressão, upload e armazenamento | Concluída | Pendente | Pendente | Documentado |
+| 09 | `09-CLASSIFICACAO-CIVIL-GUT.md` | Implementar regras GUT, CV, danos e recomendações | Concluída | Pendente | Pendente | Documentado |
 | 10 | `10-REVISAO-APROVACAO-E-AUDITORIA.md` | Implementar controle técnico e rastreabilidade | Pendente | Pendente | Pendente | Pendente |
 | 11 | `11-RELATORIO-PDF.md` | Gerar o relatório simplificado do MVP | Pendente | Pendente | Pendente | Pendente |
 | 12 | `12-TESTES-E-SEGURANCA.md` | Cobrir regras críticas, permissões e isolamento | Pendente | Pendente | Pendente | Pendente |
@@ -99,11 +99,19 @@ A documentação deve refletir o sistema implementado. Quando uma regra mudar, o
 
 ## Próximo documento
 
-Ainda não liberado. A conferência dos documentos 03 e 04 foi registrada, mas devem permanecer pendentes:
+Ainda não liberado. Em 30/07/2026 foram registradas as seguintes evidências:
 
-- correção das lacunas de `public_id` apontadas no documento 03;
-- execução das migrations em banco compatível com o alvo;
-- execução integral da suíte automatizada e do build;
-- validação manual dos fluxos de autenticação, tenancy e estrutura operacional.
+- lacunas de schema e `public_id` do documento 03 corrigidas;
+- migrations, rollback e seed idempotente executados em SQLite, MariaDB 12.2 e MySQL 8.4.11;
+- suíte com 47 testes aprovados e 1 teste de concorrência do módulo 06 ignorado por depender dos módulos 05/06 completos, inclusive no MySQL 8.4.11;
+- Pint e build do frontend executados com sucesso;
+- smoke HTTP pelo Herd confirmou login, leitura do membro, escrita do administrador e bloqueio do superadministrador nas rotas de tenant;
+- pipeline de CI preparado para MySQL 8 e Node 22.
+
+Permanecem pendentes:
+
+- validação visual e responsiva dos fluxos completos de autenticação, tenancy e estrutura operacional;
+- registro do commit de conclusão da etapa;
+- execução bem-sucedida do pipeline remoto após o envio do commit.
 
 Somente após o registro dessas evidências o próximo documento será `05-EQUIPAMENTOS-E-DOCUMENTOS.md`.

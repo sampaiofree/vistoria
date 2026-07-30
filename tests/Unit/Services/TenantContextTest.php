@@ -11,10 +11,10 @@ final class TenantContextTest extends TestCase
 {
     public function test_it_stores_the_current_organization(): void
     {
-        $organization = new Organization();
+        $organization = new Organization;
         $organization->setAttribute('id', 10);
 
-        $context = new TenantContext();
+        $context = new TenantContext;
         $context->set($organization);
 
         $this->assertTrue($context->hasTenant());
@@ -24,7 +24,7 @@ final class TenantContextTest extends TestCase
 
     public function test_it_throws_when_no_tenant_is_defined(): void
     {
-        $context = new TenantContext();
+        $context = new TenantContext;
 
         $this->expectException(LogicException::class);
 
@@ -33,10 +33,10 @@ final class TenantContextTest extends TestCase
 
     public function test_it_can_clear_the_context(): void
     {
-        $organization = new Organization();
+        $organization = new Organization;
         $organization->setAttribute('id', 10);
 
-        $context = new TenantContext();
+        $context = new TenantContext;
         $context->set($organization);
         $context->clear();
 

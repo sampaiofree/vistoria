@@ -95,6 +95,7 @@ final class AreaController extends Controller
                 'show_url' => route('subareas.show', $subarea),
                 'edit_url' => route('subareas.edit', $subarea),
                 'status_url' => route('subareas.status', $subarea),
+                'can_update' => $request->user()->can('update', $subarea),
             ]);
 
         return Inertia::render('Areas/Show', [

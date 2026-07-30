@@ -11,7 +11,10 @@ final class UpdateClientRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return true;
+        $client = $this->route('client');
+
+        return $client instanceof Client
+            && ($this->user()?->can('update', $client) ?? false);
     }
 
     protected function prepareForValidation(): void

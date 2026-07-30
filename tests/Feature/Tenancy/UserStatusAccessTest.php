@@ -28,4 +28,21 @@ final class UserStatusAccessTest extends TestCase
 
         $this->assertGuest();
     }
+
+    public function test_suspended_user_cannot_access_protected_routes(): void
+    {
+        $organization = Organization::factory()->create();
+
+        $user = User::factory()
+            ->for($organization)
+            ->suspended()
+            ->create();
+
+        $this
+            ->actingAs($user)
+            ->get('/dashboard')
+            ->assertRedirect(route('login'));
+
+        $this->assertGuest();
+    }
 }

@@ -3,6 +3,7 @@
 namespace App\Http\Requests\ClientUnits;
 
 use App\Models\Client;
+use App\Models\ClientUnit;
 use App\Support\TextNormalizer;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -11,7 +12,11 @@ final class StoreClientUnitRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return true;
+        $client = $this->route('client');
+
+        return $client instanceof Client
+            && $client->organization_id === $this->user()?->organization_id
+            && ($this->user()?->can('create', ClientUnit::class) ?? false);
     }
 
     protected function prepareForValidation(): void

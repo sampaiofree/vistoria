@@ -11,7 +11,10 @@ final class UpdateAreaRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return true;
+        $area = $this->route('area');
+
+        return $area instanceof Area
+            && ($this->user()?->can('update', $area) ?? false);
     }
 
     protected function prepareForValidation(): void

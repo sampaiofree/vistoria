@@ -58,6 +58,8 @@ class UserFactory extends Factory
     {
         return $this->state(fn (): array => [
             'status' => UserStatus::Suspended->value,
+            'suspended_at' => now(),
+            'suspension_reason' => 'Suspenso para teste.',
         ]);
     }
 

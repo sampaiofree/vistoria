@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Clients;
 
+use App\Models\Client;
 use App\Support\TextNormalizer;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -10,7 +11,7 @@ final class StoreClientRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return true;
+        return $this->user()?->can('create', Client::class) ?? false;
     }
 
     protected function prepareForValidation(): void

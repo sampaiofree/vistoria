@@ -289,6 +289,10 @@ Aguardando revisão
 ↓
 Em correção
 ↓
+Aguardando revisão
+↓
+Aguardando aprovação
+↓
 Aprovada
 ↓
 Relatório gerado
@@ -357,7 +361,15 @@ Problema:
 
 ---
 
-### 5.5 Aprovada
+### 5.5 Aguardando aprovação
+
+O revisor concluiu a revisão e encaminhou a inspeção ao responsável pela aprovação.
+
+O aprovador deverá estar atribuído à inspeção.
+
+---
+
+### 5.6 Aprovada
 
 A avaliação técnica foi revisada e aprovada.
 
@@ -365,13 +377,13 @@ Os dados devem ficar bloqueados contra alteração silenciosa.
 
 ---
 
-### 5.6 Relatório gerado
+### 5.7 Relatório gerado
 
 O sistema gera o PDF usando somente dados aprovados.
 
 ---
 
-### 5.7 Liberada
+### 5.8 Liberada
 
 O responsável final libera oficialmente o relatório.
 

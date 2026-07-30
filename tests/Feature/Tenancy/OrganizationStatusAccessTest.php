@@ -29,4 +29,22 @@ final class OrganizationStatusAccessTest extends TestCase
 
         $this->assertGuest();
     }
+
+    public function test_user_from_inactive_organization_cannot_access_the_dashboard(): void
+    {
+        $organization = Organization::factory()
+            ->inactive()
+            ->create();
+
+        $user = User::factory()
+            ->for($organization)
+            ->create();
+
+        $this
+            ->actingAs($user)
+            ->get('/dashboard')
+            ->assertRedirect(route('login'));
+
+        $this->assertGuest();
+    }
 }

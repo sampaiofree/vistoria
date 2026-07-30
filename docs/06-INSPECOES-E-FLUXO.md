@@ -2573,35 +2573,41 @@ Mitigação:
 
 # 34. Checklist de execução
 
-- [ ] Atualizar documentos 01 e 02.
-- [ ] Criar enums.
-- [ ] Criar migrations.
+## 34.1 Estado da implementação antecipada
+
+Parte deste módulo foi incorporada antes da conclusão do documento 05. Existem os enums de status e responsabilidade, uma migration mínima de inspeções e responsáveis, models básicos, Actions de responsáveis, componentes/páginas Vue e testes correspondentes. A criação de inspeção ainda referencia dependências inexistentes do módulo 05, e não há Controllers, Form Requests, Policies, rotas, snapshots, histórico ou referências completos.
+
+O acesso pelo menu foi ocultado até que o backend esteja integrado. Os testes existentes passam; o teste de concorrência permanece ignorado explicitamente até a implementação de equipamentos e da fundação completa deste módulo.
+
+- [x] Atualizar documentos 01 e 02.
+- [ ] Completar enums; status e responsabilidade existem, tipo de inspeção permanece pendente.
+- [ ] Completar migrations; existem apenas tabelas mínimas de inspeções e responsáveis.
 - [ ] Adicionar índice composto aos documentos.
-- [ ] Criar models.
+- [ ] Completar models; `Inspection` e `InspectionResponsible` existem parcialmente.
 - [ ] Atualizar `Equipment`.
 - [ ] Criar snapshot builder.
 - [ ] Criar transition guard.
-- [ ] Criar Action de inspeção.
-- [ ] Criar Action de responsáveis.
+- [ ] Completar Action de inspeção; a classe atual depende de tipos ainda inexistentes.
+- [x] Criar Actions de responsáveis.
 - [ ] Criar Actions de transição.
 - [ ] Criar Policies.
 - [ ] Criar Form Requests.
 - [ ] Criar Controllers.
 - [ ] Criar rotas.
-- [ ] Criar páginas Vue.
-- [ ] Criar factories.
+- [ ] Integrar as páginas Vue existentes às rotas e ao backend.
+- [ ] Completar factories; existe apenas a factory mínima de inspeção.
 - [ ] Criar testes de criação.
 - [ ] Criar testes de snapshot.
-- [ ] Criar testes de responsáveis.
+- [x] Criar testes de responsáveis.
 - [ ] Criar testes de fluxo.
 - [ ] Criar testes de referências.
 - [ ] Atualizar seeder.
 - [ ] Executar migrations.
-- [ ] Executar Pint.
-- [ ] Executar testes.
-- [ ] Executar build.
+- [x] Executar Pint sobre o código existente.
+- [x] Executar testes existentes.
+- [x] Executar build das páginas existentes.
 - [ ] Validar manualmente.
-- [ ] Atualizar roadmap.
+- [x] Atualizar roadmap.
 - [ ] Criar commit.
 
 ---

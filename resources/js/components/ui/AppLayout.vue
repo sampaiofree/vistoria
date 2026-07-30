@@ -21,7 +21,6 @@ const organization = computed(() => user.value?.organization ?? null);
 const navigation = computed(() => [
     { label: 'Dashboard', href: '/dashboard', active: page.url.startsWith('/dashboard') },
     { label: 'Clientes', href: '/clients', active: page.url.startsWith('/clients') },
-    { label: 'Inspeções', href: '/inspections', active: page.url.startsWith('/inspections') },
 ]);
 
 const flashSuccess = computed(() => page.props.flash?.success ?? '');

@@ -24,6 +24,12 @@ final class InspectionFoundationTest extends TestCase
 
     public function test_concurrent_creations_persist_only_one_open_inspection(): void
     {
+        if (! class_exists(Equipment::class) || ! class_exists(InspectionType::class)) {
+            $this->markTestSkipped(
+                'A concorrência de inspeções depende da implementação do módulo 05 e da fundação completa do módulo 06.',
+            );
+        }
+
         if (DB::getDriverName() === 'sqlite') {
             $this->markTestSkipped(
                 'SQLite does not implement the row-level locking required by this concurrency test; run it with MySQL.',

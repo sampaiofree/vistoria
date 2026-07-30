@@ -5,6 +5,7 @@ namespace App\Models;
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use App\Enums\UserAccountType;
 use App\Enums\UserStatus;
+use App\Models\Concerns\HasPublicId;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -15,7 +16,7 @@ use LogicException;
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
-    use HasFactory, Notifiable;
+    use HasFactory, HasPublicId, Notifiable;
 
     protected $fillable = [
         'organization_id',
@@ -24,6 +25,8 @@ class User extends Authenticatable
         'password',
         'account_type',
         'status',
+        'suspended_at',
+        'suspension_reason',
     ];
 
     protected $hidden = [
@@ -39,6 +42,7 @@ class User extends Authenticatable
             'account_type' => UserAccountType::class,
             'status' => UserStatus::class,
             'last_login_at' => 'datetime',
+            'suspended_at' => 'datetime',
         ];
     }
 
@@ -60,6 +64,12 @@ class User extends Authenticatable
     public function isActive(): bool
     {
         return $this->status === UserStatus::Active;
+    }
+
+    public function belongsToOrganization(int $organizationId): bool
+    {
+        return $this->organization_id !== null
+            && (int) $this->organization_id === $organizationId;
     }
 
     protected static function booted(): void

@@ -20,7 +20,9 @@ class InspectionResponsibleTest extends TestCase
     use RefreshDatabase;
 
     private Organization $organization;
+
     private Inspection $inspection;
+
     private User $actor;
 
     protected function setUp(): void

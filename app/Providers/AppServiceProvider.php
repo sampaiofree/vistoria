@@ -13,7 +13,7 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->scoped(TenantContext::class, function (): TenantContext {
-            return new TenantContext();
+            return new TenantContext;
         });
     }
 

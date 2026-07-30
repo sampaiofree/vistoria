@@ -11,7 +11,10 @@ final class UpdateSubareaRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return true;
+        $subarea = $this->route('subarea');
+
+        return $subarea instanceof Subarea
+            && ($this->user()?->can('update', $subarea) ?? false);
     }
 
     protected function prepareForValidation(): void

@@ -32,8 +32,11 @@ class MultiTenantFoundationTest extends TestCase
             ->firstOrFail();
 
         $this->assertSame(OrganizationStatus::Active, $organization->status);
+        $this->assertNotEmpty($organization->public_id);
+        $this->assertSame('America/Sao_Paulo', $organization->timezone);
         $this->assertSame(UserAccountType::CompanyAdmin, $user->account_type);
         $this->assertSame(UserStatus::Active, $user->status);
+        $this->assertNotEmpty($user->public_id);
         $this->assertSame($organization->id, $user->organization_id);
         $this->assertTrue($user->organization->is($organization));
         $this->assertTrue($organization->users->contains($user));
@@ -86,5 +89,20 @@ class MultiTenantFoundationTest extends TestCase
 
         $this->assertTrue($organization->users->contains($user));
         $this->assertTrue($user->organization->is($organization));
+        $this->assertSame('public_id', $organization->getRouteKeyName());
+        $this->assertSame('public_id', $user->getRouteKeyName());
+    }
+
+    public function test_suspension_metadata_is_preserved(): void
+    {
+        $organization = Organization::factory()->suspended()->create();
+        $user = User::factory()->for($organization)->suspended()->create();
+
+        $this->assertSame(OrganizationStatus::Suspended, $organization->status);
+        $this->assertNotNull($organization->suspended_at);
+        $this->assertSame('Suspensa para teste.', $organization->suspension_reason);
+        $this->assertSame(UserStatus::Suspended, $user->status);
+        $this->assertNotNull($user->suspended_at);
+        $this->assertSame('Suspenso para teste.', $user->suspension_reason);
     }
 }

@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Subareas;
 
 use App\Models\Area;
+use App\Models\Subarea;
 use App\Support\TextNormalizer;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -11,7 +12,11 @@ final class StoreSubareaRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return true;
+        $area = $this->route('area');
+
+        return $area instanceof Area
+            && $area->organization_id === $this->user()?->organization_id
+            && ($this->user()?->can('create', Subarea::class) ?? false);
     }
 
     protected function prepareForValidation(): void

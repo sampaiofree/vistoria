@@ -13,9 +13,11 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Client extends Model
 {
+    use BelongsToOrganization;
+
     /** @use HasFactory<ClientFactory> */
     use HasFactory;
-    use BelongsToOrganization;
+
     use HasPublicId;
     use SoftDeletes;
 

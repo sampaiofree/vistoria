@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Inspections;
 
+use App\Http\Middleware\HandleInertiaRequests;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -11,7 +12,7 @@ final class InspectionPagesTest extends TestCase
 {
     public function test_index_exposes_pagination_filters_and_capabilities(): void
     {
-        Route::get('/_test/inspections', fn () => Inertia::render('Inspections/Index', [
+        Route::middleware(['web', HandleInertiaRequests::class])->get('/_test/inspections', fn () => Inertia::render('Inspections/Index', [
             'inspections' => ['data' => [], 'links' => [], 'total' => 0],
             'filters' => [
                 'number' => 'INS-2026', 'equipment' => 'eq-1', 'status' => 'planned',
@@ -22,7 +23,7 @@ final class InspectionPagesTest extends TestCase
             'create_url' => '/inspections/create',
         ]));
 
-        $this->withHeader('X-Inertia', 'true')->get('/_test/inspections')
+        $this->get('/_test/inspections')
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Inspections/Index')
@@ -39,7 +40,7 @@ final class InspectionPagesTest extends TestCase
 
     public function test_create_exposes_only_released_previous_inspections(): void
     {
-        Route::get('/_test/inspections/create', fn () => Inertia::render('Inspections/Create', [
+        Route::middleware(['web', HandleInertiaRequests::class])->get('/_test/inspections/create', fn () => Inertia::render('Inspections/Create', [
             'action' => '/inspections', 'cancel_url' => '/inspections',
             'equipment' => [['id' => 'eq-1', 'tag' => 'EQ-01', 'name' => 'Bomba']],
             'released_inspections' => [[
@@ -48,18 +49,18 @@ final class InspectionPagesTest extends TestCase
             ]],
         ]));
 
-        $this->withHeader('X-Inertia', 'true')->get('/_test/inspections/create')
+        $this->get('/_test/inspections/create')
             ->assertOk()->assertInertia(fn (Assert $page) => $page
-                ->component('Inspections/Create')
-                ->has('equipment', 1)
-                ->has('released_inspections', 1)
-                ->where('released_inspections.0.status', 'released')
-                ->where('released_inspections.0.equipment_id', 'eq-1'));
+            ->component('Inspections/Create')
+            ->has('equipment', 1)
+            ->has('released_inspections', 1)
+            ->where('released_inspections.0.status', 'released')
+            ->where('released_inspections.0.equipment_id', 'eq-1'));
     }
 
     public function test_show_exposes_read_only_snapshot_history_and_independent_capabilities(): void
     {
-        Route::get('/_test/inspections/one', fn () => Inertia::render('Inspections/Show', [
+        Route::middleware(['web', HandleInertiaRequests::class])->get('/_test/inspections/one', fn () => Inertia::render('Inspections/Show', [
             'inspection' => [
                 'number' => 'INS-2026-000001', 'status' => 'awaiting_review', 'type' => 'initial',
                 'equipment' => ['tag' => 'EQ-01', 'name' => 'Bomba'],
@@ -77,17 +78,17 @@ final class InspectionPagesTest extends TestCase
             'index_url' => '/inspections',
         ]));
 
-        $this->withHeader('X-Inertia', 'true')->get('/_test/inspections/one')
+        $this->get('/_test/inspections/one')
             ->assertOk()->assertInertia(fn (Assert $page) => $page
-                ->component('Inspections/Show')
-                ->has('inspection.context_snapshot')
-                ->has('inspection.history', 1)
-                ->has('inspection.responsibles')
-                ->has('inspection.reference_documents')
-                ->has('capabilities.assign_responsibles.action')
-                ->where('capabilities.manage_references', false)
-                ->where('capabilities.transition', true)
-                ->where('transitions.0.requires_justification', true));
+            ->component('Inspections/Show')
+            ->has('inspection.context_snapshot')
+            ->has('inspection.history', 1)
+            ->has('inspection.responsibles')
+            ->has('inspection.reference_documents')
+            ->has('capabilities.assign_responsibles.action')
+            ->where('capabilities.manage_references', false)
+            ->where('capabilities.transition', true)
+            ->where('transitions.0.requires_justification', true));
     }
 
     public function test_correction_and_cancel_forms_require_justification(): void

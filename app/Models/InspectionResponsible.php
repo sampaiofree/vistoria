@@ -23,7 +23,18 @@ final class InspectionResponsible extends Model
         ];
     }
 
-    public function inspection(): BelongsTo { return $this->belongsTo(Inspection::class); }
-    public function user(): BelongsTo { return $this->belongsTo(User::class); }
-    public function assigner(): BelongsTo { return $this->belongsTo(User::class, 'assigned_by'); }
+    public function inspection(): BelongsTo
+    {
+        return $this->belongsTo(Inspection::class);
+    }
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    public function assigner(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'assigned_by');
+    }
 }

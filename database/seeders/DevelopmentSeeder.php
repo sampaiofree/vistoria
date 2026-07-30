@@ -24,13 +24,15 @@ class DevelopmentSeeder extends Seeder
         $organization = Organization::query()->firstOrCreate(
             ['document' => '21798932000100'],
             [
+                'public_id' => (string) Str::ulid(),
                 'name' => 'Empresa de Inspecao',
                 'legal_name' => 'Empresa de Inspecao LTDA',
+                'timezone' => 'America/Sao_Paulo',
                 'status' => OrganizationStatus::Active->value,
             ],
         );
 
-        User::query()->updateOrCreate(
+        $this->updateOrCreateUser(
             ['email' => 'admin@vistoria.test'],
             [
                 'organization_id' => $organization->id,
@@ -42,7 +44,7 @@ class DevelopmentSeeder extends Seeder
             ],
         );
 
-        User::query()->updateOrCreate(
+        $this->updateOrCreateUser(
             ['email' => 'superadmin@vistoria.test'],
             [
                 'organization_id' => null,
@@ -54,7 +56,7 @@ class DevelopmentSeeder extends Seeder
             ],
         );
 
-        User::query()->updateOrCreate(
+        $this->updateOrCreateUser(
             ['email' => 'member@vistoria.test'],
             [
                 'organization_id' => $organization->id,
@@ -134,5 +136,18 @@ class DevelopmentSeeder extends Seeder
                 'description' => null,
             ],
         );
+    }
+
+    private function updateOrCreateUser(array $identity, array $attributes): User
+    {
+        $user = User::query()->firstOrNew($identity);
+
+        if (! $user->exists) {
+            $user->public_id = (string) Str::ulid();
+        }
+
+        $user->fill($attributes)->save();
+
+        return $user;
     }
 }

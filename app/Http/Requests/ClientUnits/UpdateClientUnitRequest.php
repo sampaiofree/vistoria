@@ -11,7 +11,10 @@ final class UpdateClientUnitRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return true;
+        $unit = $this->route('unit');
+
+        return $unit instanceof ClientUnit
+            && ($this->user()?->can('update', $unit) ?? false);
     }
 
     protected function prepareForValidation(): void

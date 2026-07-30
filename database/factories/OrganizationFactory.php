@@ -24,6 +24,7 @@ class OrganizationFactory extends Factory
             'name' => $companyName,
             'legal_name' => $companyName.' LTDA',
             'document' => fake()->unique()->numerify('##############'),
+            'timezone' => 'America/Sao_Paulo',
             'status' => OrganizationStatus::Active->value,
         ];
     }
@@ -39,6 +40,15 @@ class OrganizationFactory extends Factory
     {
         return $this->state(fn (): array => [
             'status' => OrganizationStatus::Suspended->value,
+            'suspended_at' => now(),
+            'suspension_reason' => 'Suspensa para teste.',
+        ]);
+    }
+
+    public function inactive(): static
+    {
+        return $this->state(fn (): array => [
+            'status' => OrganizationStatus::Inactive->value,
         ]);
     }
 }

@@ -2446,28 +2446,28 @@ O código antigo não deve ser reutilizado silenciosamente.
 
 # 32. Checklist de execução
 
-## 32.1 Resultado da conferência estática
+## 32.1 Resultado da validação
 
-**Estado geral: Em validação.** A conferência encontrou a implementação planejada nas migrations `000003` a `000006`, Actions, Controllers, Form Requests, páginas Vue e testes em `tests/Feature/OperationalStructure/`. Isso não comprova que migrations, suíte, build ou fluxos manuais funcionam no ambiente alvo.
+**Estado geral: Em validação.** A implementação planejada foi localizada e os testes automatizados, o Pint, as migrations com seed em SQLite e MySQL 8.4.11 e o build do frontend passaram. O seed foi repetido sem duplicar registros. Os Form Requests agora autorizam antes da validação e as listagens ocultam ações de escrita para membros. O smoke HTTP confirmou os perfis básicos de acesso; permanece obrigatória a conferência visual e responsiva do fluxo completo.
 
 | Item conferido | Evidência encontrada | Resultado |
 |---|---|---|
 | Enum, normalização e vínculo ao tenant | `RegistrationStatus`, `TextNormalizer` e trait `BelongsToOrganization` | Implementado estaticamente |
-| Tabelas e ordem de criação | `000003` clientes, `000004` unidades, `000005` áreas e `000006` subáreas, nessa ordem | Implementado; execução pendente |
-| Integridade e unicidade | FKs compostas impedem pais de outro tenant; índices únicos cobrem documento e códigos normalizados por escopo | Implementado; validação no banco pendente |
+| Tabelas e ordem de criação | `000003` clientes, `000004` unidades, `000005` áreas e `000006` subáreas, nessa ordem | Executado em SQLite e MySQL 8.4.11 |
+| Integridade e unicidade | FKs compostas impedem pais de outro tenant; índices únicos cobrem documento e códigos normalizados por escopo | Testes passaram em SQLite e MySQL 8.4.11 |
 | Models e relacionamentos | `Client`, `ClientUnit`, `Area` e `Subarea`, além dos relacionamentos em `Organization` | Implementado estaticamente |
-| Factories e seeder | Factories dos quatro níveis e hierarquia no `DevelopmentSeeder` | Implementado; execução pendente |
+| Factories e seeder | Factories dos quatro níveis e hierarquia no `DevelopmentSeeder` | Executado duas vezes sem duplicação no MySQL 8.4.11 |
 | Actions | Actions de criar, atualizar e alterar status para os quatro níveis | Implementado estaticamente |
-| Form Requests | Requests de criação/edição por nível e request compartilhado de status | Implementado estaticamente |
-| Policies | Policies dos quatro recursos restringem escrita ao administrador interno e conferem organização | Implementado; testes pendentes de execução |
+| Form Requests | Requests de criação/edição por nível e request compartilhado de status autorizam antes da validação | Implementado e testado |
+| Policies | Policies dos quatro recursos restringem escrita ao administrador interno e conferem organização | Testes passaram |
 | Controllers e resolução da árvore | Quatro controllers e concern `ResolvesTenantStructure` | Implementado estaticamente |
 | Rotas | Resources aninhados com scoped bindings, rotas rasas e alteração de status | Implementado estaticamente |
-| Páginas Vue | Páginas de criar, editar e exibir por nível, mais índice de clientes e componentes de formulários/listas | Implementado; validação visual/manual pendente |
-| CRUD e autorização de clientes | `ClientCrudTest` cobre criação, normalização, autorização, página Inertia, isolamento e inativação | Teste existe; execução pendente |
-| Hierarquia e pais inativos | `HierarchyCrudTest` cobre criação dos três níveis filhos, autorização e bloqueio por pai inativo | Teste existe; execução pendente |
-| Constraints, escopos e unicidade | `OperationalStructureTest` cobre árvore, escopo do tenant, unicidades e vínculo cruzado | Teste existe; execução pendente |
-| Cobertura específica por recurso | Clientes têm arquivo próprio; unidade, área e subárea estão agrupadas em `HierarchyCrudTest` e `OperationalStructureTest` | Cobertura estática encontrada; execução pendente |
-| Validação manual | Nenhuma evidência registrada | **Pendente** |
+| Páginas Vue | Páginas de criar, editar e exibir por nível, com ações de escrita ocultas para membros | Build e smoke HTTP passaram; validação visual/responsiva pendente |
+| CRUD e autorização de clientes | `ClientCrudTest` cobre criação, normalização, autorização anterior à validação, página Inertia, isolamento e inativação | Testes passaram |
+| Hierarquia e pais inativos | `HierarchyCrudTest` cobre criação dos três níveis filhos, autorização e bloqueio por pai inativo | Testes passaram |
+| Constraints, escopos e unicidade | `OperationalStructureTest` cobre árvore, escopo do tenant, unicidades e vínculo cruzado | Testes passaram em SQLite e MySQL 8.4.11 |
+| Cobertura específica por recurso | Clientes têm arquivo próprio; unidade, área e subárea estão agrupadas em `HierarchyCrudTest` e `OperationalStructureTest` | Testes passaram |
+| Validação manual | Login pelo Herd; administrador acessou criação, membro ficou somente com leitura e superadministrador foi bloqueado nas rotas de tenant | **Parcial; CRUD completo e responsividade pendentes** |
 
 ## 32.2 Itens de execução
 
@@ -2476,7 +2476,8 @@ O código antigo não deve ser reutilizado silenciosamente.
 - [x] Criar trait de organização.
 - [x] Criar models e migrations.
 - [x] Revisar ordem das migrations por conferência estática.
-- [ ] Executar migrations.
+- [x] Executar migrations e seed em SQLite.
+- [x] Executar migrations, rollback e seed idempotente em MySQL 8.
 - [x] Criar relacionamentos.
 - [x] Atualizar `Organization`.
 - [x] Criar factories.
@@ -2492,11 +2493,11 @@ O código antigo não deve ser reutilizado silenciosamente.
 - [x] Criar testes de subárea.
 - [x] Criar teste de constraint cruzada.
 - [x] Atualizar seeder.
-- [ ] Executar Pint.
-- [ ] Executar testes.
-- [ ] Executar build.
+- [x] Executar Pint.
+- [x] Executar testes.
+- [x] Executar build.
 - [ ] Validar manualmente.
-- [ ] Atualizar roadmap.
+- [x] Atualizar roadmap.
 - [ ] Criar commit.
 
 ---
@@ -2512,7 +2513,7 @@ git commit -m "feat: add clients and operational hierarchy"
 
 # 34. Próximo documento
 
-O resultado da conferência foi registrado acima. O documento 05 **ainda não está liberado como próximo passo concluído**: primeiro devem ser registradas a execução das migrations, a suíte automatizada, o build e a validação manual deste módulo. Depois dessas evidências, o próximo documento será `05-EQUIPAMENTOS-E-DOCUMENTOS.md`.
+O resultado da validação foi registrado acima. O documento 05 permanece bloqueado pela regra formal do roadmap até a validação visual/responsiva do fluxo completo, o registro do commit e a passagem do pipeline remoto. Depois dessas evidências, o próximo documento será `05-EQUIPAMENTOS-E-DOCUMENTOS.md`.
 
 O próximo documento definirá:
 

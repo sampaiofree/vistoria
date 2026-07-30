@@ -7,6 +7,7 @@ use App\Models\Client;
 use App\Models\Organization;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 final class ClientCrudTest extends TestCase
@@ -83,12 +84,14 @@ final class ClientCrudTest extends TestCase
 
         $response = $this
             ->actingAs($member)
-            ->withHeader('X-Inertia', 'true')
             ->get(route('clients.index'));
 
         $response
             ->assertOk()
-            ->assertJsonPath('component', 'Clients/Index');
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Clients/Index')
+                ->where('can.create', false)
+                ->where('clients.data.0.can_update', false));
     }
 
     public function test_users_cannot_view_client_from_another_organization(): void
@@ -105,9 +108,32 @@ final class ClientCrudTest extends TestCase
             ->create();
 
         $this->actingAs($userA)
-            ->withHeader('X-Inertia', 'true')
             ->get(route('clients.show', $clientB))
             ->assertNotFound();
+    }
+
+    public function test_cross_tenant_update_is_rejected_before_validation(): void
+    {
+        $organizationA = Organization::factory()->create();
+        $organizationB = Organization::factory()->create();
+
+        $adminA = User::factory()
+            ->for($organizationA)
+            ->create([
+                'account_type' => UserAccountType::CompanyAdmin->value,
+            ]);
+
+        $clientB = Client::factory()
+            ->for($organizationB)
+            ->create();
+
+        $this->actingAs($adminA)
+            ->put(route('clients.update', $clientB), [
+                'name' => '',
+                'document' => $clientB->document,
+            ])
+            ->assertForbidden()
+            ->assertSessionDoesntHaveErrors();
     }
 
     public function test_admin_can_deactivate_client_and_it_remains_viewable(): void
@@ -136,7 +162,6 @@ final class ClientCrudTest extends TestCase
         ]);
 
         $this->actingAs($admin)
-            ->withHeader('X-Inertia', 'true')
             ->get(route('clients.show', $client))
             ->assertOk();
     }

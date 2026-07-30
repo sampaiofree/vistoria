@@ -53,6 +53,7 @@ final class ClientController extends Controller
                 'show_url' => route('clients.show', $client),
                 'edit_url' => route('clients.edit', $client),
                 'status_url' => route('clients.status', $client),
+                'can_update' => $request->user()->can('update', $client),
             ]);
 
         return Inertia::render('Clients/Index', [
@@ -95,8 +96,7 @@ final class ClientController extends Controller
         TenantContext $tenant,
         Request $request,
         Client $client,
-    ): InertiaResponse
-    {
+    ): InertiaResponse {
         $client = $this->tenantClient($tenant, $client);
 
         $this->authorize('view', $client);
@@ -116,6 +116,7 @@ final class ClientController extends Controller
                 'show_url' => route('units.show', $unit),
                 'edit_url' => route('units.edit', $unit),
                 'status_url' => route('units.status', $unit),
+                'can_update' => $request->user()->can('update', $unit),
             ]);
 
         return Inertia::render('Clients/Show', [

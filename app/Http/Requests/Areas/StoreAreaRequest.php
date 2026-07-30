@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Areas;
 
+use App\Models\Area;
 use App\Models\ClientUnit;
 use App\Support\TextNormalizer;
 use Illuminate\Foundation\Http\FormRequest;
@@ -11,7 +12,11 @@ final class StoreAreaRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return true;
+        $unit = $this->route('unit');
+
+        return $unit instanceof ClientUnit
+            && $unit->organization_id === $this->user()?->organization_id
+            && ($this->user()?->can('create', Area::class) ?? false);
     }
 
     protected function prepareForValidation(): void
