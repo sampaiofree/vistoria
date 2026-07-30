@@ -123,6 +123,10 @@ defineProps({
                     <dd class="mt-1 text-sm font-medium text-slate-900">{{ equipment.tag }}</dd>
                 </div>
                 <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <dt class="text-xs font-semibold uppercase tracking-wide text-slate-500">Prefixo de avaria</dt>
+                    <dd class="mt-1 text-sm font-medium text-slate-900">{{ equipment.defect_code_prefix ?? '—' }}</dd>
+                </div>
+                <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
                     <dt class="text-xs font-semibold uppercase tracking-wide text-slate-500">Fabricante</dt>
                     <dd class="mt-1 text-sm font-medium text-slate-900">{{ equipment.manufacturer ?? '-' }}</dd>
                 </div>

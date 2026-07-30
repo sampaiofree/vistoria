@@ -41,6 +41,7 @@ const form = useForm({
     area_id: props.equipment.area_id ?? '',
     subarea_id: props.equipment.subarea_id ?? '',
     tag: props.equipment.tag ?? '',
+    defect_code_prefix: props.equipment.defect_code_prefix ?? '',
     name: props.equipment.name ?? '',
     description: props.equipment.description ?? '',
     manufacturer: props.equipment.manufacturer ?? '',

@@ -13,6 +13,8 @@ use App\Http\Requests\Inspections\StoreInspectionRequest;
 use App\Http\Requests\Inspections\UpdatePlannedInspectionRequest;
 use App\Models\Client;
 use App\Models\ClientUnit;
+use App\Models\Defect;
+use App\Models\DefectAssessment;
 use App\Models\Equipment;
 use App\Models\EquipmentDocument;
 use App\Models\Inspection;
@@ -172,6 +174,14 @@ final class InspectionController extends Controller
         $inspection->loadMissing([
             'equipment.client',
             'equipment.unit',
+            'equipment.defects.assessments.inspection',
+            'equipment.defects.assessments.creator',
+            'equipment.defects.assessments.previousAssessment.inspection',
+            'equipment.defects.assessments.previousAssessment.creator',
+            'equipment.defects.draftAssessments.previousAssessment.inspection',
+            'equipment.defects.draftAssessments.previousAssessment.creator',
+            'equipment.defects.latestAssessment.inspection',
+            'equipment.defects.latestAssessment.creator',
             'previousInspection.equipment',
             'nextInspections.equipment',
             'responsibles.user',
@@ -182,6 +192,7 @@ final class InspectionController extends Controller
         $canAssignResponsibles = $request->user()->can('assignResponsibles', $inspection);
         $canManageReferences = $request->user()->can('manageReferences', $inspection);
         $canUpdatePlanned = $request->user()->can('updatePlanned', $inspection);
+        $canCreateDefects = $request->user()->can('create', [Defect::class, $inspection]);
         $transitions = $this->availableTransitions($request, $inspection);
 
         return Inertia::render('Inspections/Show', [
@@ -200,6 +211,13 @@ final class InspectionController extends Controller
                 'manage_references' => $canManageReferences
                     ? [
                         'action' => route('inspections.reference-documents.update', $inspection),
+                    ]
+                    : false,
+                'defects' => $canCreateDefects
+                    ? [
+                        'create' => [
+                            'action' => route('inspections.defects.store', $inspection),
+                        ],
                     ]
                     : false,
                 'transition' => $transitions !== [],
@@ -393,7 +411,7 @@ final class InspectionController extends Controller
     }
 
     /**
-     * @return array{id:int, public_id:string, number:?string, inspection_type:string, type:string, inspection_type_label:string, status:string, status_label:string, scheduled_for:?string, scheduled_at:?string, equipment:array{id:int, public_id:string, tag:string, name:string, show_url:string}, previous_inspection:?array{id:int, public_id:string, number:?string, inspection_type:string, type:string, status:string, show_url:string}, responsibles:array<int, array{id:int, public_id:string, name:string, responsibility:string, responsibility_label:string, is_primary:bool, assigned_at:?string, completed_at:?string, user:array{id:int, public_id:string, name:string}, set_primary_url:string, destroy_url:string}>, reference_documents:array<int, array{id:int, created_at:string, document:array{id:int, public_id:string, document_group:string, document_type:string, document_type_label:string, title:string, document_number:?string, revision:?string, description:?string, original_name:string, mime_type:string, extension:?string, size:int, checksum:string, is_current:bool, status:string, status_label:string, issued_at:?string, created_at:?string, updated_at:?string, download_url:string, show_url:string, uploaded_by:?array{id:int, public_id:string, name:string}}, added_by:?array{id:int, public_id:string, name:string}, delete_url:string}>, reference_document_ids:array<int, int>, history:array<int, array{id:int, from_status:?string, to_status:string, reason:?string, justification:?string, created_at:string, user:?array{id:int, public_id:string, name:string}}>, context_snapshot:array<string, mixed>, snapshot_version:int}
+     * @return array{id:int, public_id:string, number:?string, inspection_type:string, type:string, inspection_type_label:string, status:string, status_label:string, scheduled_for:?string, scheduled_at:?string, equipment:array{id:int, public_id:string, tag:string, defect_code_prefix:?string, name:string, show_url:string}, defects:array<int, array{id:int, public_id:string, code:string, title:string, origin_description:?string, category:string, category_label:string, status:string, status_label:string, sequence_number:int, latest_assessment:?array{id:int, public_id:string, condition:string, condition_label:string, status:string, status_label:string, assessed_at:?string}, show_url:string}>, previous_inspection:?array{id:int, public_id:string, number:?string, inspection_type:string, type:string, status:string, show_url:string}, responsibles:array<int, array{id:int, public_id:string, name:string, responsibility:string, responsibility_label:string, is_primary:bool, assigned_at:?string, completed_at:?string, user:array{id:int, public_id:string, name:string}, set_primary_url:string, destroy_url:string}>, reference_documents:array<int, array{id:int, created_at:string, document:array{id:int, public_id:string, document_group:string, document_type:string, document_type_label:string, title:string, document_number:?string, revision:?string, description:?string, original_name:string, mime_type:string, extension:?string, size:int, checksum:string, is_current:bool, status:string, status_label:string, issued_at:?string, created_at:?string, updated_at:?string, download_url:string, show_url:string, uploaded_by:?array{id:int, public_id:string, name:string}}, added_by:?array{id:int, public_id:string, name:string}, delete_url:string}>, reference_document_ids:array<int, int>, history:array<int, array{id:int, from_status:?string, to_status:string, reason:?string, justification:?string, created_at:string, user:?array{id:int, public_id:string, name:string}}>, context_snapshot:array<string, mixed>, snapshot_version:int}
      */
     private function inspectionDetailPayload(Inspection $inspection): array
     {
@@ -419,6 +437,10 @@ final class InspectionController extends Controller
             'inspected_on_input' => $inspection->inspected_on?->toDateString(),
             'general_notes' => $inspection->general_notes,
             'equipment' => $this->inspectionEquipmentPayload($inspection->equipment),
+            'defects' => $inspection->equipment->defects
+                ->map(fn (Defect $defect): array => $this->defectPayload($request, $inspection, $defect))
+                ->values()
+                ->all(),
             'previous_inspection' => $inspection->previousInspection === null
                 ? null
                 : [
@@ -522,7 +544,7 @@ final class InspectionController extends Controller
     }
 
     /**
-     * @return array{id:int, public_id:string, tag:string, name:string, client:?array{id:int, public_id:string, name:string, show_url:string}, unit:?array{id:int, public_id:string, name:string, show_url:string}, show_url:string}
+     * @return array{id:int, public_id:string, tag:string, defect_code_prefix:?string, name:string, client:?array{id:int, public_id:string, name:string, show_url:string}, unit:?array{id:int, public_id:string, name:string, show_url:string}, show_url:string}
      */
     private function inspectionEquipmentPayload(Equipment $equipment): array
     {
@@ -530,6 +552,7 @@ final class InspectionController extends Controller
             'id' => $equipment->id,
             'public_id' => $equipment->public_id,
             'tag' => $equipment->tag,
+            'defect_code_prefix' => $equipment->defect_code_prefix,
             'name' => $equipment->name,
             'client' => $equipment->client === null
                 ? null
@@ -548,6 +571,103 @@ final class InspectionController extends Controller
                     'show_url' => route('units.show', $equipment->unit),
                 ],
             'show_url' => route('equipments.show', $equipment),
+        ];
+    }
+
+    /**
+     * @return array{id:int, public_id:string, code:string, title:string, origin_description:?string, category:string, category_label:string, status:string, status_label:string, sequence_number:int, latest_assessment:?array{id:int, public_id:string, condition:string, condition_label:string, status:string, status_label:string, assessed_at:?string}, show_url:string}
+     */
+    private function defectPayload(Request $request, Inspection $inspection, Defect $defect): array
+    {
+        $currentAssessment = $this->currentDefectAssessment($defect, $inspection);
+        $latestAssessment = $currentAssessment ?? $defect->latestAssessment;
+        $previousAssessment = $latestAssessment?->previousAssessment;
+        $canCreateAssessment = $currentAssessment === null
+            && $request->user()->can('create', [DefectAssessment::class, $inspection, $defect]);
+        $canUpdateAssessment = $currentAssessment !== null && $request->user()->can('update', $currentAssessment);
+        $canCompleteAssessment = $currentAssessment !== null && $request->user()->can('complete', $currentAssessment);
+
+        return [
+            'id' => $defect->id,
+            'public_id' => $defect->public_id,
+            'code' => $defect->code,
+            'title' => $defect->title,
+            'origin_description' => $defect->origin_description,
+            'category' => $defect->category->value,
+            'category_label' => $defect->category->label(),
+            'status' => $defect->status->value,
+            'status_label' => $defect->status->label(),
+            'sequence_number' => $defect->sequence_number,
+            'latest_assessment' => $latestAssessment === null
+                ? null
+                : $this->defectAssessmentPayload($latestAssessment),
+            'current_assessment' => $currentAssessment === null
+                ? null
+                : $this->defectAssessmentPayload($currentAssessment),
+            'previous_assessment' => $previousAssessment === null
+                ? null
+                : $this->defectAssessmentPayload($previousAssessment),
+            'latest_complete_assessment' => $defect->latestAssessment === null
+                ? null
+                : $this->defectAssessmentPayload($defect->latestAssessment),
+            'assessment_state' => $currentAssessment?->status->value ?? 'not_assessed',
+            'assessment_actions' => [
+                'store_url' => $canCreateAssessment
+                    ? route('inspections.defects.assessments.store', [$inspection, $defect])
+                    : null,
+                'update_url' => $canUpdateAssessment && $currentAssessment !== null
+                    ? route('defect-assessments.update', $currentAssessment)
+                    : null,
+                'complete_url' => $canCompleteAssessment && $currentAssessment !== null
+                    ? route('defect-assessments.complete', $currentAssessment)
+                    : null,
+            ],
+            'can_assess' => $canCreateAssessment,
+            'can_update_assessment' => $canUpdateAssessment,
+            'can_complete_assessment' => $canCompleteAssessment,
+            'show_url' => route('defects.show', $defect),
+        ];
+    }
+
+    private function currentDefectAssessment(Defect $defect, Inspection $inspection): ?DefectAssessment
+    {
+        return $defect->assessments
+            ->firstWhere('inspection_id', $inspection->getKey());
+    }
+
+    /**
+     * @return array{id:int, public_id:string, condition:string, condition_label:string, status:string, status_label:string, location_description:?string, comment:?string, recommendation:?string, reason:?string, internal_notes:?string, assessed_at:?string, snapshot_version:int, defect_snapshot:array<string, mixed>, inspection:array{id:int, public_id:string, number:?string, show_url:string}, creator:?array{id:int, public_id:string, name:string}}
+     */
+    private function defectAssessmentPayload(DefectAssessment $assessment): array
+    {
+        return [
+            'id' => $assessment->id,
+            'public_id' => $assessment->public_id,
+            'condition' => $assessment->condition->value,
+            'condition_label' => $assessment->condition->label(),
+            'status' => $assessment->status->value,
+            'status_label' => $assessment->status->label(),
+            'location_description' => $assessment->location_description,
+            'comment' => $assessment->comment,
+            'recommendation' => $assessment->recommendation,
+            'reason' => $assessment->reason,
+            'internal_notes' => $assessment->internal_notes,
+            'assessed_at' => $assessment->assessed_at?->toDateTimeString(),
+            'snapshot_version' => (int) $assessment->snapshot_version,
+            'defect_snapshot' => $assessment->defect_snapshot ?? [],
+            'inspection' => [
+                'id' => $assessment->inspection->id,
+                'public_id' => $assessment->inspection->public_id,
+                'number' => $assessment->inspection->number,
+                'show_url' => route('inspections.show', $assessment->inspection),
+            ],
+            'creator' => $assessment->creator === null
+                ? null
+                : [
+                    'id' => $assessment->creator->id,
+                    'public_id' => $assessment->creator->public_id,
+                    'name' => $assessment->creator->name,
+                ],
         ];
     }
 

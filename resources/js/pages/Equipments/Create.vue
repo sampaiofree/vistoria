@@ -36,6 +36,7 @@ const form = useForm({
     area_id: '',
     subarea_id: '',
     tag: '',
+    defect_code_prefix: '',
     name: '',
     description: '',
     manufacturer: '',

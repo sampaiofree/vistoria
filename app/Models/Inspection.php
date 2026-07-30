@@ -98,6 +98,12 @@ final class Inspection extends Model
             ->orderBy('created_at');
     }
 
+    public function defectAssessments(): HasMany
+    {
+        return $this->hasMany(DefectAssessment::class)
+            ->orderBy('assessed_at');
+    }
+
     public function hasResponsibility(InspectionResponsibility $responsibility): bool
     {
         return $this->responsibles()->where('responsibility', $responsibility->value)->exists();

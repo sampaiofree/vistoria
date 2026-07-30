@@ -5,6 +5,7 @@ namespace App\Actions\Equipments;
 use App\Models\Area;
 use App\Models\Client;
 use App\Models\ClientUnit;
+use App\Models\Defect;
 use App\Models\Equipment;
 use App\Models\Subarea;
 use App\Models\User;
@@ -48,6 +49,19 @@ final class UpdateEquipment
             $this->validateHierarchy($client, $unit, $area, $subarea);
 
             $tag = TextNormalizer::equipmentTag($data['tag']);
+            $defectCodePrefix = TextNormalizer::technicalCode($data['defect_code_prefix'] ?? null);
+
+            if (
+                $equipment->defect_code_prefix !== $defectCodePrefix
+                && Defect::query()
+                    ->forOrganization($this->tenant->id())
+                    ->where('equipment_id', $equipment->getKey())
+                    ->exists()
+            ) {
+                throw ValidationException::withMessages([
+                    'defect_code_prefix' => 'Não é possível alterar o prefixo depois que a avaria já foi usada.',
+                ]);
+            }
 
             $equipment->update([
                 'client_id' => $client->id,
@@ -56,6 +70,7 @@ final class UpdateEquipment
                 'subarea_id' => $subarea?->id,
                 'tag' => $tag,
                 'normalized_tag' => $tag,
+                'defect_code_prefix' => $defectCodePrefix,
                 'name' => TextNormalizer::text((string) $data['name']),
                 'description' => TextNormalizer::nullableText($data['description'] ?? null),
                 'manufacturer' => TextNormalizer::nullableText($data['manufacturer'] ?? null),

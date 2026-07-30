@@ -56,7 +56,7 @@ Nas colunas de dimensão, **Concluída** significa que aquela dimensão terminou
 | 05 | `05-EQUIPAMENTOS-E-DOCUMENTOS.md` | Criar equipamentos, TAGs, desenhos e documentos | Concluída | Concluída | Concluída | Concluído |
 | 06 | `06-INSPECOES-E-FLUXO.md` | Criar inspeções, responsáveis, estados e histórico | Concluída | Concluída | Concluída | Concluído |
 | 06A | `06A-DASHBOARD-E-NAVEGACAO.md` | Criar dashboard operacional, shell e navegação principal | Concluída | Concluída | Concluída | Concluído |
-| 07 | `07-AVARIAS-E-REINSPECOES.md` | Modelar avarias permanentes e avaliações históricas | Concluída | Pendente | Pendente | Documentado |
+| 07 | `07-AVARIAS-E-REINSPECOES.md` | Modelar avarias permanentes e avaliações históricas | Concluída | Parcial | Parcial | Em validação |
 | 08 | `08-FOTOS-E-ARMAZENAMENTO.md` | Definir captura, compressão, upload e armazenamento | Concluída | Pendente | Pendente | Documentado |
 | 09 | `09-CLASSIFICACAO-CIVIL-GUT.md` | Implementar regras GUT, CV, danos e recomendações | Concluída | Pendente | Pendente | Documentado |
 | 10 | `10-REVISAO-APROVACAO-E-AUDITORIA.md` | Implementar controle técnico e rastreabilidade | Pendente | Pendente | Pendente | Pendente |
@@ -120,4 +120,4 @@ Evidências do fechamento:
 - dashboard conferida em 1440, 1280, 1024, 768 e 375 px, sem overflow horizontal do documento;
 - regressão visual conferida nas páginas de inspeções, equipamentos e clientes.
 
-O próximo passo do MVP é iniciar `07-AVARIAS-E-REINSPECOES.md`, começando pela modelagem da identidade permanente da avaria e de suas avaliações históricas por inspeção.
+O próximo passo do MVP é seguir com `07-AVARIAS-E-REINSPECOES.md`, ampliando a cobertura do fluxo de avarias e reinspeções já iniciado com a identidade permanente e o histórico de avaliações por inspeção.

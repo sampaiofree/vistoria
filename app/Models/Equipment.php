@@ -33,6 +33,7 @@ class Equipment extends Model
         'subarea_id',
         'tag',
         'normalized_tag',
+        'defect_code_prefix',
         'name',
         'description',
         'manufacturer',
@@ -104,6 +105,12 @@ class Equipment extends Model
     public function inspections(): HasMany
     {
         return $this->hasMany(Inspection::class)
+            ->orderByDesc('created_at');
+    }
+
+    public function defects(): HasMany
+    {
+        return $this->hasMany(Defect::class)
             ->orderByDesc('created_at');
     }
 

@@ -31,6 +31,7 @@ class EquipmentFactory extends Factory
             'subarea_id' => fn (array $attributes): int => $this->createSubarea($attributes)->getKey(),
             'tag' => TextNormalizer::equipmentTag($tag),
             'normalized_tag' => TextNormalizer::equipmentTag($tag),
+            'defect_code_prefix' => null,
             'name' => fake()->randomElement([
                 'Ventilador',
                 'Bomba',

@@ -68,6 +68,7 @@ final class CreateEquipment
                 'subarea_id' => $subarea?->getKey(),
                 'tag' => $tag,
                 'normalized_tag' => $tag,
+                'defect_code_prefix' => TextNormalizer::technicalCode($data['defect_code_prefix'] ?? null),
                 'name' => TextNormalizer::text((string) $data['name']),
                 'description' => TextNormalizer::nullableText($data['description'] ?? null),
                 'manufacturer' => TextNormalizer::nullableText($data['manufacturer'] ?? null),

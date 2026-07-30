@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Concerns;
 use App\Models\Area;
 use App\Models\Client;
 use App\Models\ClientUnit;
+use App\Models\Defect;
+use App\Models\DefectAssessment;
 use App\Models\Equipment;
 use App\Models\EquipmentDocument;
 use App\Models\Inspection;
@@ -72,6 +74,26 @@ trait ResolvesTenantStructure
         return Inspection::query()
             ->forOrganization($tenant->id())
             ->whereKey($inspection->getKey())
+            ->firstOrFail();
+    }
+
+    protected function tenantDefect(
+        TenantContext $tenant,
+        Defect $defect,
+    ): Defect {
+        return Defect::query()
+            ->forOrganization($tenant->id())
+            ->whereKey($defect->getKey())
+            ->firstOrFail();
+    }
+
+    protected function tenantDefectAssessment(
+        TenantContext $tenant,
+        DefectAssessment $assessment,
+    ): DefectAssessment {
+        return DefectAssessment::query()
+            ->forOrganization($tenant->id())
+            ->whereKey($assessment->getKey())
             ->firstOrFail();
     }
 

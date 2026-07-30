@@ -19,6 +19,7 @@ final class StoreEquipmentRequest extends FormRequest
     {
         $this->merge([
             'tag' => TextNormalizer::equipmentTag((string) $this->input('tag')),
+            'defect_code_prefix' => TextNormalizer::technicalCode($this->input('defect_code_prefix')),
             'name' => TextNormalizer::text((string) $this->input('name')),
             'description' => TextNormalizer::nullableText($this->input('description')),
             'manufacturer' => TextNormalizer::nullableText($this->input('manufacturer')),
@@ -80,6 +81,14 @@ final class StoreEquipmentRequest extends FormRequest
                         ->where('organization_id', $organizationId)
                         ->where('client_id', $this->input('client_id'))
                         ->where('client_unit_id', $this->input('client_unit_id'))),
+            ],
+            'defect_code_prefix' => [
+                'nullable',
+                'string',
+                'max:80',
+                Rule::unique('equipments', 'defect_code_prefix')
+                    ->where(fn ($query) => $query
+                        ->where('organization_id', $organizationId)),
             ],
             'name' => ['required', 'string', 'max:180'],
             'description' => ['nullable', 'string', 'max:10000'],

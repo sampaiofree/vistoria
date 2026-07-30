@@ -2,6 +2,10 @@
 import { Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/components/ui/AppLayout.vue';
 import AssignmentForm from '@/components/domain/inspections/AssignmentForm.vue';
+import DefectAssessmentForm from '@/components/domain/defects/DefectAssessmentForm.vue';
+import DefectCreateForm from '@/components/domain/defects/DefectCreateForm.vue';
+import PreviousAssessmentCard from '@/components/domain/defects/PreviousAssessmentCard.vue';
+import DefectStatusBadge from '@/components/domain/defects/DefectStatusBadge.vue';
 import InspectionSnapshot from '@/components/domain/inspections/InspectionSnapshot.vue';
 import InspectionStatusBadge from '@/components/domain/inspections/InspectionStatusBadge.vue';
 import InspectionTimeline from '@/components/domain/inspections/InspectionTimeline.vue';
@@ -126,6 +130,91 @@ function removeResponsible(url) {
         <section class="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <h2 class="mb-4 text-lg font-semibold">Snapshot da inspeção</h2>
             <InspectionSnapshot :snapshot="inspection.context_snapshot" :version="inspection.snapshot_version" />
+        </section>
+
+        <section class="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                    <h2 class="text-lg font-semibold">Avarias</h2>
+                    <p class="text-sm text-slate-500">
+                        A identidade da avaria permanece ao longo das reinspeções.
+                    </p>
+                </div>
+                <div v-if="capabilities.defects?.create" class="text-sm text-slate-500">
+                    Nova avaria nesta inspeção
+                </div>
+            </div>
+
+            <div class="mt-5 grid gap-6 lg:grid-cols-2">
+                <div>
+                    <ul class="space-y-3">
+                        <li
+                            v-for="defect in (inspection.defects || [])"
+                            :key="defect.id"
+                            class="rounded-xl border border-slate-200 bg-slate-50 p-4"
+                        >
+                            <div class="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                    <Link :href="defect.show_url" class="font-semibold text-teal-700 hover:text-teal-800">
+                                        {{ defect.code }}
+                                    </Link>
+                                    <p class="text-sm text-slate-500">{{ defect.title }}</p>
+                                    <p class="mt-1 text-xs uppercase tracking-wide text-slate-400">
+                                        Categoria {{ defect.category_label }}
+                                    </p>
+                                </div>
+                                <DefectStatusBadge :status="defect.status" />
+                            </div>
+
+                            <div
+                                v-if="defect.assessment_actions.store_url || defect.assessment_actions.update_url || defect.assessment_actions.complete_url"
+                                class="mt-4"
+                            >
+                                <DefectAssessmentForm
+                                    :assessment="defect.current_assessment"
+                                    :previous-assessment="defect.current_assessment ? defect.previous_assessment : defect.latest_assessment"
+                                    :store-action="defect.assessment_actions.store_url"
+                                    :update-action="defect.assessment_actions.update_url"
+                                    :complete-action="defect.assessment_actions.complete_url"
+                                    :allow-new-condition="false"
+                                    title="Avaliação da inspeção"
+                                    :note="defect.current_assessment
+                                        ? (defect.current_assessment.status === 'draft'
+                                            ? 'Finalize ou ajuste o rascunho desta avaria.'
+                                            : 'Revise a avaliação atual desta avaria.')
+                                        : 'Registre a condição desta avaria nesta inspeção.'"
+                                />
+                            </div>
+
+                            <div v-else-if="defect.latest_assessment" class="mt-4">
+                                <PreviousAssessmentCard
+                                    :assessment="defect.latest_assessment"
+                                    title="Estado atual"
+                                />
+                            </div>
+                        </li>
+                        <li v-if="(inspection.defects || []).length === 0" class="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500">
+                            Nenhuma avaria registrada nesta inspeção.
+                        </li>
+                    </ul>
+                </div>
+
+                <div>
+                    <div
+                        v-if="capabilities.defects?.create && inspection.equipment.defect_code_prefix"
+                        class="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+                    >
+                        <DefectCreateForm :action="capabilities.defects.create.action" />
+                    </div>
+
+                    <div
+                        v-else-if="capabilities.defects?.create"
+                        class="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"
+                    >
+                        Configure o prefixo de avaria no cadastro do equipamento antes de criar a primeira avaria.
+                    </div>
+                </div>
+            </div>
         </section>
 
         <section v-if="inspection.next_inspections.length" class="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">

@@ -123,6 +123,13 @@ watch(
             </label>
 
             <label class="block">
+                <span :class="labelClass">Prefixo de avaria</span>
+                <input v-model="form.defect_code_prefix" :class="inputClass" type="text" maxlength="80" autocomplete="off">
+                <p class="mt-1 text-xs text-slate-500">Opcional no cadastro. Depois da primeira avaria, o prefixo não deve ser alterado.</p>
+                <p v-if="form.errors.defect_code_prefix" :class="helpClass">{{ form.errors.defect_code_prefix }}</p>
+            </label>
+
+            <label class="block">
                 <span :class="labelClass">Nome</span>
                 <input v-model="form.name" :class="inputClass" type="text" maxlength="180" autocomplete="off">
                 <p v-if="form.errors.name" :class="helpClass">{{ form.errors.name }}</p>

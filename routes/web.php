@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\AreaController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
+use App\Http\Controllers\DefectController;
+use App\Http\Controllers\DefectAssessmentController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\ClientUnitController;
 use App\Http\Controllers\DashboardController;
@@ -87,6 +89,16 @@ Route::middleware([
         Route::get('inspections/{inspection}', [InspectionController::class, 'show'])
             ->name('inspections.show');
 
+        Route::post(
+            'inspections/{inspection}/defects',
+            [DefectController::class, 'store'],
+        )->name('inspections.defects.store');
+
+        Route::post(
+            'inspections/{inspection}/defects/{defect}/assessments',
+            [DefectAssessmentController::class, 'store'],
+        )->name('inspections.defects.assessments.store');
+
         Route::get('inspections/{inspection}/edit', [InspectionController::class, 'edit'])
             ->name('inspections.edit');
 
@@ -152,6 +164,19 @@ Route::middleware([
             'inspections/{inspection}/cancel',
             [InspectionTransitionController::class, 'cancel'],
         )->name('inspections.cancel');
+
+        Route::get('defects/{defect}', [DefectController::class, 'show'])
+            ->name('defects.show');
+
+        Route::patch(
+            'defect-assessments/{defectAssessment}',
+            [DefectAssessmentController::class, 'update'],
+        )->name('defect-assessments.update');
+
+        Route::post(
+            'defect-assessments/{defectAssessment}/complete',
+            [DefectAssessmentController::class, 'complete'],
+        )->name('defect-assessments.complete');
 
         Route::resource('clients', ClientController::class)
             ->except(['destroy']);

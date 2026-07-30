@@ -146,7 +146,7 @@ class DevelopmentSeeder extends Seeder
             ],
         );
 
-        Equipment::query()->firstOrCreate(
+        $equipment = Equipment::query()->firstOrCreate(
             [
                 'organization_id' => $organization->id,
                 'client_id' => $client->id,
@@ -161,6 +161,7 @@ class DevelopmentSeeder extends Seeder
                     ->where('area_id', $area->id)
                     ->value('id'),
                 'tag' => TextNormalizer::equipmentTag('U03-06VT002'),
+                'defect_code_prefix' => TextNormalizer::technicalCode('VT009'),
                 'name' => 'Ventilador',
                 'description' => null,
                 'manufacturer' => 'Weg',
@@ -174,6 +175,12 @@ class DevelopmentSeeder extends Seeder
                 'notes' => 'Equipamento base para desenvolvimento local.',
             ],
         );
+
+        if ($equipment->defect_code_prefix !== TextNormalizer::technicalCode('VT009')) {
+            $equipment->update([
+                'defect_code_prefix' => TextNormalizer::technicalCode('VT009'),
+            ]);
+        }
 
         $this->seedDemoInspection($organization, $admin);
     }

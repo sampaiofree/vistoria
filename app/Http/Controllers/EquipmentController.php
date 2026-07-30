@@ -561,6 +561,7 @@ final class EquipmentController extends Controller
             'commissioned_at' => $equipment->commissioned_at?->toDateString(),
             'status' => $equipment->status->value,
             'notes' => $equipment->notes,
+            'defect_code_prefix' => $equipment->defect_code_prefix,
             'decommissioned_at' => $equipment->decommissioned_at?->toDateTimeString(),
             'decommission_reason' => $equipment->decommission_reason,
             'show_url' => route('equipments.show', $equipment),
@@ -568,7 +569,7 @@ final class EquipmentController extends Controller
     }
 
     /**
-     * @return array{public_id:string, client_id:int, client_unit_id:int, area_id:int, subarea_id:?int, tag:string, name:string, description:?string, manufacturer:?string, model:?string, serial_number:?string, asset_code:?string, abc_code:?string, installation_location:?string, commissioned_at:?string, status:string, notes:?string}
+     * @return array{public_id:string, client_id:int, client_unit_id:int, area_id:int, subarea_id:?int, tag:string, defect_code_prefix:?string, name:string, description:?string, manufacturer:?string, model:?string, serial_number:?string, asset_code:?string, abc_code:?string, installation_location:?string, commissioned_at:?string, status:string, notes:?string}
      */
     private function equipmentFormPayload(Equipment $equipment): array
     {
@@ -579,6 +580,7 @@ final class EquipmentController extends Controller
             'area_id' => $equipment->area_id,
             'subarea_id' => $equipment->subarea_id,
             'tag' => $equipment->tag,
+            'defect_code_prefix' => $equipment->defect_code_prefix,
             'name' => $equipment->name,
             'description' => $equipment->description,
             'manufacturer' => $equipment->manufacturer,
