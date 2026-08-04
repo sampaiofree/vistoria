@@ -10,7 +10,6 @@ use App\Enums\DefectCategory;
 use App\Enums\DefectStatus;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
-use App\Actions\Defects\CompleteDefectAssessment;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
 use App\Models\Equipment;

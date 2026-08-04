@@ -8,6 +8,7 @@ import MyInspectionsTable from '@/components/dashboard/MyInspectionsTable.vue';
 import WorkflowSummary from '@/components/dashboard/WorkflowSummary.vue';
 import RecentActivities from '@/components/dashboard/RecentActivities.vue';
 import DashboardLoadError from '@/components/dashboard/DashboardLoadError.vue';
+import FeaturedInspection from '@/components/dashboard/FeaturedInspection.vue';
 
 const props = defineProps({
     mode: {
@@ -40,6 +41,10 @@ const props = defineProps({
     },
     recent_activities: {
         type: Array,
+        default: null,
+    },
+    featured_inspection: {
+        type: Object,
         default: null,
     },
 });
@@ -125,6 +130,8 @@ function retry(prop) {
         </section>
 
         <template v-else>
+            <FeaturedInspection :inspection="featured_inspection" />
+
             <section class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <Deferred data="priority_counts">
                     <template #fallback>

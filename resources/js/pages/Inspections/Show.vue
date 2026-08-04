@@ -1,25 +1,68 @@
 <script setup>
+import { computed, ref } from 'vue';
 import { Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/components/ui/AppLayout.vue';
 import AssignmentForm from '@/components/domain/inspections/AssignmentForm.vue';
-import DefectAssessmentForm from '@/components/domain/defects/DefectAssessmentForm.vue';
 import DefectCreateForm from '@/components/domain/defects/DefectCreateForm.vue';
-import PreviousAssessmentCard from '@/components/domain/defects/PreviousAssessmentCard.vue';
-import DefectStatusBadge from '@/components/domain/defects/DefectStatusBadge.vue';
 import InspectionSnapshot from '@/components/domain/inspections/InspectionSnapshot.vue';
 import InspectionStatusBadge from '@/components/domain/inspections/InspectionStatusBadge.vue';
 import InspectionTimeline from '@/components/domain/inspections/InspectionTimeline.vue';
 import ReferenceDocumentsForm from '@/components/domain/inspections/ReferenceDocumentsForm.vue';
 import TransitionForm from '@/components/domain/inspections/TransitionForm.vue';
+import AssessmentProgress from '@/components/domain/view-first/AssessmentProgress.vue';
+import CivilClassificationBadge from '@/components/domain/view-first/CivilClassificationBadge.vue';
+import DefectCard from '@/components/domain/view-first/DefectCard.vue';
+import InspectionTabs from '@/components/domain/view-first/InspectionTabs.vue';
+import PhotoGallery from '@/components/domain/view-first/PhotoGallery.vue';
+import ProvisionalDataNotice from '@/components/domain/view-first/ProvisionalDataNotice.vue';
+import ReportSection from '@/components/domain/view-first/ReportSection.vue';
 
-defineProps({
+const props = defineProps({
     inspection: { type: Object, required: true },
-    capabilities: { type: Object, required: true },
+    summary: { type: Object, default: () => ({}) },
+    tabs: { type: Array, default: () => [] },
+    active_tab: { type: String, default: 'overview' },
+    content: { type: Object, default: () => ({}) },
+    demo: { type: Object, default: () => ({}) },
+    capabilities: { type: Object, default: () => ({}) },
     assignment_options: { type: Object, default: () => ({ users: [], roles: [] }) },
     available_documents: { type: Array, default: () => [] },
     transitions: { type: Array, default: () => [] },
     index_url: { type: String, required: true },
 });
+
+const activeFilter = ref('all');
+
+const defects = computed(() => props.content?.items ?? []);
+const filters = computed(() => props.content?.filters ?? []);
+
+const filteredDefects = computed(() => defects.value.filter((defect) => {
+    switch (activeFilter.value) {
+        case 'critical':
+            return ['CV-1', 'CV-2'].includes(defect.classification?.code);
+        case 'pending':
+            return defect.is_pending === true || defect.assessment?.status === 'draft';
+        case 'repaired':
+            return defect.is_repaired === true || defect.assessment?.condition === 'repaired';
+        case 'not_inspected':
+            return defect.is_not_inspected === true || defect.assessment?.condition === 'not_inspected';
+        default:
+            return true;
+    }
+}));
+
+const reportSections = computed(() => props.content?.sections ?? []);
+const reportDefects = computed(() => reportSections.value.find((section) => section.key === 'defects')?.items ?? []);
+const reportEvidence = computed(() => reportSections.value.find((section) => section.key === 'evidence')?.items ?? []);
+const reportResponsibles = computed(() => reportSections.value.find((section) => section.key === 'responsibles')?.items ?? []);
+const reportDocuments = computed(() => reportSections.value.find((section) => section.key === 'documents')?.items ?? []);
+
+const photoStatusLabels = {
+    ready: 'Disponíveis',
+    processing: 'Processando',
+    pending: 'Pendentes',
+    failed: 'Falhas',
+};
 
 function setPrimaryResponsible(url) {
     router.patch(url, {}, { preserveScroll: true });
@@ -32,318 +75,503 @@ function removeResponsible(url) {
 
     router.delete(url, { preserveScroll: true });
 }
+
+function printReport() {
+    window.print();
+}
 </script>
 
 <template>
-    <AppLayout :title="inspection.number" :subtitle="`${inspection.equipment.tag} — ${inspection.equipment.name}`">
-        <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
-            <div class="flex flex-wrap items-center gap-3">
-                <Link :href="index_url" class="text-sm font-semibold text-teal-700">← Voltar às inspeções</Link>
+    <AppLayout
+        :title="inspection.number"
+        :subtitle="`${inspection.equipment.tag} — ${inspection.equipment.name}`"
+        wide
+    >
+        <div class="print-hidden mb-5 flex flex-wrap items-center justify-between gap-3">
+            <Link :href="index_url" class="text-sm font-semibold text-teal-700 hover:text-teal-800">
+                ← Voltar às inspeções
+            </Link>
+            <div class="flex flex-wrap items-center gap-2">
                 <Link
-                    v-if="capabilities.update_planned"
-                    :href="capabilities.update_planned.action"
-                    class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:text-slate-900"
+                    v-if="inspection.equipment?.show_url"
+                    :href="inspection.equipment.show_url"
+                    class="rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400"
                 >
-                    Editar planejamento
+                    Ver equipamento
                 </Link>
+                <details class="relative" v-if="capabilities.update_planned">
+                    <summary class="cursor-pointer list-none rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400">
+                        Mais ações
+                    </summary>
+                    <div class="absolute right-0 z-20 mt-2 w-56 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
+                        <Link :href="capabilities.update_planned.action" class="block rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-100">
+                            Editar planejamento
+                        </Link>
+                    </div>
+                </details>
             </div>
-            <InspectionStatusBadge :status="inspection.status" />
         </div>
 
-        <section class="grid gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:grid-cols-2 lg:grid-cols-4">
-            <div>
-                <div class="text-xs uppercase text-slate-500">Tipo</div>
-                <div class="font-semibold">{{ inspection.type === 'reinspection' ? 'Reinspeção' : 'Inicial' }}</div>
-            </div>
-            <div>
-                <div class="text-xs uppercase text-slate-500">Planejada</div>
-                <div class="font-semibold">{{ inspection.scheduled_at || '—' }}</div>
-            </div>
-            <div>
-                <div class="text-xs uppercase text-slate-500">Inspeção anterior</div>
-                <Link v-if="inspection.previous_inspection" :href="inspection.previous_inspection.show_url" class="font-semibold text-teal-700">
-                    {{ inspection.previous_inspection.number }}
-                </Link>
-                <div v-else>—</div>
-            </div>
-            <div>
-                <div class="text-xs uppercase text-slate-500">Estado atual</div>
-                <InspectionStatusBadge class="mt-1" :status="inspection.status" />
+        <section class="print-hidden overflow-hidden rounded-3xl bg-slate-950 text-white shadow-xl shadow-slate-950/10">
+            <div class="relative p-6 sm:p-8">
+                <div class="pointer-events-none absolute -right-20 -top-28 h-72 w-72 rounded-full border-[52px] border-teal-400/10"></div>
+                <div class="relative flex flex-col gap-8 xl:flex-row xl:items-end xl:justify-between">
+                    <div>
+                        <div class="flex flex-wrap items-center gap-3">
+                            <InspectionStatusBadge :status="inspection.status" />
+                            <span class="rounded-full border border-white/15 bg-white/8 px-3 py-1 text-xs font-semibold text-slate-200">
+                                {{ inspection.inspection_type_label }}
+                            </span>
+                            <span v-if="inspection.service_order" class="text-xs font-medium text-slate-400">O.S. {{ inspection.service_order }}</span>
+                        </div>
+                        <h2 class="mt-5 text-2xl font-semibold tracking-tight sm:text-3xl">
+                            {{ inspection.equipment.tag }}
+                            <span class="font-normal text-slate-400">· {{ inspection.equipment.name }}</span>
+                        </h2>
+                        <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
+                            {{ inspection.equipment.client?.name }}<span v-if="inspection.equipment.unit?.name"> · {{ inspection.equipment.unit.name }}</span>
+                        </p>
+                    </div>
+
+                    <div class="grid w-full gap-3 sm:grid-cols-[minmax(0,1fr)_auto] xl:max-w-xl">
+                        <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+                            <AssessmentProgress
+                                :progress="{ completed: summary.completed, total: summary.total, percentage: summary.progress_percent }"
+                                dark
+                            />
+                        </div>
+                        <div class="flex min-w-36 items-center justify-center rounded-2xl border border-white/10 bg-white/5 p-4">
+                            <CivilClassificationBadge
+                                :code="summary.criticality?.code"
+                                :label="summary.criticality?.label"
+                                large
+                            />
+                        </div>
+                    </div>
+                </div>
             </div>
         </section>
 
-        <section class="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 class="mb-4 text-lg font-semibold">Dados de planejamento</h2>
+        <div class="print-hidden mt-5">
+            <InspectionTabs :tabs="tabs" :active="active_tab" />
+        </div>
 
-            <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                <div>
-                    <div class="text-xs uppercase text-slate-500">Cliente</div>
-                    <div class="font-semibold">{{ inspection.equipment.client?.name || '—' }}</div>
-                </div>
-                <div>
-                    <div class="text-xs uppercase text-slate-500">Unidade</div>
-                    <div class="font-semibold">{{ inspection.equipment.unit?.name || '—' }}</div>
-                </div>
-                <div>
-                    <div class="text-xs uppercase text-slate-500">O.S.</div>
-                    <div class="font-semibold">{{ inspection.service_order || '—' }}</div>
-                </div>
-                <div>
-                    <div class="text-xs uppercase text-slate-500">Relatório externo</div>
-                    <div class="font-semibold">{{ inspection.external_report_number || '—' }}</div>
-                </div>
-                <div>
-                    <div class="text-xs uppercase text-slate-500">Procedimento</div>
-                    <div class="font-semibold">{{ inspection.procedure_number || '—' }}</div>
-                </div>
-                <div>
-                    <div class="text-xs uppercase text-slate-500">Classificação atmosférica</div>
-                    <div class="font-semibold">{{ inspection.atmospheric_classification || '—' }}</div>
-                </div>
-                <div>
-                    <div class="text-xs uppercase text-slate-500">Planejada para</div>
-                    <div class="font-semibold">{{ inspection.scheduled_at || '—' }}</div>
-                </div>
-                <div>
-                    <div class="text-xs uppercase text-slate-500">Inspecionada em</div>
-                    <div class="font-semibold">{{ inspection.inspected_on || '—' }}</div>
-                </div>
-                <div>
-                    <div class="text-xs uppercase text-slate-500">Inspeção anterior</div>
-                    <Link
-                        v-if="inspection.previous_inspection"
-                        :href="inspection.previous_inspection.show_url"
-                        class="font-semibold text-teal-700"
-                    >
-                        {{ inspection.previous_inspection.number }}
-                    </Link>
-                    <div v-else>—</div>
-                </div>
-            </div>
+        <div v-if="active_tab === 'overview'" class="print-hidden mt-6 space-y-6">
+            <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <article v-for="metric in (content.metrics || [])" :key="metric.key" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <p class="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">{{ metric.label }}</p>
+                    <div class="mt-3 flex items-end justify-between gap-3">
+                        <strong class="text-2xl font-semibold tracking-tight text-slate-950">{{ metric.value }}</strong>
+                        <span class="text-xs font-medium text-slate-500">{{ metric.detail }}</span>
+                    </div>
+                </article>
+            </section>
 
-            <div v-if="inspection.general_notes" class="mt-4 rounded-xl bg-slate-50 p-4">
-                <div class="text-xs uppercase text-slate-500">Observações gerais</div>
-                <p class="mt-1 whitespace-pre-line text-sm text-slate-700">{{ inspection.general_notes }}</p>
-            </div>
-        </section>
-
-        <section class="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 class="mb-4 text-lg font-semibold">Snapshot da inspeção</h2>
-            <InspectionSnapshot :snapshot="inspection.context_snapshot" :version="inspection.snapshot_version" />
-        </section>
-
-        <section class="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                    <h2 class="text-lg font-semibold">Avarias</h2>
-                    <p class="text-sm text-slate-500">
-                        A identidade da avaria permanece ao longo das reinspeções.
-                    </p>
-                </div>
-                <div v-if="capabilities.defects?.create" class="text-sm text-slate-500">
-                    Nova avaria nesta inspeção
-                </div>
-            </div>
-
-            <div class="mt-5 grid gap-6 lg:grid-cols-2">
-                <div>
-                    <ul class="space-y-3">
-                        <li
-                            v-for="defect in (inspection.defects || [])"
-                            :key="defect.id"
-                            class="rounded-xl border border-slate-200 bg-slate-50 p-4"
+            <div class="grid gap-6 2xl:grid-cols-[minmax(0,1.55fr)_minmax(22rem,0.75fr)]">
+                <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                    <div class="flex flex-wrap items-start justify-between gap-4">
+                        <div>
+                            <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Prioridades da inspeção</p>
+                            <h2 class="mt-2 text-xl font-semibold text-slate-950">Pontos que merecem atenção</h2>
+                            <p class="mt-1 text-sm text-slate-500">Avarias críticas ou com avaliação pendente.</p>
+                        </div>
+                        <Link
+                            v-if="content.primary_action?.url"
+                            :href="content.primary_action.url"
+                            class="inline-flex min-h-11 items-center rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700"
                         >
-                            <div class="flex flex-wrap items-start justify-between gap-3">
-                                <div>
-                                    <Link :href="defect.show_url" class="font-semibold text-teal-700 hover:text-teal-800">
-                                        {{ defect.code }}
+                            {{ content.primary_action.label }} →
+                        </Link>
+                    </div>
+                    <div class="mt-5 grid gap-4 xl:grid-cols-2">
+                        <DefectCard v-for="defect in (content.highlights || [])" :key="defect.id" :defect="defect" />
+                        <div v-if="!(content.highlights || []).length" class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-500">
+                            Nenhuma prioridade técnica em aberto.
+                        </div>
+                    </div>
+                </section>
+
+                <aside class="space-y-6">
+                    <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                        <h2 class="text-lg font-semibold text-slate-950">Contexto operacional</h2>
+                        <dl class="mt-5 space-y-4">
+                            <div class="flex items-start justify-between gap-4 border-b border-slate-100 pb-3">
+                                <dt class="text-sm text-slate-500">Planejada para</dt>
+                                <dd class="text-right text-sm font-semibold text-slate-900">{{ inspection.scheduled_at || '—' }}</dd>
+                            </div>
+                            <div class="flex items-start justify-between gap-4 border-b border-slate-100 pb-3">
+                                <dt class="text-sm text-slate-500">Executada em</dt>
+                                <dd class="text-right text-sm font-semibold text-slate-900">{{ inspection.inspected_on || '—' }}</dd>
+                            </div>
+                            <div class="flex items-start justify-between gap-4 border-b border-slate-100 pb-3">
+                                <dt class="text-sm text-slate-500">Procedimento</dt>
+                                <dd class="max-w-52 text-right text-sm font-semibold text-slate-900">{{ inspection.procedure_number || '—' }}</dd>
+                            </div>
+                            <div class="flex items-start justify-between gap-4">
+                                <dt class="text-sm text-slate-500">Inspeção anterior</dt>
+                                <dd class="text-right text-sm font-semibold text-slate-900">
+                                    <Link v-if="inspection.previous_inspection" :href="inspection.previous_inspection.show_url" class="text-teal-700">
+                                        {{ inspection.previous_inspection.number }}
                                     </Link>
-                                    <p class="text-sm text-slate-500">{{ defect.title }}</p>
-                                    <p class="mt-1 text-xs uppercase tracking-wide text-slate-400">
-                                        Categoria {{ defect.category_label }}
-                                    </p>
-                                </div>
-                                <DefectStatusBadge :status="defect.status" />
+                                    <span v-else>—</span>
+                                </dd>
                             </div>
+                        </dl>
+                    </section>
 
-                            <div
-                                v-if="defect.assessment_actions.store_url || defect.assessment_actions.update_url || defect.assessment_actions.complete_url"
-                                class="mt-4"
-                            >
-                                <DefectAssessmentForm
-                                    :assessment="defect.current_assessment"
-                                    :previous-assessment="defect.current_assessment ? defect.previous_assessment : defect.latest_assessment"
-                                    :store-action="defect.assessment_actions.store_url"
-                                    :update-action="defect.assessment_actions.update_url"
-                                    :complete-action="defect.assessment_actions.complete_url"
-                                    :allow-new-condition="false"
-                                    title="Avaliação da inspeção"
-                                    :note="defect.current_assessment
-                                        ? (defect.current_assessment.status === 'draft'
-                                            ? 'Finalize ou ajuste o rascunho desta avaria.'
-                                            : 'Revise a avaliação atual desta avaria.')
-                                        : 'Registre a condição desta avaria nesta inspeção.'"
-                                />
-                            </div>
+                    <ProvisionalDataNotice v-if="demo.enabled" :message="demo.provisional_notice" compact />
+                </aside>
+            </div>
 
-                            <div v-else-if="defect.latest_assessment" class="mt-4">
-                                <PreviousAssessmentCard
-                                    :assessment="defect.latest_assessment"
-                                    title="Estado atual"
-                                />
-                            </div>
-                        </li>
-                        <li v-if="(inspection.defects || []).length === 0" class="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500">
-                            Nenhuma avaria registrada nesta inspeção.
+            <section class="grid gap-4 lg:grid-cols-3" aria-label="Resumo técnico da inspeção">
+                <article class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                    <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Condições observadas</p>
+                    <h2 class="mt-2 text-lg font-semibold text-slate-950">Evolução das avarias</h2>
+                    <ul class="mt-5 space-y-2.5">
+                        <li v-for="item in (summary.condition_breakdown || [])" :key="item.key" class="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3.5 py-2.5">
+                            <span class="text-sm font-medium text-slate-700">{{ item.label }}</span>
+                            <strong class="inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-white px-2 text-xs text-slate-950 shadow-sm">{{ item.count }}</strong>
                         </li>
                     </ul>
-                </div>
+                </article>
 
-                <div>
-                    <div
-                        v-if="capabilities.defects?.create && inspection.equipment.defect_code_prefix"
-                        class="rounded-2xl border border-slate-200 bg-slate-50 p-4"
-                    >
-                        <DefectCreateForm :action="capabilities.defects.create.action" />
-                    </div>
-
-                    <div
-                        v-else-if="capabilities.defects?.create"
-                        class="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"
-                    >
-                        Configure o prefixo de avaria no cadastro do equipamento antes de criar a primeira avaria.
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <section v-if="inspection.next_inspections.length" class="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 class="mb-4 text-lg font-semibold">Reinspeções vinculadas</h2>
-            <ul class="space-y-3">
-                <li
-                    v-for="nextInspection in inspection.next_inspections"
-                    :key="nextInspection.id"
-                    class="rounded-xl border border-slate-200 bg-slate-50 p-4"
-                >
-                    <div class="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                            <Link :href="nextInspection.show_url" class="font-semibold text-teal-700 hover:text-teal-800">
-                                {{ nextInspection.number }}
-                            </Link>
-                            <p class="text-sm text-slate-500">
-                                {{ nextInspection.inspection_type_label }} · liberada em {{ nextInspection.released_at || '—' }}
-                            </p>
-                        </div>
-                        <InspectionStatusBadge :status="nextInspection.status" />
-                    </div>
-                </li>
-            </ul>
-        </section>
-
-        <div class="mt-6 grid gap-6 lg:grid-cols-2">
-            <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <h2 class="mb-4 text-lg font-semibold">Responsáveis</h2>
-
-                <ul class="mb-5 divide-y divide-slate-100">
-                    <li v-for="item in inspection.responsibles" :key="`${item.user.id}-${item.responsibility}`" class="py-3">
-                        <div class="flex items-start justify-between gap-3">
-                            <div>
-                                <div class="flex flex-wrap items-center gap-2">
-                                    <span class="font-medium text-slate-900">{{ item.user.name }}</span>
-                                    <span
-                                        v-if="item.is_primary"
-                                        class="inline-flex items-center rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-teal-700"
-                                    >
-                                        Principal
-                                    </span>
-                                </div>
-                                <div class="text-sm text-slate-500">{{ item.responsibility_label }}</div>
-                                <div class="text-xs text-slate-400">
-                                    Atribuído em {{ item.assigned_at ?? '—' }}
-                                    <span v-if="item.completed_at"> · Concluído em {{ item.completed_at }}</span>
-                                </div>
+                <article class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                    <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Classificação CIVIL</p>
+                    <h2 class="mt-2 text-lg font-semibold text-slate-950">Distribuição de criticidade</h2>
+                    <ul class="mt-5 space-y-2.5">
+                        <li v-for="item in (summary.classification_breakdown || [])" :key="item.code" class="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3.5 py-2.5">
+                            <div class="min-w-0">
+                                <CivilClassificationBadge :code="item.code" :label="item.label" />
+                                <p v-if="item.historical_count" class="mt-1 text-[11px] text-slate-500">{{ item.historical_count }} classificação histórica</p>
                             </div>
+                            <strong class="inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-white px-2 text-xs text-slate-950 shadow-sm">{{ item.count }}</strong>
+                        </li>
+                    </ul>
+                </article>
 
-                            <div v-if="capabilities.assign_responsibles" class="flex flex-wrap gap-2">
-                                <button
-                                    v-if="!item.is_primary"
-                                    type="button"
-                                    class="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-700 transition hover:border-indigo-300 hover:bg-indigo-100"
-                                    @click="setPrimaryResponsible(item.set_primary_url)"
-                                >
-                                    Tornar principal
-                                </button>
-                                <button
-                                    type="button"
-                                    class="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100"
-                                    @click="removeResponsible(item.destroy_url)"
-                                >
-                                    Remover
-                                </button>
-                            </div>
-                        </div>
-                    </li>
-                    <li v-if="inspection.responsibles.length === 0" class="py-3 text-sm text-slate-500">Nenhum responsável atribuído.</li>
-                </ul>
-
-                <AssignmentForm
-                    v-if="capabilities.assign_responsibles"
-                    :action="capabilities.assign_responsibles.action"
-                    :users="assignment_options.users"
-                    :roles="assignment_options.roles"
-                />
+                <article class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                    <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Responsabilidade técnica</p>
+                    <h2 class="mt-2 text-lg font-semibold text-slate-950">Equipe e referência</h2>
+                    <ul class="mt-5 space-y-3">
+                        <li v-for="item in (inspection.responsibles || []).slice(0, 3)" :key="`${item.user.id}-${item.responsibility}`" class="border-b border-slate-100 pb-3 last:border-0 last:pb-0">
+                            <p class="text-sm font-semibold text-slate-900">{{ item.user.name }}</p>
+                            <p class="mt-0.5 text-xs text-slate-500">{{ item.responsibility_label }}</p>
+                        </li>
+                    </ul>
+                    <p v-if="(inspection.responsibles || []).length > 3" class="mt-3 text-xs font-semibold text-teal-700">+ {{ inspection.responsibles.length - 3 }} responsáveis no registro completo</p>
+                    <div v-if="inspection.reference_documents?.length" class="mt-5 rounded-2xl border border-teal-100 bg-teal-50 p-3.5">
+                        <p class="text-[11px] font-bold uppercase tracking-wider text-teal-700">Documento de referência</p>
+                        <p class="mt-1 text-sm font-semibold text-slate-900">{{ inspection.reference_documents[0].document.title }}</p>
+                        <p class="mt-1 text-xs text-slate-500">Revisão {{ inspection.reference_documents[0].document.revision || '—' }}</p>
+                    </div>
+                </article>
             </section>
 
-            <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <h2 class="mb-4 text-lg font-semibold">Documentos de referência</h2>
+            <details class="group rounded-3xl border border-slate-200 bg-white shadow-sm">
+                <summary class="flex cursor-pointer list-none items-center justify-between gap-4 p-5 sm:p-6">
+                    <div>
+                        <h2 class="text-lg font-semibold text-slate-950">Dados cadastrais e snapshot</h2>
+                        <p class="mt-1 text-sm text-slate-500">Contexto congelado no planejamento da inspeção.</p>
+                    </div>
+                    <span class="text-xl text-slate-400 transition group-open:rotate-45">+</span>
+                </summary>
+                <div class="border-t border-slate-200 p-5 sm:p-6">
+                    <InspectionSnapshot :snapshot="inspection.context_snapshot" :version="inspection.snapshot_version" />
+                </div>
+            </details>
 
-                <ul class="mb-5 space-y-2">
-                    <li v-for="document in inspection.reference_documents" :key="document.id" class="rounded-lg bg-slate-50 p-3 text-sm">
-                        <div class="flex items-start justify-between gap-3">
-                            <div>
-                                <Link :href="document.document.show_url" class="font-semibold text-teal-700 hover:text-teal-800">
-                                    {{ document.document.title }}
-                                </Link>
-                                <div class="text-slate-500">
-                                    Revisão {{ document.document.revision ?? '—' }} · {{ document.document.status_label }}
+            <details
+                v-if="capabilities.assign_responsibles || capabilities.manage_references || (capabilities.transition && transitions.length)"
+                class="group rounded-3xl border border-slate-200 bg-white shadow-sm"
+            >
+                <summary class="flex cursor-pointer list-none items-center justify-between gap-4 p-5 sm:p-6">
+                    <div>
+                        <h2 class="text-lg font-semibold text-slate-950">Gestão da inspeção</h2>
+                        <p class="mt-1 text-sm text-slate-500">Responsáveis, documentos e transições operacionais.</p>
+                    </div>
+                    <span class="text-xl text-slate-400 transition group-open:rotate-45">+</span>
+                </summary>
+                <div class="grid gap-6 border-t border-slate-200 p-5 lg:grid-cols-2 sm:p-6">
+                    <section>
+                        <h3 class="font-semibold text-slate-950">Responsáveis</h3>
+                        <ul class="mt-4 divide-y divide-slate-100">
+                            <li v-for="item in inspection.responsibles" :key="`${item.user.id}-${item.responsibility}`" class="flex items-start justify-between gap-3 py-3">
+                                <div>
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        <span class="font-medium text-slate-900">{{ item.user.name }}</span>
+                                        <span v-if="item.is_primary" class="rounded-full bg-teal-50 px-2 py-1 text-[10px] font-bold uppercase text-teal-700">Principal</span>
+                                    </div>
+                                    <p class="text-sm text-slate-500">{{ item.responsibility_label }}</p>
                                 </div>
-                                <div class="text-xs text-slate-400">
-                                    {{ document.document.document_type_label }}
-                                    <span v-if="document.added_by"> · Selecionado por {{ document.added_by.name }}</span>
-                                    <span v-if="document.created_at"> · {{ document.created_at }}</span>
+                                <div v-if="capabilities.assign_responsibles" class="flex gap-2">
+                                    <button v-if="!item.is_primary" type="button" class="text-xs font-semibold text-indigo-700" @click="setPrimaryResponsible(item.set_primary_url)">Principal</button>
+                                    <button type="button" class="text-xs font-semibold text-rose-700" @click="removeResponsible(item.destroy_url)">Remover</button>
                                 </div>
-                            </div>
-
-                            <Link
-                                :href="document.document.download_url"
-                                class="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-xs font-semibold text-teal-700 transition hover:border-teal-300 hover:bg-teal-100"
-                            >
-                                Baixar
-                            </Link>
+                            </li>
+                        </ul>
+                        <AssignmentForm
+                            v-if="capabilities.assign_responsibles"
+                            class="mt-4"
+                            :action="capabilities.assign_responsibles.action"
+                            :users="assignment_options.users"
+                            :roles="assignment_options.roles"
+                        />
+                    </section>
+                    <section>
+                        <h3 class="font-semibold text-slate-950">Documentos de referência</h3>
+                        <ReferenceDocumentsForm
+                            v-if="capabilities.manage_references"
+                            class="mt-4"
+                            :action="capabilities.manage_references.action"
+                            :documents="available_documents"
+                            :selected-document-ids="inspection.reference_document_ids"
+                        />
+                    </section>
+                    <section v-if="capabilities.transition && transitions.length" class="lg:col-span-2">
+                        <h3 class="mb-4 font-semibold text-slate-950">Ações de fluxo</h3>
+                        <div class="grid gap-4 md:grid-cols-2">
+                            <TransitionForm v-for="transition in transitions" :key="transition.key" :transition="transition" />
                         </div>
-                    </li>
-                    <li v-if="inspection.reference_documents.length === 0" class="text-sm text-slate-500">Nenhum documento selecionado.</li>
-                </ul>
+                    </section>
+                </div>
+            </details>
+        </div>
 
-                <ReferenceDocumentsForm
-                    v-if="capabilities.manage_references"
-                    :action="capabilities.manage_references.action"
-                    :documents="available_documents"
-                    :selected-document-ids="inspection.reference_document_ids"
-                />
+        <div v-else-if="active_tab === 'defects'" class="print-hidden mt-6 space-y-6">
+            <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                    <div>
+                        <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Leitura técnica</p>
+                        <h2 class="mt-2 text-xl font-semibold text-slate-950">Avarias da reinspeção</h2>
+                        <p class="mt-1 text-sm text-slate-500">Filtre por prioridade e abra a avaliação sem perder o contexto.</p>
+                    </div>
+                    <div class="flex max-w-full gap-2 overflow-x-auto pb-1" role="group" aria-label="Filtrar avarias">
+                        <button
+                            v-for="filter in filters"
+                            :key="filter.key"
+                            type="button"
+                            class="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
+                            :class="activeFilter === filter.key ? 'bg-slate-950 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+                            :aria-pressed="activeFilter === filter.key"
+                            @click="activeFilter = filter.key"
+                        >
+                            {{ filter.label }}
+                            <span class="rounded-full px-1.5 text-xs" :class="activeFilter === filter.key ? 'bg-white/15' : 'bg-white'">{{ filter.count }}</span>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <div class="grid gap-4 xl:grid-cols-2">
+                <DefectCard v-for="defect in filteredDefects" :key="defect.id" :defect="defect" />
+            </div>
+            <div v-if="filteredDefects.length === 0" class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center text-sm text-slate-500">
+                Nenhuma avaria corresponde a este filtro.
+            </div>
+
+            <details v-if="capabilities.defects?.create" class="group rounded-3xl border border-slate-200 bg-white shadow-sm">
+                <summary class="flex cursor-pointer list-none items-center justify-between gap-4 p-5">
+                    <div>
+                        <h2 class="font-semibold text-slate-950">Adicionar avaria</h2>
+                        <p class="mt-1 text-sm text-slate-500">Ação operacional secundária nesta apresentação.</p>
+                    </div>
+                    <span class="text-xl text-slate-400 transition group-open:rotate-45">+</span>
+                </summary>
+                <div class="border-t border-slate-200 p-5">
+                    <DefectCreateForm v-if="inspection.equipment.defect_code_prefix" :action="capabilities.defects.create.action" />
+                    <p v-else class="text-sm text-amber-800">Configure o prefixo de avaria antes de criar um registro.</p>
+                </div>
+            </details>
+        </div>
+
+        <div v-else-if="active_tab === 'photos'" class="print-hidden mt-6 space-y-6">
+            <ProvisionalDataNotice :message="demo.photo_notice" />
+            <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                <div class="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                        <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Evidências técnicas</p>
+                        <h2 class="mt-2 text-xl font-semibold text-slate-950">Galeria da inspeção</h2>
+                        <p class="mt-1 text-sm text-slate-500">Placeholders neutros já preparados para receber os arquivos reais.</p>
+                    </div>
+                    <div class="flex flex-wrap gap-2 text-xs font-semibold text-slate-600">
+                        <span v-for="(count, status) in (content.counts || {})" :key="status" class="rounded-full bg-slate-100 px-3 py-1.5">
+                            {{ photoStatusLabels[status] || status }} · {{ count }}
+                        </span>
+                    </div>
+                </div>
+                <div class="mt-6">
+                    <PhotoGallery :photos="content.items || []" />
+                </div>
             </section>
         </div>
 
-        <section v-if="capabilities.transition && transitions.length" class="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 class="mb-4 text-lg font-semibold">Ações disponíveis</h2>
-            <div class="grid gap-4 md:grid-cols-2">
-                <TransitionForm v-for="transition in transitions" :key="transition.key" :transition="transition" />
-            </div>
-        </section>
+        <div v-else-if="active_tab === 'documents'" class="print-hidden mt-6 space-y-6">
+            <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                <div>
+                    <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Base técnica</p>
+                    <h2 class="mt-2 text-xl font-semibold text-slate-950">Documentos de referência</h2>
+                    <p class="mt-1 text-sm text-slate-500">Arquivos congelados para o contexto desta inspeção.</p>
+                </div>
+                <div class="mt-6 grid gap-4 lg:grid-cols-2">
+                    <article v-for="item in (content.items || [])" :key="item.id" class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <p class="text-xs font-bold uppercase tracking-wider text-slate-400">{{ item.document.document_type_label }}</p>
+                        <h3 class="mt-2 font-semibold text-slate-950">{{ item.document.title }}</h3>
+                        <p class="mt-1 text-sm text-slate-500">Revisão {{ item.document.revision || '—' }} · {{ item.document.status_label }}</p>
+                        <div class="mt-4 flex gap-3">
+                            <Link :href="item.document.show_url" class="text-sm font-semibold text-teal-700">Abrir</Link>
+                            <Link :href="item.document.download_url" class="text-sm font-semibold text-slate-700">Baixar</Link>
+                        </div>
+                    </article>
+                </div>
+                <p v-if="!(content.items || []).length" class="mt-6 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-500">
+                    {{ content.empty_message }}
+                </p>
+            </section>
+            <details v-if="capabilities.manage_references" class="group rounded-3xl border border-slate-200 bg-white shadow-sm">
+                <summary class="flex cursor-pointer list-none items-center justify-between p-5">
+                    <span class="font-semibold text-slate-950">Gerenciar documentos vinculados</span>
+                    <span class="text-xl text-slate-400 transition group-open:rotate-45">+</span>
+                </summary>
+                <div class="border-t border-slate-200 p-5">
+                    <ReferenceDocumentsForm
+                        :action="capabilities.manage_references.action"
+                        :documents="available_documents"
+                        :selected-document-ids="content.reference_document_ids || []"
+                    />
+                </div>
+            </details>
+        </div>
 
-        <section class="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 class="mb-5 text-lg font-semibold">Histórico</h2>
-            <InspectionTimeline :history="inspection.history" />
-        </section>
+        <div v-else-if="active_tab === 'history'" class="print-hidden mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.3fr)_minmax(20rem,0.7fr)]">
+            <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Rastreabilidade</p>
+                <h2 class="mt-2 text-xl font-semibold text-slate-950">Histórico de status</h2>
+                <div class="mt-6">
+                    <InspectionTimeline :history="content.items || []" />
+                </div>
+            </section>
+            <aside class="space-y-4">
+                <Link v-if="content.previous_inspection" :href="content.previous_inspection.show_url" class="block rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-teal-300">
+                    <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Inspeção anterior</p>
+                    <h3 class="mt-2 font-semibold text-teal-700">{{ content.previous_inspection.number }}</h3>
+                    <p class="mt-1 text-sm text-slate-500">{{ content.previous_inspection.status_label }}</p>
+                </Link>
+                <article v-for="nextInspection in (content.next_inspections || [])" :key="nextInspection.id" class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Reinspeção vinculada</p>
+                    <Link :href="nextInspection.show_url" class="mt-2 block font-semibold text-teal-700">{{ nextInspection.number }}</Link>
+                </article>
+            </aside>
+        </div>
+
+        <div v-else-if="active_tab === 'report'" class="mt-6">
+            <div class="print-hidden mb-5 flex flex-wrap items-center justify-between gap-3">
+                <ProvisionalDataNotice class="max-w-3xl flex-1" title="Prévia de demonstração" message="O documento final ainda não foi gerado. Conteúdo e parâmetros técnicos permanecem provisórios." compact />
+                <div class="max-w-sm">
+                    <div class="flex gap-2">
+                        <button v-if="content.print_enabled" type="button" class="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500" @click="printReport">
+                            Imprimir prévia
+                        </button>
+                        <button type="button" disabled aria-describedby="pdf-disabled-reason" class="cursor-not-allowed rounded-xl border border-slate-300 bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-400" :title="content.pdf_disabled_reason">
+                            Gerar PDF
+                        </button>
+                    </div>
+                    <p id="pdf-disabled-reason" class="mt-2 text-xs leading-5 text-slate-500">{{ content.pdf_disabled_reason }}</p>
+                </div>
+            </div>
+
+            <article class="report-document mx-auto max-w-5xl overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-xl shadow-slate-950/10">
+                <header class="relative overflow-hidden bg-slate-950 px-6 py-10 text-white sm:px-10 sm:py-14">
+                    <div class="absolute -right-16 -top-24 h-72 w-72 rounded-full border-[50px] border-teal-400/10"></div>
+                    <div class="relative">
+                        <p class="text-xs font-bold uppercase tracking-[0.22em] text-teal-300">{{ content.cover?.eyebrow }}</p>
+                        <h2 class="mt-5 max-w-3xl text-3xl font-semibold tracking-tight sm:text-5xl">{{ content.cover?.title }}</h2>
+                        <p class="mt-4 text-lg text-slate-300">{{ content.cover?.equipment_tag }} · {{ content.cover?.equipment_name }}</p>
+                        <dl class="mt-10 grid gap-5 border-t border-white/10 pt-6 sm:grid-cols-3">
+                            <div><dt class="text-xs uppercase tracking-wider text-slate-500">Cliente</dt><dd class="mt-1 font-medium">{{ content.cover?.client }}</dd></div>
+                            <div><dt class="text-xs uppercase tracking-wider text-slate-500">Inspeção</dt><dd class="mt-1 font-medium">{{ content.cover?.inspection_type }} · {{ content.cover?.inspected_on }}</dd></div>
+                            <div><dt class="text-xs uppercase tracking-wider text-slate-500">Revisão</dt><dd class="mt-1 font-medium">{{ content.cover?.revision }}</dd></div>
+                        </dl>
+                    </div>
+                </header>
+
+                <div class="space-y-10 px-6 py-8 sm:px-10 sm:py-12">
+                    <section class="grid gap-5 rounded-3xl bg-slate-50 p-5 sm:grid-cols-[auto_1fr] sm:p-7">
+                        <CivilClassificationBadge :code="content.executive_summary?.criticality?.code" :label="content.executive_summary?.criticality?.label" large />
+                        <div>
+                            <h3 class="text-xl font-semibold text-slate-950">Resumo executivo</h3>
+                            <p class="mt-2 font-medium leading-6 text-slate-800">{{ content.executive_summary?.headline }}</p>
+                            <p class="mt-2 text-sm leading-6 text-slate-500">{{ content.executive_summary?.description }}</p>
+                        </div>
+                    </section>
+
+                    <ReportSection index="01" title="Avarias e avaliações CIVIL" content-class="mt-5 space-y-4">
+                        <article v-for="defect in reportDefects" :key="defect.id" class="break-inside-avoid rounded-2xl border border-slate-200 p-4">
+                            <div class="flex flex-wrap items-start justify-between gap-3">
+                                <div><p class="text-xs font-bold uppercase tracking-wider text-teal-700">{{ defect.code }}</p><h4 class="mt-1 font-semibold text-slate-950">{{ defect.title }}</h4></div>
+                                <CivilClassificationBadge :code="defect.classification?.code" :historical="defect.classification?.historical" />
+                            </div>
+                            <p class="mt-3 text-sm leading-6 text-slate-600">{{ defect.assessment?.comment || defect.origin_description }}</p>
+                            <p class="mt-2 text-sm font-medium text-slate-800">Recomendação: {{ defect.assessment?.recommendation || 'Acompanhar conforme programação técnica.' }}</p>
+                        </article>
+                    </ReportSection>
+
+                    <ReportSection index="02" title="Registro fotográfico" content-class="mt-5 grid gap-4 sm:grid-cols-2">
+                        <article v-for="(photo, index) in reportEvidence" :key="photo.id" class="break-inside-avoid overflow-hidden rounded-2xl border border-slate-200">
+                            <div class="relative aspect-[4/3] bg-gradient-to-br from-slate-300 via-slate-400 to-slate-600">
+                                <span class="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,.12)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.12)_1px,transparent_1px)] bg-[size:32px_32px]"></span>
+                                <span class="absolute bottom-3 right-3 rounded-lg bg-slate-950/70 px-2 py-1 text-xs font-bold text-white">{{ String(index + 1).padStart(2, '0') }}</span>
+                                <span class="absolute left-3 top-3 rounded-full bg-white/90 px-2 py-1 text-[10px] font-bold uppercase text-slate-700">Ilustrativa</span>
+                            </div>
+                            <div class="p-3"><p class="font-semibold text-slate-900">{{ photo.title }}</p><p class="mt-1 text-xs text-slate-500">{{ photo.caption }}</p></div>
+                        </article>
+                    </ReportSection>
+
+                    <section class="grid gap-8 sm:grid-cols-2">
+                        <ReportSection index="03" title="Responsabilidade técnica" content-class="mt-4">
+                            <ul class="space-y-3"><li v-for="item in reportResponsibles" :key="`${item.user.id}-${item.responsibility}`"><p class="font-medium text-slate-900">{{ item.user.name }}</p><p class="text-sm text-slate-500">{{ item.responsibility_label }}</p></li></ul>
+                        </ReportSection>
+                        <ReportSection index="04" title="Documentos de referência" content-class="mt-4">
+                            <ul class="space-y-3"><li v-for="item in reportDocuments" :key="item.id"><p class="font-medium text-slate-900">{{ item.document.title }}</p><p class="text-sm text-slate-500">Revisão {{ item.document.revision || '—' }}</p></li></ul>
+                        </ReportSection>
+                    </section>
+                </div>
+
+                <footer class="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-6 py-5 text-xs text-slate-500 sm:px-10">
+                    <span>{{ content.cover?.provider || 'Vistoria Serviços de Inspeção Ltda.' }}</span>
+                    <span>{{ content.revision }} · Prévia de demonstração</span>
+                </footer>
+            </article>
+        </div>
     </AppLayout>
 </template>
+
+<style>
+@media print {
+    body {
+        background: white !important;
+    }
+
+    body * {
+        visibility: hidden !important;
+    }
+
+    .report-document,
+    .report-document * {
+        visibility: visible !important;
+    }
+
+    .report-document {
+        position: absolute;
+        inset: 0 auto auto 0;
+        width: 100%;
+        max-width: none !important;
+        border: 0 !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+    }
+
+    .break-inside-avoid {
+        break-inside: avoid;
+    }
+}
+</style>

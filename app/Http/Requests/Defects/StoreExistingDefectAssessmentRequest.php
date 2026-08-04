@@ -7,6 +7,7 @@ namespace App\Http\Requests\Defects;
 use App\Enums\DefectAssessmentCondition;
 use App\Enums\DefectAssessmentStatus;
 use App\Models\Defect;
+use App\Models\DefectAssessment;
 use App\Models\Inspection;
 use App\Support\TextNormalizer;
 use Illuminate\Foundation\Http\FormRequest;
@@ -21,7 +22,7 @@ final class StoreExistingDefectAssessmentRequest extends FormRequest
 
         return $inspection instanceof Inspection
             && $defect instanceof Defect
-            && ($this->user()?->can('create', [\App\Models\DefectAssessment::class, $inspection, $defect]) ?? false);
+            && ($this->user()?->can('create', [DefectAssessment::class, $inspection, $defect]) ?? false);
     }
 
     protected function prepareForValidation(): void

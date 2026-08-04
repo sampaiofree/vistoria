@@ -7,6 +7,8 @@ namespace Tests\Feature\Dashboard;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
 use App\Enums\UserAccountType;
+use App\Models\Defect;
+use App\Models\DefectAssessment;
 use App\Models\Equipment;
 use App\Models\Inspection;
 use App\Models\InspectionResponsible;
@@ -143,6 +145,69 @@ final class DashboardPagesTest extends TestCase
                     ->has('my_inspections', 0)
                     ->has('workflow_summary', 0)
                     ->has('recent_activities', 0);
+            });
+    }
+
+    public function test_dashboard_features_the_current_reinspection_with_real_progress_and_equipment_link(): void
+    {
+        $organization = Organization::factory()->create();
+        $user = User::factory()->create([
+            'organization_id' => $organization->id,
+            'account_type' => UserAccountType::CompanyAdmin->value,
+        ]);
+        $equipment = Equipment::factory()->create([
+            'organization_id' => $organization->id,
+            'tag' => 'U03-06VT002',
+            'normalized_tag' => 'U03-06VT002',
+            'name' => 'Ventilador principal',
+        ]);
+        $previous = Inspection::factory()->forEquipment($equipment)->create([
+            'number' => 'INS-2025-000001',
+            'status' => InspectionStatus::Released,
+            'released_at' => now()->subYear(),
+            'created_by' => $user->id,
+        ]);
+        $current = Inspection::factory()->forEquipment($equipment, $previous)->create([
+            'number' => 'INS-2026-000001',
+            'status' => InspectionStatus::InProgress,
+            'service_order' => 'OS-2026-0815',
+            'started_at' => now()->subHour(),
+            'created_by' => $user->id,
+        ]);
+
+        InspectionResponsible::factory()
+            ->forInspection($current, $user)
+            ->primary()
+            ->create([
+                'responsibility' => InspectionResponsibility::Preparer,
+                'assigned_by' => $user->id,
+            ]);
+
+        $firstDefect = Defect::factory()->forEquipment($equipment, $previous)->create([
+            'code' => 'VT002-CV-001',
+            'sequence_number' => 1,
+        ]);
+        $secondDefect = Defect::factory()->forEquipment($equipment, $previous)->create([
+            'code' => 'VT002-CV-002',
+            'sequence_number' => 2,
+        ]);
+
+        DefectAssessment::factory()->forDefect($firstDefect, $current)->complete()->create();
+        DefectAssessment::factory()->forDefect($secondDefect, $current)->draft()->create();
+
+        $this->actingAs($user)
+            ->get('/dashboard')
+            ->assertOk()
+            ->assertInertia(function (Assert $page) use ($current, $equipment): void {
+                $page
+                    ->where('featured_inspection.public_id', $current->public_id)
+                    ->where('featured_inspection.inspection_type', 'reinspection')
+                    ->where('featured_inspection.equipment.tag', 'U03-06VT002')
+                    ->where('featured_inspection.equipment.show_url', route('equipments.show', $equipment))
+                    ->where('featured_inspection.progress.completed', 1)
+                    ->where('featured_inspection.progress.total', 2)
+                    ->where('featured_inspection.progress.percentage', 50)
+                    ->where('featured_inspection.show_url', route('inspections.show', $current));
             });
     }
 

@@ -4,11 +4,16 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Equipments;
 
+use App\Enums\InspectionStatus;
 use App\Enums\UserAccountType;
 use App\Models\Area;
 use App\Models\Client;
 use App\Models\ClientUnit;
+use App\Models\Defect;
+use App\Models\DefectAssessment;
 use App\Models\Equipment;
+use App\Models\EquipmentDocument;
+use App\Models\Inspection;
 use App\Models\Organization;
 use App\Models\Subarea;
 use App\Models\User;
@@ -386,6 +391,78 @@ final class EquipmentCrudTest extends TestCase
                 'status' => 'active',
             ])
             ->assertSessionHasErrors('status');
+    }
+
+    public function test_equipment_show_exposes_executive_summary_current_inspection_and_history(): void
+    {
+        $organization = Organization::factory()->create();
+        $admin = User::factory()
+            ->for($organization)
+            ->create([
+                'account_type' => UserAccountType::CompanyAdmin->value,
+            ]);
+
+        [$client, $unit, $area, $subarea] = $this->createActiveHierarchy($organization);
+        $equipment = Equipment::factory()
+            ->inStructure($client, $unit, $area, $subarea)
+            ->create([
+                'tag' => 'U03-06VT002',
+                'normalized_tag' => 'U03-06VT002',
+            ]);
+        $previous = Inspection::factory()->forEquipment($equipment)->create([
+            'number' => 'INS-2025-000001',
+            'status' => InspectionStatus::Released,
+            'inspected_on' => now()->subYear(),
+            'created_at' => now()->subYear(),
+        ]);
+        $current = Inspection::factory()->forEquipment($equipment, $previous)->create([
+            'number' => 'INS-2026-000001',
+            'status' => InspectionStatus::InProgress,
+            'service_order' => 'OS-2026-0815',
+            'scheduled_for' => now()->toDateString(),
+            'started_at' => now()->subHour(),
+            'created_at' => now()->subHour(),
+        ]);
+
+        $criticalDefect = Defect::factory()->forEquipment($equipment, $previous)->create([
+            'code' => 'VT002-CV-001',
+            'sequence_number' => 1,
+            'title' => 'Fissura longitudinal no pedestal de concreto',
+        ]);
+        $pendingDefect = Defect::factory()->forEquipment($equipment, $previous)->create([
+            'code' => 'VT002-CV-002',
+            'sequence_number' => 2,
+            'title' => 'Falha de selagem entre base e piso',
+        ]);
+
+        DefectAssessment::factory()->forDefect($criticalDefect, $current)->complete()->create();
+        DefectAssessment::factory()->forDefect($pendingDefect, $current)->draft()->create();
+        EquipmentDocument::factory()->forEquipment($equipment)->create([
+            'uploaded_by' => $admin->id,
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('equipments.show', $equipment))
+            ->assertOk()
+            ->assertInertia(function (Assert $page) use ($current, $previous): void {
+                $page
+                    ->component('Equipments/Show')
+                    ->where('executive_summary.criticality.value', 'CV-2')
+                    ->where('executive_summary.criticality.is_provisional', true)
+                    ->where('executive_summary.active_defects', 2)
+                    ->where('executive_summary.inspections', 2)
+                    ->where('executive_summary.current_documents', 1)
+                    ->where('current_inspection.public_id', $current->public_id)
+                    ->where('current_inspection.progress.completed', 1)
+                    ->where('current_inspection.progress.total', 2)
+                    ->where('current_inspection.progress.percentage', 50)
+                    ->where('current_inspection.show_url', route('inspections.show', $current))
+                    ->has('inspection_history', 2)
+                    ->where('inspection_history.0.public_id', $current->public_id)
+                    ->where('inspection_history.0.is_current', true)
+                    ->where('inspection_history.1.public_id', $previous->public_id)
+                    ->where('inspection_history.1.is_current', false);
+            });
     }
 
     public function test_member_cannot_update_equipment_or_change_status(): void

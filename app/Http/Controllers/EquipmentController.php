@@ -7,8 +7,10 @@ use App\Actions\Equipments\CreateEquipment;
 use App\Actions\Equipments\DeactivateEquipment;
 use App\Actions\Equipments\DecommissionEquipment;
 use App\Actions\Equipments\UpdateEquipment;
+use App\Enums\DefectStatus;
 use App\Enums\EquipmentDocumentType;
 use App\Enums\EquipmentStatus;
+use App\Enums\InspectionStatus;
 use App\Http\Controllers\Concerns\ResolvesTenantStructure;
 use App\Http\Requests\Equipments\StoreEquipmentRequest;
 use App\Http\Requests\Equipments\UpdateEquipmentRequest;
@@ -18,7 +20,9 @@ use App\Models\Client;
 use App\Models\ClientUnit;
 use App\Models\Equipment;
 use App\Models\EquipmentDocument;
+use App\Models\Inspection;
 use App\Models\Subarea;
+use App\Services\Demo\ViewFirstDemoPresenter;
 use App\Services\Tenancy\TenantContext;
 use App\Support\TextNormalizer;
 use Illuminate\Http\RedirectResponse;
@@ -153,6 +157,7 @@ final class EquipmentController extends Controller
         TenantContext $tenant,
         Request $request,
         Equipment $equipment,
+        ViewFirstDemoPresenter $demoPresenter,
     ): InertiaResponse {
         $equipment = $this->tenantEquipment($tenant, $equipment);
 
@@ -165,6 +170,27 @@ final class EquipmentController extends Controller
             'subarea',
             'documents.uploader',
         ]);
+
+        $equipment->loadCount([
+            'inspections',
+            'currentDocuments',
+            'defects as active_defects_count' => fn ($query) => $query
+                ->where('status', DefectStatus::Active->value),
+        ]);
+
+        $currentInspection = $equipment->inspections()
+            ->whereNotIn('status', [
+                InspectionStatus::Released->value,
+                InspectionStatus::Canceled->value,
+            ])
+            ->orderByDesc('created_at')
+            ->first();
+
+        $inspectionHistory = $equipment->inspections()
+            ->limit(8)
+            ->get();
+
+        $demoEquipment = $demoPresenter->equipment($equipment);
 
         return Inertia::render('Equipments/Show', [
             'equipment' => $this->equipmentSummaryPayload($equipment),
@@ -192,6 +218,25 @@ final class EquipmentController extends Controller
                 ],
             'documents' => $equipment->documents
                 ->map(fn (EquipmentDocument $document): array => $this->equipmentDocumentPayload($document))
+                ->values()
+                ->all(),
+            'executive_summary' => [
+                'criticality' => $demoEquipment['criticality'],
+                'active_defects' => (int) $equipment->active_defects_count,
+                'inspections' => (int) $equipment->inspections_count,
+                'current_documents' => (int) $equipment->current_documents_count,
+            ],
+            'current_inspection' => $currentInspection === null
+                ? null
+                : $this->equipmentInspectionPayload(
+                    $currentInspection,
+                    $demoPresenter->progress($currentInspection),
+                ),
+            'inspection_history' => $inspectionHistory
+                ->map(fn (Inspection $inspection): array => $this->equipmentInspectionHistoryPayload(
+                    $inspection,
+                    $currentInspection,
+                ))
                 ->values()
                 ->all(),
             'document_types' => EquipmentDocumentType::options(),
@@ -565,6 +610,52 @@ final class EquipmentController extends Controller
             'decommissioned_at' => $equipment->decommissioned_at?->toDateTimeString(),
             'decommission_reason' => $equipment->decommission_reason,
             'show_url' => route('equipments.show', $equipment),
+        ];
+    }
+
+    /**
+     * @param  array{completed:int,total:int,percentage:int}  $progress
+     * @return array{public_id:string,number:string,inspection_type:string,inspection_type_label:string,status:string,status_label:string,service_order:?string,scheduled_for:?string,inspected_on:?string,progress:array{completed:int,total:int,percentage:int},show_url:string}
+     */
+    private function equipmentInspectionPayload(Inspection $inspection, array $progress): array
+    {
+        return [
+            'public_id' => $inspection->public_id,
+            'number' => $inspection->number ?? 'Inspeção',
+            'inspection_type' => $inspection->inspection_type->value,
+            'inspection_type_label' => $inspection->inspection_type->label(),
+            'status' => $inspection->status->value,
+            'status_label' => $inspection->status->label(),
+            'service_order' => $inspection->service_order,
+            'scheduled_for' => $inspection->scheduled_for?->format('d/m/Y'),
+            'inspected_on' => $inspection->inspected_on?->format('d/m/Y'),
+            'progress' => $progress,
+            'show_url' => route('inspections.show', $inspection),
+        ];
+    }
+
+    /**
+     * @return array{public_id:string,number:string,inspection_type_label:string,status:string,status_label:string,date_label:string,is_current:bool,show_url:string}
+     */
+    private function equipmentInspectionHistoryPayload(
+        Inspection $inspection,
+        ?Inspection $currentInspection,
+    ): array {
+        $dateLabel = match (true) {
+            $inspection->inspected_on !== null => 'Inspecionada em '.$inspection->inspected_on->format('d/m/Y'),
+            $inspection->scheduled_for !== null => 'Programada para '.$inspection->scheduled_for->format('d/m/Y'),
+            default => 'Criada em '.($inspection->created_at?->format('d/m/Y') ?? '—'),
+        };
+
+        return [
+            'public_id' => $inspection->public_id,
+            'number' => $inspection->number ?? 'Inspeção',
+            'inspection_type_label' => $inspection->inspection_type->label(),
+            'status' => $inspection->status->value,
+            'status_label' => $inspection->status->label(),
+            'date_label' => $dateLabel,
+            'is_current' => $currentInspection?->is($inspection) === true,
+            'show_url' => route('inspections.show', $inspection),
         ];
     }
 

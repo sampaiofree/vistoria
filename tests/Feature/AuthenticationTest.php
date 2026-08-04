@@ -12,7 +12,11 @@ class AuthenticationTest extends TestCase
 
     public function test_login_page_is_visible(): void
     {
-        $this->get('/login')->assertOk();
+        $this->get('/login')
+            ->assertOk()
+            ->assertSee('Boas-vindas ao Vistoria')
+            ->assertDontSee('admin@vistoria.test')
+            ->assertDontSee('Conta local');
     }
 
     public function test_valid_credentials_log_the_user_in(): void

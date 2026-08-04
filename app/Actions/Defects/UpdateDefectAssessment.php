@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Actions\Defects;
 
 use App\Enums\DefectAssessmentStatus;
+use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
@@ -94,8 +95,8 @@ final class UpdateDefectAssessment
 
         if (! $inspection->hasAnyResponsibilityForUser(
             $actor,
-            \App\Enums\InspectionResponsibility::Inspector,
-            \App\Enums\InspectionResponsibility::Preparer,
+            InspectionResponsibility::Inspector,
+            InspectionResponsibility::Preparer,
         )) {
             throw ValidationException::withMessages([
                 'actor' => 'O usuário não está autorizado a editar avaliações nesta inspeção.',

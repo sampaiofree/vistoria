@@ -2,11 +2,11 @@
 
 use App\Http\Controllers\AreaController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
-use App\Http\Controllers\DefectController;
-use App\Http\Controllers\DefectAssessmentController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\ClientUnitController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\DefectAssessmentController;
+use App\Http\Controllers\DefectController;
 use App\Http\Controllers\EquipmentController;
 use App\Http\Controllers\EquipmentDocumentController;
 use App\Http\Controllers\InspectionController;
@@ -89,6 +89,21 @@ Route::middleware([
         Route::get('inspections/{inspection}', [InspectionController::class, 'show'])
             ->name('inspections.show');
 
+        Route::get('inspections/{inspection}/defects', [InspectionController::class, 'defects'])
+            ->name('inspections.defects');
+
+        Route::get('inspections/{inspection}/photos', [InspectionController::class, 'photos'])
+            ->name('inspections.photos');
+
+        Route::get('inspections/{inspection}/documents', [InspectionController::class, 'documents'])
+            ->name('inspections.documents');
+
+        Route::get('inspections/{inspection}/history', [InspectionController::class, 'history'])
+            ->name('inspections.history');
+
+        Route::get('inspections/{inspection}/report-preview', [InspectionController::class, 'reportPreview'])
+            ->name('inspections.report-preview');
+
         Route::post(
             'inspections/{inspection}/defects',
             [DefectController::class, 'store'],
@@ -167,6 +182,11 @@ Route::middleware([
 
         Route::get('defects/{defect}', [DefectController::class, 'show'])
             ->name('defects.show');
+
+        Route::get(
+            'defect-assessments/{defectAssessment}',
+            [DefectAssessmentController::class, 'show'],
+        )->name('defect-assessments.show');
 
         Route::patch(
             'defect-assessments/{defectAssessment}',

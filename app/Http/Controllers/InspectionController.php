@@ -22,6 +22,7 @@ use App\Models\InspectionReferenceDocument;
 use App\Models\InspectionResponsible;
 use App\Models\InspectionStatusHistory;
 use App\Models\User;
+use App\Services\Demo\ViewFirstDemoPresenter;
 use App\Services\Tenancy\TenantContext;
 use App\Support\TextNormalizer;
 use Illuminate\Http\RedirectResponse;
@@ -166,6 +167,62 @@ final class InspectionController extends Controller
         TenantContext $tenant,
         Request $request,
         Inspection $inspection,
+        ViewFirstDemoPresenter $presenter,
+    ): InertiaResponse {
+        return $this->renderHub($tenant, $request, $inspection, $presenter, 'overview');
+    }
+
+    public function defects(
+        TenantContext $tenant,
+        Request $request,
+        Inspection $inspection,
+        ViewFirstDemoPresenter $presenter,
+    ): InertiaResponse {
+        return $this->renderHub($tenant, $request, $inspection, $presenter, 'defects');
+    }
+
+    public function photos(
+        TenantContext $tenant,
+        Request $request,
+        Inspection $inspection,
+        ViewFirstDemoPresenter $presenter,
+    ): InertiaResponse {
+        return $this->renderHub($tenant, $request, $inspection, $presenter, 'photos');
+    }
+
+    public function documents(
+        TenantContext $tenant,
+        Request $request,
+        Inspection $inspection,
+        ViewFirstDemoPresenter $presenter,
+    ): InertiaResponse {
+        return $this->renderHub($tenant, $request, $inspection, $presenter, 'documents');
+    }
+
+    public function history(
+        TenantContext $tenant,
+        Request $request,
+        Inspection $inspection,
+        ViewFirstDemoPresenter $presenter,
+    ): InertiaResponse {
+        return $this->renderHub($tenant, $request, $inspection, $presenter, 'history');
+    }
+
+    public function reportPreview(
+        TenantContext $tenant,
+        Request $request,
+        Inspection $inspection,
+        ViewFirstDemoPresenter $presenter,
+    ): InertiaResponse {
+        return $this->renderHub($tenant, $request, $inspection, $presenter, 'report');
+    }
+
+    private function renderHub(
+        TenantContext $tenant,
+        Request $request,
+        Inspection $inspection,
+        ViewFirstDemoPresenter $presenter,
+        string $activeTab,
     ): InertiaResponse {
         $inspection = $this->tenantInspection($tenant, $inspection);
 
@@ -178,6 +235,7 @@ final class InspectionController extends Controller
             'equipment.defects.assessments.creator',
             'equipment.defects.assessments.previousAssessment.inspection',
             'equipment.defects.assessments.previousAssessment.creator',
+            'equipment.defects.firstInspection',
             'equipment.defects.draftAssessments.previousAssessment.inspection',
             'equipment.defects.draftAssessments.previousAssessment.creator',
             'equipment.defects.latestAssessment.inspection',
@@ -186,6 +244,7 @@ final class InspectionController extends Controller
             'nextInspections.equipment',
             'responsibles.user',
             'referenceDocuments.document.uploader',
+            'referenceDocuments.actor',
             'statusHistories.actor',
         ]);
 
@@ -194,9 +253,14 @@ final class InspectionController extends Controller
         $canUpdatePlanned = $request->user()->can('updatePlanned', $inspection);
         $canCreateDefects = $request->user()->can('create', [Defect::class, $inspection]);
         $transitions = $this->availableTransitions($request, $inspection);
+        $viewFirstPayload = $presenter->inspection(
+            $inspection,
+            $request->user(),
+            $this->inspectionDetailPayload($request, $inspection),
+            $activeTab,
+        );
 
-        return Inertia::render('Inspections/Show', [
-            'inspection' => $this->inspectionDetailPayload($inspection),
+        return Inertia::render('Inspections/Show', array_merge($viewFirstPayload, [
             'capabilities' => [
                 'update_planned' => $canUpdatePlanned
                     ? [
@@ -231,11 +295,12 @@ final class InspectionController extends Controller
                 : [],
             'transitions' => $transitions,
             'index_url' => route('inspections.index'),
-        ]);
+        ]));
     }
 
     public function edit(
         TenantContext $tenant,
+        Request $request,
         Inspection $inspection,
     ): InertiaResponse {
         $inspection = $this->tenantInspection($tenant, $inspection);
@@ -249,7 +314,7 @@ final class InspectionController extends Controller
         ]);
 
         return Inertia::render('Inspections/Edit', [
-            'inspection' => $this->inspectionDetailPayload($inspection),
+            'inspection' => $this->inspectionDetailPayload($request, $inspection),
             'action' => route('inspections.update', $inspection),
             'cancel_url' => route('inspections.show', $inspection),
             'inspection_types' => InspectionType::options(),
@@ -413,7 +478,7 @@ final class InspectionController extends Controller
     /**
      * @return array{id:int, public_id:string, number:?string, inspection_type:string, type:string, inspection_type_label:string, status:string, status_label:string, scheduled_for:?string, scheduled_at:?string, equipment:array{id:int, public_id:string, tag:string, defect_code_prefix:?string, name:string, show_url:string}, defects:array<int, array{id:int, public_id:string, code:string, title:string, origin_description:?string, category:string, category_label:string, status:string, status_label:string, sequence_number:int, latest_assessment:?array{id:int, public_id:string, condition:string, condition_label:string, status:string, status_label:string, assessed_at:?string}, show_url:string}>, previous_inspection:?array{id:int, public_id:string, number:?string, inspection_type:string, type:string, status:string, show_url:string}, responsibles:array<int, array{id:int, public_id:string, name:string, responsibility:string, responsibility_label:string, is_primary:bool, assigned_at:?string, completed_at:?string, user:array{id:int, public_id:string, name:string}, set_primary_url:string, destroy_url:string}>, reference_documents:array<int, array{id:int, created_at:string, document:array{id:int, public_id:string, document_group:string, document_type:string, document_type_label:string, title:string, document_number:?string, revision:?string, description:?string, original_name:string, mime_type:string, extension:?string, size:int, checksum:string, is_current:bool, status:string, status_label:string, issued_at:?string, created_at:?string, updated_at:?string, download_url:string, show_url:string, uploaded_by:?array{id:int, public_id:string, name:string}}, added_by:?array{id:int, public_id:string, name:string}, delete_url:string}>, reference_document_ids:array<int, int>, history:array<int, array{id:int, from_status:?string, to_status:string, reason:?string, justification:?string, created_at:string, user:?array{id:int, public_id:string, name:string}}>, context_snapshot:array<string, mixed>, snapshot_version:int}
      */
-    private function inspectionDetailPayload(Inspection $inspection): array
+    private function inspectionDetailPayload(Request $request, Inspection $inspection): array
     {
         return [
             'id' => $inspection->id,

@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace App\Services\Defects;
 
 use App\Enums\DefectAssessmentStatus;
+use App\Enums\InspectionStatus;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
 use App\Models\Inspection;
-use App\Enums\InspectionStatus;
 
 final class ResolvePreviousDefectAssessment
 {

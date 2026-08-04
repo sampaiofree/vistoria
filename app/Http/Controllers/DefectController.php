@@ -13,6 +13,7 @@ use App\Models\Inspection;
 use App\Services\Tenancy\TenantContext;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 
@@ -94,8 +95,14 @@ final class DefectController extends Controller
             $request->validated(),
         );
 
+        $assessment = DefectAssessment::query()
+            ->forOrganization($tenant->id())
+            ->where('defect_id', $defect->getKey())
+            ->where('inspection_id', $inspection->getKey())
+            ->firstOrFail();
+
         return redirect()
-            ->route('defects.show', $defect)
+            ->route('defect-assessments.show', $assessment)
             ->with('success', 'Avaria criada.');
     }
 
@@ -170,7 +177,7 @@ final class DefectController extends Controller
     }
 
     /**
-     * @return \Illuminate\Support\Collection<int, DefectAssessment>
+     * @return Collection<int, DefectAssessment>
      */
     private function completedDefectAssessments(Defect $defect)
     {

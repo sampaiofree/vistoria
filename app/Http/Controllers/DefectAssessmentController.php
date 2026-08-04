@@ -14,12 +14,32 @@ use App\Http\Requests\Defects\UpdateDefectAssessmentRequest;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
 use App\Models\Inspection;
+use App\Services\Demo\ViewFirstDemoPresenter;
 use App\Services\Tenancy\TenantContext;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Inertia\Inertia;
+use Inertia\Response as InertiaResponse;
 
 final class DefectAssessmentController extends Controller
 {
     use ResolvesTenantStructure;
+
+    public function show(
+        TenantContext $tenant,
+        Request $request,
+        DefectAssessment $defectAssessment,
+        ViewFirstDemoPresenter $presenter,
+    ): InertiaResponse {
+        $defectAssessment = $this->tenantDefectAssessment($tenant, $defectAssessment);
+
+        $this->authorize('view', $defectAssessment);
+
+        return Inertia::render(
+            'DefectAssessments/Show',
+            $presenter->assessment($defectAssessment, $request->user()),
+        );
+    }
 
     public function store(
         StoreExistingDefectAssessmentRequest $request,
@@ -33,7 +53,7 @@ final class DefectAssessmentController extends Controller
 
         $this->authorize('create', [DefectAssessment::class, $inspection, $defect]);
 
-        $action->handle(
+        $assessment = $action->handle(
             $request->user(),
             $inspection,
             $defect,
@@ -41,7 +61,7 @@ final class DefectAssessmentController extends Controller
         );
 
         return redirect()
-            ->route('inspections.show', $inspection)
+            ->route('defect-assessments.show', $assessment)
             ->with('success', 'Avaliação registrada.');
     }
 
@@ -63,7 +83,7 @@ final class DefectAssessmentController extends Controller
         );
 
         return redirect()
-            ->route('defects.show', $defectAssessment->defect)
+            ->route('defect-assessments.show', $defectAssessment)
             ->with('success', 'Avaliação atualizada.');
     }
 
@@ -85,7 +105,7 @@ final class DefectAssessmentController extends Controller
         );
 
         return redirect()
-            ->route('defects.show', $defectAssessment->defect)
+            ->route('defect-assessments.show', $defectAssessment)
             ->with('success', 'Avaliação concluída.');
     }
 }

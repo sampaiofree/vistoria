@@ -284,13 +284,13 @@ final class DefectRoutesTest extends TestCase
 
         $secondInspection->refresh();
 
-        $this->actingAs($admin)->post(route('inspections.defects.assessments.store', [$secondInspection, $defect]), [
+        $storeResponse = $this->actingAs($admin)->post(route('inspections.defects.assessments.store', [$secondInspection, $defect]), [
             'condition' => DefectAssessmentCondition::Repaired->value,
             'location_description' => 'Parte inferior',
             'comment' => 'Avaria reparada na reinspeção.',
             'recommendation' => 'Manter monitoramento.',
             'assessment_action' => 'complete',
-        ])->assertRedirect();
+        ]);
 
         $defect->refresh();
 
@@ -298,6 +298,8 @@ final class DefectRoutesTest extends TestCase
             ->where('defect_id', $defect->id)
             ->where('inspection_id', $secondInspection->id)
             ->firstOrFail();
+
+        $storeResponse->assertRedirect(route('defect-assessments.show', $secondAssessment));
 
         $this->assertSame($firstAssessment->id, $secondAssessment->previous_assessment_id);
         $this->assertSame(DefectAssessmentCondition::Repaired->value, $secondAssessment->condition->value);
@@ -311,7 +313,7 @@ final class DefectRoutesTest extends TestCase
             'recommendation' => 'Manter monitoramento.',
             'reason' => null,
             'internal_notes' => 'Voltou para rascunho.',
-        ])->assertRedirect();
+        ])->assertRedirect(route('defect-assessments.show', $secondAssessment));
 
         $secondAssessment->refresh();
         $defect->refresh();
@@ -327,7 +329,7 @@ final class DefectRoutesTest extends TestCase
             'recommendation' => 'Manter monitoramento.',
             'reason' => null,
             'internal_notes' => 'Concluída após revisão.',
-        ])->assertRedirect();
+        ])->assertRedirect(route('defect-assessments.show', $secondAssessment));
 
         $secondAssessment->refresh();
         $defect->refresh();

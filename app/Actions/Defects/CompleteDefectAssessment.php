@@ -4,11 +4,9 @@ declare(strict_types=1);
 
 namespace App\Actions\Defects;
 
-use App\Enums\DefectAssessmentCondition;
 use App\Enums\DefectAssessmentStatus;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
-use App\Models\Defect;
 use App\Models\DefectAssessment;
 use App\Models\Inspection;
 use App\Models\User;

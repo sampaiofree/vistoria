@@ -56,6 +56,7 @@ Nas colunas de dimensão, **Concluída** significa que aquela dimensão terminou
 | 05 | `05-EQUIPAMENTOS-E-DOCUMENTOS.md` | Criar equipamentos, TAGs, desenhos e documentos | Concluída | Concluída | Concluída | Concluído |
 | 06 | `06-INSPECOES-E-FLUXO.md` | Criar inspeções, responsáveis, estados e histórico | Concluída | Concluída | Concluída | Concluído |
 | 06A | `06A-DASHBOARD-E-NAVEGACAO.md` | Criar dashboard operacional, shell e navegação principal | Concluída | Concluída | Concluída | Concluído |
+| 06B | `06B-VIEW-FIRST-DEMO.md` | Entregar o fluxo visual completo e repetível para apresentação | Concluída | Concluída | Concluída | Em validação — commit pendente |
 | 07 | `07-AVARIAS-E-REINSPECOES.md` | Modelar avarias permanentes e avaliações históricas | Concluída | Parcial | Parcial | Em validação |
 | 08 | `08-FOTOS-E-ARMAZENAMENTO.md` | Definir captura, compressão, upload e armazenamento | Concluída | Pendente | Pendente | Documentado |
 | 09 | `09-CLASSIFICACAO-CIVIL-GUT.md` | Implementar regras GUT, CV, danos e recomendações | Concluída | Pendente | Pendente | Documentado |
@@ -98,7 +99,7 @@ Um documento só muda para **Concluído** quando:
 
 A documentação deve refletir o sistema implementado. Quando uma regra mudar, o documento correspondente deve ser alterado no mesmo commit do código.
 
-## Próximo documento
+## Fechamento consolidado até 06A
 
 Os módulos 05, 06 e 06A foram consolidados em 30/07/2026. O corte entrega:
 
@@ -120,4 +121,27 @@ Evidências do fechamento:
 - dashboard conferida em 1440, 1280, 1024, 768 e 375 px, sem overflow horizontal do documento;
 - regressão visual conferida nas páginas de inspeções, equipamentos e clientes.
 
-O próximo passo do MVP é seguir com `07-AVARIAS-E-REINSPECOES.md`, ampliando a cobertura do fluxo de avarias e reinspeções já iniciado com a identidade permanente e o histórico de avaliações por inspeção.
+## Corte demonstrativo 06B
+
+O `06B-VIEW-FIRST-DEMO.md` foi aplicado em 04/08/2026 para preparar a apresentação local à Samarco. O corte entrega:
+
+- fluxo `Login → Dashboard → Equipamento → Inspeção → Avarias → Avaliação CIVIL → Fotografias → Relatório`;
+- hub de inspeção com seis abas e URLs próprias;
+- avaliação dedicada com persistência dos campos reais e parâmetros demonstrativos somente leitura;
+- cenário local idempotente com duas inspeções, sete avarias, documento privado e progresso `6/7`;
+- placeholders fotográficos neutros, viewer acessível e prévia HTML imprimível;
+- isolamento multiempresa e autorização nas novas rotas.
+
+Evidências do corte:
+
+- `composer validate --strict --no-check-publish`, `vendor/bin/pint --test` e `npm run build` aprovados;
+- `php artisan test`: 105 testes, 104 aprovados, 1 ignorado e 1.479 assertions;
+- seeder executado duas vezes sem duplicatas e cenário restaurado após teste de escrita;
+- Chrome validado em 1440, 1280, 1024, 768 e 375 px, sem overflow horizontal ou erros no console;
+- filtros, abas, viewer, teclado, persistência, impressão e bloqueio explicado do PDF conferidos.
+
+O 06B permanece `Em validação` apenas porque o registro em commit ainda está pendente. Os módulos 08, 09 e 11 continuam documentados ou pendentes e não são considerados implementados por este corte.
+
+## Próximo documento
+
+O próximo passo do MVP continua sendo `07-AVARIAS-E-REINSPECOES.md`, substituindo progressivamente os dados demonstrativos pelos contratos definitivos sem refazer a experiência aprovada no 06B.

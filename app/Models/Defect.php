@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Models;
 
-use App\Enums\DefectCategory;
 use App\Enums\DefectAssessmentStatus;
+use App\Enums\DefectCategory;
 use App\Enums\DefectStatus;
 use App\Enums\InspectionStatus;
 use App\Models\Concerns\BelongsToOrganization;

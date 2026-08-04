@@ -7,6 +7,7 @@ use App\Enums\InspectionStatus;
 use App\Models\Inspection;
 use App\Models\InspectionStatusHistory;
 use App\Models\User;
+use App\Services\Demo\ViewFirstDemoPresenter;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -14,8 +15,10 @@ use Inertia\Response as InertiaResponse;
 
 final class DashboardController extends Controller
 {
-    public function index(Request $request): InertiaResponse
-    {
+    public function index(
+        Request $request,
+        ViewFirstDemoPresenter $demoPresenter,
+    ): InertiaResponse {
         $user = $request->user();
         $user->loadMissing('organization');
 
@@ -47,6 +50,7 @@ final class DashboardController extends Controller
                 'my_inspections' => [],
                 'workflow_summary' => [],
                 'recent_activities' => [],
+                'featured_inspection' => null,
             ]);
         }
 
@@ -128,7 +132,81 @@ final class DashboardController extends Controller
                 'dashboard-recent-activities',
                 true,
             ),
+            'featured_inspection' => $this->featuredInspection(
+                $organizationId,
+                $userId,
+                $companySummary,
+                $demoPresenter,
+            ),
         ]);
+    }
+
+    /**
+     * @return null|array{
+     *     public_id:string,
+     *     number:string,
+     *     inspection_type:string,
+     *     inspection_type_label:string,
+     *     status:string,
+     *     status_label:string,
+     *     service_order:?string,
+     *     client:array{name:string},
+     *     unit:array{name:string},
+     *     equipment:array{name:string,tag:string,show_url:string},
+     *     progress:array{completed:int,total:int,percentage:int},
+     *     show_url:string
+     * }
+     */
+    private function featuredInspection(
+        int $organizationId,
+        int $userId,
+        bool $companySummary,
+        ViewFirstDemoPresenter $demoPresenter,
+    ): ?array {
+        $query = Inspection::query()
+            ->forOrganization($organizationId)
+            ->with([
+                'equipment.client:id,public_id,name',
+                'equipment.unit:id,public_id,name',
+            ])
+            ->where('status', InspectionStatus::InProgress->value);
+
+        if (! $companySummary) {
+            $query->whereHas('responsibles', fn ($responsibles) => $responsibles->where('user_id', $userId));
+        }
+
+        $inspection = $query
+            ->orderByRaw('CASE WHEN previous_inspection_id IS NULL THEN 1 ELSE 0 END')
+            ->orderByDesc('started_at')
+            ->orderByDesc('created_at')
+            ->first();
+
+        if ($inspection === null) {
+            return null;
+        }
+
+        return [
+            'public_id' => $inspection->public_id,
+            'number' => $inspection->number ?? 'Inspeção em andamento',
+            'inspection_type' => $inspection->inspection_type->value,
+            'inspection_type_label' => $inspection->inspection_type->label(),
+            'status' => $inspection->status->value,
+            'status_label' => $inspection->status->label(),
+            'service_order' => $inspection->service_order,
+            'client' => [
+                'name' => $inspection->equipment->client?->name ?? '—',
+            ],
+            'unit' => [
+                'name' => $inspection->equipment->unit?->name ?? '—',
+            ],
+            'equipment' => [
+                'name' => $inspection->equipment->name,
+                'tag' => $inspection->equipment->tag,
+                'show_url' => route('equipments.show', $inspection->equipment),
+            ],
+            'progress' => $demoPresenter->progress($inspection),
+            'show_url' => route('inspections.show', $inspection),
+        ];
     }
 
     private function priorityCounts(

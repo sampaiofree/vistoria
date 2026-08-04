@@ -30,6 +30,16 @@ composer run dev
 
 As credenciais previsíveis do `DevelopmentSeeder` são criadas somente nos ambientes `local` e `testing`.
 
+## Demonstração View First
+
+O cenário visual do documento 06B pode ser restaurado sem recriar o banco:
+
+```bash
+php artisan db:seed --class=ViewFirstDemoSeeder
+```
+
+Use `demo@vistoria.test` com a senha `password`. O fluxo parte da dashboard e percorre o equipamento `U03-06VT002`, a reinspeção atual, as avarias, a avaliação CIVIL, as evidências demonstrativas e a prévia do relatório. Consulte o roteiro completo em [`docs/06B-VIEW-FIRST-DEMO.md`](docs/06B-VIEW-FIRST-DEMO.md).
+
 ## Qualidade
 
 ```bash
@@ -48,5 +58,6 @@ A suíte local usa SQLite em memória para feedback rápido. As migrations, o ro
 - equipamentos e documentos: implementados, validados e integrados ao shell operacional;
 - inspeções e fluxo: implementados com responsáveis, estados, histórico, referências e telas operacionais;
 - dashboard e navegação: implementados e validados entre 375 e 1440 px;
-- avarias e reinspeções: próximo módulo funcional;
-- fotos, GUT, revisão, PDF e deploy: planejados no roadmap.
+- View First 06B: fluxo visual local implementado e validado para apresentação, com dados provisórios explicitamente identificados;
+- avarias e reinspeções: implementação parcial, com identidade permanente e avaliações reais já reutilizadas pelo 06B;
+- upload de fotos, cálculo oficial de GUT/CV, revisão, PDF e deploy: permanecem planejados no roadmap.

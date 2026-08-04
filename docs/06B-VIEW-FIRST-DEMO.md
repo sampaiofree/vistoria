@@ -866,37 +866,37 @@ Conferir:
 
 ### 12.1 Backend
 
-- [ ] usuário autenticado acessa o fluxo;
-- [ ] usuário de outra organização não acessa o equipamento;
-- [ ] usuário de outra organização não acessa a inspeção;
-- [ ] usuário de outra organização não acessa a avaria;
-- [ ] rotas retornam somente dados necessários;
-- [ ] seed é idempotente;
-- [ ] relações da demonstração respeitam organização e equipamento;
-- [ ] superadministrador não recebe fluxo operacional sem contexto válido.
+- [x] usuário autenticado acessa o fluxo;
+- [x] usuário de outra organização não acessa o equipamento;
+- [x] usuário de outra organização não acessa a inspeção;
+- [x] usuário de outra organização não acessa a avaria;
+- [x] rotas retornam somente dados necessários;
+- [x] seed é idempotente;
+- [x] relações da demonstração respeitam organização e equipamento;
+- [x] superadministrador não recebe fluxo operacional sem contexto válido.
 
 ### 12.2 Frontend
 
-- [ ] páginas compilam sem erro;
-- [ ] navegação entre as sete telas funciona;
-- [ ] estados vazios são exibidos corretamente;
-- [ ] estados de demonstração são identificados;
-- [ ] avaliação funciona em 375 px;
-- [ ] galeria funciona em tela pequena;
-- [ ] prévia do relatório não possui overflow horizontal;
-- [ ] foco de teclado permanece visível;
-- [ ] botões sem backend real não fingem persistência definitiva.
+- [x] páginas compilam sem erro;
+- [x] navegação entre as sete telas funciona;
+- [x] estados vazios são exibidos corretamente;
+- [x] estados de demonstração são identificados;
+- [x] avaliação funciona em 375 px;
+- [x] galeria funciona em tela pequena;
+- [x] prévia do relatório não possui overflow horizontal;
+- [x] foco de teclado permanece visível;
+- [x] botões sem backend real não fingem persistência definitiva.
 
 ### 12.3 Regressão
 
-- [ ] dashboard continua funcionando;
-- [ ] listagem de clientes continua funcionando;
-- [ ] listagem de equipamentos continua funcionando;
-- [ ] listagem de inspeções continua funcionando;
-- [ ] shell existente não sofre regressão;
-- [ ] build do Vite passa;
-- [ ] Pint passa;
-- [ ] testes existentes continuam passando.
+- [x] dashboard continua funcionando;
+- [x] listagem de clientes continua funcionando;
+- [x] listagem de equipamentos continua funcionando;
+- [x] listagem de inspeções continua funcionando;
+- [x] shell existente não sofre regressão;
+- [x] build do Vite passa;
+- [x] Pint passa;
+- [x] testes existentes continuam passando.
 
 ---
 
@@ -1050,40 +1050,40 @@ Mitigação:
 
 ### Planejamento
 
-- [ ] equipamento de demonstração definido;
-- [ ] inspeção de demonstração definida;
-- [ ] conjunto de avarias definido;
-- [ ] classificações provisórias definidas;
-- [ ] roteiro da apresentação definido.
+- [x] equipamento de demonstração definido;
+- [x] inspeção de demonstração definida;
+- [x] conjunto de avarias definido;
+- [x] classificações provisórias definidas;
+- [x] roteiro da apresentação definido.
 
 ### Interface
 
-- [ ] dashboard integrado ao fluxo;
-- [ ] detalhes do equipamento concluídos;
-- [ ] detalhes da inspeção concluídos;
-- [ ] lista de avarias concluída;
-- [ ] avaliação CIVIL concluída;
-- [ ] galeria concluída;
-- [ ] prévia do relatório concluída.
+- [x] dashboard integrado ao fluxo;
+- [x] detalhes do equipamento concluídos;
+- [x] detalhes da inspeção concluídos;
+- [x] lista de avarias concluída;
+- [x] avaliação CIVIL concluída;
+- [x] galeria concluída;
+- [x] prévia do relatório concluída.
 
 ### Dados
 
-- [ ] dados reais reutilizados;
-- [ ] dados provisórios centralizados;
-- [ ] seed idempotente;
-- [ ] cenário restaurável;
-- [ ] integridade entre organização, equipamento, inspeção e avaria validada.
+- [x] dados reais reutilizados;
+- [x] dados provisórios centralizados;
+- [x] seed idempotente;
+- [x] cenário restaurável;
+- [x] integridade entre organização, equipamento, inspeção e avaria validada.
 
 ### Qualidade
 
-- [ ] responsividade validada;
-- [ ] acessibilidade básica validada;
-- [ ] isolamento multiempresa validado;
-- [ ] testes existentes passando;
-- [ ] novos testes passando;
-- [ ] Pint aprovado;
-- [ ] build aprovado;
-- [ ] documentação atualizada.
+- [x] responsividade validada;
+- [x] acessibilidade básica validada;
+- [x] isolamento multiempresa validado;
+- [x] testes existentes passando;
+- [x] novos testes passando;
+- [x] Pint aprovado;
+- [x] build aprovado;
+- [x] documentação atualizada.
 
 ---
 
@@ -1116,6 +1116,111 @@ Essa fatia entrega mais valor visual com menos risco de retrabalho.
 Não iniciar pela prévia do relatório.
 
 Sem uma estrutura clara de inspeção e avarias, a prévia obrigaria a inventar contratos que depois precisariam ser refeitos.
+
+---
+
+## 17. Estado implementado em 04/08/2026
+
+O corte View First foi implementado dentro da aplicação existente, sem migrations dos módulos 08, 09 ou 11 e sem criar tabelas paralelas de demonstração.
+
+### 17.1 Entregas efetivas
+
+- login Blade alinhado à identidade marinho/teal, sem credenciais expostas na interface;
+- dashboard com destaque da reinspeção em andamento e acesso ao equipamento;
+- equipamento em visão executiva, com criticidade provisória, métricas reais, inspeção atual, progresso, histórico e documentos;
+- inspeção transformada em hub com URLs próprias para visão geral, avarias, fotografias, documentos, histórico e relatório;
+- sete avarias reais e avaliações persistidas, com progresso inicial de `6/7`;
+- avaliação CIVIL dedicada, com comparação histórica, campos reais editáveis e dados técnicos provisórios somente leitura;
+- galeria com placeholders neutros, estados `pending`, `processing`, `ready` e `failed`, viewer por teclado e indicação de imagem ilustrativa;
+- prévia executiva HTML com impressão pelo navegador e PDF oficial explicitamente desabilitado;
+- componentes reutilizáveis para métricas, progresso, abas, badges, GUT, cards de avaria, galeria, avisos e seções do relatório;
+- presenter único em `App\Services\Demo\ViewFirstDemoPresenter` para GUT, CV, caracterização, quantitativos, evidências e relatório provisórios;
+- `ViewFirstDemoSeeder` idempotente, restrito a `local/testing` e acompanhado de documento PDF privado válido;
+- correção do payload de inspeção para receber o `Request` necessário ao calcular permissões das avarias;
+- correção temporal para impedir que avarias futuras apareçam em inspeções anteriores ou que avarias reparadas sejam herdadas como pendências futuras.
+
+### 17.2 Rotas de leitura entregues
+
+Todas as rotas abaixo exigem autenticação, organização ativa, tenant resolvido e autorização do recurso:
+
+```text
+GET /inspections/{inspection}/defects
+GET /inspections/{inspection}/photos
+GET /inspections/{inspection}/documents
+GET /inspections/{inspection}/history
+GET /inspections/{inspection}/report-preview
+GET /defect-assessments/{defectAssessment}
+```
+
+As escritas reais de avaliação retornam à página dedicada:
+
+```text
+PATCH /defect-assessments/{defectAssessment}
+POST  /defect-assessments/{defectAssessment}/complete
+```
+
+### 17.3 Restaurar o cenário local
+
+O comando pode ser executado quantas vezes forem necessárias, sem `migrate:fresh`:
+
+```bash
+php artisan db:seed --class=ViewFirstDemoSeeder
+```
+
+Credenciais exclusivas de `local/testing`:
+
+```text
+E-mail: demo@vistoria.test
+Senha:  password
+Perfil: Ricardo Almeida — Diretor Técnico
+```
+
+O cenário restaurado contém:
+
+```text
+Organização: Vistoria Serviços de Inspeção Ltda.
+Cliente: Samarco Mineração S.A.
+Equipamento: U03-06VT002 — Ventilador de processo
+Inspeção anterior: INS-2025-000001 — Liberada — 6/6
+Reinspeção atual: INS-2026-000002 — Em inspeção — 6/7
+Documento: T000000-S-2PO006 — revisão R-04
+```
+
+### 17.4 Roteiro da apresentação
+
+1. Entrar com a conta de demonstração.
+2. Na dashboard, destacar o card da reinspeção e abrir `Ver equipamento`.
+3. No equipamento, apresentar criticidade, métricas, ciclo atual, histórico e documento; acionar `Continuar reinspeção`.
+4. Na visão geral da inspeção, mostrar progresso, prioridades, distribuição por condição e CV, responsáveis e documento de referência.
+5. Abrir `Avarias`, demonstrar os cinco filtros locais e entrar em `Continuar avaliação` na avaria nova.
+6. Na avaliação, explicar a separação entre campos persistidos e parâmetros provisórios; opcionalmente salvar o rascunho e recarregar a página para comprovar persistência.
+7. Voltar ao hub, abrir `Fotografias`, mostrar os quatro estados e ampliar uma evidência disponível.
+8. Passar por `Documentos` e `Histórico` para demonstrar rastreabilidade.
+9. Encerrar em `Relatório`, percorrer a prévia, demonstrar `Imprimir prévia` e explicar o bloqueio de `Gerar PDF`.
+10. Se algum dado real tiver sido alterado durante a apresentação, executar novamente o seeder para restaurar `6/7`.
+
+### 17.5 Evidências de validação
+
+- `composer validate --strict --no-check-publish`: aprovado;
+- `vendor/bin/pint --test`: aprovado;
+- `php artisan test`: 105 testes, 104 aprovados, 1 ignorado e 1.479 assertions;
+- `npm run build`: aprovado, com 624 módulos transformados; permanece apenas o aviso não bloqueante do pacote opcional `fontaine`;
+- seeder executado duas vezes no banco local, mantendo uma organização, duas inspeções, sete avarias e seis avaliações atuais concluídas;
+- testes automatizados cobrem autenticação, tenant, autorização, contratos Inertia, cenário vazio, histórico temporal, documento privado, idempotência e persistência somente dos campos reais;
+- fluxo conferido no Chrome em `1440`, `1280`, `1024`, `768` e `375` px, em oito páginas operacionais, sem overflow horizontal ou erros no console;
+- filtros conferidos com resultados reais, viewer conferido com foco inicial, contenção por `Tab`, fechamento por `Escape` e restauração de foco;
+- rascunho salvo, recarregado e restaurado pelo seeder;
+- mídia de impressão conferida com somente o relatório visível; PDF permaneceu desabilitado com motivo exposto.
+
+### 17.6 Limites preservados
+
+Continuam fora deste corte e não devem ser apresentados como concluídos:
+
+- upload e processamento reais de fotografias — módulo 08;
+- cálculo oficial e persistência de GUT/CV — módulo 09;
+- geração e armazenamento do PDF oficial — módulo 11.
+
+O estado geral do 06B permanece `Em validação` no roadmap até as alterações serem registradas em commit, conforme a regra global de andamento do projeto.
 
 ---
 
