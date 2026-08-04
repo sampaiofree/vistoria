@@ -33,9 +33,11 @@ use App\Models\InspectionStatusHistory;
 use App\Models\Organization;
 use App\Models\Subarea;
 use App\Models\User;
+use App\Services\Demo\ViewFirstCivilScenario;
 use App\Services\Defects\DefectSnapshotBuilder;
 use App\Services\Inspections\InspectionSnapshotBuilder;
 use App\Support\TextNormalizer;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
@@ -421,7 +423,7 @@ final class ViewFirstDemoSeeder extends Seeder
             'inspected_on' => '2026-08-03',
             'context_snapshot' => $snapshot,
             'snapshot_version' => InspectionSnapshotBuilder::VERSION,
-            'general_notes' => 'Reinspeção oficial de demonstração, com seis de sete avaliações concluídas.',
+            'general_notes' => 'Reinspeção oficial de demonstração, com treze de quatorze avaliações concluídas e um rascunho em aberto.',
             'started_at' => '2026-08-03 08:10:00',
             'field_completed_at' => null,
             'reviewed_at' => null,
@@ -591,12 +593,12 @@ final class ViewFirstDemoSeeder extends Seeder
     ): void {
         $definitions = $this->defectDefinitions();
 
-        foreach ($definitions as $index => $definition) {
-            $sequence = $index + 1;
-            $isNew = $definition['current_condition'] === DefectAssessmentCondition::New;
+        foreach ($definitions as $definition) {
+            $sequence = (int) $definition['sequence'];
+            $isNew = $definition['current_condition'] === DefectAssessmentCondition::New->value;
             $defect = Defect::query()->firstOrNew([
                 'organization_id' => $organization->id,
-                'code' => sprintf('VT009-CV-%03d', $sequence),
+                'code' => $definition['code'],
             ]);
             $this->ensurePublicId($defect);
             $defect->fill([
@@ -606,10 +608,10 @@ final class ViewFirstDemoSeeder extends Seeder
                 'sequence_number' => $sequence,
                 'title' => $definition['title'],
                 'origin_description' => $definition['origin_description'],
-                'status' => $definition['current_condition'] === DefectAssessmentCondition::Repaired
+                'status' => $definition['current_condition'] === DefectAssessmentCondition::Repaired->value
                     ? DefectStatus::Repaired
                     : DefectStatus::Active,
-                'repaired_at' => $definition['current_condition'] === DefectAssessmentCondition::Repaired
+                'repaired_at' => $definition['current_condition'] === DefectAssessmentCondition::Repaired->value
                     ? '2026-08-03 15:10:00'
                     : null,
                 'archived_at' => null,
@@ -627,30 +629,32 @@ final class ViewFirstDemoSeeder extends Seeder
                     'previous_assessment_id' => null,
                     'condition' => DefectAssessmentCondition::New,
                     'status' => DefectAssessmentStatus::Complete,
-                    'location_description' => $definition['previous_location'],
-                    'comment' => $definition['previous_comment'],
-                    'recommendation' => $definition['previous_recommendation'],
+                    'location_description' => $definition['previous_location'] ?? null,
+                    'comment' => $definition['previous_comment'] ?? null,
+                    'recommendation' => $definition['previous_recommendation'] ?? null,
                     'reason' => null,
                     'internal_notes' => null,
                     'defect_snapshot' => $snapshot,
                     'snapshot_version' => DefectSnapshotBuilder::VERSION,
-                    'assessed_at' => sprintf('2025-08-12 1%d:00:00', $sequence),
+                    'assessed_at' => CarbonImmutable::parse('2025-08-12 11:00:00')
+                        ->addMinutes(($sequence - 1) * 7)
+                        ->format('Y-m-d H:i:s'),
                     'created_by' => $inspector->id,
                     'updated_by' => $inspector->id,
                 ]);
             }
 
-            $isDraft = (bool) $definition['draft'];
+            $isDraft = (bool) ($definition['draft'] ?? false);
             $this->upsertAssessment($defect, $current, [
                 'previous_assessment_id' => $previousAssessment?->id,
                 'condition' => $definition['current_condition'],
                 'status' => $isDraft
                     ? DefectAssessmentStatus::Draft
                     : DefectAssessmentStatus::Complete,
-                'location_description' => $definition['current_location'],
-                'comment' => $definition['current_comment'],
-                'recommendation' => $definition['current_recommendation'],
-                'reason' => $definition['reason'],
+                'location_description' => $definition['current_location'] ?? null,
+                'comment' => $definition['current_comment'] ?? null,
+                'recommendation' => $definition['current_recommendation'] ?? null,
+                'reason' => $definition['reason'] ?? null,
                 'internal_notes' => null,
                 'defect_snapshot' => $isDraft
                     ? null
@@ -658,7 +662,9 @@ final class ViewFirstDemoSeeder extends Seeder
                 'snapshot_version' => DefectSnapshotBuilder::VERSION,
                 'assessed_at' => $isDraft
                     ? null
-                    : sprintf('2026-08-03 1%d:30:00', $sequence),
+                    : CarbonImmutable::parse('2026-08-03 11:30:00')
+                        ->addMinutes(($sequence - 1) * 7)
+                        ->format('Y-m-d H:i:s'),
                 'created_by' => $inspector->id,
                 'updated_by' => $inspector->id,
             ]);
@@ -697,99 +703,7 @@ final class ViewFirstDemoSeeder extends Seeder
      */
     private function defectDefinitions(): array
     {
-        return [
-            [
-                'title' => 'Fissura longitudinal no pedestal de concreto',
-                'origin_description' => 'Fissura identificada na face norte do pedestal durante a inspeção inicial.',
-                'previous_location' => 'Face norte do pedestal, eixo do motor, entre as cotas +0,10 m e +0,55 m.',
-                'previous_comment' => 'Fissura longitudinal com abertura média estimada em 0,4 mm e extensão de 0,85 m.',
-                'previous_recommendation' => 'Monitorar a abertura e executar selagem após avaliação da causa.',
-                'current_condition' => DefectAssessmentCondition::Worsened,
-                'current_location' => 'Face norte do pedestal, eixo do motor, entre as cotas +0,10 m e +0,70 m.',
-                'current_comment' => 'A abertura evoluiu e a fissura alcança aproximadamente 1,20 m de extensão.',
-                'current_recommendation' => 'Realizar avaliação estrutural e reparar a fissura em até 30 dias.',
-                'reason' => null,
-                'draft' => false,
-            ],
-            [
-                'title' => 'Desplacamento do cobrimento na base do motor',
-                'origin_description' => 'Perda localizada de cobrimento observada durante a reinspeção.',
-                'previous_location' => null,
-                'previous_comment' => null,
-                'previous_recommendation' => null,
-                'current_condition' => DefectAssessmentCondition::New,
-                'current_location' => 'Canto sudoeste da base do motor, junto ao chumbador CH-04.',
-                'current_comment' => 'Desplacamento localizado, com área aproximada de 0,18 m² e armadura ainda não exposta.',
-                'current_recommendation' => 'Remover o material solto, verificar a aderência e recompor o cobrimento.',
-                'reason' => null,
-                'draft' => true,
-            ],
-            [
-                'title' => 'Corrosão aparente nos chumbadores',
-                'origin_description' => 'Oxidação superficial nos chumbadores de fixação do conjunto.',
-                'previous_location' => 'Chumbadores CH-01 a CH-04 da base do motor.',
-                'previous_comment' => 'Corrosão superficial sem perda de seção mensurável.',
-                'previous_recommendation' => 'Limpar e recompor o sistema de proteção anticorrosiva.',
-                'current_condition' => DefectAssessmentCondition::Unchanged,
-                'current_location' => 'Chumbadores CH-01 a CH-04 da base do motor.',
-                'current_comment' => 'Condição visual permanece estável, sem evidência de perda adicional de seção.',
-                'current_recommendation' => 'Programar limpeza mecânica e proteção anticorrosiva na próxima parada.',
-                'reason' => null,
-                'draft' => false,
-            ],
-            [
-                'title' => 'Falha de selagem entre base e piso',
-                'origin_description' => 'Descontinuidade no selante da interface entre a base e o piso industrial.',
-                'previous_location' => 'Perímetro leste e sul da base do ventilador.',
-                'previous_comment' => 'Selante ressecado e descontínuo em aproximadamente 2,4 m.',
-                'previous_recommendation' => 'Remover o selante deteriorado e refazer a vedação perimetral.',
-                'current_condition' => DefectAssessmentCondition::Unchanged,
-                'current_location' => 'Perímetro leste e sul da base do ventilador.',
-                'current_comment' => 'A falha permanece estável e sem intervenção registrada desde a inspeção anterior.',
-                'current_recommendation' => 'Refazer a selagem durante a próxima janela de manutenção.',
-                'reason' => null,
-                'draft' => false,
-            ],
-            [
-                'title' => 'Umidade superficial na canaleta adjacente',
-                'origin_description' => 'Manchas de umidade próximas à canaleta de drenagem.',
-                'previous_location' => 'Canaleta no lado leste do pedestal, trecho de 1,5 m.',
-                'previous_comment' => 'Umidade contínua e presença de depósitos superficiais.',
-                'previous_recommendation' => 'Verificar a drenagem e eliminar a origem da umidade.',
-                'current_condition' => DefectAssessmentCondition::Improved,
-                'current_location' => 'Canaleta no lado leste do pedestal, trecho residual de 0,5 m.',
-                'current_comment' => 'A área úmida foi reduzida após limpeza da canaleta e não há acúmulo de água.',
-                'current_recommendation' => 'Manter inspeção visual trimestral da drenagem.',
-                'reason' => null,
-                'draft' => false,
-            ],
-            [
-                'title' => 'Fissura capilar no bloco de fundação',
-                'origin_description' => 'Fissura capilar sem sinais de movimentação na face oeste.',
-                'previous_location' => 'Face oeste do bloco de fundação, cota +0,25 m.',
-                'previous_comment' => 'Fissura capilar com 0,35 m de extensão e abertura inferior a 0,2 mm.',
-                'previous_recommendation' => 'Selar e manter registro fotográfico para reinspeção.',
-                'current_condition' => DefectAssessmentCondition::Repaired,
-                'current_location' => 'Face oeste do bloco de fundação, cota +0,25 m.',
-                'current_comment' => 'Reparo executado, íntegro e sem recorrência visível da fissura.',
-                'current_recommendation' => 'Manter acompanhamento nas inspeções periódicas.',
-                'reason' => null,
-                'draft' => false,
-            ],
-            [
-                'title' => 'Região posterior do pedestal sem acesso',
-                'origin_description' => 'Região com acesso limitado por interferência operacional.',
-                'previous_location' => 'Face posterior do pedestal, sob a proteção mecânica.',
-                'previous_comment' => 'Inspeção visual parcial; não foram observadas anomalias no trecho acessível.',
-                'previous_recommendation' => 'Prever acesso integral na próxima parada programada.',
-                'current_condition' => DefectAssessmentCondition::NotInspected,
-                'current_location' => 'Face posterior do pedestal, sob a proteção mecânica.',
-                'current_comment' => 'A região permaneceu inacessível durante a atividade de campo.',
-                'current_recommendation' => 'Remover a interferência e reinspecionar durante a próxima parada.',
-                'reason' => 'A proteção mecânica não pôde ser removida com o equipamento em operação.',
-                'draft' => false,
-            ],
-        ];
+        return ViewFirstCivilScenario::findings();
     }
 
     private function restoreIfTrashed(Model $model): void

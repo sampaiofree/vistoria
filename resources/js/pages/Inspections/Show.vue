@@ -52,10 +52,14 @@ const filteredDefects = computed(() => defects.value.filter((defect) => {
 }));
 
 const reportSections = computed(() => props.content?.sections ?? []);
-const reportDefects = computed(() => reportSections.value.find((section) => section.key === 'defects')?.items ?? []);
 const reportEvidence = computed(() => reportSections.value.find((section) => section.key === 'evidence')?.items ?? []);
 const reportResponsibles = computed(() => reportSections.value.find((section) => section.key === 'responsibles')?.items ?? []);
 const reportDocuments = computed(() => reportSections.value.find((section) => section.key === 'documents')?.items ?? []);
+const reportLocations = computed(() => props.content?.locations ?? []);
+const reportQuantities = computed(() => props.content?.quantities ?? {});
+const reportValidation = computed(() => props.content?.validation ?? {});
+const reportGeneralAspects = computed(() => props.content?.general_aspects ?? []);
+const reportFindings = computed(() => props.content?.findings ?? []);
 
 const photoStatusLabels = {
     ready: 'Disponíveis',
@@ -384,6 +388,88 @@ function printReport() {
             </details>
         </div>
 
+        <div v-else-if="active_tab === 'locations'" class="print-hidden mt-6 space-y-6">
+            <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                <div class="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                        <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Localização técnica</p>
+                        <h2 class="mt-2 text-xl font-semibold text-slate-950">Mapa de localização das avarias</h2>
+                        <p class="mt-1 text-sm text-slate-500">Planta, croqui ou foto anotada ficam como base estática nesta etapa; o editor gráfico vem depois.</p>
+                    </div>
+                    <div class="flex flex-wrap gap-2 text-xs font-semibold text-slate-600">
+                        <span v-for="item in (content.legend || [])" :key="item.code" class="rounded-full bg-slate-100 px-3 py-1.5">
+                            {{ item.code }} · {{ item.label }}
+                        </span>
+                    </div>
+                </div>
+
+                <div class="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(24rem,0.85fr)]">
+                    <section class="rounded-3xl border border-slate-200 bg-slate-950 p-5 text-white shadow-sm sm:p-6">
+                        <div class="flex flex-wrap items-start justify-between gap-4">
+                            <div>
+                                <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-300">Planta / croqui</p>
+                                <h3 class="mt-2 text-lg font-semibold">Marcadores referenciados ao desenho</h3>
+                                <p class="mt-1 text-sm leading-6 text-slate-300">Desenho {{ content.items?.[0]?.drawing || inspection.drawing || '—' }} · {{ content.items?.length || 0 }} marcador(es) carregados.</p>
+                            </div>
+                            <span class="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-slate-200">
+                                {{ content.items?.[0]?.project || inspection.service_order || '—' }}
+                            </span>
+                        </div>
+                        <div class="mt-6 rounded-3xl border border-white/10 bg-white/5 p-5">
+                            <div class="grid gap-3 sm:grid-cols-2">
+                                <article v-for="item in (content.items || [])" :key="item.id" class="rounded-2xl border border-white/10 bg-slate-900/60 p-3">
+                                    <div class="flex items-start gap-3">
+                                        <span class="inline-flex h-9 min-w-9 items-center justify-center rounded-xl bg-teal-400/20 px-2 text-sm font-bold text-teal-200">
+                                            {{ item.marker }}
+                                        </span>
+                                        <div class="min-w-0">
+                                            <p class="text-sm font-semibold text-white">{{ item.title }}</p>
+                                            <p class="mt-1 text-xs leading-5 text-slate-300">{{ item.location }}</p>
+                                        </div>
+                                    </div>
+                                    <div class="mt-3 flex flex-wrap gap-2 text-[11px] font-semibold text-slate-300">
+                                        <span class="rounded-full bg-white/10 px-2.5 py-1">{{ item.project }}</span>
+                                        <span class="rounded-full bg-white/10 px-2.5 py-1">{{ item.element }}</span>
+                                        <span class="rounded-full bg-white/10 px-2.5 py-1">{{ item.photo_count }} foto(s)</span>
+                                    </div>
+                                </article>
+                            </div>
+                        </div>
+                    </section>
+
+                    <aside class="space-y-4">
+                        <article v-for="item in (content.items || [])" :key="`${item.id}-summary`" class="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+                            <div class="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                    <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">{{ item.marker }}</p>
+                                    <h3 class="mt-1 font-semibold text-slate-950">{{ item.title }}</h3>
+                                </div>
+                                <CivilClassificationBadge :code="item.classification?.code" :label="item.classification?.label" :historical="item.classification?.historical" />
+                            </div>
+                            <dl class="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+                                <div>
+                                    <dt class="text-xs font-bold uppercase tracking-wider text-slate-400">Localização</dt>
+                                    <dd class="mt-1 font-medium text-slate-900">{{ item.location }}</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-xs font-bold uppercase tracking-wider text-slate-400">Impacto</dt>
+                                    <dd class="mt-1 font-medium text-slate-900">{{ item.impact?.label || '—' }}</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-xs font-bold uppercase tracking-wider text-slate-400">GUT</dt>
+                                    <dd class="mt-1 font-medium text-slate-900">{{ item.gut?.score ?? '—' }}</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-xs font-bold uppercase tracking-wider text-slate-400">Fotos</dt>
+                                    <dd class="mt-1 font-medium text-slate-900">{{ item.photo_count }} · {{ item.photo_interval }}</dd>
+                                </div>
+                            </dl>
+                        </article>
+                    </aside>
+                </div>
+            </section>
+        </div>
+
         <div v-else-if="active_tab === 'photos'" class="print-hidden mt-6 space-y-6">
             <ProvisionalDataNotice :message="demo.photo_notice" />
             <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
@@ -495,43 +581,171 @@ function printReport() {
                 </header>
 
                 <div class="space-y-10 px-6 py-8 sm:px-10 sm:py-12">
+                    <div v-if="reportValidation.blocked" class="rounded-3xl border border-amber-200 bg-amber-50 p-5 text-amber-900 shadow-sm">
+                        <p class="text-xs font-bold uppercase tracking-[0.16em] text-amber-700">Emissão bloqueada</p>
+                        <p class="mt-2 text-sm leading-6">A prévia permanece visível, mas a exportação oficial está bloqueada até a validação técnica destes pontos:</p>
+                        <ul class="mt-3 space-y-1.5 text-sm leading-6">
+                            <li v-for="issue in reportValidation.issues" :key="issue">• {{ issue }}</li>
+                        </ul>
+                    </div>
+
                     <section class="grid gap-5 rounded-3xl bg-slate-50 p-5 sm:grid-cols-[auto_1fr] sm:p-7">
                         <CivilClassificationBadge :code="content.executive_summary?.criticality?.code" :label="content.executive_summary?.criticality?.label" large />
                         <div>
                             <h3 class="text-xl font-semibold text-slate-950">Resumo executivo</h3>
                             <p class="mt-2 font-medium leading-6 text-slate-800">{{ content.executive_summary?.headline }}</p>
                             <p class="mt-2 text-sm leading-6 text-slate-500">{{ content.executive_summary?.description }}</p>
+                            <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                                <div class="rounded-2xl bg-white p-3 shadow-sm">
+                                    <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Total</p>
+                                    <p class="mt-1 text-lg font-semibold text-slate-900">{{ content.executive_summary?.metrics?.total ?? '—' }}</p>
+                                </div>
+                                <div class="rounded-2xl bg-white p-3 shadow-sm">
+                                    <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Concluídas</p>
+                                    <p class="mt-1 text-lg font-semibold text-slate-900">{{ content.executive_summary?.metrics?.completed ?? '—' }}</p>
+                                </div>
+                                <div class="rounded-2xl bg-white p-3 shadow-sm">
+                                    <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Fotos</p>
+                                    <p class="mt-1 text-lg font-semibold text-slate-900">{{ content.executive_summary?.metrics?.photo_total ?? '—' }}</p>
+                                </div>
+                                <div class="rounded-2xl bg-white p-3 shadow-sm">
+                                    <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Quantidade</p>
+                                    <p class="mt-1 text-lg font-semibold text-slate-900">{{ content.executive_summary?.metrics?.quantity_total_label ?? '—' }}</p>
+                                </div>
+                            </div>
                         </div>
                     </section>
 
-                    <ReportSection index="01" title="Avarias e avaliações CIVIL" content-class="mt-5 space-y-4">
-                        <article v-for="defect in reportDefects" :key="defect.id" class="break-inside-avoid rounded-2xl border border-slate-200 p-4">
+                    <ReportSection index="01" title="Aspectos gerais" content-class="mt-5">
+                        <dl class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                            <div v-for="item in reportGeneralAspects" :key="item.label" class="rounded-2xl border border-slate-200 bg-white p-4">
+                                <dt class="text-[11px] font-bold uppercase tracking-wider text-slate-400">{{ item.label }}</dt>
+                                <dd class="mt-1 text-sm font-semibold text-slate-900">{{ item.value }}</dd>
+                            </div>
+                        </dl>
+                    </ReportSection>
+
+                    <ReportSection index="02" title="Mapa de localização" content-class="mt-5 space-y-4">
+                        <div class="grid gap-4 xl:grid-cols-2">
+                            <article v-for="location in reportLocations" :key="location.id" class="break-inside-avoid rounded-2xl border border-slate-200 p-4">
+                                <div class="flex flex-wrap items-start justify-between gap-3">
+                                    <div>
+                                        <p class="text-xs font-bold uppercase tracking-wider text-teal-700">{{ location.marker }}</p>
+                                        <h4 class="mt-1 font-semibold text-slate-950">{{ location.title }}</h4>
+                                    </div>
+                                    <CivilClassificationBadge :code="location.classification?.code" :historical="location.classification?.historical" />
+                                </div>
+                                <p class="mt-3 text-sm leading-6 text-slate-600">{{ location.location }}</p>
+                                <dl class="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+                                    <div>
+                                        <dt class="text-xs font-bold uppercase tracking-wider text-slate-400">Elemento</dt>
+                                        <dd class="mt-1 font-medium text-slate-900">{{ location.element }}</dd>
+                                    </div>
+                                    <div>
+                                        <dt class="text-xs font-bold uppercase tracking-wider text-slate-400">Impacto</dt>
+                                        <dd class="mt-1 font-medium text-slate-900">{{ location.impact?.label || '—' }}</dd>
+                                    </div>
+                                    <div>
+                                        <dt class="text-xs font-bold uppercase tracking-wider text-slate-400">GUT</dt>
+                                        <dd class="mt-1 font-medium text-slate-900">{{ location.gut?.score ?? '—' }}</dd>
+                                    </div>
+                                    <div>
+                                        <dt class="text-xs font-bold uppercase tracking-wider text-slate-400">Fotos</dt>
+                                        <dd class="mt-1 font-medium text-slate-900">{{ location.photo_count }} · {{ location.photo_interval }}</dd>
+                                    </div>
+                                </dl>
+                            </article>
+                        </div>
+                    </ReportSection>
+
+                    <ReportSection index="03" title="Avarias e avaliações CIVIL" content-class="mt-5 space-y-4">
+                        <article v-for="defect in reportFindings" :key="defect.id" class="break-inside-avoid rounded-2xl border border-slate-200 p-4">
                             <div class="flex flex-wrap items-start justify-between gap-3">
-                                <div><p class="text-xs font-bold uppercase tracking-wider text-teal-700">{{ defect.code }}</p><h4 class="mt-1 font-semibold text-slate-950">{{ defect.title }}</h4></div>
+                                <div>
+                                    <p class="text-xs font-bold uppercase tracking-wider text-teal-700">{{ defect.code }}</p>
+                                    <h4 class="mt-1 font-semibold text-slate-950">{{ defect.title }}</h4>
+                                </div>
                                 <CivilClassificationBadge :code="defect.classification?.code" :historical="defect.classification?.historical" />
                             </div>
-                            <p class="mt-3 text-sm leading-6 text-slate-600">{{ defect.assessment?.comment || defect.origin_description }}</p>
-                            <p class="mt-2 text-sm font-medium text-slate-800">Recomendação: {{ defect.assessment?.recommendation || 'Acompanhar conforme programação técnica.' }}</p>
+                            <p class="mt-3 text-sm leading-6 text-slate-600">{{ defect.location }}</p>
+                            <p class="mt-2 text-sm text-slate-500">{{ defect.project }} · {{ defect.item }} · {{ defect.element }}</p>
+                            <p class="mt-2 text-sm font-medium text-slate-800">Recomendação: {{ defect.recommendation || 'Acompanhar conforme programação técnica.' }}</p>
                         </article>
                     </ReportSection>
 
-                    <ReportSection index="02" title="Registro fotográfico" content-class="mt-5 grid gap-4 sm:grid-cols-2">
+                    <ReportSection index="04" title="Fichas fotográficas" content-class="mt-5 grid gap-4 sm:grid-cols-2">
                         <article v-for="(photo, index) in reportEvidence" :key="photo.id" class="break-inside-avoid overflow-hidden rounded-2xl border border-slate-200">
                             <div class="relative aspect-[4/3] bg-gradient-to-br from-slate-300 via-slate-400 to-slate-600">
                                 <span class="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,.12)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.12)_1px,transparent_1px)] bg-[size:32px_32px]"></span>
                                 <span class="absolute bottom-3 right-3 rounded-lg bg-slate-950/70 px-2 py-1 text-xs font-bold text-white">{{ String(index + 1).padStart(2, '0') }}</span>
-                                <span class="absolute left-3 top-3 rounded-full bg-white/90 px-2 py-1 text-[10px] font-bold uppercase text-slate-700">Ilustrativa</span>
+                                <span class="absolute left-3 top-3 rounded-full bg-white/90 px-2 py-1 text-[10px] font-bold uppercase text-slate-700">{{ photo.role_label || 'Ilustrativa' }}</span>
+                                <span class="absolute left-3 bottom-3 rounded-full bg-slate-950/70 px-2 py-1 text-[10px] font-bold uppercase text-white">{{ photo.photo_interval || '—' }}</span>
                             </div>
-                            <div class="p-3"><p class="font-semibold text-slate-900">{{ photo.title }}</p><p class="mt-1 text-xs text-slate-500">{{ photo.caption }}</p></div>
+                            <div class="p-3">
+                                <p class="font-semibold text-slate-900">{{ photo.title }}</p>
+                                <p class="mt-1 text-xs text-slate-500">{{ photo.caption }}</p>
+                            </div>
                         </article>
                     </ReportSection>
 
+                    <ReportSection index="05" title="Quantitativo consolidado" content-class="mt-5 space-y-4">
+                        <div class="grid gap-3 sm:grid-cols-3">
+                            <article class="rounded-2xl border border-slate-200 bg-white p-4">
+                                <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Total</p>
+                                <p class="mt-1 text-lg font-semibold text-slate-900">{{ reportQuantities.total_label || '—' }}</p>
+                            </article>
+                            <article class="rounded-2xl border border-slate-200 bg-white p-4">
+                                <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Exportável</p>
+                                <p class="mt-1 text-lg font-semibold text-slate-900">{{ reportQuantities.exportable_total_label || '—' }}</p>
+                            </article>
+                            <article class="rounded-2xl border border-slate-200 bg-white p-4">
+                                <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Unidade</p>
+                                <p class="mt-1 text-lg font-semibold text-slate-900">{{ reportQuantities.unit || '—' }}</p>
+                            </article>
+                        </div>
+                        <div class="overflow-x-auto rounded-2xl border border-slate-200">
+                            <table class="min-w-full divide-y divide-slate-200 text-sm">
+                                <thead class="bg-slate-50 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                                    <tr>
+                                        <th class="px-4 py-3">Classe</th>
+                                        <th class="px-4 py-3">Total</th>
+                                        <th class="px-4 py-3">Qtd.</th>
+                                        <th class="px-4 py-3">Unidade</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100 bg-white">
+                                    <tr v-for="item in (reportQuantities.by_class || [])" :key="item.code">
+                                        <td class="px-4 py-3">
+                                            <CivilClassificationBadge :code="item.code" :label="item.label" />
+                                        </td>
+                                        <td class="px-4 py-3 font-semibold text-slate-900">{{ item.total_label }}</td>
+                                        <td class="px-4 py-3 text-slate-600">{{ item.count }}</td>
+                                        <td class="px-4 py-3 text-slate-600">{{ item.unit }}</td>
+                                    </tr>
+                                    <tr v-if="!(reportQuantities.by_class || []).length">
+                                        <td colspan="4" class="px-4 py-6 text-center text-slate-500">Sem consolidado disponível.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </ReportSection>
+
                     <section class="grid gap-8 sm:grid-cols-2">
-                        <ReportSection index="03" title="Responsabilidade técnica" content-class="mt-4">
-                            <ul class="space-y-3"><li v-for="item in reportResponsibles" :key="`${item.user.id}-${item.responsibility}`"><p class="font-medium text-slate-900">{{ item.user.name }}</p><p class="text-sm text-slate-500">{{ item.responsibility_label }}</p></li></ul>
+                        <ReportSection index="06" title="Responsabilidade técnica" content-class="mt-4">
+                            <ul class="space-y-3">
+                                <li v-for="item in reportResponsibles" :key="`${item.user.id}-${item.responsibility}`">
+                                    <p class="font-medium text-slate-900">{{ item.user.name }}</p>
+                                    <p class="text-sm text-slate-500">{{ item.responsibility_label }}</p>
+                                </li>
+                            </ul>
                         </ReportSection>
-                        <ReportSection index="04" title="Documentos de referência" content-class="mt-4">
-                            <ul class="space-y-3"><li v-for="item in reportDocuments" :key="item.id"><p class="font-medium text-slate-900">{{ item.document.title }}</p><p class="text-sm text-slate-500">Revisão {{ item.document.revision || '—' }}</p></li></ul>
+                        <ReportSection index="07" title="Documentos de referência" content-class="mt-4">
+                            <ul class="space-y-3">
+                                <li v-for="item in reportDocuments" :key="item.id">
+                                    <p class="font-medium text-slate-900">{{ item.document.title }}</p>
+                                    <p class="text-sm text-slate-500">Revisão {{ item.document.revision || '—' }}</p>
+                                </li>
+                            </ul>
                         </ReportSection>
                     </section>
                 </div>

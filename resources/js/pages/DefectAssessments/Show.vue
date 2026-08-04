@@ -16,7 +16,20 @@ const props = defineProps({
     gut: { type: Object, default: null },
     characterization: { type: Array, default: () => [] },
     quantities: { type: Array, default: () => [] },
+    quantity_summary: { type: Object, default: () => ({}) },
     evidence: { type: Array, default: () => [] },
+    discipline: { type: String, default: '' },
+    discipline_label: { type: String, default: '' },
+    classification_family: { type: String, default: '' },
+    unit: { type: String, default: '' },
+    project: { type: String, default: '' },
+    drawing: { type: String, default: '' },
+    item: { type: String, default: '' },
+    element: { type: String, default: '' },
+    manifestation: { type: String, default: '' },
+    impact: { type: Object, default: () => ({}) },
+    photo_interval: { type: String, default: '' },
+    occurrence: { type: Object, default: () => ({}) },
     assessment_navigation: { type: Object, required: true },
     condition_options: { type: Array, default: () => [] },
     capabilities: { type: Object, default: () => ({}) },
@@ -36,6 +49,19 @@ const requiresReason = computed(() => ['not_located', 'not_inspected'].includes(
 const isComplete = computed(() => props.assessment.status === 'complete');
 const title = computed(() => props.assessment.defect?.code ?? 'Avaliação CIVIL');
 const subtitle = computed(() => `${props.assessment.defect?.equipment?.tag ?? ''} — ${props.assessment.defect?.title ?? ''}`);
+const quantityRows = computed(() => props.quantities ?? []);
+const quantitySummary = computed(() => props.quantity_summary ?? {});
+const impactSummary = computed(() => props.impact ?? {});
+const technicalContext = computed(() => ([
+    { label: 'Disciplina', value: props.discipline_label ?? 'Civil' },
+    { label: 'Família', value: props.classification_family ?? 'CV' },
+    { label: 'Projeto', value: props.project ?? '—' },
+    { label: 'Desenho', value: props.drawing ?? '—' },
+    { label: 'Item', value: props.item ?? '—' },
+    { label: 'Elemento', value: props.element ?? '—' },
+    { label: 'Manifestações', value: props.manifestation ?? '—' },
+    { label: 'Intervalo de fotos', value: props.photo_interval ?? '—' },
+]));
 
 const inputClass = 'mt-1.5 block min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100 disabled:cursor-not-allowed disabled:bg-slate-100';
 const labelClass = 'text-sm font-semibold text-slate-700';
@@ -141,41 +167,108 @@ function completeAssessment() {
                     </div>
                 </section>
 
-                <section class="grid gap-6 lg:grid-cols-[minmax(18rem,0.7fr)_minmax(0,1.3fr)]">
-                    <GutScoreCard :gut="gut" :classification="classification" />
-                    <article class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-                        <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">02 · Caracterização</p>
-                        <h2 class="mt-2 text-xl font-semibold text-slate-950">Leitura técnica</h2>
-                        <dl class="mt-5 grid gap-3 sm:grid-cols-2">
-                            <div v-for="item in characterization" :key="item.label" class="rounded-2xl bg-slate-50 p-4">
-                                <dt class="text-[11px] font-bold uppercase tracking-wider text-slate-400">{{ item.label }}</dt>
-                                <dd class="mt-1 text-sm font-semibold text-slate-900">{{ item.value }}</dd>
-                            </div>
-                        </dl>
-                    </article>
+                <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                    <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">02 · Projeto e localização</p>
+                    <h2 class="mt-2 text-xl font-semibold text-slate-950">Contexto estruturado da ocorrência</h2>
+                    <dl class="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                        <div v-for="item in technicalContext" :key="item.label" class="rounded-2xl bg-slate-50 p-4">
+                            <dt class="text-[11px] font-bold uppercase tracking-wider text-slate-400">{{ item.label }}</dt>
+                            <dd class="mt-1 text-sm font-semibold text-slate-900">{{ item.value }}</dd>
+                        </div>
+                    </dl>
                 </section>
 
                 <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-                    <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">03 · Quantitativos</p>
+                    <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">03 · Caracterização</p>
+                    <h2 class="mt-2 text-xl font-semibold text-slate-950">Leitura técnica</h2>
+                    <dl class="mt-5 grid gap-3 sm:grid-cols-2">
+                        <div v-for="item in characterization" :key="item.label" class="rounded-2xl bg-slate-50 p-4">
+                            <dt class="text-[11px] font-bold uppercase tracking-wider text-slate-400">{{ item.label }}</dt>
+                            <dd class="mt-1 text-sm font-semibold text-slate-900">{{ item.value }}</dd>
+                        </div>
+                    </dl>
+                </section>
+
+                <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                    <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">04 · Quantitativos</p>
                     <div class="mt-2 flex flex-wrap items-end justify-between gap-3">
                         <div>
                             <h2 class="text-xl font-semibold text-slate-950">Dimensão da manifestação</h2>
-                            <p class="mt-1 text-sm text-slate-500">Valores demonstrativos, preparados para futura persistência própria.</p>
+                            <p class="mt-1 text-sm text-slate-500">Comprimento, altura, largura, quantidade e volumes derivados no backend.</p>
                         </div>
                         <span class="rounded-full bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700">Somente leitura</span>
                     </div>
-                    <div class="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                        <div v-for="quantity in quantities" :key="`${quantity.label}-${quantity.unit}`" class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                            <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">{{ quantity.label }}</p>
-                            <p class="mt-2 text-xl font-semibold text-slate-950">{{ quantity.value }} <span class="text-sm font-medium text-slate-500">{{ quantity.unit }}</span></p>
+                    <div class="mt-5 overflow-hidden rounded-2xl border border-slate-200">
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full divide-y divide-slate-200 text-sm">
+                                <thead class="bg-slate-50 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                                    <tr>
+                                        <th class="px-4 py-3">Linha</th>
+                                        <th class="px-4 py-3">Compr.</th>
+                                        <th class="px-4 py-3">Altura</th>
+                                        <th class="px-4 py-3">Largura</th>
+                                        <th class="px-4 py-3">Qtd.</th>
+                                        <th class="px-4 py-3">Vol. unit.</th>
+                                        <th class="px-4 py-3">Vol. total</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100 bg-white">
+                                    <tr v-for="quantity in quantityRows" :key="`${quantity.label}-${quantity.unit_volume_label}`">
+                                        <td class="px-4 py-3 font-medium text-slate-900">{{ quantity.label }}</td>
+                                        <td class="px-4 py-3 text-slate-600">{{ quantity.length_label || quantity.value || '—' }}</td>
+                                        <td class="px-4 py-3 text-slate-600">{{ quantity.height_label || '—' }}</td>
+                                        <td class="px-4 py-3 text-slate-600">{{ quantity.width_label || '—' }}</td>
+                                        <td class="px-4 py-3 text-slate-600">{{ quantity.quantity ?? '—' }}</td>
+                                        <td class="px-4 py-3 text-slate-600">{{ quantity.unit_volume_label || quantity.unit || '—' }}</td>
+                                        <td class="px-4 py-3 font-semibold text-slate-900">{{ quantity.total_volume_label || quantity.unit_volume_label || '—' }}</td>
+                                    </tr>
+                                    <tr v-if="quantityRows.length === 0">
+                                        <td colspan="7" class="px-4 py-6 text-center text-slate-500">Não aplicável para esta condição.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
                         </div>
-                        <div v-if="quantities.length === 0" class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500">Não aplicável para esta condição.</div>
+                    </div>
+                    <div class="mt-4 grid gap-3 sm:grid-cols-3">
+                        <div class="rounded-2xl bg-slate-50 p-4">
+                            <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Total consolidado</p>
+                            <p class="mt-1 text-lg font-semibold text-slate-900">{{ quantitySummary.total_label || '—' }}</p>
+                        </div>
+                        <div class="rounded-2xl bg-slate-50 p-4">
+                            <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Linhas de medição</p>
+                            <p class="mt-1 text-lg font-semibold text-slate-900">{{ quantitySummary.line_count ?? quantityRows.length }}</p>
+                        </div>
+                        <div class="rounded-2xl bg-slate-50 p-4">
+                            <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Unidade</p>
+                            <p class="mt-1 text-lg font-semibold text-slate-900">{{ quantitySummary.unit || unit || '—' }}</p>
+                        </div>
                     </div>
                 </section>
 
+                <section class="grid gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(18rem,0.75fr)]">
+                    <article class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                        <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">05 · Impacto</p>
+                        <h2 class="mt-2 text-xl font-semibold text-slate-950">Classificação do efeito observado</h2>
+                        <div class="mt-5 rounded-2xl bg-slate-50 p-4">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <span class="rounded-full bg-slate-950 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-white">
+                                    {{ impactSummary.code || '—' }}
+                                </span>
+                                <span class="rounded-full bg-white px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-600 shadow-sm">
+                                    {{ impactSummary.label || 'Sem impacto direto' }}
+                                </span>
+                            </div>
+                            <p class="mt-3 text-sm leading-6 text-slate-700">
+                                {{ impactSummary.description || 'Classificação derivada da leitura técnica estruturada da ocorrência.' }}
+                            </p>
+                        </div>
+                    </article>
+                    <GutScoreCard :gut="gut" :classification="classification" />
+                </section>
+
                 <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-                    <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">04 · Registro técnico</p>
-                    <h2 class="mt-2 text-xl font-semibold text-slate-950">Comentário e recomendação</h2>
+                    <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">06 · Comentário e recomendação</p>
+                    <h2 class="mt-2 text-xl font-semibold text-slate-950">Registro técnico</h2>
                     <div class="mt-6 space-y-4">
                         <label class="block">
                             <span :class="labelClass">Comentário técnico</span>
@@ -204,7 +297,7 @@ function completeAssessment() {
                 <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
                     <div class="flex flex-wrap items-start justify-between gap-3">
                         <div>
-                            <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">05 · Evidências</p>
+                            <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">07 · Evidências</p>
                             <h2 class="mt-2 text-xl font-semibold text-slate-950">Registro fotográfico</h2>
                         </div>
                         <span class="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600">{{ evidence.length }} item(ns)</span>

@@ -82,7 +82,7 @@ onBeforeUnmount(() => {
 
 <template>
     <div>
-        <div v-if="photos.length" class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <div v-if="photos.length" class="grid gap-4 sm:grid-cols-2 xl:grid-cols-2">
             <article v-for="(photo, index) in photos" :key="photo.id ?? `${photo.title}-${index}`" class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                 <button
                     type="button"
@@ -94,13 +94,18 @@ onBeforeUnmount(() => {
                     <img v-if="photo.url" :src="photo.url" :alt="photo.caption || photo.title" class="h-full w-full object-cover">
                     <span v-else class="evidence-placeholder absolute inset-0" :class="visualClass(photo, index)" aria-hidden="true">
                         <span class="evidence-grid"></span>
-                        <span class="evidence-marker">{{ String(index + 1).padStart(2, '0') }}</span>
+                        <span class="evidence-marker">{{ String(photo.finding_sequence ?? index + 1).padStart(2, '0') }}</span>
                     </span>
-                    <span class="absolute left-3 top-3 rounded-full px-2.5 py-1 text-[11px] font-bold" :class="statusFor(photo).classes">
-                        {{ photo.status_label ?? statusFor(photo).label }}
-                    </span>
+                    <div class="absolute left-3 top-3 flex flex-wrap gap-2">
+                        <span class="rounded-full px-2.5 py-1 text-[11px] font-bold" :class="statusFor(photo).classes">
+                            {{ photo.status_label ?? statusFor(photo).label }}
+                        </span>
+                        <span class="rounded-full bg-slate-950/80 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-white">
+                            {{ photo.role_label ?? photo.role ?? 'Foto' }}
+                        </span>
+                    </div>
                     <span class="absolute bottom-3 left-3 rounded-lg bg-slate-950/80 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-white">
-                        Imagem ilustrativa
+                        {{ photo.photo_interval || 'Imagem ilustrativa' }}
                     </span>
                 </button>
                 <div class="p-4">
@@ -110,6 +115,10 @@ onBeforeUnmount(() => {
                             <p class="mt-1 text-sm leading-5 text-slate-500">{{ photo.caption || 'Sem legenda.' }}</p>
                         </div>
                         <span v-if="photo.is_primary" class="rounded-full bg-teal-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-teal-700">Principal</span>
+                    </div>
+                    <div class="mt-3 flex flex-wrap gap-2 text-[11px] font-semibold text-slate-500">
+                        <span class="rounded-full bg-slate-100 px-2.5 py-1">{{ photo.group_label || photo.finding_code || 'Ocorrência' }}</span>
+                        <span class="rounded-full bg-slate-100 px-2.5 py-1">{{ photo.photo_interval || '—' }}</span>
                     </div>
                     <p class="mt-3 text-xs text-slate-400">{{ photo.location || photo.captured_at || photo.type_label || 'Evidência demonstrativa' }}</p>
                 </div>
@@ -137,7 +146,15 @@ onBeforeUnmount(() => {
                                 <span class="evidence-grid"></span>
                                 <span class="evidence-marker evidence-marker-large">EVIDÊNCIA</span>
                             </span>
-                            <span class="absolute left-4 top-4 rounded-full px-3 py-1 text-xs font-bold" :class="statusMeta[modalStatus]?.classes">{{ activePhoto.status_label ?? statusMeta[modalStatus]?.label }}</span>
+                            <div class="absolute left-4 top-4 flex flex-wrap gap-2">
+                                <span class="rounded-full px-3 py-1 text-xs font-bold" :class="statusMeta[modalStatus]?.classes">{{ activePhoto.status_label ?? statusMeta[modalStatus]?.label }}</span>
+                                <span class="rounded-full bg-slate-950/80 px-3 py-1 text-xs font-bold uppercase tracking-wider text-white">{{ activePhoto.role_label ?? activePhoto.role ?? 'Foto' }}</span>
+                            </div>
+                        </div>
+                        <div class="mt-4 flex flex-wrap gap-2 text-[11px] font-semibold text-slate-500">
+                            <span class="rounded-full bg-slate-100 px-2.5 py-1">{{ activePhoto.group_label || 'Ocorrência' }}</span>
+                            <span class="rounded-full bg-slate-100 px-2.5 py-1">{{ activePhoto.photo_interval || '—' }}</span>
+                            <span class="rounded-full bg-slate-100 px-2.5 py-1">{{ activePhoto.location || '—' }}</span>
                         </div>
                         <p class="mt-4 text-sm leading-6 text-slate-600">{{ activePhoto.caption }}</p>
                     </div>

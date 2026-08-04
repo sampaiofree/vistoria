@@ -181,6 +181,15 @@ final class InspectionController extends Controller
         return $this->renderHub($tenant, $request, $inspection, $presenter, 'defects');
     }
 
+    public function locations(
+        TenantContext $tenant,
+        Request $request,
+        Inspection $inspection,
+        ViewFirstDemoPresenter $presenter,
+    ): InertiaResponse {
+        return $this->renderHub($tenant, $request, $inspection, $presenter, 'locations');
+    }
+
     public function photos(
         TenantContext $tenant,
         Request $request,

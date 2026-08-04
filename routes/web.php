@@ -92,6 +92,9 @@ Route::middleware([
         Route::get('inspections/{inspection}/defects', [InspectionController::class, 'defects'])
             ->name('inspections.defects');
 
+        Route::get('inspections/{inspection}/locations', [InspectionController::class, 'locations'])
+            ->name('inspections.locations');
+
         Route::get('inspections/{inspection}/photos', [InspectionController::class, 'photos'])
             ->name('inspections.photos');
 

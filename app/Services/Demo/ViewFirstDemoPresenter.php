@@ -14,16 +14,17 @@ use App\Models\Inspection;
 use App\Models\User;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
+use App\Services\Demo\ViewFirstCivilScenario;
 
 /**
- * Read model for the 06B View First demonstration.
+ * Read model for the View First CIVIL demonstration.
  *
- * GUT/CV, characterization, quantities and photographic evidence intentionally
- * live here until their definitive modules have persistence of their own.
+ * GUT/CV, characterization, quantities and photographic evidence are fed from
+ * a single structured civil scenario while the product keeps one read model.
  */
 final class ViewFirstDemoPresenter
 {
-    public const REPORT_REVISION = '00 — Demonstração';
+    public const REPORT_REVISION = ViewFirstCivilScenario::REPORT_REVISION;
 
     /**
      * @return array{criticality: null|array{value:string, label:string, is_provisional:bool}}
@@ -151,6 +152,19 @@ final class ViewFirstDemoPresenter
             'gut' => $technical['gut'],
             'characterization' => $technical['characterization'],
             'quantities' => $technical['quantities'],
+            'quantity_summary' => $technical['quantity_summary'] ?? null,
+            'discipline' => $technical['discipline'] ?? ViewFirstCivilScenario::DISCIPLINE,
+            'discipline_label' => $technical['discipline_label'] ?? ViewFirstCivilScenario::DISCIPLINE_LABEL,
+            'classification_family' => $technical['classification_family'] ?? ViewFirstCivilScenario::CLASSIFICATION_FAMILY,
+            'unit' => $technical['unit'] ?? ViewFirstCivilScenario::UNIT,
+            'project' => $technical['project'] ?? null,
+            'drawing' => $technical['drawing'] ?? ViewFirstCivilScenario::DRAWING,
+            'item' => $technical['item'] ?? null,
+            'element' => $technical['element'] ?? null,
+            'manifestation' => $technical['manifestation'] ?? null,
+            'impact' => $technical['impact'] ?? null,
+            'photo_interval' => $technical['photo_interval'] ?? null,
+            'occurrence' => $technical['occurrence'] ?? null,
             'evidence' => $this->evidenceForDefect($assessment->defect, $technical, $assessment),
             'assessment_navigation' => [
                 'previous_url' => $previousUrl,
@@ -190,6 +204,7 @@ final class ViewFirstDemoPresenter
         return [
             'overview_url' => route('inspections.show', $inspection),
             'defects_url' => route('inspections.defects', $inspection),
+            'locations_url' => route('inspections.locations', $inspection),
             'photos_url' => route('inspections.photos', $inspection),
             'documents_url' => route('inspections.documents', $inspection),
             'history_url' => route('inspections.history', $inspection),
@@ -206,6 +221,7 @@ final class ViewFirstDemoPresenter
         return [
             ['key' => 'overview', 'label' => 'Visão geral', 'url' => route('inspections.show', $inspection)],
             ['key' => 'defects', 'label' => 'Avarias', 'url' => route('inspections.defects', $inspection), 'count' => $summary['total']],
+            ['key' => 'locations', 'label' => 'Localização', 'url' => route('inspections.locations', $inspection), 'count' => $summary['total']],
             ['key' => 'photos', 'label' => 'Fotografias', 'url' => route('inspections.photos', $inspection), 'count' => $photoCount],
             ['key' => 'documents', 'label' => 'Documentos', 'url' => route('inspections.documents', $inspection), 'count' => $inspection->referenceDocuments->count()],
             ['key' => 'history', 'label' => 'Histórico', 'url' => route('inspections.history', $inspection), 'count' => $inspection->statusHistories->count()],
@@ -243,6 +259,19 @@ final class ViewFirstDemoPresenter
                 'items' => $photos,
                 'counts' => collect($photos)
                     ->countBy('status')
+                    ->all(),
+            ],
+            'locations' => [
+                'items' => $this->locations($items),
+                'legend' => collect($items)
+                    ->pluck('classification')
+                    ->unique('code')
+                    ->sortBy(fn (array $classification): int => $this->criticalityRank($classification['code']))
+                    ->map(fn (array $classification): array => [
+                        'code' => $classification['code'],
+                        'label' => $classification['label'],
+                    ])
+                    ->values()
                     ->all(),
             ],
             'documents' => [
@@ -323,6 +352,39 @@ final class ViewFirstDemoPresenter
             ->values()
             ->all();
 
+        $quantityTotal = round(
+            $collection->sum(fn (array $item): float => (float) ($item['quantity_summary']['total'] ?? 0)),
+            2,
+        );
+        $exportableCollection = $collection
+            ->reject(fn (array $item): bool => ($item['assessment']['status'] ?? null) === DefectAssessmentStatus::Draft->value)
+            ->values();
+        $exportableQuantityTotal = round(
+            $exportableCollection->sum(fn (array $item): float => (float) ($item['quantity_summary']['total'] ?? 0)),
+            2,
+        );
+        $photoTotal = $collection->sum(fn (array $item): int => count($item['photos'] ?? []));
+        $exportablePhotoTotal = $exportableCollection->sum(fn (array $item): int => count($item['photos'] ?? []));
+        $quantityByClass = $collection
+            ->groupBy('classification.code')
+            ->map(function (Collection $group): array {
+                $first = $group->first();
+                $unit = $first['quantity_summary']['unit'] ?? ViewFirstCivilScenario::UNIT;
+                $total = round($group->sum(fn (array $item): float => (float) ($item['quantity_summary']['total'] ?? 0)), 2);
+
+                return [
+                    'code' => $first['classification']['code'] ?? '—',
+                    'label' => $first['classification']['label'] ?? 'Não classificada',
+                    'unit' => $unit,
+                    'total' => $total,
+                    'total_label' => $this->formatQuantity($total).' '.$unit,
+                    'count' => $group->count(),
+                ];
+            })
+            ->sortByDesc('total')
+            ->values()
+            ->all();
+
         return [
             'total' => $total,
             'completed' => $completed,
@@ -334,6 +396,16 @@ final class ViewFirstDemoPresenter
             'criticality' => $criticality,
             'condition_breakdown' => $conditionBreakdown,
             'classification_breakdown' => $classificationBreakdown,
+            'draft_count' => $collection->where('assessment.status', DefectAssessmentStatus::Draft->value)->count(),
+            'photo_total' => $photoTotal,
+            'exportable_photo_total' => $exportablePhotoTotal,
+            'quantity_total' => $quantityTotal,
+            'quantity_total_label' => $this->formatQuantity($quantityTotal).' '.ViewFirstCivilScenario::UNIT,
+            'quantity_total_unit' => ViewFirstCivilScenario::UNIT,
+            'exportable_quantity_total' => $exportableQuantityTotal,
+            'exportable_quantity_total_label' => $this->formatQuantity($exportableQuantityTotal).' '.ViewFirstCivilScenario::UNIT,
+            'exportable_total' => $exportableCollection->count(),
+            'quantity_by_class' => $quantityByClass,
             'by_condition' => $collection
                 ->groupBy('assessment.condition')
                 ->map->count()
@@ -379,6 +451,19 @@ final class ViewFirstDemoPresenter
             'gut' => $technical['gut'],
             'characterization' => $technical['characterization'],
             'quantities' => $technical['quantities'],
+            'quantity_summary' => $technical['quantity_summary'] ?? null,
+            'discipline' => $technical['discipline'] ?? ViewFirstCivilScenario::DISCIPLINE,
+            'discipline_label' => $technical['discipline_label'] ?? ViewFirstCivilScenario::DISCIPLINE_LABEL,
+            'classification_family' => $technical['classification_family'] ?? ViewFirstCivilScenario::CLASSIFICATION_FAMILY,
+            'unit' => $technical['unit'] ?? ViewFirstCivilScenario::UNIT,
+            'project' => $technical['project'] ?? null,
+            'drawing' => $technical['drawing'] ?? ViewFirstCivilScenario::DRAWING,
+            'item' => $technical['item'] ?? null,
+            'element' => $technical['element'] ?? null,
+            'manifestation' => $technical['manifestation'] ?? null,
+            'impact' => $technical['impact'] ?? null,
+            'photo_interval' => $technical['photo_interval'] ?? null,
+            'occurrence' => $technical['occurrence'] ?? null,
             'evidence' => $this->evidenceForDefect($defect, $technical, $assessment),
             'assessment_url' => $assessment === null
                 ? null
@@ -457,8 +542,143 @@ final class ViewFirstDemoPresenter
     /**
      * @return array<string, mixed>
      */
+    public function defectTechnicalData(Defect $defect): array
+    {
+        return $this->technicalData($defect);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function structuredTechnicalData(Defect $defect, array $finding): array
+    {
+        $classification = $this->classification(
+            $finding['classification_code'],
+            $finding['classification_historical'] ?? false,
+        );
+        $classification['score_band'] = $finding['classification_score_band'];
+        $classification['profile_version'] = ViewFirstCivilScenario::PROFILE_VERSION;
+        $classification['historical'] = ($finding['current_condition'] ?? null) === DefectAssessmentCondition::Repaired->value;
+
+        $gut = $finding['gut'];
+        $score = (int) $finding['gut_score'];
+        $quantityRows = $this->quantityPayloads($finding['quantities'], $finding['unit']);
+        $quantityTotal = $finding['quantity_total'];
+        $photos = $this->evidenceForFinding($defect, $finding);
+        $photoInterval = sprintf('Fotos %02d a %02d', 1, count($photos));
+
+        return [
+            'discipline' => $finding['discipline'],
+            'discipline_label' => $finding['discipline_label'],
+            'classification_family' => $finding['classification_family'],
+            'unit' => $finding['unit'],
+            'project' => $finding['project'],
+            'drawing' => $finding['drawing'],
+            'item' => $finding['item'],
+            'element' => $finding['element'],
+            'manifestation' => $finding['manifestation'],
+            'impact' => $finding['impact'],
+            'classification' => $classification,
+            'gut' => [
+                'severity' => $gut[0],
+                'urgency' => $gut[1],
+                'tendency' => $gut[2],
+                'score' => $score,
+                'formula' => sprintf('%d×%d×%d = %d', $gut[0], $gut[1], $gut[2], $score),
+                'provisional' => true,
+                'profile_version' => ViewFirstCivilScenario::PROFILE_VERSION,
+                'score_band' => $finding['classification_score_band'],
+            ],
+            'characterization' => collect([
+                'Disciplina' => $finding['discipline_label'],
+                'Projeto' => $finding['project'],
+                'Desenho' => $finding['drawing'],
+                'Item' => $finding['item'],
+                'Elemento' => $finding['element'],
+                'ManifestaÃ§Ã£o' => $finding['manifestation'],
+                'Impacto' => $finding['impact']['label'] ?? '-',
+                'LocalizaÃ§Ã£o' => $finding['current_location'],
+            ])
+                ->map(fn (string $value, string $label): array => compact('label', 'value'))
+                ->values()
+                ->all(),
+            'quantities' => $quantityRows,
+            'quantity_summary' => [
+                'total' => $quantityTotal,
+                'total_label' => $this->formatQuantity($quantityTotal).' '.$finding['unit'],
+                'unit' => $finding['unit'],
+                'line_count' => count($quantityRows),
+            ],
+            'photo_interval' => $photoInterval,
+            'photo_status' => 'ready',
+            'photos' => $photos,
+            'occurrence' => [
+                'sequence' => $finding['sequence'],
+                'code' => $finding['code'],
+                'title' => $finding['title'],
+                'project' => $finding['project'],
+                'drawing' => $finding['drawing'],
+                'item' => $finding['item'],
+                'element' => $finding['element'],
+                'manifestation' => $finding['manifestation'],
+                'impact' => $finding['impact'],
+                'location' => $finding['current_location'],
+                'photo_interval' => $photoInterval,
+                'photo_count' => count($photos),
+                'quantities' => $quantityRows,
+                'quantity_summary' => [
+                    'total' => $quantityTotal,
+                    'total_label' => $this->formatQuantity($quantityTotal).' '.$finding['unit'],
+                    'unit' => $finding['unit'],
+                ],
+                'classification' => $classification,
+                'gut' => $gut,
+            ],
+        ];
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $rows
+     * @return array<int, array<string, mixed>>
+     */
+    private function quantityPayloads(array $rows, string $unit): array
+    {
+        return collect($rows)
+            ->map(function (array $row) use ($unit): array {
+                $unitVolume = round(($row['length'] ?? 0) * ($row['height'] ?? 0) * ($row['width'] ?? 0), 2);
+                $totalVolume = round($unitVolume * ($row['quantity'] ?? 1), 2);
+
+                return [
+                    'label' => $row['label'] ?? 'Volume',
+                    'length' => $row['length'] ?? 0,
+                    'height' => $row['height'] ?? 0,
+                    'width' => $row['width'] ?? 0,
+                    'quantity' => $row['quantity'] ?? 1,
+                    'unit_volume' => $unitVolume,
+                    'total_volume' => $totalVolume,
+                    'unit' => $unit,
+                    'length_label' => $this->formatQuantity((float) ($row['length'] ?? 0)),
+                    'height_label' => $this->formatQuantity((float) ($row['height'] ?? 0)),
+                    'width_label' => $this->formatQuantity((float) ($row['width'] ?? 0)),
+                    'unit_volume_label' => $this->formatQuantity($unitVolume).' '.$unit,
+                    'total_volume_label' => $this->formatQuantity($totalVolume).' '.$unit,
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
     private function technicalData(Defect $defect): array
     {
+        $finding = ViewFirstCivilScenario::findingBySequence((int) $defect->sequence_number);
+
+        if ($finding !== null) {
+            return $this->structuredTechnicalData($defect, $finding);
+        }
+
         $title = Str::lower(Str::ascii($defect->title));
 
         $data = match (true) {
@@ -542,11 +762,11 @@ final class ViewFirstDemoPresenter
     private function classification(?string $code, bool $historical = false): array
     {
         $labels = [
-            'CV-1' => ['Crítica', 'critical', 'Intervenção imediata'],
-            'CV-2' => ['Alta', 'danger', 'Tratar em até 30 dias'],
-            'CV-3' => ['Moderada', 'warning', 'Tratar em até 90 dias'],
-            'CV-4' => ['Baixa', 'info', 'Programar no próximo ciclo'],
-            'CV-5' => ['Mínima', 'success', 'Manter monitoramento'],
+            'CV-1' => ['Crítica', 'critical', '75-125'],
+            'CV-2' => ['Alta', 'danger', '36-73'],
+            'CV-3' => ['Moderada', 'warning', '16-35'],
+            'CV-4' => ['Baixa', 'info', '8-15'],
+            'CV-5' => ['Mínima', 'success', '1-7'],
         ];
 
         if ($code === null) {
@@ -554,7 +774,8 @@ final class ViewFirstDemoPresenter
                 'code' => '—',
                 'label' => 'Não classificada',
                 'tone' => 'neutral',
-                'deadline_label' => null,
+                'score_band' => null,
+                'profile_version' => ViewFirstCivilScenario::PROFILE_VERSION,
                 'provisional' => true,
                 'historical' => $historical,
             ];
@@ -564,10 +785,52 @@ final class ViewFirstDemoPresenter
             'code' => $code,
             'label' => $labels[$code][0] ?? 'Não classificada',
             'tone' => $labels[$code][1] ?? 'neutral',
-            'deadline_label' => $labels[$code][2] ?? null,
+            'score_band' => $labels[$code][2] ?? null,
+            'profile_version' => ViewFirstCivilScenario::PROFILE_VERSION,
             'provisional' => true,
             'historical' => $historical,
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $finding
+     * @return array<int, array<string, mixed>>
+     */
+    private function evidenceForFinding(Defect $defect, array $finding): array
+    {
+        return collect($finding['photos'] ?? [])
+            ->values()
+            ->map(function (array $photo, int $index) use ($defect, $finding): array {
+                return [
+                    'id' => sprintf('evidence-%s-%02d', $defect->public_id, $index + 1),
+                    'defect_id' => $defect->id,
+                    'status' => $photo['status'] ?? 'ready',
+                    'status_label' => $this->photoStatusLabel($photo['status'] ?? 'ready'),
+                    'title' => sprintf('%s — %s', $finding['code'], $photo['role']),
+                    'caption' => $photo['caption'] ?? $finding['title'],
+                    'location' => $finding['current_location'],
+                    'role' => $photo['role'] ?? 'Detalhe',
+                    'role_label' => $photo['role'] ?? 'Detalhe',
+                    'illustrative' => true,
+                    'url' => null,
+                    'placeholder_variant' => match ($photo['visual_variant'] ?? 'concrete') {
+                        'structure' => 'structure',
+                        'surface' => 'surface',
+                        'repair' => 'repair',
+                        default => 'concrete',
+                    },
+                    'finding_sequence' => $finding['sequence'],
+                    'finding_code' => $finding['code'],
+                    'group_label' => sprintf('%s · %s', $finding['code'], $finding['title']),
+                    'discipline' => $finding['discipline'],
+                    'discipline_label' => $finding['discipline_label'],
+                    'classification_family' => $finding['classification_family'],
+                    'unit' => $finding['unit'],
+                    'photo_interval' => sprintf('Fotos %02d a %02d', 1, count($finding['photos'] ?? [])),
+                    'is_primary' => $index === 0,
+                ];
+            })
+            ->all();
     }
 
     /**
@@ -579,7 +842,11 @@ final class ViewFirstDemoPresenter
         array $technical,
         ?DefectAssessment $assessment = null,
     ): array {
-        $status = $technical['photo_status'];
+        if (isset($technical['photos']) && is_array($technical['photos']) && $technical['photos'] !== []) {
+            return $technical['photos'];
+        }
+
+        $status = $technical['photo_status'] ?? 'ready';
 
         return [[
             'id' => 'evidence-'.$defect->public_id.'-1',
@@ -619,6 +886,49 @@ final class ViewFirstDemoPresenter
 
     /**
      * @param  array<int, array<string, mixed>>  $items
+     * @return array<int, array<string, mixed>>
+     */
+    private function locations(array $items): array
+    {
+        return collect($items)
+            ->map(function (array $item): array {
+                $occurrence = $item['occurrence'] ?? [];
+                $assessment = $item['assessment'] ?? [];
+
+                return [
+                    'id' => $item['id'],
+                    'code' => $item['code'],
+                    'title' => $item['title'],
+                    'marker' => str_pad((string) ($occurrence['sequence'] ?? $item['sequence_number'] ?? 0), 2, '0', STR_PAD_LEFT),
+                    'location' => $assessment['location_description'] ?? $occurrence['location'] ?? '—',
+                    'project' => $occurrence['project'] ?? $item['project'] ?? '—',
+                    'drawing' => $occurrence['drawing'] ?? $item['drawing'] ?? ViewFirstCivilScenario::DRAWING,
+                    'item' => $occurrence['item'] ?? $item['item'] ?? '—',
+                    'element' => $occurrence['element'] ?? $item['element'] ?? '—',
+                    'manifestation' => $occurrence['manifestation'] ?? $item['manifestation'] ?? '—',
+                    'impact' => $occurrence['impact'] ?? $item['impact'] ?? ['code' => '-', 'label' => 'Sem impacto direto'],
+                    'classification' => $item['classification'] ?? [],
+                    'gut' => $item['gut'] ?? [],
+                    'photo_interval' => $occurrence['photo_interval'] ?? $item['photo_interval'] ?? '—',
+                    'photo_count' => count($item['photos'] ?? []),
+                    'quantity_summary' => $item['quantity_summary'] ?? [],
+                    'quantities' => $item['quantities'] ?? [],
+                    'assessment_status' => $assessment['status'] ?? null,
+                    'assessment_label' => $assessment['status_label'] ?? null,
+                    'is_draft' => ($assessment['status'] ?? null) === DefectAssessmentStatus::Draft->value,
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    private function formatQuantity(float $value): string
+    {
+        return number_format($value, 2, ',', '.');
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $items
      * @param  array<int, array<string, mixed>>  $photos
      * @param  array<string, mixed>  $summary
      * @param  array<string, mixed>  $inspectionPayload
@@ -631,21 +941,61 @@ final class ViewFirstDemoPresenter
         array $summary,
         array $inspectionPayload,
     ): array {
-        $readyPhotos = collect($photos)->where('status', 'ready')->values()->all();
+        $exportableItems = collect($items)
+            ->reject(fn (array $item): bool => ($item['assessment']['status'] ?? null) === DefectAssessmentStatus::Draft->value)
+            ->values();
+        $exportablePhotos = $exportableItems
+            ->flatMap(fn (array $item): array => $item['photos'] ?? [])
+            ->values()
+            ->all();
+        $blockedIssues = [];
+
+        if ($summary['pending'] > 0) {
+            $blockedIssues[] = sprintf('%d registro(s) ainda não foram consolidados.', $summary['pending']);
+        }
+
+        if (($summary['quantity_total'] ?? 0.0) !== ($summary['exportable_quantity_total'] ?? 0.0)) {
+            $blockedIssues[] = 'A consolidação completa ainda inclui registros não exportáveis.';
+        }
+
+        if (($summary['quantity_total_unit'] ?? ViewFirstCivilScenario::UNIT) !== 'm²') {
+            $blockedIssues[] = sprintf(
+                'A unidade consolidada do CIVIL está em %s, enquanto o resumo oficial do PDF usa m².',
+                $summary['quantity_total_unit'] ?? ViewFirstCivilScenario::UNIT,
+            );
+        }
+
+        $blocked = $blockedIssues !== [];
 
         return [
+            'number' => ViewFirstCivilScenario::REPORT_NUMBER,
             'revision' => self::REPORT_REVISION,
             'generated_label' => 'Prévia preparada para apresentação',
             'cover' => [
                 'eyebrow' => 'Relatório técnico de inspeção CIVIL',
-                'title' => $inspection->number ?? 'Inspeção técnica',
+                'title' => ViewFirstCivilScenario::REPORT_NUMBER,
                 'client' => $inspection->equipment->client?->name,
                 'provider' => $inspection->organization?->name,
                 'equipment_tag' => $inspection->equipment->tag,
                 'equipment_name' => $inspection->equipment->name,
                 'inspection_type' => $inspection->inspection_type->label(),
+                'inspection_number' => $inspection->number,
+                'service_order' => $inspection->service_order,
+                'procedure' => ViewFirstCivilScenario::PROCEDURE_NUMBER,
+                'drawing' => ViewFirstCivilScenario::DRAWING,
                 'inspected_on' => $inspection->inspected_on?->format('d/m/Y') ?? $inspection->scheduled_for?->format('d/m/Y'),
                 'revision' => self::REPORT_REVISION,
+                'issued_at' => ViewFirstCivilScenario::REPORT_DATE,
+            ],
+            'general_aspects' => [
+                ['label' => 'Disciplina', 'value' => ViewFirstCivilScenario::DISCIPLINE_LABEL],
+                ['label' => 'Família', 'value' => ViewFirstCivilScenario::CLASSIFICATION_FAMILY],
+                ['label' => 'Unidade', 'value' => ViewFirstCivilScenario::UNIT],
+                ['label' => 'Emissão', 'value' => ViewFirstCivilScenario::REPORT_DATE],
+                ['label' => 'O.S.', 'value' => $inspection->service_order ?? '—'],
+                ['label' => 'Procedimento', 'value' => ViewFirstCivilScenario::PROCEDURE_NUMBER],
+                ['label' => 'Desenho', 'value' => ViewFirstCivilScenario::DRAWING],
+                ['label' => 'Revisão', 'value' => self::REPORT_REVISION],
             ],
             'executive_summary' => [
                 'criticality' => $summary['criticality'],
@@ -653,23 +1003,72 @@ final class ViewFirstDemoPresenter
                     ? 'O equipamento requer tratamento prioritário das manifestações de maior criticidade.'
                     : 'A condição observada permite acompanhamento no ciclo programado.',
                 'description' => sprintf(
-                    '%d avarias foram consolidadas; %d avaliações estão concluídas e %d permanece em aberto.',
+                    '%d ocorrências civis foram consolidadas; %d avaliações estão concluídas e %d permanecem em aberto. %d registro(s) não serão exportados.',
                     $summary['total'],
                     $summary['completed'],
                     $summary['pending'],
+                    $summary['draft_count'] ?? 0,
                 ),
-                'metrics' => $summary,
+                'metrics' => [
+                    'total' => $summary['total'],
+                    'completed' => $summary['completed'],
+                    'pending' => $summary['pending'],
+                    'photo_total' => $summary['photo_total'] ?? 0,
+                    'quantity_total' => $summary['quantity_total'] ?? 0.0,
+                    'quantity_total_label' => $summary['quantity_total_label'] ?? '0,00 '.ViewFirstCivilScenario::UNIT,
+                    'exportable_quantity_total' => $summary['exportable_quantity_total'] ?? 0.0,
+                    'exportable_quantity_total_label' => $summary['exportable_quantity_total_label'] ?? '0,00 '.ViewFirstCivilScenario::UNIT,
+                    'draft_count' => $summary['draft_count'] ?? 0,
+                ],
+            ],
+            'locations' => $this->locations($exportableItems->all()),
+            'findings' => $exportableItems
+                ->map(function (array $item) use ($inspection): array {
+                    $assessment = $item['assessment'] ?? [];
+                    $occurrence = $item['occurrence'] ?? [];
+
+                    return [
+                        'id' => $item['id'],
+                        'code' => $item['code'],
+                        'title' => $item['title'],
+                        'assessment' => $assessment,
+                        'classification' => $item['classification'],
+                        'gut' => $item['gut'],
+                        'location' => $assessment['location_description'] ?? $occurrence['location'] ?? '—',
+                        'project' => $occurrence['project'] ?? $item['project'] ?? '—',
+                        'drawing' => $occurrence['drawing'] ?? $item['drawing'] ?? ViewFirstCivilScenario::DRAWING,
+                        'item' => $occurrence['item'] ?? $item['item'] ?? '—',
+                        'element' => $occurrence['element'] ?? $item['element'] ?? '—',
+                        'manifestation' => $occurrence['manifestation'] ?? $item['manifestation'] ?? '—',
+                        'impact' => $occurrence['impact'] ?? $item['impact'] ?? ['code' => '-', 'label' => 'Sem impacto direto'],
+                        'photo_interval' => $occurrence['photo_interval'] ?? $item['photo_interval'] ?? '—',
+                        'photos' => $item['photos'] ?? [],
+                        'quantity_summary' => $item['quantity_summary'] ?? [],
+                        'quantities' => $item['quantities'] ?? [],
+                        'comment' => $assessment['comment'] ?? null,
+                        'recommendation' => $assessment['recommendation'] ?? null,
+                    ];
+                })
+                ->values()
+                ->all(),
+            'quantities' => [
+                'total' => $summary['quantity_total'] ?? 0.0,
+                'total_label' => $summary['quantity_total_label'] ?? '0,00 '.ViewFirstCivilScenario::UNIT,
+                'exportable_total' => $summary['exportable_quantity_total'] ?? 0.0,
+                'exportable_total_label' => $summary['exportable_quantity_total_label'] ?? '0,00 '.ViewFirstCivilScenario::UNIT,
+                'unit' => ViewFirstCivilScenario::UNIT,
+                'by_class' => $summary['quantity_by_class'] ?? [],
             ],
             'sections' => [
                 [
                     'key' => 'defects',
                     'title' => 'Avarias e avaliações CIVIL',
-                    'items' => $items,
+                    'items' => $exportableItems->all(),
                 ],
                 [
                     'key' => 'evidence',
                     'title' => 'Registro fotográfico',
-                    'items' => $readyPhotos,
+                    'items' => $exportablePhotos,
                 ],
                 [
                     'key' => 'responsibles',
@@ -682,9 +1081,16 @@ final class ViewFirstDemoPresenter
                     'items' => $inspectionPayload['reference_documents'] ?? [],
                 ],
             ],
+            'validation' => [
+                'blocked' => $blocked,
+                'issues' => $blockedIssues,
+                'draft_count' => $summary['draft_count'] ?? 0,
+            ],
             'print_enabled' => true,
-            'pdf_enabled' => false,
-            'pdf_disabled_reason' => 'A geração do PDF oficial será habilitada no módulo de relatórios.',
+            'pdf_enabled' => ! $blocked,
+            'pdf_disabled_reason' => $blocked
+                ? implode(' ', $blockedIssues)
+                : 'A geração do PDF oficial será habilitada no módulo de relatórios.',
         ];
     }
 
@@ -695,8 +1101,8 @@ final class ViewFirstDemoPresenter
     {
         return [
             'enabled' => true,
-            'provisional_notice' => 'GUT, classificação CV, caracterização e quantitativos são demonstrativos e não são persistidos nesta etapa.',
-            'photo_notice' => 'As evidências são placeholders neutros e estão identificadas como imagens ilustrativas.',
+            'provisional_notice' => 'A leitura CIVIL já está estruturada; GUT, classificação, quantitativos e evidências permanecem em modo somente leitura.',
+            'photo_notice' => 'As evidências desta demonstração usam placeholders controlados e não representam os arquivos privados do cliente.',
             'report_revision' => self::REPORT_REVISION,
         ];
     }

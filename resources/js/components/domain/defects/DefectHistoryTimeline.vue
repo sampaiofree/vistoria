@@ -24,7 +24,12 @@ defineProps({
                 <div class="flex flex-wrap items-start justify-between gap-3">
                     <div>
                         <div class="flex flex-wrap items-center gap-2">
-                            <DefectConditionBadge :condition="assessment.condition" />
+                            <span class="rounded-full bg-slate-950 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-white">
+                                Visita {{ assessment.inspection.number || '—' }}
+                            </span>
+                            <span class="rounded-full bg-white px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-600 shadow-sm">
+                                Revisão {{ assessment.revision ? `v${assessment.revision}` : '—' }}
+                            </span>
                             <DefectAssessmentStatusBadge :status="assessment.status" />
                         </div>
                         <Link
@@ -36,6 +41,27 @@ defineProps({
                     </div>
                     <div class="text-xs text-slate-400">
                         {{ assessment.assessed_at || '—' }}
+                    </div>
+                </div>
+
+                <div class="mt-4 grid gap-3 sm:grid-cols-3">
+                    <div class="rounded-xl bg-white p-3">
+                        <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Classe anterior</p>
+                        <p class="mt-1 text-sm font-semibold text-slate-900">
+                            {{ assessment.previous_condition_label || 'Primeira leitura' }}
+                        </p>
+                    </div>
+                    <div class="rounded-xl bg-white p-3">
+                        <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Classe atual</p>
+                        <div class="mt-1">
+                            <DefectConditionBadge :condition="assessment.condition" />
+                        </div>
+                    </div>
+                    <div class="rounded-xl bg-white p-3">
+                        <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Tratamento</p>
+                        <p class="mt-1 text-sm font-semibold text-slate-900">
+                            {{ assessment.treatment || assessment.recommendation || assessment.comment || '—' }}
+                        </p>
                     </div>
                 </div>
 

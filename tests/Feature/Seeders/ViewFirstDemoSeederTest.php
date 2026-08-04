@@ -94,8 +94,8 @@ final class ViewFirstDemoSeederTest extends TestCase
         $this->assertSame(1, Organization::query()->whereKey($unrelatedOrganization->id)->count());
         $this->assertSame(1, Organization::query()->where('document', ViewFirstDemoSeeder::ORGANIZATION_DOCUMENT)->count());
         $this->assertSame(2, Inspection::query()->where('equipment_id', $equipment->id)->count());
-        $this->assertSame(7, Defect::query()->where('equipment_id', $equipment->id)->count());
-        $this->assertSame(13, DefectAssessment::query()->whereIn('inspection_id', $inspectionIds)->count());
+        $this->assertSame(14, Defect::query()->where('equipment_id', $equipment->id)->count());
+        $this->assertSame(27, DefectAssessment::query()->whereIn('inspection_id', $inspectionIds)->count());
         $this->assertSame(2, InspectionReferenceDocument::query()->whereIn('inspection_id', $inspectionIds)->count());
         $this->assertSame(10, InspectionResponsible::query()->whereIn('inspection_id', $inspectionIds)->count());
         $this->assertSame($defectIds, Defect::query()
@@ -133,15 +133,15 @@ final class ViewFirstDemoSeederTest extends TestCase
         $this->assertNotNull($previous->released_at);
         $this->assertNotNull($current->started_at);
 
-        $this->assertSame(6, $previous->defectAssessments()->count());
-        $this->assertSame(7, $current->defectAssessments()->count());
-        $this->assertSame(6, $current->defectAssessments()
+        $this->assertSame(13, $previous->defectAssessments()->count());
+        $this->assertSame(14, $current->defectAssessments()->count());
+        $this->assertSame(13, $current->defectAssessments()
             ->where('status', DefectAssessmentStatus::Complete->value)
             ->count());
         $this->assertSame(1, $current->defectAssessments()
             ->where('status', DefectAssessmentStatus::Draft->value)
             ->count());
-        $this->assertSame(6, $current->defectAssessments()
+        $this->assertSame(13, $current->defectAssessments()
             ->whereNotNull('previous_assessment_id')
             ->count());
 
@@ -156,7 +156,14 @@ final class ViewFirstDemoSeederTest extends TestCase
             DefectAssessmentCondition::Unchanged,
             DefectAssessmentCondition::Improved,
             DefectAssessmentCondition::Repaired,
-            DefectAssessmentCondition::NotInspected,
+            DefectAssessmentCondition::Unchanged,
+            DefectAssessmentCondition::Worsened,
+            DefectAssessmentCondition::Unchanged,
+            DefectAssessmentCondition::Worsened,
+            DefectAssessmentCondition::Unchanged,
+            DefectAssessmentCondition::Improved,
+            DefectAssessmentCondition::Unchanged,
+            DefectAssessmentCondition::Worsened,
         ], $conditions);
 
         $draft = $current->defectAssessments()
@@ -167,11 +174,12 @@ final class ViewFirstDemoSeederTest extends TestCase
         $this->assertSame('Desplacamento do cobrimento na base do motor', $draft->defect->title);
         $this->assertNull($draft->previous_assessment_id);
 
-        $notInspected = $current->defectAssessments()
-            ->where('condition', DefectAssessmentCondition::NotInspected->value)
+        $repaired = $current->defectAssessments()
+            ->where('condition', DefectAssessmentCondition::Repaired->value)
+            ->with('defect')
             ->firstOrFail();
-        $this->assertSame(DefectAssessmentStatus::Complete, $notInspected->status);
-        $this->assertNotEmpty($notInspected->reason);
+        $this->assertSame(DefectAssessmentStatus::Complete, $repaired->status);
+        $this->assertSame('Fissura capilar no bloco de fundação', $repaired->defect->title);
 
         foreach ([$previous, $current] as $inspection) {
             $responsibles = $inspection->responsibles()->get();

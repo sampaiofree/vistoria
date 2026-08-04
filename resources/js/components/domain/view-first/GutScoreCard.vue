@@ -22,12 +22,8 @@ const urgency = computed(() => props.gut?.urgency ?? props.gut?.u ?? null);
 const trend = computed(() => props.gut?.trend ?? props.gut?.tendency ?? props.gut?.t ?? null);
 const score = computed(() => props.gut?.score ?? props.gut?.gut_score ?? null);
 const code = computed(() => props.classification?.code ?? props.gut?.classification_code ?? null);
-const deadline = computed(() => (
-    props.classification?.deadline_label
-    ?? props.classification?.recommended_deadline
-    ?? props.gut?.deadline_label
-    ?? null
-));
+const scoreBand = computed(() => props.classification?.score_band ?? props.gut?.score_band ?? null);
+const profileVersion = computed(() => props.classification?.profile_version ?? props.gut?.profile_version ?? null);
 </script>
 
 <template>
@@ -48,8 +44,15 @@ const deadline = computed(() => (
             </div>
         </div>
 
-        <p v-if="deadline" class="mt-4 border-t border-white/10 pt-3 text-xs leading-5 text-slate-300">
-            Prazo recomendado: <span class="font-semibold text-white">{{ deadline }}</span>
-        </p>
+        <div class="mt-4 grid gap-2 border-t border-white/10 pt-3 text-xs leading-5 text-slate-300 sm:grid-cols-2">
+            <p>
+                Faixa CV:
+                <span class="font-semibold text-white">{{ scoreBand || '—' }}</span>
+            </p>
+            <p class="sm:text-right">
+                Perfil:
+                <span class="font-semibold text-white">{{ profileVersion ? `v${profileVersion}` : '—' }}</span>
+            </p>
+        </div>
     </div>
 </template>

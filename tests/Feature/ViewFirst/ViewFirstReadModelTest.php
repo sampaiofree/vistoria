@@ -16,6 +16,7 @@ use App\Models\Inspection;
 use App\Models\InspectionResponsible;
 use App\Models\Organization;
 use App\Models\User;
+use App\Services\Demo\ViewFirstCivilScenario;
 use App\Services\Demo\ViewFirstDemoPresenter;
 use Database\Seeders\ViewFirstDemoSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -33,6 +34,7 @@ final class ViewFirstReadModelTest extends TestCase
         foreach ([
             route('inspections.show', $inspection),
             route('inspections.defects', $inspection),
+            route('inspections.locations', $inspection),
             route('inspections.photos', $inspection),
             route('inspections.documents', $inspection),
             route('inspections.history', $inspection),
@@ -50,6 +52,7 @@ final class ViewFirstReadModelTest extends TestCase
         $routes = [
             'overview' => route('inspections.show', $inspection),
             'defects' => route('inspections.defects', $inspection),
+            'locations' => route('inspections.locations', $inspection),
             'photos' => route('inspections.photos', $inspection),
             'documents' => route('inspections.documents', $inspection),
             'history' => route('inspections.history', $inspection),
@@ -65,6 +68,7 @@ final class ViewFirstReadModelTest extends TestCase
                     ->where('active_tab', $activeTab)
                     ->has('inspection.overview_url')
                     ->has('inspection.defects_url')
+                    ->has('inspection.locations_url')
                     ->has('inspection.photos_url')
                     ->has('inspection.documents_url')
                     ->has('inspection.history_url')
@@ -75,10 +79,10 @@ final class ViewFirstReadModelTest extends TestCase
                     ->has('summary.criticality.code')
                     ->has('summary.condition_breakdown')
                     ->has('summary.classification_breakdown')
-                    ->has('tabs', 6)
+                    ->has('tabs', 7)
                     ->has('content')
                     ->where('demo.enabled', true)
-                    ->where('demo.report_revision', '00 — Demonstração'));
+                    ->where('demo.report_revision', ViewFirstCivilScenario::REPORT_REVISION));
         }
     }
 
@@ -98,7 +102,8 @@ final class ViewFirstReadModelTest extends TestCase
                 ->where('content.items.0.gut.provisional', true)
                 ->has('content.items.0.characterization')
                 ->has('content.items.0.quantities')
-                ->has('content.items.0.evidence')
+                ->has('content.items.0.evidence', 4)
+                ->has('content.items.1.evidence', 3)
                 ->has('content.filters', 5));
 
         $this->actingAs($admin)
@@ -106,7 +111,8 @@ final class ViewFirstReadModelTest extends TestCase
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->where('active_tab', 'photos')
-                ->has('content.items', 2)
+                ->has('content.items', 7)
+                ->where('content.counts', ['ready' => 7])
                 ->where('content.items.0.illustrative', true)
                 ->where('content.items.0.url', null));
 
@@ -115,12 +121,16 @@ final class ViewFirstReadModelTest extends TestCase
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->where('active_tab', 'report')
-                ->where('content.revision', '00 — Demonstração')
+                ->where('content.number', ViewFirstCivilScenario::REPORT_NUMBER)
+                ->where('content.revision', ViewFirstCivilScenario::REPORT_REVISION)
                 ->where('content.print_enabled', true)
                 ->where('content.pdf_enabled', false)
+                ->where('content.validation.blocked', true)
                 ->where('content.cover.provider', $organization->name)
                 ->has('content.cover')
                 ->has('content.executive_summary')
+                ->has('content.locations', 1)
+                ->has('content.findings', 1)
                 ->has('content.sections', 4));
     }
 
@@ -140,11 +150,12 @@ final class ViewFirstReadModelTest extends TestCase
                 ->where('gut.formula', '3×4×3 = 36')
                 ->has('characterization')
                 ->has('quantities')
-                ->has('evidence', 1)
+                ->has('evidence', 4)
                 ->where('assessment_navigation.inspection_url', route('inspections.show', $inspection))
                 ->where('assessment_navigation.defects_url', route('inspections.defects', $inspection))
-                ->has('navigation', 4)
-                ->where('navigation.0.icon', 'dashboard')
+                ->where('assessment_navigation.position', 1)
+                ->where('assessment_navigation.total', 2)
+                ->has('assessment_navigation', 6)
                 ->has('condition_options', 7)
                 ->where('capabilities.update', true)
                 ->where('capabilities.complete', true)
@@ -226,7 +237,7 @@ final class ViewFirstReadModelTest extends TestCase
                     ->doesntContain('value', DefectAssessmentCondition::New->value)));
     }
 
-    public function test_official_demo_scenario_delivers_six_of_seven_and_all_photo_states(): void
+    public function test_official_demo_scenario_delivers_fourteen_findings_and_full_photo_gallery(): void
     {
         $this->seed(ViewFirstDemoSeeder::class);
 
@@ -246,21 +257,18 @@ final class ViewFirstReadModelTest extends TestCase
             ->get(route('inspections.show', $inspection))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
-                ->where('summary.total', 7)
-                ->where('summary.completed', 6)
+                ->where('summary.total', 14)
+                ->where('summary.completed', 13)
                 ->where('summary.pending', 1)
-                ->where('summary.progress_percent', 86)
+                ->where('summary.progress_percent', 93)
                 ->where('summary.criticality.code', 'CV-2'));
 
         $this->actingAs($admin)
             ->get(route('inspections.photos', $inspection))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
-                ->has('content.items', 7)
-                ->where('content.counts.ready', 4)
-                ->where('content.counts.processing', 1)
-                ->where('content.counts.pending', 1)
-                ->where('content.counts.failed', 1));
+                ->has('content.items', 36)
+                ->where('content.counts', ['ready' => 36]));
 
         $this->actingAs($admin)
             ->get(route('defect-assessments.show', $draft))
@@ -280,16 +288,16 @@ final class ViewFirstReadModelTest extends TestCase
             ->get(route('inspections.defects', $previousInspection))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
-                ->where('summary.total', 6)
-                ->where('summary.completed', 6)
+                ->where('summary.total', 13)
+                ->where('summary.completed', 13)
                 ->where('summary.pending', 0)
-                ->has('content.items', 6)
+                ->has('content.items', 13)
                 ->where('content.items', fn ($items): bool => collect($items)
                     ->doesntContain('title', 'Desplacamento do cobrimento na base do motor')));
 
         $this->assertSame([
-            'completed' => 6,
-            'total' => 6,
+            'completed' => 13,
+            'total' => 13,
             'percentage' => 100,
         ], app(ViewFirstDemoPresenter::class)->progress($previousInspection));
 
@@ -297,8 +305,9 @@ final class ViewFirstReadModelTest extends TestCase
             ->get(route('defect-assessments.show', $previousFissureAssessment))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
-                ->where('assessment_navigation.total', 6)
-                ->where('evidence.0.location', 'Face norte do pedestal, eixo do motor, entre as cotas +0,10 m e +0,55 m.'));
+                ->where('assessment_navigation.total', 13)
+                ->has('evidence', 4)
+                ->where('evidence.0.location', 'Face norte do pedestal, eixo do motor, entre as cotas +0,10 m e +0,70 m.'));
 
         $futureInspection = Inspection::factory()
             ->reinspection($inspection)
@@ -310,7 +319,7 @@ final class ViewFirstReadModelTest extends TestCase
 
         $this->assertSame([
             'completed' => 0,
-            'total' => 6,
+            'total' => 13,
             'percentage' => 0,
         ], app(ViewFirstDemoPresenter::class)->progress($futureInspection));
 
@@ -318,8 +327,9 @@ final class ViewFirstReadModelTest extends TestCase
             ->get(route('inspections.defects', $futureInspection))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
-                ->where('summary.total', 6)
-                ->where('summary.pending', 6)
+                ->where('summary.total', 13)
+                ->where('summary.pending', 13)
+                ->has('content.items', 13)
                 ->where('content.items', fn ($items): bool => collect($items)
                     ->doesntContain('title', 'Fissura capilar no bloco de fundação')));
     }
@@ -335,6 +345,7 @@ final class ViewFirstReadModelTest extends TestCase
         foreach ([
             route('inspections.show', $inspection),
             route('inspections.defects', $inspection),
+            route('inspections.locations', $inspection),
             route('inspections.photos', $inspection),
             route('inspections.documents', $inspection),
             route('inspections.history', $inspection),
