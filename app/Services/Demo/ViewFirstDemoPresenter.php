@@ -15,7 +15,6 @@ use App\Models\User;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use App\Services\Demo\ViewFirstCivilScenario;
 
 /**
  * Read model for the View First CIVIL demonstration.
@@ -210,6 +209,7 @@ final class ViewFirstDemoPresenter
             'documents_url' => route('inspections.documents', $inspection),
             'history_url' => route('inspections.history', $inspection),
             'report_url' => route('inspections.report-preview', $inspection),
+            'reinspection_checklist_url' => route('inspections.reinspection-checklist', $inspection),
         ];
     }
 
@@ -1027,7 +1027,7 @@ final class ViewFirstDemoPresenter
             ],
             'locations' => $this->locations($exportableItems->all()),
             'findings' => $exportableItems
-                ->map(function (array $item) use ($inspection): array {
+                ->map(function (array $item): array {
                     $assessment = $item['assessment'] ?? [];
                     $occurrence = $item['occurrence'] ?? [];
 

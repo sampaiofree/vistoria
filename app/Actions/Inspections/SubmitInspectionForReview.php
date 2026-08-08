@@ -9,6 +9,7 @@ use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
 use App\Models\Inspection;
 use App\Models\User;
+use App\Services\Defects\ReinspectionCoverageValidator;
 use Illuminate\Validation\ValidationException;
 
 final class SubmitInspectionForReview
@@ -17,6 +18,7 @@ final class SubmitInspectionForReview
 
     public function __construct(
         private readonly TransitionInspection $transition,
+        private readonly ReinspectionCoverageValidator $coverageValidator,
     ) {}
 
     public function handle(Inspection $inspection, User $actor): Inspection
@@ -37,6 +39,8 @@ final class SubmitInspectionForReview
                 'status' => 'A inspeção não está pronta para envio à revisão.',
             ]);
         }
+
+        $this->coverageValidator->validate($inspection);
 
         $attributes = [];
 

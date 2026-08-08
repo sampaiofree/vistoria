@@ -2039,7 +2039,7 @@ php artisan migrate:fresh --seed
 - [ ] sequência transacional criada;
 - [ ] tabela `defects` criada;
 - [ ] tabela `defect_assessments` criada;
-- [ ] tabela `defect_relations` criada;
+- [x] tabela `defect_relations` criada;
 - [ ] código gerado automaticamente;
 - [ ] código único por organização;
 - [ ] código permanece nas reinspeções;
@@ -2049,10 +2049,10 @@ php artisan migrate:fresh --seed
 - [ ] condições da reinspeção funcionam;
 - [ ] status permanente é sincronizado;
 - [ ] reparo não apaga histórico;
-- [ ] recorrência gera nova avaria;
-- [ ] divisão gera novas avarias relacionadas;
-- [ ] checklist carrega pendências;
-- [ ] envio para revisão bloqueia checklist incompleto;
+- [x] recorrência gera nova avaria;
+- [x] divisão gera novas avarias relacionadas;
+- [x] checklist carrega pendências;
+- [x] envio para revisão bloqueia checklist incompleto;
 - [ ] isolamento multiempresa funciona;
 - [ ] testes passam;
 - [ ] build passa;

@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Actions\Defects\CreateDefectWithAssessment;
+use App\Actions\Defects\CreateRelatedDefect;
 use App\Http\Controllers\Concerns\ResolvesTenantStructure;
 use App\Http\Requests\Defects\StoreDefectRequest;
+use App\Http\Requests\Defects\StoreRelatedDefectRequest;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
 use App\Models\Inspection;
@@ -46,6 +48,8 @@ final class DefectController extends Controller
             'latestAssessment.creator',
             'latestAssessment.previousAssessment.inspection',
             'latestAssessment.previousAssessment.creator',
+            'outgoingRelations.targetDefect',
+            'incomingRelations.sourceDefect',
         ]);
 
         $currentAssessment = $this->currentDefectAssessment($defect);
@@ -60,15 +64,20 @@ final class DefectController extends Controller
         $canUpdateAssessment = $currentAssessment !== null && $user?->can('update', $currentAssessment) === true;
         $canCompleteAssessment = $currentAssessment !== null && $user?->can('complete', $currentAssessment) === true;
 
+        $defectPayload = $this->defectPayload(
+            $defect,
+            $currentAssessment,
+            $latestCompleteAssessment,
+            $previousAssessment,
+            $canUpdateAssessment,
+            $canCompleteAssessment,
+        );
+        $defectPayload['related_action_url'] = $request->user()->can('createRelated', [Defect::class, $contextInspection, $defect])
+            ? route('inspections.defects.related.store', [$contextInspection, $defect])
+            : null;
+
         return Inertia::render('Defects/Show', [
-            'defect' => $this->defectPayload(
-                $defect,
-                $currentAssessment,
-                $latestCompleteAssessment,
-                $previousAssessment,
-                $canUpdateAssessment,
-                $canCompleteAssessment,
-            ),
+            'defect' => $defectPayload,
             'assessments' => $completedAssessments
                 ->map(fn (DefectAssessment $assessment): array => $this->defectAssessmentPayload($assessment))
                 ->values()
@@ -104,6 +113,25 @@ final class DefectController extends Controller
         return redirect()
             ->route('defect-assessments.show', $assessment)
             ->with('success', 'Avaria criada.');
+    }
+
+    public function storeRelated(
+        StoreRelatedDefectRequest $request,
+        TenantContext $tenant,
+        Inspection $inspection,
+        Defect $defect,
+        CreateRelatedDefect $action,
+    ): RedirectResponse {
+        $inspection = $this->tenantInspection($tenant, $inspection);
+        $defect = $this->tenantDefect($tenant, $defect);
+
+        $this->authorize('createRelated', [Defect::class, $inspection, $defect]);
+
+        $related = $action->handle($request->user(), $inspection, $defect, $request->validated());
+
+        return redirect()
+            ->route('defect-assessments.show', $related->assessments()->firstOrFail())
+            ->with('success', 'Avaria relacionada criada.');
     }
 
     /**
@@ -167,6 +195,15 @@ final class DefectController extends Controller
             ],
             'can_update_assessment' => $canUpdateAssessment,
             'can_complete_assessment' => $canCompleteAssessment,
+            'relations' => $defect->outgoingRelations
+                ->merge($defect->incomingRelations)
+                ->map(fn ($relation): array => [
+                    'id' => $relation->id,
+                    'type' => $relation->relation_type->value,
+                    'type_label' => $relation->relation_type->label(),
+                    'source_code' => $relation->sourceDefect->code,
+                    'target_code' => $relation->targetDefect->code,
+                ])->values()->all(),
         ];
     }
 

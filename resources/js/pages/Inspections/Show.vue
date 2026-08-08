@@ -104,6 +104,13 @@ function printReport() {
                 >
                     Ver equipamento
                 </Link>
+                <Link
+                    v-if="inspection.previous_inspection && inspection.reinspection_checklist_url"
+                    :href="inspection.reinspection_checklist_url"
+                    class="rounded-xl border border-teal-200 bg-teal-50 px-3.5 py-2 text-sm font-semibold text-teal-800 transition hover:border-teal-300"
+                >
+                    Checklist da reinspeção
+                </Link>
                 <details class="relative" v-if="capabilities.update_planned">
                     <summary class="cursor-pointer list-none rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400">
                         Mais ações

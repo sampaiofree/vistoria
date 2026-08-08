@@ -13,6 +13,7 @@ use App\Http\Controllers\InspectionController;
 use App\Http\Controllers\InspectionReferenceDocumentController;
 use App\Http\Controllers\InspectionResponsibleController;
 use App\Http\Controllers\InspectionTransitionController;
+use App\Http\Controllers\ReinspectionChecklistController;
 use App\Http\Controllers\SubareaController;
 use Illuminate\Support\Facades\Route;
 
@@ -116,6 +117,16 @@ Route::middleware([
             'inspections/{inspection}/defects/{defect}/assessments',
             [DefectAssessmentController::class, 'store'],
         )->name('inspections.defects.assessments.store');
+
+        Route::post(
+            'inspections/{inspection}/defects/{defect}/related',
+            [DefectController::class, 'storeRelated'],
+        )->name('inspections.defects.related.store');
+
+        Route::get(
+            'inspections/{inspection}/reinspection-checklist',
+            [ReinspectionChecklistController::class, 'show'],
+        )->name('inspections.reinspection-checklist');
 
         Route::get('inspections/{inspection}/edit', [InspectionController::class, 'edit'])
             ->name('inspections.edit');

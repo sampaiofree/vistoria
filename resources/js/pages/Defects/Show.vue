@@ -5,6 +5,7 @@ import DefectAssessmentForm from '@/components/domain/defects/DefectAssessmentFo
 import DefectHistoryTimeline from '@/components/domain/defects/DefectHistoryTimeline.vue';
 import DefectStatusBadge from '@/components/domain/defects/DefectStatusBadge.vue';
 import PreviousAssessmentCard from '@/components/domain/defects/PreviousAssessmentCard.vue';
+import RelatedDefectForm from '@/components/domain/defects/RelatedDefectForm.vue';
 
 defineProps({
     defect: {
@@ -89,6 +90,20 @@ defineProps({
                 <p class="mt-2 whitespace-pre-line text-sm text-slate-700">{{ defect.origin_description }}</p>
             </div>
         </section>
+
+        <section v-if="defect.relations?.length" class="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h3 class="text-lg font-semibold text-slate-900">Relações técnicas</h3>
+            <ul class="mt-4 divide-y divide-slate-200">
+                <li v-for="relation in defect.relations" :key="relation.id" class="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
+                    <span class="text-sm font-semibold text-slate-700">{{ relation.type_label }}</span>
+                    <span class="text-sm text-slate-500">{{ relation.source_code }} → {{ relation.target_code }}</span>
+                </li>
+            </ul>
+        </section>
+
+        <div v-if="defect.related_action_url" class="mt-6">
+            <RelatedDefectForm :action="defect.related_action_url" />
+        </div>
 
         <section class="mt-6 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
             <div class="space-y-6">

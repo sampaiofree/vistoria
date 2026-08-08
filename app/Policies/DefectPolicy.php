@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Policies;
 
+use App\Enums\DefectStatus;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
 use App\Models\Defect;
@@ -36,6 +37,14 @@ final class DefectPolicy
                 InspectionResponsibility::Inspector,
                 InspectionResponsibility::Preparer,
             );
+    }
+
+    public function createRelated(User $user, Inspection $inspection, Defect $defect): bool
+    {
+        return $this->create($user, $inspection)
+            && $this->sameOrganization($user, $defect)
+            && $defect->equipment_id === $inspection->equipment_id
+            && $defect->status !== DefectStatus::Archived;
     }
 
     private function activeInOrganization(User $user): bool

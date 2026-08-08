@@ -6,6 +6,7 @@ namespace Tests\Feature\Defects;
 
 use App\Enums\DefectAssessmentCondition;
 use App\Enums\DefectAssessmentStatus;
+use App\Enums\DefectRelationType;
 use App\Enums\DefectStatus;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
@@ -17,6 +18,7 @@ use App\Models\Inspection;
 use App\Models\InspectionResponsible;
 use App\Models\Organization;
 use App\Models\User;
+use App\Services\Defects\DefectStatusSynchronizer;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -418,6 +420,91 @@ final class DefectRoutesTest extends TestCase
             'recommendation' => 'Revisar na próxima visita.',
             'assessment_action' => 'complete',
         ])->assertSessionHasErrors('reason');
+    }
+
+    public function test_repaired_defect_can_create_a_recurrence_with_a_new_code(): void
+    {
+        [, $admin, $equipment, $firstInspection] = $this->createInspectionReadyForDefects();
+
+        $this->actingAs($admin)->post(route('inspections.defects.store', $firstInspection), [
+            'title' => 'Avaria original',
+            'comment' => 'Registrada.',
+            'assessment_action' => 'complete',
+        ])->assertRedirect();
+
+        $source = Defect::query()->firstOrFail();
+        $sourceAssessment = $source->latestAssessment;
+        $sourceAssessment->update([
+            'condition' => DefectAssessmentCondition::Repaired,
+            'status' => DefectAssessmentStatus::Complete,
+            'assessed_at' => now(),
+        ]);
+        app(DefectStatusSynchronizer::class)->handle($source, $admin);
+        $source->refresh();
+
+        $inspection = Inspection::factory()->reinspection($firstInspection)->create([
+            'status' => InspectionStatus::InProgress,
+            'number' => 'INS-2026-000003',
+        ]);
+        InspectionResponsible::factory()->forInspection($inspection, $admin)->create([
+            'responsibility' => InspectionResponsibility::Inspector,
+            'is_primary' => true,
+        ]);
+
+        $response = $this->actingAs($admin)->post(route('inspections.defects.related.store', [$inspection, $source]), [
+            'relation_type' => DefectRelationType::Recurrence->value,
+            'title' => 'Nova ocorrência no mesmo ponto',
+            'location_description' => 'Mesmo ponto da ocorrência anterior.',
+        ]);
+
+        $response->assertRedirect();
+        $target = Defect::query()->where('id', '!=', $source->getKey())->firstOrFail();
+
+        $this->assertSame('VT009-CV-002', $target->code);
+        $this->assertDatabaseHas('defect_relations', [
+            'source_defect_id' => $source->id,
+            'target_defect_id' => $target->id,
+            'relation_type' => DefectRelationType::Recurrence->value,
+        ]);
+    }
+
+    public function test_reinspection_checklist_blocks_submission_until_active_defects_are_assessed(): void
+    {
+        [, $admin, , $firstInspection] = $this->createInspectionReadyForDefects();
+
+        $this->actingAs($admin)->post(route('inspections.defects.store', $firstInspection), [
+            'title' => 'Avaria a acompanhar',
+            'comment' => 'Registrada.',
+            'assessment_action' => 'complete',
+        ])->assertRedirect();
+
+        $defect = Defect::query()->firstOrFail();
+        $inspection = Inspection::factory()->reinspection($firstInspection)->create([
+            'status' => InspectionStatus::InProgress,
+            'number' => 'INS-2026-000004',
+        ]);
+        InspectionResponsible::factory()->forInspection($inspection, $admin)->create([
+            'responsibility' => InspectionResponsibility::Preparer,
+            'is_primary' => true,
+        ]);
+        InspectionResponsible::factory()->forInspection($inspection)->create([
+            'responsibility' => InspectionResponsibility::Reviewer,
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('inspections.reinspection-checklist', $inspection))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Inspections/ReinspectionChecklist')
+                ->where('checklist.total', 1)
+                ->where('checklist.pending', 1)
+                ->where('checklist.items.0.defect_code', $defect->code));
+
+        $this->actingAs($admin)
+            ->post(route('inspections.submit-for-review', $inspection))
+            ->assertSessionHasErrors('inspection');
+
+        $this->assertSame(InspectionStatus::InProgress, $inspection->refresh()->status);
     }
 
     /**

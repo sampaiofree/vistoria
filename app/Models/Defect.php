@@ -94,6 +94,16 @@ final class Defect extends Model
         return $this->belongsTo(User::class, 'updated_by');
     }
 
+    public function outgoingRelations(): HasMany
+    {
+        return $this->hasMany(DefectRelation::class, 'source_defect_id');
+    }
+
+    public function incomingRelations(): HasMany
+    {
+        return $this->hasMany(DefectRelation::class, 'target_defect_id');
+    }
+
     public function isActive(): bool
     {
         return $this->status === DefectStatus::Active;
