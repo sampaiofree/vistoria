@@ -16,6 +16,7 @@ import InspectionTabs from '@/components/domain/view-first/InspectionTabs.vue';
 import PhotoGallery from '@/components/domain/view-first/PhotoGallery.vue';
 import ProvisionalDataNotice from '@/components/domain/view-first/ProvisionalDataNotice.vue';
 import ReportSection from '@/components/domain/view-first/ReportSection.vue';
+import ReportPreview from '@/components/domain/view-first/ReportPreview.vue';
 
 const props = defineProps({
     inspection: { type: Object, required: true },
@@ -551,6 +552,41 @@ function printReport() {
 
         <div v-else-if="active_tab === 'report'" class="mt-6">
             <div class="print-hidden mb-5 flex flex-wrap items-center justify-between gap-3">
+                <ProvisionalDataNotice
+                    class="max-w-3xl flex-1"
+                    title="Prévia de demonstração"
+                    message="O documento final ainda não foi gerado. Conteúdo e parâmetros técnicos permanecem provisórios."
+                    compact
+                />
+                <div class="max-w-sm">
+                    <div class="flex gap-2">
+                        <button
+                            v-if="content.print_enabled"
+                            type="button"
+                            class="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
+                            @click="printReport"
+                        >
+                            Imprimir prévia
+                        </button>
+                        <button
+                            type="button"
+                            disabled
+                            aria-describedby="pdf-disabled-reason"
+                            class="cursor-not-allowed rounded-xl border border-slate-300 bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-400"
+                            :title="content.pdf_disabled_reason"
+                        >
+                            Gerar PDF
+                        </button>
+                    </div>
+                    <p id="pdf-disabled-reason" class="mt-2 text-xs leading-5 text-slate-500">{{ content.pdf_disabled_reason }}</p>
+                </div>
+            </div>
+
+            <ReportPreview :content="content" />
+        </div>
+
+        <div v-else-if="false" class="mt-6">
+            <div class="print-hidden mb-5 flex flex-wrap items-center justify-between gap-3">
                 <ProvisionalDataNotice class="max-w-3xl flex-1" title="Prévia de demonstração" message="O documento final ainda não foi gerado. Conteúdo e parâmetros técnicos permanecem provisórios." compact />
                 <div class="max-w-sm">
                     <div class="flex gap-2">
@@ -774,6 +810,11 @@ function printReport() {
         visibility: visible !important;
     }
 
+    .report-preview-pages,
+    .report-preview-pages * {
+        visibility: visible !important;
+    }
+
     .report-document {
         position: absolute;
         inset: 0 auto auto 0;
@@ -782,6 +823,13 @@ function printReport() {
         border: 0 !important;
         border-radius: 0 !important;
         box-shadow: none !important;
+    }
+
+    .report-preview-pages {
+        position: absolute;
+        inset: 0 auto auto 0;
+        width: 210mm;
+        max-width: none !important;
     }
 
     .break-inside-avoid {

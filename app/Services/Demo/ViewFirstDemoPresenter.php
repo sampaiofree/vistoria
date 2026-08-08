@@ -13,6 +13,7 @@ use App\Models\Equipment;
 use App\Models\Inspection;
 use App\Models\User;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use App\Services\Demo\ViewFirstCivilScenario;
 
@@ -975,6 +976,9 @@ final class ViewFirstDemoPresenter
                 'eyebrow' => 'Relatório técnico de inspeção CIVIL',
                 'title' => ViewFirstCivilScenario::REPORT_NUMBER,
                 'client' => $inspection->equipment->client?->name,
+                'client_logo_url' => $inspection->equipment->client?->logo_path !== null
+                    ? Storage::disk('public')->url($inspection->equipment->client->logo_path)
+                    : null,
                 'provider' => $inspection->organization?->name,
                 'equipment_tag' => $inspection->equipment->tag,
                 'equipment_name' => $inspection->equipment->name,
