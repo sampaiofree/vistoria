@@ -1,7 +1,7 @@
 <script setup>
 import { Link } from '@inertiajs/vue3';
 
-defineProps({
+const props = defineProps({
     form: {
         type: Object,
         required: true,
@@ -14,6 +14,14 @@ defineProps({
         type: String,
         required: true,
     },
+    showLogo: {
+        type: Boolean,
+        default: false,
+    },
+    logoUrl: {
+        type: String,
+        default: '',
+    },
 });
 
 defineEmits(['submit']);
@@ -21,6 +29,10 @@ defineEmits(['submit']);
 const inputClass = 'mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100';
 const labelClass = 'text-sm font-medium text-slate-700';
 const helpClass = 'mt-1 text-xs text-rose-600';
+
+function handleLogoChange(event) {
+    props.form.logo = event.target.files?.[0] ?? null;
+}
 </script>
 
 <template>
@@ -60,6 +72,24 @@ const helpClass = 'mt-1 text-xs text-rose-600';
                 <span :class="labelClass">Observacoes</span>
                 <textarea v-model="form.notes" :class="inputClass" rows="5" maxlength="5000"></textarea>
                 <p v-if="form.errors.notes" :class="helpClass">{{ form.errors.notes }}</p>
+            </label>
+
+            <label v-if="showLogo" class="block lg:col-span-2">
+                <span :class="labelClass">Logo do cliente</span>
+                <img
+                    v-if="logoUrl"
+                    :src="logoUrl"
+                    alt="Logo atual do cliente"
+                    class="mt-2 h-20 w-20 rounded-lg border border-slate-200 object-contain p-2"
+                >
+                <input
+                    :class="inputClass"
+                    type="file"
+                    accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                    @change="handleLogoChange"
+                >
+                <p class="mt-1 text-xs text-slate-500">JPG, PNG ou WebP, até 2 MB.</p>
+                <p v-if="form.errors.logo" :class="helpClass">{{ form.errors.logo }}</p>
             </label>
         </div>
 

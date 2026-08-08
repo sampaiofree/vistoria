@@ -7,6 +7,8 @@ use App\Models\Client;
 use App\Models\Organization;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -164,5 +166,30 @@ final class ClientCrudTest extends TestCase
         $this->actingAs($admin)
             ->get(route('clients.show', $client))
             ->assertOk();
+    }
+
+    public function test_admin_can_upload_client_logo_when_updating(): void
+    {
+        Storage::fake('public');
+
+        $organization = Organization::factory()->create();
+        $admin = User::factory()
+            ->for($organization)
+            ->create([
+                'account_type' => UserAccountType::CompanyAdmin->value,
+            ]);
+        $client = Client::factory()->for($organization)->create();
+
+        $this->actingAs($admin)
+            ->put(route('clients.update', $client), [
+                'name' => $client->name,
+                'logo' => UploadedFile::fake()->image('logo.png', 120, 120),
+            ])
+            ->assertRedirect();
+
+        $client->refresh();
+
+        $this->assertNotNull($client->logo_path);
+        Storage::disk('public')->assertExists($client->logo_path);
     }
 }

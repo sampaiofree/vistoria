@@ -20,17 +20,20 @@ const props = defineProps({
 });
 
 const form = useForm({
+    _method: 'put',
     name: props.client.name ?? '',
     legal_name: props.client.legal_name ?? '',
     document: props.client.document ?? '',
     email: props.client.email ?? '',
     phone: props.client.phone ?? '',
     notes: props.client.notes ?? '',
+    logo: null,
 });
 
 function submit() {
-    form.put(props.action, {
+    form.post(props.action, {
         preserveScroll: true,
+        forceFormData: true,
     });
 }
 </script>
@@ -56,6 +59,8 @@ function submit() {
             <ClientForm
                 :form="form"
                 :cancel-url="cancel_url"
+                :logo-url="client.logo_url"
+                :show-logo="true"
                 submit-label="Salvar alteracoes"
                 @submit="submit"
             />

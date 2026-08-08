@@ -48,6 +48,7 @@ final class UpdateClientRequest extends FormRequest
             ],
             'email' => ['nullable', 'email:rfc', 'max:254'],
             'phone' => ['nullable', 'string', 'max:30'],
+            'logo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
             'notes' => ['nullable', 'string', 'max:5000'],
         ];
     }

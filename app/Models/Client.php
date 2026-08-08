@@ -28,6 +28,7 @@ class Client extends Model
         'document',
         'email',
         'phone',
+        'logo_path',
         'status',
         'notes',
     ];

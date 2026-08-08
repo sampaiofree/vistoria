@@ -15,6 +15,7 @@ use App\Models\ClientUnit;
 use App\Services\Tenancy\TenantContext;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 
@@ -129,6 +130,9 @@ final class ClientController extends Controller
                 'phone' => $client->phone,
                 'status' => $client->status->value,
                 'notes' => $client->notes,
+                'logo_url' => $client->logo_path !== null
+                    ? Storage::disk('public')->url($client->logo_path)
+                    : null,
                 'show_url' => route('clients.show', $client),
                 'edit_url' => route('clients.edit', $client),
                 'status_url' => route('clients.status', $client),
