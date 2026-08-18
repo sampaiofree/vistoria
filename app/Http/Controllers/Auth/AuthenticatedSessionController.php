@@ -43,6 +43,10 @@ class AuthenticatedSessionController extends Controller
             $user->forceFill([
                 'last_login_at' => now(),
             ])->saveQuietly();
+
+            if ($user->must_change_password) {
+                return redirect()->route('account.password.edit');
+            }
         }
 
         return redirect()->intended(route('dashboard'));

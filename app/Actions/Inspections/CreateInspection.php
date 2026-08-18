@@ -8,6 +8,7 @@ use App\Enums\InspectionStatus;
 use App\Enums\InspectionType;
 use App\Models\Equipment;
 use App\Models\Inspection;
+use App\Models\InspectionOverviewBlock;
 use App\Models\InspectionStatusHistory;
 use App\Models\User;
 use App\Services\Inspections\InspectionSnapshotBuilder;
@@ -81,7 +82,6 @@ final class CreateInspection
                 'scheduled_for' => $data['scheduled_for'] ?? $data['scheduled_at'] ?? null,
                 'context_snapshot' => $this->snapshotBuilder->build($equipment),
                 'snapshot_version' => InspectionSnapshotBuilder::VERSION,
-                'general_notes' => TextNormalizer::nullableText($data['general_notes'] ?? null),
                 'created_by' => $actor->getKey(),
                 'updated_by' => $actor->getKey(),
             ]);
@@ -99,6 +99,16 @@ final class CreateInspection
                 'reason' => 'Inspeção criada.',
                 'created_at' => now(),
             ]);
+
+            foreach ([1, 2] as $position) {
+                InspectionOverviewBlock::query()->create([
+                    'organization_id' => $this->tenant->id(),
+                    'inspection_id' => $inspection->getKey(),
+                    'position' => $position,
+                    'created_by' => $actor->getKey(),
+                    'updated_by' => $actor->getKey(),
+                ]);
+            }
 
             return $inspection->refresh();
         });

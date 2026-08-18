@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Controllers;
 
 use App\Actions\Equipments\ActivateEquipment;
@@ -7,10 +9,9 @@ use App\Actions\Equipments\CreateEquipment;
 use App\Actions\Equipments\DeactivateEquipment;
 use App\Actions\Equipments\DecommissionEquipment;
 use App\Actions\Equipments\UpdateEquipment;
-use App\Enums\DefectStatus;
-use App\Enums\EquipmentDocumentType;
+use App\Enums\EquipmentRevisionEmissionType;
 use App\Enums\EquipmentStatus;
-use App\Enums\InspectionStatus;
+use App\Enums\UserStatus;
 use App\Http\Controllers\Concerns\ResolvesTenantStructure;
 use App\Http\Requests\Equipments\StoreEquipmentRequest;
 use App\Http\Requests\Equipments\UpdateEquipmentRequest;
@@ -20,13 +21,15 @@ use App\Models\Client;
 use App\Models\ClientUnit;
 use App\Models\Equipment;
 use App\Models\EquipmentDocument;
-use App\Models\Inspection;
+use App\Models\EquipmentRevision;
 use App\Models\Subarea;
-use App\Services\Demo\ViewFirstDemoPresenter;
+use App\Models\User;
+use App\Services\Reports\EquipmentRevisionChronology;
 use App\Services\Tenancy\TenantContext;
 use App\Support\TextNormalizer;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 
@@ -157,7 +160,7 @@ final class EquipmentController extends Controller
         TenantContext $tenant,
         Request $request,
         Equipment $equipment,
-        ViewFirstDemoPresenter $demoPresenter,
+        EquipmentRevisionChronology $chronology,
     ): InertiaResponse {
         $equipment = $this->tenantEquipment($tenant, $equipment);
 
@@ -165,92 +168,36 @@ final class EquipmentController extends Controller
 
         $equipment->loadMissing([
             'client',
-            'unit',
-            'area',
-            'subarea',
-            'documents.uploader',
         ]);
 
-        $equipment->loadCount([
-            'inspections',
-            'currentDocuments',
-            'defects as active_defects_count' => fn ($query) => $query
-                ->where('status', DefectStatus::Active->value),
-        ]);
-
-        $currentInspection = $equipment->inspections()
-            ->whereNotIn('status', [
-                InspectionStatus::Released->value,
-                InspectionStatus::Canceled->value,
+        $revisionHistory = $equipment->revisions()
+            ->with(['preparer', 'reviewer', 'approver', 'releaser'])
+            ->get()
+            ->sortBy([
+                ['revision_date', 'asc'],
+                ['id', 'asc'],
             ])
-            ->orderByDesc('created_at')
-            ->first();
+            ->values();
 
-        $inspectionHistory = $equipment->inspections()
-            ->limit(8)
-            ->get();
-
-        $demoEquipment = $demoPresenter->equipment($equipment);
+        $canManageRevisions = $request->user()->can('create', [EquipmentRevision::class, $equipment]);
 
         return Inertia::render('Equipments/Show', [
             'equipment' => $this->equipmentSummaryPayload($equipment),
             'client' => [
-                'public_id' => $equipment->client->public_id,
                 'name' => $equipment->client->name,
-                'show_url' => route('clients.show', $equipment->client),
             ],
-            'unit' => [
-                'public_id' => $equipment->unit->public_id,
-                'name' => $equipment->unit->name,
-                'show_url' => route('units.show', $equipment->unit),
-            ],
-            'area' => [
-                'public_id' => $equipment->area->public_id,
-                'name' => $equipment->area->name,
-                'show_url' => route('areas.show', $equipment->area),
-            ],
-            'subarea' => $equipment->subarea === null
-                ? null
-                : [
-                    'public_id' => $equipment->subarea->public_id,
-                    'name' => $equipment->subarea->name,
-                    'show_url' => route('subareas.show', $equipment->subarea),
-                ],
-            'documents' => $equipment->documents
-                ->map(fn (EquipmentDocument $document): array => $this->equipmentDocumentPayload($document))
-                ->values()
-                ->all(),
-            'executive_summary' => [
-                'criticality' => $demoEquipment['criticality'],
-                'active_defects' => (int) $equipment->active_defects_count,
-                'inspections' => (int) $equipment->inspections_count,
-                'current_documents' => (int) $equipment->current_documents_count,
-            ],
-            'current_inspection' => $currentInspection === null
-                ? null
-                : $this->equipmentInspectionPayload(
-                    $currentInspection,
-                    $demoPresenter->progress($currentInspection),
-                ),
-            'inspection_history' => $inspectionHistory
-                ->map(fn (Inspection $inspection): array => $this->equipmentInspectionHistoryPayload(
-                    $inspection,
-                    $currentInspection,
-                ))
-                ->values()
-                ->all(),
-            'document_types' => EquipmentDocumentType::options(),
+            'history_entries' => $chronology->forEquipment($equipment)->all(),
+            'revision_emission_types' => EquipmentRevisionEmissionType::options(),
+            'revision_users' => $canManageRevisions
+                ? $this->revisionUserOptions($tenant, $revisionHistory)
+                : [],
             'can' => [
-                'create' => $request->user()->can('create', Equipment::class),
                 'update' => $request->user()->can('update', $equipment),
-                'change_status' => $request->user()->can('changeStatus', $equipment),
-                'manage_documents' => $request->user()->can('create', [EquipmentDocument::class, $equipment]),
+                'manage_revisions' => $canManageRevisions,
             ],
             'index_url' => route('equipments.index'),
-            'create_url' => route('equipments.create'),
             'edit_url' => route('equipments.edit', $equipment),
-            'status_url' => route('equipments.status', $equipment),
-            'document_store_url' => route('equipments.documents.store', $equipment),
+            'revision_store_url' => route('equipments.revisions.store', $equipment),
         ]);
     }
 
@@ -587,76 +534,53 @@ final class EquipmentController extends Controller
     }
 
     /**
-     * @return array{public_id:string, tag:string, normalized_tag:string, name:string, description:?string, manufacturer:?string, model:?string, serial_number:?string, asset_code:?string, abc_code:?string, installation_location:?string, commissioned_at:?string, status:string, notes:?string, decommissioned_at:?string, decommission_reason:?string, show_url:string}
+     * @return array{public_id:string, tag:string, name:string, status:string, show_url:string}
      */
     private function equipmentSummaryPayload(Equipment $equipment): array
     {
         return [
             'public_id' => $equipment->public_id,
             'tag' => $equipment->tag,
-            'normalized_tag' => $equipment->normalized_tag,
             'name' => $equipment->name,
-            'description' => $equipment->description,
-            'manufacturer' => $equipment->manufacturer,
-            'model' => $equipment->model,
-            'serial_number' => $equipment->serial_number,
-            'asset_code' => $equipment->asset_code,
-            'abc_code' => $equipment->abc_code,
-            'installation_location' => $equipment->installation_location,
-            'commissioned_at' => $equipment->commissioned_at?->toDateString(),
             'status' => $equipment->status->value,
-            'notes' => $equipment->notes,
-            'defect_code_prefix' => $equipment->defect_code_prefix,
-            'decommissioned_at' => $equipment->decommissioned_at?->toDateTimeString(),
-            'decommission_reason' => $equipment->decommission_reason,
             'show_url' => route('equipments.show', $equipment),
         ];
     }
 
     /**
-     * @param  array{completed:int,total:int,percentage:int}  $progress
-     * @return array{public_id:string,number:string,inspection_type:string,inspection_type_label:string,status:string,status_label:string,service_order:?string,scheduled_for:?string,inspected_on:?string,progress:array{completed:int,total:int,percentage:int},show_url:string}
+     * @param  Collection<int, EquipmentRevision>  $revisions
+     * @return array<int, array{id:int, public_id:string, name:string, status:string}>
      */
-    private function equipmentInspectionPayload(Inspection $inspection, array $progress): array
+    private function revisionUserOptions(TenantContext $tenant, Collection $revisions): array
     {
-        return [
-            'public_id' => $inspection->public_id,
-            'number' => $inspection->number ?? 'Inspeção',
-            'inspection_type' => $inspection->inspection_type->value,
-            'inspection_type_label' => $inspection->inspection_type->label(),
-            'status' => $inspection->status->value,
-            'status_label' => $inspection->status->label(),
-            'service_order' => $inspection->service_order,
-            'scheduled_for' => $inspection->scheduled_for?->format('d/m/Y'),
-            'inspected_on' => $inspection->inspected_on?->format('d/m/Y'),
-            'progress' => $progress,
-            'show_url' => route('inspections.show', $inspection),
-        ];
-    }
+        $linkedUserIds = $revisions
+            ->flatMap(fn (EquipmentRevision $revision): array => [
+                $revision->preparer_id,
+                $revision->reviewer_id,
+                $revision->approver_id,
+                $revision->releaser_id,
+            ])
+            ->filter()
+            ->unique()
+            ->values();
 
-    /**
-     * @return array{public_id:string,number:string,inspection_type_label:string,status:string,status_label:string,date_label:string,is_current:bool,show_url:string}
-     */
-    private function equipmentInspectionHistoryPayload(
-        Inspection $inspection,
-        ?Inspection $currentInspection,
-    ): array {
-        $dateLabel = match (true) {
-            $inspection->inspected_on !== null => 'Inspecionada em '.$inspection->inspected_on->format('d/m/Y'),
-            $inspection->scheduled_for !== null => 'Programada para '.$inspection->scheduled_for->format('d/m/Y'),
-            default => 'Criada em '.($inspection->created_at?->format('d/m/Y') ?? '—'),
-        };
-
-        return [
-            'public_id' => $inspection->public_id,
-            'number' => $inspection->number ?? 'Inspeção',
-            'inspection_type_label' => $inspection->inspection_type->label(),
-            'status' => $inspection->status->value,
-            'status_label' => $inspection->status->label(),
-            'date_label' => $dateLabel,
-            'is_current' => $currentInspection?->is($inspection) === true,
-            'show_url' => route('inspections.show', $inspection),
-        ];
+        return User::query()
+            ->where('organization_id', $tenant->id())
+            ->where(function ($query) use ($linkedUserIds): void {
+                $query
+                    ->where('status', UserStatus::Active->value)
+                    ->when($linkedUserIds->isNotEmpty(), fn ($query) => $query->orWhereIn('id', $linkedUserIds));
+            })
+            ->orderBy('name')
+            ->get(['id', 'public_id', 'name', 'status'])
+            ->map(fn (User $user): array => [
+                'id' => $user->id,
+                'public_id' => $user->public_id,
+                'name' => $user->name,
+                'status' => $user->status->value,
+            ])
+            ->values()
+            ->all();
     }
 
     /**

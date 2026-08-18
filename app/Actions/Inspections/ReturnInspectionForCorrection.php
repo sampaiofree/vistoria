@@ -29,7 +29,7 @@ final class ReturnInspectionForCorrection
             $this->ensureActorHasResponsibility($inspection, $actor, InspectionResponsibility::Approver);
         } else {
             throw ValidationException::withMessages([
-                'status' => 'A inspeção não está em revisão nem em aprovação.',
+                'status' => 'A inspeção não está em verificação nem em aprovação.',
             ]);
         }
 

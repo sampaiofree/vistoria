@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 final class DefectAssessment extends Model
 {
@@ -24,6 +25,7 @@ final class DefectAssessment extends Model
         'organization_id',
         'equipment_id',
         'defect_id',
+        'defect_classification_id',
         'inspection_id',
         'previous_assessment_id',
         'condition',
@@ -32,6 +34,11 @@ final class DefectAssessment extends Model
         'comment',
         'recommendation',
         'reason',
+        'item_description', 'project_reference', 'impacts_activity',
+        'gravity', 'urgency', 'trend', 'gut_score', 'classification_code',
+        'classification_priority', 'deadline_months', 'recommended_due_date',
+        'classification_snapshot', 'gut_snapshot', 'classified_at', 'classified_by',
+        'gut_classified_at', 'gut_classified_by',
         'internal_notes',
         'defect_snapshot',
         'snapshot_version',
@@ -46,6 +53,18 @@ final class DefectAssessment extends Model
             'condition' => DefectAssessmentCondition::class,
             'status' => DefectAssessmentStatus::class,
             'defect_snapshot' => 'array',
+            'impacts_activity' => 'boolean',
+            'gravity' => 'integer',
+            'urgency' => 'integer',
+            'trend' => 'integer',
+            'gut_score' => 'integer',
+            'classification_priority' => 'integer',
+            'deadline_months' => 'integer',
+            'recommended_due_date' => 'date',
+            'classification_snapshot' => 'array',
+            'gut_snapshot' => 'array',
+            'classified_at' => 'datetime',
+            'gut_classified_at' => 'datetime',
             'snapshot_version' => 'integer',
             'assessed_at' => 'datetime',
         ];
@@ -54,6 +73,11 @@ final class DefectAssessment extends Model
     public function defect(): BelongsTo
     {
         return $this->belongsTo(Defect::class);
+    }
+
+    public function classification(): BelongsTo
+    {
+        return $this->belongsTo(DefectClassification::class, 'defect_classification_id');
     }
 
     public function inspection(): BelongsTo
@@ -71,9 +95,40 @@ final class DefectAssessment extends Model
         return $this->hasMany(self::class, 'previous_assessment_id');
     }
 
+    public function photos(): HasMany
+    {
+        return $this->hasMany(AssessmentPhoto::class, 'defect_assessment_id')
+            ->orderBy('position')
+            ->orderBy('id');
+    }
+
+    public function quantity(): HasOne
+    {
+        return $this->hasOne(DefectAssessmentQuantity::class, 'defect_assessment_id');
+    }
+
+    /**
+     * Collection-shaped compatibility for inspection summaries.
+     * The database invariant guarantees at most one item.
+     */
+    public function quantities(): HasMany
+    {
+        return $this->hasMany(DefectAssessmentQuantity::class, 'defect_assessment_id');
+    }
+
+    public function locationMarkers(): HasMany
+    {
+        return $this->hasMany(InspectionLocationMarker::class, 'defect_assessment_id')->orderBy('position')->orderBy('id');
+    }
+
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function classifier(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'classified_by');
     }
 
     public function updater(): BelongsTo

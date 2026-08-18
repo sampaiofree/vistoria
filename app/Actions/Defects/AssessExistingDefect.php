@@ -111,7 +111,6 @@ final class AssessExistingDefect
 
         if (! $inspection->hasAnyResponsibilityForUser(
             $actor,
-            InspectionResponsibility::Inspector,
             InspectionResponsibility::Preparer,
         )) {
             throw ValidationException::withMessages([

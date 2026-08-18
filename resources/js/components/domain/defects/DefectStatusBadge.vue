@@ -36,7 +36,7 @@ const meta = computed(() => {
 
 <template>
     <span
-        class="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold uppercase tracking-wide"
+        class="inline-flex items-center rounded border px-2.5 py-1 text-xs font-medium"
         :class="meta.className"
     >
         {{ meta.label }}

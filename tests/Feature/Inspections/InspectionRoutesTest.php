@@ -59,6 +59,7 @@ final class InspectionRoutesTest extends TestCase
         $this->assertNotEmpty($inspection->public_id);
         $this->assertSame($equipment->tag, $inspection->context_snapshot['equipment']['tag']);
         $this->assertSame(1, $inspection->statusHistories()->count());
+        $this->assertNull($inspection->general_notes);
 
         $this->actingAs($admin)
             ->get(route('inspections.index'))
@@ -119,7 +120,7 @@ final class InspectionRoutesTest extends TestCase
                 ->where('inspection.number', $inspection->number)
                 ->where('inspection.scheduled_for_input', '2026-07-30')
                 ->where('inspection.service_order', 'OS-ANTIGA')
-                ->where('inspection.general_notes', 'Notas antigas'));
+                ->missing('inspection.general_notes'));
 
         $otherEquipment = Equipment::factory()
             ->for($organization)
@@ -148,7 +149,7 @@ final class InspectionRoutesTest extends TestCase
         $this->assertSame('PROC-NOVO', $inspection->procedure_number);
         $this->assertSame('C4', $inspection->atmospheric_classification);
         $this->assertSame('2026-08-15', $inspection->scheduled_for?->toDateString());
-        $this->assertSame('Notas atualizadas', $inspection->general_notes);
+        $this->assertSame('Notas antigas', $inspection->general_notes);
     }
 
     public function test_company_admin_can_create_reinspection_only_from_a_released_previous_inspection(): void
@@ -215,7 +216,7 @@ final class InspectionRoutesTest extends TestCase
         $this->assertSame($equipment->id, $reinspection->equipment_id);
         $this->assertSame(InspectionStatus::Planned, $reinspection->status);
         $this->assertSame('2026-07-30', $reinspection->scheduled_for?->toDateString());
-        $this->assertSame('Reinspeção de teste', $reinspection->general_notes);
+        $this->assertNull($reinspection->general_notes);
         $this->assertDatabaseCount('inspections', 3);
     }
 

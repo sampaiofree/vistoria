@@ -36,7 +36,7 @@ const meta = computed(() => {
 
 <template>
     <span
-        class="inline-flex shrink-0 items-center whitespace-nowrap rounded-full border font-bold tracking-wide"
+        class="inline-flex shrink-0 items-center whitespace-nowrap rounded border font-bold"
         :class="[meta, large ? 'px-4 py-2 text-sm' : 'px-2.5 py-1 text-xs']"
     >
         {{ code || 'Sem CV' }}<span v-if="label" class="ml-1 font-medium">· {{ label }}</span><span v-if="historical" class="ml-1 font-medium">· histórica</span>

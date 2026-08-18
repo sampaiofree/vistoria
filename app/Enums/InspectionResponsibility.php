@@ -4,7 +4,6 @@ namespace App\Enums;
 
 enum InspectionResponsibility: string
 {
-    case Inspector = 'inspector';
     case Preparer = 'preparer';
     case Reviewer = 'reviewer';
     case Approver = 'approver';
@@ -13,9 +12,8 @@ enum InspectionResponsibility: string
     public function label(): string
     {
         return match ($this) {
-            self::Inspector => 'Inspetor',
             self::Preparer => 'Preparador',
-            self::Reviewer => 'Revisor',
+            self::Reviewer => 'Verificador',
             self::Approver => 'Aprovador',
             self::Releaser => 'Liberador',
         };

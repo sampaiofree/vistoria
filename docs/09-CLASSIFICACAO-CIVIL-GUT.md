@@ -1,9 +1,16 @@
 # 09 — Classificação CIVIL e GUT
 
+> Atualização: a configuração operacional de G, U e T agora pertence à categoria de avaria. Cada categoria mantém listas independentes de notas inteiras (0–65535) e cores hexadecimais, com quantidade livre por critério. Categorias sem opções GUT continuam válidas; critérios configurados são exigidos na publicação da avaliação e seus valores são preservados em snapshot próprio. O produto G×U×T, faixas e mapeamento automático para a classificação principal permanecem fora desta etapa.
+
+O conteúdo histórico abaixo descreve o antigo mecanismo de perfis globais GUT/CV, removido do fluxo operacional e mantido apenas como referência de transição.
+
+> Status em 10/08/2026: o catálogo manual de categorias/classificações continua sendo a fonte de verdade do documento 07A. O núcleo opcional GUT/CV, seus snapshots e os quantitativos estão integrados ao formulário oficial. Como o procedimento técnico não está disponível, perfis de organizações comuns permanecem em `draft`; apenas a organização explicitamente marcada como demonstração recebe um perfil ativo, isolado e não reutilizável em produção.
+
 ## 1. Objetivo
 
 Implementar a avaliação técnica das avarias CIVIL, incluindo:
 
+- seleção manual de classificação CIVIL configurada pela organização;
 - gravidade;
 - urgência;
 - tendência;
@@ -120,7 +127,7 @@ Ao concluir esta etapa, o sistema deverá permitir:
 - cadastrar elementos CIVIL;
 - registrar item ou subitem observado;
 - registrar impacto na atividade;
-- registrar quantitativos com unidade;
+- registrar um quantitativo principal com valor e unidade;
 - sugerir comentários;
 - sugerir recomendações;
 - permitir edição técnica do texto sugerido;
@@ -129,7 +136,7 @@ Ao concluir esta etapa, o sistema deverá permitir:
 - bloquear alteração silenciosa após revisão;
 - calcular a criticidade geral do equipamento;
 - produzir resumo por classificação;
-- validar avaliações antes do envio para revisão.
+- validar avaliações antes do envio para verificação.
 
 ---
 
@@ -286,9 +293,9 @@ Esses valores são exemplos do relatório e precisam de confirmação no procedi
 
 # 8. Regras de negócio
 
-## 8.1 Perfil obrigatório
+## 8.1 Perfil opcional
 
-Uma inspeção CIVIL deve possuir um perfil ativo de classificação antes de ser iniciada.
+Uma inspeção pode ser iniciada sem perfil GUT. Quando houver um perfil ativo vinculado, ele poderá ser usado como apoio opcional para calcular GUT e sugerir uma classificação do catálogo.
 
 ---
 
@@ -338,13 +345,13 @@ A fonte de verdade será o backend.
 
 Em uma reinspeção, os valores G, U e T anteriores serão mostrados apenas como referência.
 
-O inspetor deverá informar uma nova avaliação.
+O preparador deverá informar uma nova avaliação.
 
 ---
 
 ## 8.6 Condições que exigem classificação
 
-Exigem GUT:
+Quando um perfil GUT estiver habilitado, exigem GUT:
 
 ```text
 new
@@ -353,7 +360,7 @@ worsened
 improved
 ```
 
-Não recebem nova classificação ativa:
+Independentemente do uso de GUT, não recebem nova classificação ativa:
 
 ```text
 repaired
@@ -419,18 +426,19 @@ quantidade de avaliações completas por classificação
 
 ---
 
-## 8.11 Quantitativos
+## 8.11 Quantitativo principal
 
-Uma avaliação poderá possuir um ou mais quantitativos.
+Uma avaliação poderá possuir zero ou um quantitativo principal, composto por valor e unidade.
 
 Exemplos:
 
 ```text
 1,20 m²
-4,00 m²
 3 unidades
 0,40 m³
 ```
+
+O valor representa o total observado na avaria. Não existe multiplicação entre quantidade e valor unitário.
 
 Não fixar CIVIL exclusivamente em `m²` ou `m³`.
 
@@ -438,7 +446,7 @@ Não fixar CIVIL exclusivamente em `m²` ou `m³`.
 
 ## 8.12 Totalização
 
-Só somar quantitativos com a mesma unidade.
+Na consolidação da inspeção, só somar os quantitativos principais de avaliações com a mesma unidade.
 
 Exemplo:
 
@@ -776,7 +784,7 @@ Alterar o modelo não modifica avaliações anteriores.
 
 ---
 
-# 16. Quantitativos
+# 16. Quantitativo principal
 
 Migration:
 
@@ -790,12 +798,8 @@ Schema::create('defect_assessment_quantities', function (Blueprint $table): void
 
     $table->unsignedBigInteger('defect_assessment_id');
 
-    $table->string('description', 180)->nullable();
-    $table->decimal('quantity', 14, 4)->default(1);
     $table->decimal('measurement_value', 16, 4)->nullable();
     $table->string('measurement_unit', 20);
-    $table->unsignedInteger('position')->default(1);
-    $table->text('notes')->nullable();
 
     $table->timestamps();
 
@@ -807,12 +811,14 @@ Schema::create('defect_assessment_quantities', function (Blueprint $table): void
         ->on('defect_assessments')
         ->restrictOnDelete();
 
-    $table->index(
-        ['organization_id', 'defect_assessment_id', 'position'],
-        'assessment_quantities_org_assessment_position_index',
+    $table->unique(
+        ['organization_id', 'defect_assessment_id'],
+        'assessment_quantities_org_assessment_unique',
     );
 });
 ```
+
+As colunas legadas de descrição, multiplicador, posição e notas permanecem fisicamente na tabela por compatibilidade, mas não fazem parte do contrato atual nem da interface.
 
 ### Ajuste necessário
 
@@ -849,11 +855,7 @@ $table->json('classification_profile_snapshot')->nullable();
 
 ### Regra
 
-Antes de iniciar uma inspeção CIVIL:
-
-```text
-classification_profile_id obrigatório
-```
+O perfil GUT é opcional no MVP. Quando informado, deve ser ativo, pertencer à organização e ser congelado no snapshot da inspeção.
 
 ---
 
@@ -1180,7 +1182,7 @@ Criar:
 CivilAssessmentCoverageValidator
 ```
 
-Antes de enviar para revisão, validar em cada avaliação aplicável:
+Antes de enviar para verificação, validar em cada avaliação aplicável:
 
 - tipo de dano;
 - elemento;
@@ -1360,12 +1362,14 @@ Deverá cadastrar:
 
 As faixas completas não deverão ser marcadas como oficiais sem o procedimento.
 
-O seed de demonstração deverá usar:
+O seed geral deverá usar:
 
 ```text
 status = draft
 notes = "Regras provisórias baseadas no relatório de referência."
 ```
+
+O `ViewFirstDemoSeeder`, restrito a `local/testing`, pode ativar o perfil somente dentro da organização com `is_demo = true`. Essa ativação permite exercitar o fluxo oficial sem declarar as faixas como regra produtiva nem alterar perfis de outras organizações.
 
 ---
 
@@ -1435,13 +1439,14 @@ Testar:
 
 ---
 
-## 34.5 Quantitativos
+## 34.5 Quantitativo principal
 
 Testar:
 
 - decimal preservado;
 - unidade obrigatória;
-- múltiplos quantitativos;
+- no máximo um quantitativo por avaliação;
+- remoção do quantitativo opcional;
 - soma por unidade;
 - não soma unidades diferentes;
 - isolamento por tenant.
@@ -1510,30 +1515,30 @@ Testar:
 
 # 36. Critérios de aceite
 
-- [ ] perfis versionados criados;
-- [ ] critérios G, U e T configuráveis;
-- [ ] faixas CV configuráveis;
-- [ ] perfil congelado por inspeção;
-- [ ] cálculo GUT no backend;
-- [ ] classificação resolvida no backend;
-- [ ] snapshot da regra salvo;
-- [ ] prazo calculado;
+- [x] perfis versionados criados;
+- [x] critérios G, U e T configuráveis;
+- [x] faixas CV configuráveis;
+- [x] perfil congelado por inspeção;
+- [x] cálculo GUT no backend;
+- [x] classificação resolvida no backend;
+- [x] snapshot da regra salvo;
+- [x] prazo calculado quando configurado;
 - [ ] tipos de dano cadastrados;
 - [ ] elementos cadastrados;
-- [ ] quantitativos com unidades;
+- [x] quantitativo principal com valor e unidade;
 - [ ] comentários sugeridos;
 - [ ] recomendações sugeridas;
 - [ ] texto final editável;
-- [ ] criticidade mais alta calculada;
-- [ ] resumo por classe;
+- [x] criticidade mais alta calculada;
+- [x] resumo por classe e unidade;
 - [ ] reinspeção exige nova avaliação;
 - [ ] reparo remove classificação ativa;
 - [ ] validação antes da revisão;
-- [ ] isolamento multiempresa;
-- [ ] testes passam;
-- [ ] build passa;
-- [ ] regras oficiais não são inventadas;
-- [ ] documentação corresponde ao código.
+- [x] isolamento multiempresa;
+- [x] testes automatizados do núcleo e da integração passam;
+- [x] build passa;
+- [x] regras oficiais não são inventadas;
+- [x] documentação corresponde ao código.
 
 ---
 
@@ -1627,32 +1632,34 @@ Mitigação:
 - [ ] Validar escala T.
 - [ ] Validar faixas CV.
 - [ ] Validar prazos.
-- [ ] Criar enums.
-- [ ] Criar migrations.
-- [ ] Criar models.
-- [ ] Criar profiles.
-- [ ] Criar validador de perfil.
-- [ ] Criar calculadora GUT.
-- [ ] Criar resolvedor CV.
-- [ ] Criar Action de classificação.
-- [ ] Criar quantitativos.
+- [x] Criar enums.
+- [x] Criar migrations.
+- [x] Criar models.
+- [x] Criar profiles.
+- [x] Criar validador de perfil.
+- [x] Criar calculadora GUT.
+- [x] Criar resolvedor CV.
+- [x] Criar Action de classificação.
+- [x] Criar quantitativo principal.
 - [ ] Criar templates.
-- [ ] Criar resumo.
-- [ ] Criar criticidade.
-- [ ] Atualizar envio para revisão.
-- [ ] Criar Policies.
-- [ ] Criar Form Requests.
-- [ ] Criar Controllers.
-- [ ] Criar rotas.
-- [ ] Criar páginas Vue.
-- [ ] Criar seeder provisório.
-- [ ] Criar testes.
-- [ ] Executar migrations.
-- [ ] Executar Pint.
-- [ ] Executar testes.
-- [ ] Executar build.
+- [x] Criar resumo por classe e unidade.
+- [x] Criar criticidade.
+- [ ] Atualizar envio para verificação com cobertura completa de classificação CIVIL.
+- [x] Criar Policies.
+- [x] Criar Form Requests.
+- [x] Criar Controllers.
+- [x] Criar rotas.
+- [x] Criar páginas Vue.
+- [x] Integrar formulário GUT/CV à avaliação.
+- [x] Vincular perfil ativo à inspeção planejada.
+- [x] Criar seeder provisório.
+- [x] Criar testes do núcleo.
+- [x] Executar migrations.
+- [x] Executar Pint nos arquivos do núcleo.
+- [x] Executar testes do núcleo.
+- [x] Executar build.
 - [ ] Validar manualmente.
-- [ ] Atualizar roadmap.
+- [x] Atualizar roadmap.
 - [ ] Criar commit.
 
 ---

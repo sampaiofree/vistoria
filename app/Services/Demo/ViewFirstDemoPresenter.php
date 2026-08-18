@@ -7,46 +7,72 @@ namespace App\Services\Demo;
 use App\Enums\DefectAssessmentCondition;
 use App\Enums\DefectAssessmentStatus;
 use App\Enums\DefectStatus;
+use App\Enums\InspectionResponsibility;
+use App\Enums\MeasurementUnit;
+use App\Models\AssessmentPhoto;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
+use App\Models\DefectCategory;
+use App\Models\DefectClassification;
 use App\Models\Equipment;
 use App\Models\Inspection;
 use App\Models\User;
+use App\Services\InspectionLocations\InspectionLocationPhotoNumbering;
+use App\Services\Reports\EquipmentRevisionChronology;
+use App\Services\Reports\GeneralAspectsDocument;
+use App\Services\Reports\InspectionOverviewPresenter;
+use App\Services\Reports\InspectionPhotographicDocumentationComposer;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 /**
- * Read model for the View First CIVIL demonstration.
- *
- * GUT/CV, characterization, quantities and photographic evidence are fed from
- * a single structured civil scenario while the product keeps one read model.
+ * Operational read model for inspections, assessments and reports.
+ * All values exposed here come from persisted domain data.
  */
-final class ViewFirstDemoPresenter
+class ViewFirstDemoPresenter
 {
-    public const REPORT_REVISION = ViewFirstCivilScenario::REPORT_REVISION;
+    public const REPORT_REVISION = 'R-04';
+
+    public function __construct(
+        private readonly InspectionLocationPhotoNumbering $photoNumbering,
+        private readonly InspectionPhotographicDocumentationComposer $photographicDocumentation,
+        private readonly EquipmentRevisionChronology $revisionChronology,
+        private readonly GeneralAspectsDocument $generalAspectsDocuments,
+        private readonly InspectionOverviewPresenter $inspectionOverview,
+    ) {}
 
     /**
      * @return array{criticality: null|array{value:string, label:string, is_provisional:bool}}
      */
     public function equipment(Equipment $equipment): array
     {
-        $equipment->loadMissing('defects');
+        $equipment->loadMissing(['organization', 'defects.assessments.classification', 'defects.assessments.quantities']);
 
         if ($equipment->defects->isEmpty()) {
             return ['criticality' => null];
         }
 
         $classification = $equipment->defects
-            ->map(fn (Defect $defect): array => $this->technicalData($defect)['classification'])
-            ->sortBy(fn (array $item): int => $this->criticalityRank($item['code']))
+            ->map(function (Defect $defect): array {
+                $assessment = $defect->assessments
+                    ->filter(fn (DefectAssessment $assessment): bool => $assessment->isComplete())
+                    ->sortByDesc('created_at')
+                    ->first();
+
+                return $assessment?->classification === null
+                    ? $this->technicalData($defect, $assessment)['classification']
+                    : $this->classificationFromDefinition($assessment->classification);
+            })
+            ->sortBy(fn (array $item): int => $this->criticalityRank($item))
             ->first() ?? $this->classification(null);
 
         return [
             'criticality' => [
                 'value' => $classification['code'],
                 'label' => $classification['label'],
-                'is_provisional' => true,
+                'is_critical' => $classification['is_critical'] ?? false,
+                'is_provisional' => false,
             ],
         ];
     }
@@ -112,7 +138,6 @@ final class ViewFirstDemoPresenter
                 $summary,
                 $inspectionPayload,
             ),
-            'demo' => $this->demoMetadata(),
         ];
     }
 
@@ -124,15 +149,24 @@ final class ViewFirstDemoPresenter
         $assessment->loadMissing([
             'defect.equipment.client',
             'defect.equipment.unit',
+            'defect.categoryDefinition.classifications',
+            'defect.categoryDefinition.gutOptions',
+            'classification',
             'inspection.equipment.defects.assessments.inspection',
             'inspection.equipment.defects.assessments.creator',
+            'inspection.equipment.defects.assessments.photos',
+            'inspection.equipment.defects.assessments.quantities',
+            'inspection.equipment.defects.assessments.classification',
             'inspection.equipment.defects.firstInspection',
+            'photos',
+            'quantities',
+            'locationMarkers.map',
             'previousAssessment.inspection',
             'previousAssessment.creator',
             'creator',
         ]);
 
-        $technical = $this->technicalData($assessment->defect);
+        $technical = $this->technicalData($assessment->defect, $assessment);
         $items = $this->defectsForInspection($assessment->inspection);
         $position = $items->search(
             fn (Defect $defect): bool => $defect->getKey() === $assessment->defect_id,
@@ -141,36 +175,92 @@ final class ViewFirstDemoPresenter
         $previousUrl = $this->adjacentAssessmentUrl($items, $position, -1, $assessment->inspection);
         $nextUrl = $this->adjacentAssessmentUrl($items, $position, 1, $assessment->inspection);
         $canUpdate = $user->can('update', $assessment);
-        $canComplete = $user->can('complete', $assessment);
+        $locationMarkerCount = $assessment->locationMarkers->count();
+        $keepPublished = $assessment->isComplete() && $locationMarkerCount > 0;
+        $canEdit = $canUpdate && ($assessment->isDraft() || $keepPublished);
+        $canChangeStatus = $canUpdate;
+        $category = $assessment->defect->categoryDefinition;
+        $classification = $assessment->classification === null
+            ? $technical['classification']
+            : [
+                'code' => $assessment->classification->code,
+                'label' => $assessment->classification->name,
+                'score_band' => null,
+                'profile_version' => null,
+                'severity_rank' => $assessment->classification->severity_rank,
+                'color' => $assessment->classification->color,
+                'is_critical' => $assessment->classification->severity_rank !== null
+                    && $assessment->classification->severity_rank <= 2,
+                'historical' => ! $assessment->classification->isActive(),
+            ];
+        $quantity = $technical['quantities'][0] ?? null;
+        $reportNumbering = $this->photoNumbering->buildForReport($assessment->inspection);
+        $reportCategory = $assessment->defect->categoryCode();
 
         return [
             'assessment' => $this->assessmentPayload($assessment, true),
             'previous_assessment' => $assessment->previousAssessment === null
                 ? null
                 : $this->assessmentPayload($assessment->previousAssessment),
-            'classification' => $technical['classification'],
+            'classification' => $classification,
             'gut' => $technical['gut'],
+            'gut_options' => $this->gutOptionsPayload($category),
+            'gut_snapshot' => $assessment->gut_snapshot,
+            'manual_classifications' => $category?->classifications
+                ?->filter(fn ($classification): bool => $classification->isActive())
+                ->map(fn ($classification): array => [
+                    'id' => $classification->id,
+                    'public_id' => $classification->public_id,
+                    'code' => $classification->code,
+                    'name' => $classification->name,
+                    'description' => $classification->description,
+                    'position' => $classification->position,
+                    'severity_rank' => $classification->severity_rank,
+                    'color' => $classification->color,
+                ])
+                ->values()
+                ->all() ?? [],
             'characterization' => $technical['characterization'],
-            'quantities' => $technical['quantities'],
-            'quantity_summary' => $technical['quantity_summary'] ?? null,
-            'discipline' => $technical['discipline'] ?? ViewFirstCivilScenario::DISCIPLINE,
-            'discipline_label' => $technical['discipline_label'] ?? ViewFirstCivilScenario::DISCIPLINE_LABEL,
-            'classification_family' => $technical['classification_family'] ?? ViewFirstCivilScenario::CLASSIFICATION_FAMILY,
-            'unit' => $technical['unit'] ?? ViewFirstCivilScenario::UNIT,
+            'quantity' => $quantity === null ? null : [
+                'measurement_value' => $quantity['measurement_value'],
+                'measurement_unit' => $quantity['measurement_unit'],
+            ],
+            'discipline' => $technical['discipline'] ?? Str::lower($assessment->defect->categoryCode()),
+            'discipline_label' => $technical['discipline_label'] ?? $assessment->defect->categoryLabel(),
+            'classification_family' => $category?->code ?? ($technical['classification_family'] ?? $assessment->defect->categoryCode()),
+            'unit' => $technical['unit'] ?? null,
             'project' => $technical['project'] ?? null,
-            'drawing' => $technical['drawing'] ?? ViewFirstCivilScenario::DRAWING,
+            'drawing' => $technical['drawing'] ?? null,
             'item' => $technical['item'] ?? null,
             'element' => $technical['element'] ?? null,
             'manifestation' => $technical['manifestation'] ?? null,
             'impact' => $technical['impact'] ?? null,
             'photo_interval' => $technical['photo_interval'] ?? null,
             'occurrence' => $technical['occurrence'] ?? null,
-            'evidence' => $this->evidenceForDefect($assessment->defect, $technical, $assessment),
+            'evidence' => $this->evidenceForDefect($assessment->defect, $technical, $assessment, $canEdit, $reportNumbering),
+            'photos' => $assessment->photos->map(fn ($photo): array => [
+                'id' => $photo->public_id,
+                'title' => $photo->original_name,
+                'caption' => $photo->caption,
+                'photo_type' => $photo->photo_type->value,
+                'photo_type_label' => $photo->photo_type->label(),
+                'processing_status' => $photo->processing_status->value,
+                'url' => $photo->isReady() ? route('assessment-photos.show', [$photo, 'optimized']) : null,
+                'thumbnail_url' => $photo->isReady() ? route('assessment-photos.show', [$photo, 'thumbnail']) : null,
+                'original_url' => $photo->isReady() ? route('assessment-photos.show', [$photo, 'original']) : null,
+                'position' => $photo->position,
+                'report_number' => $reportNumbering[$photo->public_id] ?? null,
+                'report_category' => $reportCategory,
+                'reorder_url' => $canEdit ? route('defect-assessments.photos.reorder', $assessment) : null,
+                'retry_url' => $canEdit ? route('assessment-photos.retry', $photo) : null,
+                'delete_url' => $canEdit ? route('assessment-photos.destroy', $photo) : null,
+            ])->values()->all(),
             'assessment_navigation' => [
                 'previous_url' => $previousUrl,
                 'next_url' => $nextUrl,
                 'inspection_url' => route('inspections.show', $assessment->inspection),
                 'defects_url' => route('inspections.defects', $assessment->inspection),
+                'locations_url' => route('inspections.locations', $assessment->inspection),
                 'position' => is_int($position) ? $position + 1 : 1,
                 'total' => $items->count(),
             ],
@@ -182,17 +272,36 @@ final class ViewFirstDemoPresenter
                 )
                 ->values()
                 ->all(),
+            'measurement_units' => MeasurementUnit::options(),
             'capabilities' => [
-                'update' => $canUpdate,
-                'complete' => $canComplete,
-                'update_url' => $canUpdate
+                'update' => $canEdit,
+                'complete' => $canChangeStatus,
+                'keep_published' => $keepPublished,
+                'can_move_to_draft' => $locationMarkerCount === 0,
+                'location_marker_count' => $locationMarkerCount,
+                'locations_url' => route('inspections.locations', $assessment->inspection),
+                'status_url' => $canChangeStatus
+                    ? route('defect-assessments.status.update', $assessment)
+                    : null,
+                'update_url' => $canEdit
                     ? route('defect-assessments.update', $assessment)
                     : null,
-                'complete_url' => $canComplete
+                'complete_url' => $canChangeStatus
                     ? route('defect-assessments.complete', $assessment)
                     : null,
+                'photo_upload_url' => $canEdit
+                    ? route('defect-assessments.photos.store', $assessment)
+                    : null,
+                'gut_url' => $canEdit && $category !== null && $this->hasGutOptions($category)
+                    ? route('defect-assessments.gut.update', $assessment)
+                    : null,
+                'manual_classification_url' => $canEdit && $category !== null
+                    ? route('defect-assessments.manual-classification.update', $assessment)
+                    : null,
+                'quantity_url' => $canEdit
+                    ? route('defect-assessments.quantity.update', $assessment)
+                    : null,
             ],
-            'demo' => $this->demoMetadata(),
         ];
     }
 
@@ -203,6 +312,7 @@ final class ViewFirstDemoPresenter
     {
         return [
             'overview_url' => route('inspections.show', $inspection),
+            'report_overview_url' => route('inspections.report-overview', $inspection),
             'defects_url' => route('inspections.defects', $inspection),
             'locations_url' => route('inspections.locations', $inspection),
             'photos_url' => route('inspections.photos', $inspection),
@@ -213,6 +323,31 @@ final class ViewFirstDemoPresenter
         ];
     }
 
+    /** @return array<string, mixed>|null */
+    private function gutOptionsPayload(?DefectCategory $category): array
+    {
+        $payload = ['gravity' => [], 'urgency' => [], 'trend' => []];
+
+        if ($category === null) {
+            return $payload;
+        }
+
+        foreach ($category->gutOptions as $option) {
+            $payload[$option->criterion->value][] = [
+                'id' => $option->id,
+                'score' => $option->score,
+                'color' => $option->color,
+            ];
+        }
+
+        return $payload;
+    }
+
+    private function hasGutOptions(?DefectCategory $category): bool
+    {
+        return $category !== null && $category->gutOptions->isNotEmpty();
+    }
+
     /**
      * @param  array<string, mixed>  $summary
      * @return array<int, array<string, mixed>>
@@ -221,6 +356,7 @@ final class ViewFirstDemoPresenter
     {
         return [
             ['key' => 'overview', 'label' => 'Visão geral', 'url' => route('inspections.show', $inspection)],
+            ['key' => 'report_overview', 'label' => 'Vista geral', 'url' => route('inspections.report-overview', $inspection)],
             ['key' => 'defects', 'label' => 'Avarias', 'url' => route('inspections.defects', $inspection), 'count' => $summary['total']],
             ['key' => 'locations', 'label' => 'Localização', 'url' => route('inspections.locations', $inspection), 'count' => $summary['total']],
             ['key' => 'photos', 'label' => 'Fotografias', 'url' => route('inspections.photos', $inspection), 'count' => $photoCount],
@@ -267,7 +403,7 @@ final class ViewFirstDemoPresenter
                 'legend' => collect($items)
                     ->pluck('classification')
                     ->unique('code')
-                    ->sortBy(fn (array $classification): int => $this->criticalityRank($classification['code']))
+                    ->sortBy(fn (array $classification): int => $this->criticalityRank($classification))
                     ->map(fn (array $classification): array => [
                         'code' => $classification['code'],
                         'label' => $classification['label'],
@@ -288,13 +424,13 @@ final class ViewFirstDemoPresenter
             'report' => $this->report($inspection, $items, $photos, $summary, $inspectionPayload),
             default => [
                 'metrics' => [
-                    ['key' => 'progress', 'label' => 'Avaliações concluídas', 'value' => sprintf('%d/%d', $summary['completed'], $summary['total']), 'detail' => $summary['progress_percent'].'%'],
+                    ['key' => 'progress', 'label' => 'Avaliações publicadas', 'value' => sprintf('%d/%d', $summary['completed'], $summary['total']), 'detail' => $summary['progress_percent'].'%'],
                     ['key' => 'criticality', 'label' => 'Criticidade atual', 'value' => $summary['criticality']['code'], 'detail' => $summary['criticality']['label']],
                     ['key' => 'critical', 'label' => 'Avarias críticas', 'value' => (string) $summary['critical'], 'detail' => 'prioridade técnica'],
                     ['key' => 'pending', 'label' => 'Pendências', 'value' => (string) $summary['pending'], 'detail' => 'avaliação em aberto'],
                 ],
                 'highlights' => collect($items)
-                    ->filter(fn (array $item): bool => in_array($item['classification']['code'], ['CV-1', 'CV-2'], true) || $item['is_pending'])
+                    ->filter(fn (array $item): bool => ($item['classification']['is_critical'] ?? false) || $item['is_pending'])
                     ->take(3)
                     ->values()
                     ->all(),
@@ -317,7 +453,7 @@ final class ViewFirstDemoPresenter
         $completed = $collection->where('assessment.status', DefectAssessmentStatus::Complete->value)->count();
         $criticality = $collection
             ->pluck('classification')
-            ->sortBy(fn (array $classification): int => $this->criticalityRank($classification['code']))
+            ->sortBy(fn (array $classification): int => $this->criticalityRank($classification))
             ->first() ?? $this->classification(null);
 
         $conditionBreakdown = $collection
@@ -349,38 +485,38 @@ final class ViewFirstDemoPresenter
                         ->count(),
                 ];
             })
-            ->sortBy(fn (array $item): int => $this->criticalityRank($item['code']))
+            ->sortBy(fn (array $item): int => $this->criticalityRank($item))
             ->values()
             ->all();
 
-        $quantityTotal = round(
-            $collection->sum(fn (array $item): float => (float) ($item['quantity_summary']['total'] ?? 0)),
-            2,
-        );
         $exportableCollection = $collection
             ->reject(fn (array $item): bool => ($item['assessment']['status'] ?? null) === DefectAssessmentStatus::Draft->value)
             ->values();
-        $exportableQuantityTotal = round(
-            $exportableCollection->sum(fn (array $item): float => (float) ($item['quantity_summary']['total'] ?? 0)),
-            2,
-        );
+        $quantityTotals = $this->quantityTotals($collection);
+        $exportableQuantityTotals = $this->quantityTotals($exportableCollection);
+        $singleQuantityTotal = $quantityTotals->count() === 1 ? $quantityTotals->first() : null;
+        $singleExportableQuantityTotal = $exportableQuantityTotals->count() === 1
+            ? $exportableQuantityTotals->first()
+            : null;
         $photoTotal = $collection->sum(fn (array $item): int => count($item['photos'] ?? []));
         $exportablePhotoTotal = $exportableCollection->sum(fn (array $item): int => count($item['photos'] ?? []));
         $quantityByClass = $collection
             ->groupBy('classification.code')
-            ->map(function (Collection $group): array {
+            ->flatMap(function (Collection $group): array {
                 $first = $group->first();
-                $unit = $first['quantity_summary']['unit'] ?? ViewFirstCivilScenario::UNIT;
-                $total = round($group->sum(fn (array $item): float => (float) ($item['quantity_summary']['total'] ?? 0)), 2);
+                $code = $first['classification']['code'] ?? '—';
 
-                return [
-                    'code' => $first['classification']['code'] ?? '—',
-                    'label' => $first['classification']['label'] ?? 'Não classificada',
-                    'unit' => $unit,
-                    'total' => $total,
-                    'total_label' => $this->formatQuantity($total).' '.$unit,
-                    'count' => $group->count(),
-                ];
+                return $this->quantityTotals($group)
+                    ->map(fn (array $quantity): array => [
+                        'key' => $code.'-'.$quantity['unit_value'],
+                        'code' => $code,
+                        'label' => $first['classification']['label'] ?? 'Não classificada',
+                        'unit' => $quantity['unit'],
+                        'total' => $quantity['total'],
+                        'total_label' => $quantity['total_label'],
+                        'count' => $group->count(),
+                    ])
+                    ->all();
             })
             ->sortByDesc('total')
             ->values()
@@ -391,7 +527,7 @@ final class ViewFirstDemoPresenter
             'completed' => $completed,
             'pending' => $total - $completed,
             'progress_percent' => $total === 0 ? 0 : (int) round(($completed / $total) * 100),
-            'critical' => $collection->whereIn('classification.code', ['CV-1', 'CV-2'])->count(),
+            'critical' => $collection->where('classification.is_critical', true)->count(),
             'repaired' => $collection->where('assessment.condition', DefectAssessmentCondition::Repaired->value)->count(),
             'not_inspected' => $collection->where('assessment.condition', DefectAssessmentCondition::NotInspected->value)->count(),
             'criticality' => $criticality,
@@ -400,11 +536,17 @@ final class ViewFirstDemoPresenter
             'draft_count' => $collection->where('assessment.status', DefectAssessmentStatus::Draft->value)->count(),
             'photo_total' => $photoTotal,
             'exportable_photo_total' => $exportablePhotoTotal,
-            'quantity_total' => $quantityTotal,
-            'quantity_total_label' => $this->formatQuantity($quantityTotal).' '.ViewFirstCivilScenario::UNIT,
-            'quantity_total_unit' => ViewFirstCivilScenario::UNIT,
-            'exportable_quantity_total' => $exportableQuantityTotal,
-            'exportable_quantity_total_label' => $this->formatQuantity($exportableQuantityTotal).' '.ViewFirstCivilScenario::UNIT,
+            'quantity_total' => $singleQuantityTotal['total'] ?? null,
+            'quantity_total_label' => $quantityTotals->isEmpty()
+                ? '—'
+                : $quantityTotals->pluck('total_label')->implode(' · '),
+            'quantity_total_unit' => $singleQuantityTotal['unit'] ?? ($quantityTotals->isEmpty() ? null : 'Múltiplas'),
+            'quantity_totals_by_unit' => $quantityTotals->all(),
+            'exportable_quantity_total' => $singleExportableQuantityTotal['total'] ?? null,
+            'exportable_quantity_total_label' => $exportableQuantityTotals->isEmpty()
+                ? '—'
+                : $exportableQuantityTotals->pluck('total_label')->implode(' · '),
+            'exportable_quantity_totals_by_unit' => $exportableQuantityTotals->all(),
             'exportable_total' => $exportableCollection->count(),
             'quantity_by_class' => $quantityByClass,
             'by_condition' => $collection
@@ -419,13 +561,51 @@ final class ViewFirstDemoPresenter
     }
 
     /**
+     * @param  Collection<int, array<string, mixed>>  $items
+     * @return Collection<int, array{unit_value:string,unit:string,total:float,total_label:string}>
+     */
+    private function quantityTotals(Collection $items): Collection
+    {
+        return $items
+            ->flatMap(fn (array $item): array => collect($item['quantities'] ?? [])
+                ->map(function (array $quantity): array {
+                    $unitValue = (string) ($quantity['measurement_unit'] ?? $quantity['unit'] ?? MeasurementUnit::Other->value);
+                    $unit = $quantity['unit'] ?? MeasurementUnit::tryFrom($unitValue)?->symbol() ?? $unitValue;
+
+                    return [
+                        'unit_value' => $unitValue,
+                        'unit' => $unit,
+                        'total' => (float) ($quantity['total'] ?? $quantity['total_volume'] ?? 0),
+                    ];
+                })
+                ->all())
+            ->groupBy('unit_value')
+            ->map(function (Collection $rows): array {
+                $first = $rows->first();
+                $total = round($rows->sum('total'), 4);
+
+                return [
+                    'unit_value' => $first['unit_value'],
+                    'unit' => $first['unit'],
+                    'total' => $total,
+                    'total_label' => $this->formatQuantity($total).' '.$first['unit'],
+                ];
+            })
+            ->values();
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function defectCard(Inspection $inspection, Defect $defect, User $user): array
     {
         $assessment = $defect->assessments
             ->firstWhere('inspection_id', $inspection->getKey());
-        $technical = $this->technicalData($defect);
+        $technical = $this->technicalData($defect, $assessment);
+        $classification = $assessment?->classification === null
+            ? $technical['classification']
+            : $this->classificationFromDefinition($assessment->classification);
+        $evidence = $this->evidenceForDefect($defect, $technical, $assessment);
         $isPending = $assessment === null || $assessment->status === DefectAssessmentStatus::Draft;
         $canCreate = $assessment === null
             && $user->can('create', [DefectAssessment::class, $inspection, $defect]);
@@ -436,8 +616,8 @@ final class ViewFirstDemoPresenter
             'code' => $defect->code,
             'title' => $defect->title,
             'origin_description' => $defect->origin_description,
-            'category' => $defect->category->value,
-            'category_label' => $defect->category->label(),
+            'category' => $defect->categoryCode(),
+            'category_label' => $defect->categoryLabel(),
             'status' => $defect->status->value,
             'status_label' => $defect->status->label(),
             'sequence_number' => (int) $defect->sequence_number,
@@ -448,24 +628,25 @@ final class ViewFirstDemoPresenter
             'is_pending' => $isPending,
             'is_repaired' => $assessment?->condition === DefectAssessmentCondition::Repaired,
             'is_not_inspected' => $assessment?->condition === DefectAssessmentCondition::NotInspected,
-            'classification' => $technical['classification'],
+            'classification' => $classification,
             'gut' => $technical['gut'],
             'characterization' => $technical['characterization'],
             'quantities' => $technical['quantities'],
             'quantity_summary' => $technical['quantity_summary'] ?? null,
-            'discipline' => $technical['discipline'] ?? ViewFirstCivilScenario::DISCIPLINE,
-            'discipline_label' => $technical['discipline_label'] ?? ViewFirstCivilScenario::DISCIPLINE_LABEL,
-            'classification_family' => $technical['classification_family'] ?? ViewFirstCivilScenario::CLASSIFICATION_FAMILY,
-            'unit' => $technical['unit'] ?? ViewFirstCivilScenario::UNIT,
+            'discipline' => $technical['discipline'] ?? Str::lower($defect->categoryCode()),
+            'discipline_label' => $technical['discipline_label'] ?? $defect->categoryLabel(),
+            'classification_family' => $technical['classification_family'] ?? $defect->categoryCode(),
+            'unit' => $technical['unit'] ?? null,
             'project' => $technical['project'] ?? null,
-            'drawing' => $technical['drawing'] ?? ViewFirstCivilScenario::DRAWING,
+            'drawing' => $technical['drawing'] ?? null,
             'item' => $technical['item'] ?? null,
             'element' => $technical['element'] ?? null,
             'manifestation' => $technical['manifestation'] ?? null,
             'impact' => $technical['impact'] ?? null,
             'photo_interval' => $technical['photo_interval'] ?? null,
             'occurrence' => $technical['occurrence'] ?? null,
-            'evidence' => $this->evidenceForDefect($defect, $technical, $assessment),
+            'evidence' => $evidence,
+            'photos' => $evidence,
             'assessment_url' => $assessment === null
                 ? null
                 : route('defect-assessments.show', $assessment),
@@ -494,6 +675,21 @@ final class ViewFirstDemoPresenter
             'recommendation' => $assessment->recommendation,
             'reason' => $assessment->reason,
             'internal_notes' => $assessment->internal_notes,
+            'item_description' => $assessment->item_description,
+            'project_reference' => $assessment->project_reference,
+            'impacts_activity' => $assessment->impacts_activity,
+            'gravity' => $assessment->gravity,
+            'urgency' => $assessment->urgency,
+            'trend' => $assessment->trend,
+            'gut_score' => $assessment->gut_score,
+            'gut_snapshot' => $assessment->gut_snapshot,
+            'gut_classified_at' => $assessment->gut_classified_at?->format('d/m/Y H:i'),
+            'defect_classification_id' => $assessment->defect_classification_id,
+            'classification_code' => $assessment->classification_code,
+            'classification_snapshot' => $assessment->classification_snapshot,
+            'classification_priority' => $assessment->classification_priority,
+            'deadline_months' => $assessment->deadline_months,
+            'recommended_due_date' => $assessment->recommended_due_date?->format('d/m/Y'),
             'assessed_at' => $assessment->assessed_at?->format('d/m/Y H:i'),
             'assessed_at_iso' => $assessment->assessed_at?->toISOString(),
             'snapshot_version' => (int) $assessment->snapshot_version,
@@ -523,8 +719,8 @@ final class ViewFirstDemoPresenter
                 'code' => $assessment->defect->code,
                 'title' => $assessment->defect->title,
                 'origin_description' => $assessment->defect->origin_description,
-                'category' => $assessment->defect->category->value,
-                'category_label' => $assessment->defect->category->label(),
+                'category' => $assessment->defect->categoryCode(),
+                'category_label' => $assessment->defect->categoryLabel(),
                 'status' => $assessment->defect->status->value,
                 'status_label' => $assessment->defect->status->label(),
                 'equipment' => [
@@ -543,9 +739,9 @@ final class ViewFirstDemoPresenter
     /**
      * @return array<string, mixed>
      */
-    public function defectTechnicalData(Defect $defect): array
+    public function defectTechnicalData(Defect $defect, ?DefectAssessment $assessment = null): array
     {
-        return $this->technicalData($defect);
+        return $this->technicalData($defect, $assessment);
     }
 
     /**
@@ -558,7 +754,7 @@ final class ViewFirstDemoPresenter
             $finding['classification_historical'] ?? false,
         );
         $classification['score_band'] = $finding['classification_score_band'];
-        $classification['profile_version'] = ViewFirstCivilScenario::PROFILE_VERSION;
+        $classification['profile_version'] = null;
         $classification['historical'] = ($finding['current_condition'] ?? null) === DefectAssessmentCondition::Repaired->value;
 
         $gut = $finding['gut'];
@@ -587,7 +783,7 @@ final class ViewFirstDemoPresenter
                 'score' => $score,
                 'formula' => sprintf('%d×%d×%d = %d', $gut[0], $gut[1], $gut[2], $score),
                 'provisional' => true,
-                'profile_version' => ViewFirstCivilScenario::PROFILE_VERSION,
+                'profile_version' => null,
                 'score_band' => $finding['classification_score_band'],
             ],
             'characterization' => collect([
@@ -672,9 +868,14 @@ final class ViewFirstDemoPresenter
     /**
      * @return array<string, mixed>
      */
-    private function technicalData(Defect $defect): array
+    private function technicalData(Defect $defect, ?DefectAssessment $assessment = null): array
     {
-        $finding = ViewFirstCivilScenario::findingBySequence((int) $defect->sequence_number);
+        $defect->loadMissing('organization');
+        $assessment?->loadMissing(['classification', 'quantities', 'photos']);
+
+        return $this->persistedTechnicalData($defect, $assessment);
+
+        $finding = null;
 
         if ($finding !== null) {
             return $this->structuredTechnicalData($defect, $finding);
@@ -728,7 +929,7 @@ final class ViewFirstDemoPresenter
             ],
             default => [
                 'cv' => 'CV-4', 'gut' => null,
-                'characterization' => ['Categoria' => $defect->category->label(), 'Elemento' => 'Equipamento inspecionado'],
+                'characterization' => ['Categoria' => $defect->categoryLabel(), 'Elemento' => 'Equipamento inspecionado'],
                 'quantities' => [],
                 'photo_status' => 'ready',
             ],
@@ -757,6 +958,178 @@ final class ViewFirstDemoPresenter
         ];
     }
 
+    private function hasPersistedTechnicalData(DefectAssessment $assessment): bool
+    {
+        return $assessment->classification !== null
+            || $assessment->classification_code !== null
+            || $assessment->item_description !== null
+            || $assessment->project_reference !== null
+            || $assessment->impacts_activity !== null
+            || $assessment->gravity !== null
+            || $assessment->quantities->isNotEmpty()
+            || $assessment->photos->isNotEmpty();
+    }
+
+    /** @return array<string, mixed> */
+    private function persistedTechnicalData(Defect $defect, ?DefectAssessment $assessment): array
+    {
+        $classification = $this->persistedClassification($assessment);
+        $quantities = $assessment === null
+            ? collect()
+            : $assessment->quantities->map(function ($quantity): array {
+                $unit = $quantity->measurement_unit;
+                $value = (float) $quantity->measurement_value;
+                $total = $quantity->value();
+
+                return [
+                    'public_id' => $quantity->public_id,
+                    'measurement_value' => $value,
+                    'measurement_unit' => $unit->value,
+                    'unit' => $unit->symbol(),
+                    'total' => $total,
+                    'total_label' => $this->formatQuantity($total).' '.$unit->symbol(),
+                ];
+            });
+        $totalsByUnit = $quantities
+            ->groupBy('measurement_unit')
+            ->map(function (Collection $rows): array {
+                $first = $rows->first();
+                $total = round($rows->sum('total'), 4);
+
+                return [
+                    'unit' => $first['unit'],
+                    'unit_value' => $first['measurement_unit'],
+                    'total' => $total,
+                    'total_label' => $this->formatQuantity($total).' '.$first['unit'],
+                ];
+            })
+            ->values();
+        $singleTotal = $totalsByUnit->count() === 1 ? $totalsByUnit->first() : null;
+        $gut = $assessment !== null
+            && $assessment->gravity !== null
+            && $assessment->urgency !== null
+            && $assessment->trend !== null
+            ? [
+                'severity' => $assessment->gravity,
+                'urgency' => $assessment->urgency,
+                'tendency' => $assessment->trend,
+                'score' => null,
+                'formula' => null,
+                'provisional' => false,
+                'profile_version' => null,
+                'snapshot' => $assessment->gut_snapshot,
+            ]
+            : null;
+        $impact = ($assessment?->impacts_activity ?? false)
+            ? ['code' => 'IMP. ATIV.', 'label' => 'Impacto na atividade', 'description' => 'A avaliação registra impacto na atividade.']
+            : ['code' => '-', 'label' => 'Sem impacto informado', 'description' => 'Nenhum impacto na atividade foi registrado.'];
+        $categoryCode = $defect->categoryCode();
+        $categoryLabel = $defect->categoryLabel();
+        $characterization = collect([
+            'Categoria' => $categoryLabel,
+            'Item / subitem' => $assessment?->item_description,
+            'Projeto / referência' => $assessment?->project_reference,
+            'Manifestação' => $defect->title,
+            'Impacto' => $impact['label'],
+            'Localização' => $assessment?->location_description,
+        ])->filter(fn ($value): bool => $value !== null && $value !== '')
+            ->map(fn (string $value, string $label): array => compact('label', 'value'))
+            ->values()
+            ->all();
+        $photoCount = $assessment?->photos->count() ?? 0;
+        $photoInterval = $photoCount === 0
+            ? null
+            : ($photoCount === 1 ? 'Foto 01' : sprintf('Fotos 01 a %02d', $photoCount));
+
+        return [
+            'discipline' => strtolower($categoryCode),
+            'discipline_label' => $categoryLabel,
+            'classification_family' => $categoryCode,
+            'unit' => $singleTotal['unit'] ?? ($totalsByUnit->isEmpty() ? null : 'Múltiplas'),
+            'project' => $assessment?->project_reference,
+            'drawing' => null,
+            'item' => $assessment?->item_description,
+            'element' => $assessment?->item_description,
+            'manifestation' => $defect->title,
+            'impact' => $impact,
+            'classification' => $classification,
+            'gut' => $gut,
+            'characterization' => $characterization,
+            'quantities' => $quantities->values()->all(),
+            'quantity_summary' => [
+                'total' => $singleTotal['total'] ?? null,
+                'total_label' => $totalsByUnit->pluck('total_label')->implode(' · '),
+                'unit' => $singleTotal['unit'] ?? ($totalsByUnit->isEmpty() ? null : 'Múltiplas'),
+                'line_count' => $quantities->count(),
+                'totals_by_unit' => $totalsByUnit->all(),
+            ],
+            'photo_interval' => $photoInterval,
+            'photo_status' => $assessment?->photos->isEmpty() === false ? 'ready' : null,
+            'occurrence' => [
+                'sequence' => (int) $defect->sequence_number,
+                'code' => $defect->code,
+                'title' => $defect->title,
+                'project' => $assessment?->project_reference,
+                'drawing' => null,
+                'item' => $assessment?->item_description,
+                'element' => $assessment?->item_description,
+                'manifestation' => $defect->title,
+                'impact' => $impact,
+                'location' => $assessment?->location_description,
+                'photo_interval' => $photoInterval,
+                'photo_count' => $photoCount,
+                'quantities' => $quantities->values()->all(),
+                'quantity_summary' => [
+                    'total' => $singleTotal['total'] ?? null,
+                    'total_label' => $totalsByUnit->pluck('total_label')->implode(' · '),
+                    'unit' => $singleTotal['unit'] ?? ($totalsByUnit->isEmpty() ? null : 'Múltiplas'),
+                    'totals_by_unit' => $totalsByUnit->all(),
+                ],
+                'classification' => $classification,
+                'gut' => $gut,
+            ],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function persistedClassification(?DefectAssessment $assessment): array
+    {
+        if ($assessment?->classification !== null) {
+            return $this->classificationFromDefinition($assessment->classification);
+        }
+
+        if ($assessment?->classification_code === null) {
+            return [
+                'code' => '—',
+                'label' => 'Não classificada',
+                'tone' => 'neutral',
+                'score_band' => null,
+                'profile_version' => null,
+                'severity_rank' => null,
+                'is_critical' => false,
+                'provisional' => false,
+                'historical' => false,
+            ];
+        }
+
+        $snapshot = $assessment->classification_snapshot ?? [];
+        $priority = $assessment->classification_priority;
+
+        return [
+            'code' => $assessment->classification_code,
+            'label' => $snapshot['label'] ?? $snapshot['name'] ?? $assessment->classification_code,
+            'tone' => 'neutral',
+            'score_band' => isset($snapshot['min_score'], $snapshot['max_score'])
+                ? $snapshot['min_score'].'-'.$snapshot['max_score']
+                : null,
+            'profile_version' => $snapshot['profile_version'] ?? $snapshot['profile']['version'] ?? null,
+            'severity_rank' => $priority,
+            'is_critical' => $priority !== null && $priority <= 2,
+            'provisional' => false,
+            'historical' => $assessment->condition === DefectAssessmentCondition::Repaired,
+        ];
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -776,7 +1149,9 @@ final class ViewFirstDemoPresenter
                 'label' => 'Não classificada',
                 'tone' => 'neutral',
                 'score_band' => null,
-                'profile_version' => ViewFirstCivilScenario::PROFILE_VERSION,
+                'profile_version' => null,
+                'severity_rank' => null,
+                'is_critical' => false,
                 'provisional' => true,
                 'historical' => $historical,
             ];
@@ -787,8 +1162,10 @@ final class ViewFirstDemoPresenter
             'label' => $labels[$code][0] ?? 'Não classificada',
             'tone' => $labels[$code][1] ?? 'neutral',
             'score_band' => $labels[$code][2] ?? null,
-            'profile_version' => ViewFirstCivilScenario::PROFILE_VERSION,
-            'provisional' => true,
+            'profile_version' => null,
+            'severity_rank' => isset($labels[$code]) ? array_search($code, array_keys($labels), true) + 1 : null,
+            'is_critical' => in_array($code, ['CV-1', 'CV-2'], true),
+            'provisional' => false,
             'historical' => $historical,
         ];
     }
@@ -828,7 +1205,6 @@ final class ViewFirstDemoPresenter
                     'classification_family' => $finding['classification_family'],
                     'unit' => $finding['unit'],
                     'photo_interval' => sprintf('Fotos %02d a %02d', 1, count($finding['photos'] ?? [])),
-                    'is_primary' => $index === 0,
                 ];
             })
             ->all();
@@ -842,25 +1218,54 @@ final class ViewFirstDemoPresenter
         Defect $defect,
         array $technical,
         ?DefectAssessment $assessment = null,
+        bool $canEdit = false,
+        array $reportNumbering = [],
     ): array {
-        if (isset($technical['photos']) && is_array($technical['photos']) && $technical['photos'] !== []) {
-            return $technical['photos'];
+        if ($assessment?->relationLoaded('photos') && $assessment->photos->isNotEmpty()) {
+            return $assessment->photos
+                ->map(fn (AssessmentPhoto $photo): array => [
+                    'id' => $photo->public_id,
+                    'defect_id' => $defect->id,
+                    'status' => $photo->processing_status->value,
+                    'processing_status' => $photo->processing_status->value,
+                    'status_label' => $this->photoStatusLabel($photo->processing_status->value),
+                    'title' => $photo->original_name ?? 'Fotografia — '.$defect->code,
+                    'caption' => $photo->caption ?? $defect->title,
+                    'location' => $assessment->location_description ?? 'Localização registrada na inspeção',
+                    'position' => (int) $photo->position,
+                    'role' => $photo->photo_type->value,
+                    'role_label' => $photo->photo_type->label(),
+                    'illustrative' => false,
+                    'url' => $photo->isReady() ? route('assessment-photos.show', [$photo, 'optimized']) : null,
+                    'thumbnail_url' => $photo->isReady() ? route('assessment-photos.show', [$photo, 'thumbnail']) : null,
+                    'original_url' => $photo->isReady() ? route('assessment-photos.show', [$photo, 'original']) : null,
+                    'report_number' => $reportNumbering[$photo->public_id] ?? null,
+                    'report_category' => $defect->categoryCode(),
+                    'reorder_url' => $canEdit ? route('defect-assessments.photos.reorder', $assessment) : null,
+                    'retry_url' => $canEdit ? route('assessment-photos.retry', $photo) : null,
+                    'delete_url' => $canEdit ? route('assessment-photos.destroy', $photo) : null,
+                    'captured_at' => $photo->captured_at?->format('d/m/Y H:i'),
+                    'finding_code' => $defect->code,
+                    'group_label' => $defect->code.' · '.$defect->title,
+                ])
+                ->values()
+                ->all();
         }
 
-        $status = $technical['photo_status'] ?? 'ready';
+        if (isset($technical['photos']) && is_array($technical['photos']) && $technical['photos'] !== []) {
+            return collect($technical['photos'])
+                ->values()
+                ->map(function (array $photo, int $index) use ($defect, $reportNumbering): array {
+                    return array_merge($photo, [
+                        'position' => (int) ($photo['position'] ?? $index + 1),
+                        'report_number' => isset($photo['id']) ? ($reportNumbering[(string) $photo['id']] ?? null) : null,
+                        'report_category' => $defect->categoryCode(),
+                    ]);
+                })
+                ->all();
+        }
 
-        return [[
-            'id' => 'evidence-'.$defect->public_id.'-1',
-            'defect_id' => $defect->id,
-            'status' => $status,
-            'status_label' => $this->photoStatusLabel($status),
-            'title' => 'Vista técnica — '.$defect->code,
-            'caption' => $defect->title,
-            'location' => $assessment?->location_description ?? 'Localização registrada na inspeção',
-            'illustrative' => true,
-            'url' => null,
-            'placeholder_variant' => (($defect->sequence_number - 1) % 4) + 1,
-        ]];
+        return [];
     }
 
     /**
@@ -903,7 +1308,7 @@ final class ViewFirstDemoPresenter
                     'marker' => str_pad((string) ($occurrence['sequence'] ?? $item['sequence_number'] ?? 0), 2, '0', STR_PAD_LEFT),
                     'location' => $assessment['location_description'] ?? $occurrence['location'] ?? '—',
                     'project' => $occurrence['project'] ?? $item['project'] ?? '—',
-                    'drawing' => $occurrence['drawing'] ?? $item['drawing'] ?? ViewFirstCivilScenario::DRAWING,
+                    'drawing' => $occurrence['drawing'] ?? $item['drawing'] ?? null,
                     'item' => $occurrence['item'] ?? $item['item'] ?? '—',
                     'element' => $occurrence['element'] ?? $item['element'] ?? '—',
                     'manifestation' => $occurrence['manifestation'] ?? $item['manifestation'] ?? '—',
@@ -928,6 +1333,11 @@ final class ViewFirstDemoPresenter
         return number_format($value, 2, ',', '.');
     }
 
+    private function withoutNameSuffix(?string $name): ?string
+    {
+        return $name === null ? null : trim((string) preg_replace('/\s*—.*$/u', '', $name));
+    }
+
     /**
      * @param  array<int, array<string, mixed>>  $items
      * @param  array<int, array<string, mixed>>  $photos
@@ -942,72 +1352,224 @@ final class ViewFirstDemoPresenter
         array $summary,
         array $inspectionPayload,
     ): array {
+        $inspection->loadMissing(['organization', 'equipment.client', 'equipment.unit']);
+        $overview = $this->inspectionOverview->present($inspection);
+        $mappedAssessmentIds = $inspection->locationMarkers()
+            ->whereHas('map')
+            ->pluck('defect_assessment_id')
+            ->filter()
+            ->map(fn ($id): int => (int) $id)
+            ->unique()
+            ->all();
         $exportableItems = collect($items)
             ->reject(fn (array $item): bool => ($item['assessment']['status'] ?? null) === DefectAssessmentStatus::Draft->value)
             ->values();
-        $exportablePhotos = $exportableItems
-            ->flatMap(fn (array $item): array => $item['photos'] ?? [])
+        $mappedItems = $exportableItems
+            ->filter(fn (array $item): bool => in_array(
+                (int) data_get($item, 'assessment.id'),
+                $mappedAssessmentIds,
+                true,
+            ))
+            ->values();
+        $photoNumbering = $this->photoNumbering->buildForReport($inspection);
+        $photographicDocumentation = $this->photographicDocumentation->compose(
+            $mappedItems,
+            $photoNumbering,
+        );
+        $equipmentLabel = 'FOTO '.mb_strtoupper((string) $inspection->equipment->name).' '.mb_strtoupper((string) $inspection->equipment->tag);
+        $photographicDocumentation['equipment_label'] = trim($equipmentLabel);
+        $photographicDocumentation['blocks'] = collect($photographicDocumentation['blocks'])
+            ->map(fn (array $block): array => array_merge($block, ['equipment_label' => $photographicDocumentation['equipment_label']]))
             ->values()
             ->all();
+        $exportablePhotos = collect($photographicDocumentation['blocks'])
+            ->flatMap(fn (array $block): array => $block['photos'])
+            ->values()
+            ->all();
+        $referenceDocument = (array) data_get($inspectionPayload, 'reference_documents.0.document', []);
+        $externalReportNumber = filled($inspection->external_report_number)
+            ? (string) $inspection->external_report_number
+            : null;
+        $designerIReportNumber = filled($inspection->designer_i_report_number)
+            ? (string) $inspection->designer_i_report_number
+            : null;
+        $reportNumber = $inspection->external_report_number ?: $inspection->number;
+        $revisionHistory = $this->revisionChronology->forInspectionReport($inspection);
+        $currentRevision = $revisionHistory['current']['revision_number'] ?? null;
+        $coverRevision = $currentRevision === null ? 'Prévia' : (string) $currentRevision;
+        // Keep the top-level compatibility field stable; all visible report
+        // headers and footers consume the calculated cover revision below.
+        $revision = $referenceDocument['revision'] ?? 'Prévia';
+        $procedure = $inspection->procedure_number ?: '—';
+        $drawing = collect($items)
+            ->pluck('drawing')
+            ->filter()
+            ->first()
+            ?? collect($items)->pluck('project')->filter()->first()
+            ?? '—';
+        $issuedAt = $inspection->report_date?->format('d/m/Y')
+            ?? $inspection->report_generated_at?->format('d/m/Y')
+            ?? $inspection->released_at?->format('d/m/Y')
+            ?? 'Não emitido';
+        $quantityUnit = $summary['quantity_total_unit'] ?? '—';
+        $responsibles = collect($inspectionPayload['responsibles'] ?? []);
+        $approvalFlow = collect([
+            ['key' => 'prepared', 'label' => 'Preparado', 'responsibility' => InspectionResponsibility::Preparer],
+            ['key' => 'verified', 'label' => 'Verificado', 'responsibility' => InspectionResponsibility::Reviewer],
+            ['key' => 'approved', 'label' => 'Aprovado', 'responsibility' => InspectionResponsibility::Approver],
+            ['key' => 'released', 'label' => 'Liberado', 'responsibility' => InspectionResponsibility::Releaser],
+        ])->map(function (array $definition) use ($responsibles): array {
+            $responsible = $responsibles->first(
+                fn (array $item): bool => ($item['responsibility'] ?? null) === $definition['responsibility']->value
+                    && (bool) ($item['is_primary'] ?? false),
+            );
+
+            return [
+                'key' => $definition['key'],
+                'label' => $definition['label'],
+                'name' => $responsible === null
+                    ? null
+                    : $this->withoutNameSuffix(data_get($responsible, 'user.name') ?? $responsible['name'] ?? null),
+            ];
+        })->values();
+        $titleTemplate = trim((string) ($inspection->first_page_text_template ?? ''));
+        $titleLines = $titleTemplate === ''
+            ? []
+            : (preg_split(
+                '/\r\n|\r|\n/',
+                str_replace('[nome do equipamento]', (string) $inspection->equipment->name, $titleTemplate),
+            ) ?: []);
+        $currentApprovalDate = $inspection->report_date?->format('d/m/Y') ?? '—';
         $blockedIssues = [];
+        $exportBlockingIssues = [];
+        $externalReportNumberIssue = 'Informe o Número do relatório externo para exportar o relatório.';
+        $designerIReportNumberIssue = 'Informe o Nº Projetista I para exportar o relatório.';
+        $overviewPhotoIssue = 'Adicione as quatro fotografias da Vista geral para exportar o relatório.';
+        $overviewProcessingIssue = 'Aguarde o processamento das quatro fotografias da Vista geral antes de exportar o relatório.';
+        $overviewTextIssue = 'Preencha os comentários e recomendações da Vista geral para exportar o relatório.';
+        $unindexedPhotoIssue = 'Existem fotografias publicadas sem numeração na categoria; revise os mapas antes de exportar o relatório.';
+
+        if ($externalReportNumber === null) {
+            $blockedIssues[] = $externalReportNumberIssue;
+            $exportBlockingIssues[] = $externalReportNumberIssue;
+        }
+
+        if ($designerIReportNumber === null) {
+            $blockedIssues[] = $designerIReportNumberIssue;
+            $exportBlockingIssues[] = $designerIReportNumberIssue;
+        }
+
+        $overviewSlots = collect($overview['blocks'])
+            ->flatMap(fn (array $block): array => $block['photos'])
+            ->values();
+
+        if ($overviewSlots->contains(fn (array $slot): bool => $slot['photo'] === null)) {
+            $blockedIssues[] = $overviewPhotoIssue;
+            $exportBlockingIssues[] = $overviewPhotoIssue;
+        }
+
+        if ($overviewSlots->contains(fn (array $slot): bool => $slot['photo'] !== null
+            && ($slot['photo']['status'] ?? null) !== 'ready')) {
+            $blockedIssues[] = $overviewProcessingIssue;
+            $exportBlockingIssues[] = $overviewProcessingIssue;
+        }
+
+        if (collect($overview['blocks'])->contains(fn (array $block): bool => blank($block['comment']) || blank($block['recommendation']))) {
+            $blockedIssues[] = $overviewTextIssue;
+            $exportBlockingIssues[] = $overviewTextIssue;
+        }
+
+        if (($photographicDocumentation['unindexed_photo_ids'] ?? []) !== []) {
+            $blockedIssues[] = $unindexedPhotoIssue;
+            $exportBlockingIssues[] = $unindexedPhotoIssue;
+        }
+
+        $missingApprovalRoles = $approvalFlow
+            ->filter(fn (array $item): bool => blank($item['name']))
+            ->pluck('label')
+            ->values();
+
+        if ($missingApprovalRoles->isNotEmpty()) {
+            $blockedIssues[] = 'Defina os responsáveis principais para: '.$missingApprovalRoles->implode(', ').'.';
+        }
 
         if ($summary['pending'] > 0) {
             $blockedIssues[] = sprintf('%d registro(s) ainda não foram consolidados.', $summary['pending']);
         }
 
-        if (($summary['quantity_total'] ?? 0.0) !== ($summary['exportable_quantity_total'] ?? 0.0)) {
+        if (($summary['quantity_totals_by_unit'] ?? []) !== ($summary['exportable_quantity_totals_by_unit'] ?? [])) {
             $blockedIssues[] = 'A consolidação completa ainda inclui registros não exportáveis.';
         }
 
-        if (($summary['quantity_total_unit'] ?? ViewFirstCivilScenario::UNIT) !== 'm²') {
+        $unreadyPhotos = collect($exportablePhotos)
+            ->filter(fn (array $photo): bool => ($photo['status'] ?? $photo['processing_status'] ?? 'ready') !== 'ready');
+        if ($unreadyPhotos->isNotEmpty()) {
             $blockedIssues[] = sprintf(
-                'A unidade consolidada do CIVIL está em %s, enquanto o resumo oficial do PDF usa m².',
-                $summary['quantity_total_unit'] ?? ViewFirstCivilScenario::UNIT,
+                '%d fotografia(s) publicada(s) ainda não estão prontas para o documento.',
+                $unreadyPhotos->count(),
             );
         }
 
         $blocked = $blockedIssues !== [];
 
         return [
-            'number' => ViewFirstCivilScenario::REPORT_NUMBER,
-            'revision' => self::REPORT_REVISION,
-            'generated_label' => 'Prévia preparada para apresentação',
+            'number' => $reportNumber,
+            'external_report_number' => $externalReportNumber,
+            'report_designer' => $inspection->report_designer ?: 'PROJETISTA II',
+            'designer_i_report_number' => $designerIReportNumber,
+            'revision' => $revision,
+            'current_revision' => $coverRevision,
+            'title_lines' => $titleLines,
+            'revision_history' => $revisionHistory['rows'],
+            'revision_density' => $revisionHistory['density'],
+            'emission_types' => $this->revisionChronology->emissionLegend(),
+            'generated_label' => 'Prévia técnica da inspeção',
             'cover' => [
-                'eyebrow' => 'Relatório técnico de inspeção CIVIL',
-                'title' => ViewFirstCivilScenario::REPORT_NUMBER,
+                'eyebrow' => 'Relatório técnico de inspeção',
+                'title' => $reportNumber,
                 'client' => $inspection->equipment->client?->name,
+                'unit_name' => $inspection->equipment->unit?->name,
                 'client_logo_url' => $inspection->equipment->client?->logo_path !== null
                     ? Storage::disk('public')->url($inspection->equipment->client->logo_path)
                     : null,
                 'provider' => $inspection->organization?->name,
+                'provider_logo_url' => $inspection->organization?->logo_path !== null
+                    ? Storage::disk('public')->url($inspection->organization->logo_path)
+                    : null,
                 'equipment_tag' => $inspection->equipment->tag,
                 'equipment_name' => $inspection->equipment->name,
                 'inspection_type' => $inspection->inspection_type->label(),
                 'inspection_number' => $inspection->number,
+                'external_report_number' => $externalReportNumber,
+                'report_designer' => $inspection->report_designer ?: 'PROJETISTA II',
+                'designer_i_report_number' => $designerIReportNumber,
                 'service_order' => $inspection->service_order,
-                'procedure' => ViewFirstCivilScenario::PROCEDURE_NUMBER,
-                'drawing' => ViewFirstCivilScenario::DRAWING,
+                'procedure' => $procedure,
+                'drawing' => $drawing,
                 'inspected_on' => $inspection->inspected_on?->format('d/m/Y') ?? $inspection->scheduled_for?->format('d/m/Y'),
-                'revision' => self::REPORT_REVISION,
-                'issued_at' => ViewFirstCivilScenario::REPORT_DATE,
+                'revision' => $coverRevision,
+                'current_revision' => $coverRevision,
+                'issued_at' => $issuedAt,
+                'approval_date' => $currentApprovalDate,
+                'approval_flow' => $approvalFlow->all(),
+                'title_lines' => $titleLines,
+                'revision_history' => $revisionHistory['rows'],
+                'revision_density' => $revisionHistory['density'],
+                'emission_types' => $this->revisionChronology->emissionLegend(),
             ],
-            'general_aspects' => [
-                ['label' => 'Disciplina', 'value' => ViewFirstCivilScenario::DISCIPLINE_LABEL],
-                ['label' => 'Família', 'value' => ViewFirstCivilScenario::CLASSIFICATION_FAMILY],
-                ['label' => 'Unidade', 'value' => ViewFirstCivilScenario::UNIT],
-                ['label' => 'Emissão', 'value' => ViewFirstCivilScenario::REPORT_DATE],
-                ['label' => 'O.S.', 'value' => $inspection->service_order ?? '—'],
-                ['label' => 'Procedimento', 'value' => ViewFirstCivilScenario::PROCEDURE_NUMBER],
-                ['label' => 'Desenho', 'value' => ViewFirstCivilScenario::DRAWING],
-                ['label' => 'Revisão', 'value' => self::REPORT_REVISION],
-            ],
+            'general_aspects' => $this->generalAspectsDocuments->fromStored($inspection->general_notes),
+            'overview' => array_merge($overview, [
+                'equipment_label' => trim($equipmentLabel),
+                'title' => 'ANEXO A – LOCALIZAÇÃO E DOCUMENTAÇÃO FOTOGRÁFICA - TAC',
+                'section_title' => 'DOCUMENTAÇÃO FOTOGRÁFICA - TAC',
+            ]),
             'executive_summary' => [
                 'criticality' => $summary['criticality'],
                 'headline' => $summary['critical'] > 0
                     ? 'O equipamento requer tratamento prioritário das manifestações de maior criticidade.'
                     : 'A condição observada permite acompanhamento no ciclo programado.',
                 'description' => sprintf(
-                    '%d ocorrências civis foram consolidadas; %d avaliações estão concluídas e %d permanecem em aberto. %d registro(s) não serão exportados.',
+                    '%d ocorrências civis foram consolidadas; %d avaliações estão publicadas e %d permanecem em aberto. %d registro(s) não serão exportados.',
                     $summary['total'],
                     $summary['completed'],
                     $summary['pending'],
@@ -1019,13 +1581,14 @@ final class ViewFirstDemoPresenter
                     'pending' => $summary['pending'],
                     'photo_total' => $summary['photo_total'] ?? 0,
                     'quantity_total' => $summary['quantity_total'] ?? 0.0,
-                    'quantity_total_label' => $summary['quantity_total_label'] ?? '0,00 '.ViewFirstCivilScenario::UNIT,
+                    'quantity_total_label' => $summary['quantity_total_label'] ?? '—',
                     'exportable_quantity_total' => $summary['exportable_quantity_total'] ?? 0.0,
-                    'exportable_quantity_total_label' => $summary['exportable_quantity_total_label'] ?? '0,00 '.ViewFirstCivilScenario::UNIT,
+                    'exportable_quantity_total_label' => $summary['exportable_quantity_total_label'] ?? '—',
                     'draft_count' => $summary['draft_count'] ?? 0,
                 ],
             ],
-            'locations' => $this->locations($exportableItems->all()),
+            // A localização operacional é injetada pelo compositor persistido de mapas.
+            'locations' => [],
             'findings' => $exportableItems
                 ->map(function (array $item): array {
                     $assessment = $item['assessment'] ?? [];
@@ -1040,7 +1603,7 @@ final class ViewFirstDemoPresenter
                         'gut' => $item['gut'],
                         'location' => $assessment['location_description'] ?? $occurrence['location'] ?? '—',
                         'project' => $occurrence['project'] ?? $item['project'] ?? '—',
-                        'drawing' => $occurrence['drawing'] ?? $item['drawing'] ?? ViewFirstCivilScenario::DRAWING,
+                        'drawing' => $occurrence['drawing'] ?? $item['drawing'] ?? null,
                         'item' => $occurrence['item'] ?? $item['item'] ?? '—',
                         'element' => $occurrence['element'] ?? $item['element'] ?? '—',
                         'manifestation' => $occurrence['manifestation'] ?? $item['manifestation'] ?? '—',
@@ -1055,12 +1618,15 @@ final class ViewFirstDemoPresenter
                 })
                 ->values()
                 ->all(),
+            'photographic_documentation' => $photographicDocumentation,
             'quantities' => [
                 'total' => $summary['quantity_total'] ?? 0.0,
-                'total_label' => $summary['quantity_total_label'] ?? '0,00 '.ViewFirstCivilScenario::UNIT,
+                'total_label' => $summary['quantity_total_label'] ?? '—',
                 'exportable_total' => $summary['exportable_quantity_total'] ?? 0.0,
-                'exportable_total_label' => $summary['exportable_quantity_total_label'] ?? '0,00 '.ViewFirstCivilScenario::UNIT,
-                'unit' => ViewFirstCivilScenario::UNIT,
+                'exportable_total_label' => $summary['exportable_quantity_total_label'] ?? '—',
+                'unit' => $quantityUnit,
+                'totals_by_unit' => $summary['quantity_totals_by_unit'] ?? [],
+                'exportable_totals_by_unit' => $summary['exportable_quantity_totals_by_unit'] ?? [],
                 'by_class' => $summary['quantity_by_class'] ?? [],
             ],
             'sections' => [
@@ -1090,24 +1656,10 @@ final class ViewFirstDemoPresenter
                 'issues' => $blockedIssues,
                 'draft_count' => $summary['draft_count'] ?? 0,
             ],
-            'print_enabled' => true,
-            'pdf_enabled' => ! $blocked,
-            'pdf_disabled_reason' => $blocked
-                ? implode(' ', $blockedIssues)
-                : 'A geração do PDF oficial será habilitada no módulo de relatórios.',
-        ];
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function demoMetadata(): array
-    {
-        return [
-            'enabled' => true,
-            'provisional_notice' => 'A leitura CIVIL já está estruturada; GUT, classificação, quantitativos e evidências permanecem em modo somente leitura.',
-            'photo_notice' => 'As evidências desta demonstração usam placeholders controlados e não representam os arquivos privados do cliente.',
-            'report_revision' => self::REPORT_REVISION,
+            'print_enabled' => $exportBlockingIssues === [],
+            'export_disabled_reason' => $exportBlockingIssues === []
+                ? null
+                : implode(' ', $exportBlockingIssues),
         ];
     }
 
@@ -1161,6 +1713,9 @@ final class ViewFirstDemoPresenter
             'equipment.defects.firstInspection',
             'equipment.defects.assessments.inspection',
             'equipment.defects.assessments.creator',
+            'equipment.defects.assessments.photos',
+            'equipment.defects.assessments.quantities',
+            'equipment.defects.assessments.classification',
         ]);
 
         $inspectionKey = $this->inspectionOrderKey($inspection);
@@ -1199,9 +1754,29 @@ final class ViewFirstDemoPresenter
         ];
     }
 
-    private function criticalityRank(string $code): int
+    private function classificationFromDefinition(DefectClassification $classification): array
     {
-        return match ($code) {
+        return [
+            'code' => $classification->code,
+            'label' => $classification->name,
+            'tone' => 'neutral',
+            'score_band' => null,
+            'profile_version' => null,
+            'severity_rank' => $classification->severity_rank,
+            'color' => $classification->color,
+            'is_critical' => $classification->severity_rank !== null && $classification->severity_rank <= 2,
+            'provisional' => false,
+            'historical' => ! $classification->isActive(),
+        ];
+    }
+
+    private function criticalityRank(array $classification): int
+    {
+        if (is_numeric($classification['severity_rank'] ?? null)) {
+            return (int) $classification['severity_rank'];
+        }
+
+        return match ($classification['code'] ?? null) {
             'CV-1' => 1,
             'CV-2' => 2,
             'CV-3' => 3,

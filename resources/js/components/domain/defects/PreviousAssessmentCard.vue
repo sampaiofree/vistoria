@@ -40,7 +40,7 @@ defineProps({
                 <div class="mt-1 text-sm font-semibold text-slate-900">{{ assessment.condition_label }}</div>
             </div>
             <div class="rounded-xl border border-slate-200 bg-white p-3">
-                <div class="text-xs uppercase text-slate-500">Concluída em</div>
+                <div class="text-xs uppercase text-slate-500">Publicada em</div>
                 <div class="mt-1 text-sm font-semibold text-slate-900">{{ assessment.assessed_at || '—' }}</div>
             </div>
         </div>

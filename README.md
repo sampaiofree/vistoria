@@ -38,7 +38,7 @@ O cenário visual do documento 06B pode ser restaurado sem recriar o banco:
 php artisan db:seed --class=ViewFirstDemoSeeder
 ```
 
-Use `demo@vistoria.test` com a senha `password`. O fluxo parte da dashboard e percorre o equipamento `U03-06VT002`, a reinspeção atual, as avarias, a avaliação CIVIL, as evidências demonstrativas e a prévia do relatório. Consulte o roteiro completo em [`docs/06B-VIEW-FIRST-DEMO.md`](docs/06B-VIEW-FIRST-DEMO.md).
+Crie uma organização e um usuário pelos fluxos administrativos da aplicação. O sistema não fornece mais credenciais ou dados fictícios.
 
 ## Qualidade
 

@@ -1,9 +1,11 @@
 <?php
 
 use App\Http\Middleware\EnsureOrganizationIsActive;
+use App\Http\Middleware\EnsurePasswordChanged;
 use App\Http\Middleware\EnsureUserIsActive;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\ResolveTenant;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -15,10 +17,15 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
     )
+    ->withSchedule(function (Schedule $schedule): void {
+        $schedule->command('photos:cleanup-abandoned')->dailyAt('03:00');
+        $schedule->command('inspection-maps:cleanup-deleted')->dailyAt('03:30');
+    })
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
             'user.active' => EnsureUserIsActive::class,
             'organization.active' => EnsureOrganizationIsActive::class,
+            'password.changed' => EnsurePasswordChanged::class,
             'tenant' => ResolveTenant::class,
         ]);
 

@@ -9,10 +9,7 @@ use App\Enums\UserAccountType;
 use App\Models\Area;
 use App\Models\Client;
 use App\Models\ClientUnit;
-use App\Models\Defect;
-use App\Models\DefectAssessment;
 use App\Models\Equipment;
-use App\Models\EquipmentDocument;
 use App\Models\Inspection;
 use App\Models\Organization;
 use App\Models\Subarea;
@@ -393,7 +390,7 @@ final class EquipmentCrudTest extends TestCase
             ->assertSessionHasErrors('status');
     }
 
-    public function test_equipment_show_exposes_executive_summary_current_inspection_and_history(): void
+    public function test_equipment_show_exposes_minimal_identity_and_complete_inspection_history(): void
     {
         $organization = Organization::factory()->create();
         $admin = User::factory()
@@ -424,22 +421,14 @@ final class EquipmentCrudTest extends TestCase
             'created_at' => now()->subHour(),
         ]);
 
-        $criticalDefect = Defect::factory()->forEquipment($equipment, $previous)->create([
-            'code' => 'VT002-CV-001',
-            'sequence_number' => 1,
-            'title' => 'Fissura longitudinal no pedestal de concreto',
-        ]);
-        $pendingDefect = Defect::factory()->forEquipment($equipment, $previous)->create([
-            'code' => 'VT002-CV-002',
-            'sequence_number' => 2,
-            'title' => 'Falha de selagem entre base e piso',
-        ]);
-
-        DefectAssessment::factory()->forDefect($criticalDefect, $current)->complete()->create();
-        DefectAssessment::factory()->forDefect($pendingDefect, $current)->draft()->create();
-        EquipmentDocument::factory()->forEquipment($equipment)->create([
-            'uploaded_by' => $admin->id,
-        ]);
+        foreach (range(1, 9) as $index) {
+            Inspection::factory()->forEquipment($equipment)->create([
+                'number' => sprintf('INS-2024-%06d', $index),
+                'status' => InspectionStatus::Released,
+                'inspected_on' => now()->subYears(2)->subDays($index),
+                'created_at' => now()->subYears(2)->subDays($index),
+            ]);
+        }
 
         $this->actingAs($admin)
             ->get(route('equipments.show', $equipment))
@@ -447,21 +436,22 @@ final class EquipmentCrudTest extends TestCase
             ->assertInertia(function (Assert $page) use ($current, $previous): void {
                 $page
                     ->component('Equipments/Show')
-                    ->where('executive_summary.criticality.value', 'CV-2')
-                    ->where('executive_summary.criticality.is_provisional', true)
-                    ->where('executive_summary.active_defects', 2)
-                    ->where('executive_summary.inspections', 2)
-                    ->where('executive_summary.current_documents', 1)
-                    ->where('current_inspection.public_id', $current->public_id)
-                    ->where('current_inspection.progress.completed', 1)
-                    ->where('current_inspection.progress.total', 2)
-                    ->where('current_inspection.progress.percentage', 50)
-                    ->where('current_inspection.show_url', route('inspections.show', $current))
-                    ->has('inspection_history', 2)
-                    ->where('inspection_history.0.public_id', $current->public_id)
-                    ->where('inspection_history.0.is_current', true)
-                    ->where('inspection_history.1.public_id', $previous->public_id)
-                    ->where('inspection_history.1.is_current', false);
+                    ->where('equipment.name', $current->equipment->name)
+                    ->where('client.name', $current->equipment->client->name)
+                    ->missing('executive_summary')
+                    ->missing('current_inspection')
+                    ->missing('documents')
+                    ->missing('unit')
+                    ->missing('area')
+                    ->missing('subarea')
+                    ->has('history_entries', 11)
+                    ->where('history_entries.0.public_id', $current->public_id)
+                    ->where('history_entries.0.source', 'system')
+                    ->where('history_entries.0.is_current', true)
+                    ->where('history_entries.1.public_id', $previous->public_id)
+                    ->where('history_entries.1.is_current', false)
+                    ->where('history_entries.10.inspection_number', 'INS-2024-000009')
+                    ->where('history_entries.10.is_current', false);
             });
     }
 

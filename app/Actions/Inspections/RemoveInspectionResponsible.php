@@ -40,7 +40,13 @@ final class RemoveInspectionResponsible
                 throw ValidationException::withMessages(['responsible' => 'O único responsável exigido para a etapa iniciada não pode ser removido.']);
             }
 
+            $wasPrimary = (bool) $responsible->is_primary;
             (clone $assignments)->whereKey($responsible->getKey())->delete();
+
+            if ($wasPrimary) {
+                $nextPrimary = (clone $assignments)->orderBy('id')->first();
+                $nextPrimary?->update(['is_primary' => true]);
+            }
         });
     }
 
@@ -48,13 +54,12 @@ final class RemoveInspectionResponsible
     {
         $required = match ($status) {
             InspectionStatus::Planned => [],
-            InspectionStatus::InProgress => [InspectionResponsibility::Inspector],
+            InspectionStatus::InProgress => [InspectionResponsibility::Preparer],
             InspectionStatus::AwaitingReview, InspectionStatus::InCorrection => [
-                InspectionResponsibility::Inspector, InspectionResponsibility::Preparer, InspectionResponsibility::Reviewer,
+                InspectionResponsibility::Preparer, InspectionResponsibility::Reviewer,
             ],
             InspectionStatus::AwaitingApproval, InspectionStatus::Approved => [
-                InspectionResponsibility::Inspector, InspectionResponsibility::Preparer,
-                InspectionResponsibility::Reviewer, InspectionResponsibility::Approver,
+                InspectionResponsibility::Preparer, InspectionResponsibility::Reviewer, InspectionResponsibility::Approver,
             ],
             InspectionStatus::ReportGenerated => InspectionResponsibility::cases(),
             InspectionStatus::Released, InspectionStatus::Canceled => [],

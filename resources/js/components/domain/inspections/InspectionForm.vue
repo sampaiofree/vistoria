@@ -53,7 +53,6 @@ const form = useForm({
     procedure_number: props.inspection?.procedure_number ?? '',
     atmospheric_classification: props.inspection?.atmospheric_classification ?? '',
     scheduled_for: props.inspection?.scheduled_for_input ?? '',
-    general_notes: props.inspection?.general_notes ?? '',
 });
 
 const inspectionTypes = computed(() => props.inspectionTypes.length > 0 ? props.inspectionTypes : defaultInspectionTypes);
@@ -187,7 +186,7 @@ function submit() {
             </div>
 
             <div class="grid gap-5 md:grid-cols-2">
-                <label class="space-y-1.5 text-sm font-medium text-slate-700">
+                <label v-if="!isEditing" class="space-y-1.5 text-sm font-medium text-slate-700">
                     <span>Ordem de serviço</span>
                     <input
                         v-model="form.service_order"
@@ -241,16 +240,6 @@ function submit() {
                     <span v-if="form.errors.scheduled_for" class="block text-xs text-rose-600">{{ form.errors.scheduled_for }}</span>
                 </label>
 
-                <label class="space-y-1.5 text-sm font-medium text-slate-700 md:col-span-2">
-                    <span>Observações gerais</span>
-                    <textarea
-                        v-model="form.general_notes"
-                        rows="4"
-                        maxlength="10000"
-                        class="w-full rounded-lg border border-slate-300 px-3 py-2"
-                    ></textarea>
-                    <span v-if="form.errors.general_notes" class="block text-xs text-rose-600">{{ form.errors.general_notes }}</span>
-                </label>
             </div>
         </section>
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Actions\Inspections;
 
 use App\Actions\Inspections\Concerns\ValidatesInspectionTransition;
+use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
 use App\Models\Inspection;
 use App\Models\User;
@@ -28,6 +29,17 @@ final class MarkInspectionReportGenerated
             ]);
         }
 
+        $missingPrimaryRoles = collect(InspectionResponsibility::cases())
+            ->reject(fn (InspectionResponsibility $responsibility): bool => $inspection->hasPrimaryResponsibility($responsibility))
+            ->map(fn (InspectionResponsibility $responsibility): string => $responsibility->label())
+            ->values();
+
+        if ($missingPrimaryRoles->isNotEmpty()) {
+            throw ValidationException::withMessages([
+                'responsibles' => 'Defina o responsável principal de cada função antes de gerar o relatório: '.$missingPrimaryRoles->implode(', ').'.',
+            ]);
+        }
+
         return $this->transition->handle(
             $actor,
             $inspection,
@@ -35,6 +47,7 @@ final class MarkInspectionReportGenerated
             InspectionStatus::ReportGenerated,
             [
                 'report_generated_at' => now(),
+                'report_date' => $inspection->report_date ?? now()->toDateString(),
             ],
             'Relatório gerado.',
         );

@@ -35,6 +35,36 @@ final class InspectionPolicy
             && $inspection->status === InspectionStatus::Planned;
     }
 
+    public function manageReportMetadata(User $user, Inspection $inspection): bool
+    {
+        return $this->create($user)
+            && $this->sameOrganization($user, $inspection);
+    }
+
+    public function manageGeneralAspects(User $user, Inspection $inspection): bool
+    {
+        return $this->create($user)
+            && $this->sameOrganization($user, $inspection);
+    }
+
+    public function manageReportOverview(User $user, Inspection $inspection): bool
+    {
+        return $this->activeInOrganization($user)
+            && $this->sameOrganization($user, $inspection)
+            && ! $inspection->status->isFinal()
+            && (
+                $user->isCompanyAdmin()
+                || $inspection->hasAnyResponsibilityForUser($user, ...InspectionResponsibility::cases())
+            );
+    }
+
+    public function generateReport(User $user, Inspection $inspection): bool
+    {
+        return $this->create($user)
+            && $this->sameOrganization($user, $inspection)
+            && $inspection->status === InspectionStatus::Approved;
+    }
+
     public function assignResponsibles(User $user, Inspection $inspection): bool
     {
         return $this->create($user)
@@ -55,7 +85,7 @@ final class InspectionPolicy
             && $this->sameOrganization($user, $inspection)
             && $inspection->status === InspectionStatus::Planned
             && $inspection->equipment->canReceiveInspection()
-            && $inspection->hasAnyResponsibilityForUser($user, InspectionResponsibility::Inspector);
+            && $inspection->hasAnyResponsibilityForUser($user, InspectionResponsibility::Preparer);
     }
 
     public function submitForReview(User $user, Inspection $inspection): bool

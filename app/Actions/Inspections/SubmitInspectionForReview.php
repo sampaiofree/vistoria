@@ -9,7 +9,9 @@ use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
 use App\Models\Inspection;
 use App\Models\User;
+use App\Services\Defects\AssessmentPhotoCoverageValidator;
 use App\Services\Defects\ReinspectionCoverageValidator;
+use App\Services\InspectionLocations\InspectionLocationCoverageValidator;
 use Illuminate\Validation\ValidationException;
 
 final class SubmitInspectionForReview
@@ -19,6 +21,8 @@ final class SubmitInspectionForReview
     public function __construct(
         private readonly TransitionInspection $transition,
         private readonly ReinspectionCoverageValidator $coverageValidator,
+        private readonly AssessmentPhotoCoverageValidator $photoCoverageValidator,
+        private readonly InspectionLocationCoverageValidator $locationCoverageValidator,
     ) {}
 
     public function handle(Inspection $inspection, User $actor): Inspection
@@ -36,11 +40,13 @@ final class SubmitInspectionForReview
             InspectionStatus::InCorrection,
         ], true)) {
             throw ValidationException::withMessages([
-                'status' => 'A inspeção não está pronta para envio à revisão.',
+                'status' => 'A inspeção não está pronta para envio à verificação.',
             ]);
         }
 
         $this->coverageValidator->validate($inspection);
+        $this->photoCoverageValidator->validate($inspection);
+        $this->locationCoverageValidator->validate($inspection);
 
         $attributes = [];
 
@@ -55,8 +61,8 @@ final class SubmitInspectionForReview
             InspectionStatus::AwaitingReview,
             $attributes,
             $inspection->status === InspectionStatus::InCorrection
-                ? 'Inspeção reenviada para revisão.'
-                : 'Inspeção enviada para revisão.',
+                ? 'Inspeção reenviada para verificação.'
+                : 'Inspeção enviada para verificação.',
         );
     }
 }

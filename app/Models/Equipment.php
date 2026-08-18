@@ -108,6 +108,18 @@ class Equipment extends Model
             ->orderByDesc('created_at');
     }
 
+    public function revisions(): HasMany
+    {
+        return $this->hasMany(EquipmentRevision::class)
+            ->orderByDesc('revision_date')
+            ->orderByDesc('id');
+    }
+
+    public function inspectionLocationMaps(): HasMany
+    {
+        return $this->hasMany(InspectionLocationMap::class)->orderBy('position')->orderBy('id');
+    }
+
     public function defects(): HasMany
     {
         return $this->hasMany(Defect::class)

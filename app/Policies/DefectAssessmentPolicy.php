@@ -33,7 +33,6 @@ final class DefectAssessmentPolicy
             ], true)
             && $inspection->hasAnyResponsibilityForUser(
                 $user,
-                InspectionResponsibility::Inspector,
                 InspectionResponsibility::Preparer,
             );
     }
@@ -49,12 +48,16 @@ final class DefectAssessmentPolicy
             ], true)
             && $assessment->inspection->hasAnyResponsibilityForUser(
                 $user,
-                InspectionResponsibility::Inspector,
                 InspectionResponsibility::Preparer,
             );
     }
 
     public function complete(User $user, DefectAssessment $assessment): bool
+    {
+        return $this->update($user, $assessment);
+    }
+
+    public function uploadPhoto(User $user, DefectAssessment $assessment): bool
     {
         return $this->update($user, $assessment);
     }

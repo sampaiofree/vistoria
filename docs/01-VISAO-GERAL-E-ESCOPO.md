@@ -177,7 +177,7 @@ O código da avaria:
 - será único dentro da organização;
 - permanecerá o mesmo nas reinspeções;
 - não será usado como chave primária;
-- não deverá ser digitado livremente pelo inspetor;
+- não deverá ser digitado livremente pelo preparador;
 - deverá ser gerado pelo sistema conforme regra configurada.
 
 ---
@@ -253,8 +253,8 @@ As responsabilidades técnicas não serão fixas no cadastro do usuário.
 
 O mesmo usuário poderá, dependendo da inspeção, atuar como:
 
-- inspetor;
-- revisor;
+- preparador;
+- verificador;
 - aprovador;
 - liberador.
 
@@ -262,17 +262,19 @@ Exemplo:
 
 ```text
 Inspeção A
-- Inspetor: João
-- Revisor: Maria
+- Preparador: João
+- Verificador: Maria
 - Aprovador: Carlos
 - Liberador: Carlos
 
 Inspeção B
-- Inspetor: João
-- Revisor: João
+- Preparador: João
+- Verificador: João
 - Aprovador: João
 - Liberador: João
 ```
+
+Essas quatro responsabilidades seguem a capa do relatório `U0306VT-G-6RI002_R-04`. Não haverá uma função separada de Inspetor sem evidência de domínio que justifique essa distinção.
 
 ---
 
@@ -285,11 +287,11 @@ Planejada
 ↓
 Em inspeção
 ↓
-Aguardando revisão
+Aguardando verificação
 ↓
 Em correção
 ↓
-Aguardando revisão
+Aguardando verificação
 ↓
 Aguardando aprovação
 ↓
@@ -318,7 +320,7 @@ O coordenador ou administrador informa:
 
 ### 5.2 Em inspeção
 
-O inspetor registra em campo:
+O preparador executa o trabalho técnico da inspeção e registra:
 
 - novas avarias;
 - situação das avarias anteriores;
@@ -336,9 +338,9 @@ O inspetor registra em campo:
 
 ---
 
-### 5.3 Aguardando revisão
+### 5.3 Aguardando verificação
 
-O inspetor informa que terminou o trabalho de campo.
+O preparador informa que terminou o trabalho técnico e preparou os dados do relatório.
 
 A inspeção deixa de ficar livremente editável.
 
@@ -346,7 +348,7 @@ A inspeção deixa de ficar livremente editável.
 
 ### 5.4 Em correção
 
-O revisor poderá devolver itens específicos.
+O verificador poderá devolver itens específicos.
 
 Exemplo:
 
@@ -363,7 +365,7 @@ Problema:
 
 ### 5.5 Aguardando aprovação
 
-O revisor concluiu a revisão e encaminhou a inspeção ao responsável pela aprovação.
+O verificador concluiu a verificação e encaminhou a inspeção ao responsável pela aprovação.
 
 O aprovador deverá estar atribuído à inspeção.
 
@@ -371,7 +373,7 @@ O aprovador deverá estar atribuído à inspeção.
 
 ### 5.6 Aprovada
 
-A avaliação técnica foi revisada e aprovada.
+A avaliação técnica foi verificada e aprovada.
 
 Os dados devem ficar bloqueados contra alteração silenciosa.
 
@@ -395,7 +397,7 @@ Uma reinspeção não deve começar com um formulário vazio.
 
 O sistema deverá carregar as avarias anteriores do equipamento.
 
-Para cada avaria anterior, o inspetor deverá informar uma situação:
+Para cada avaria anterior, o preparador deverá informar uma situação:
 
 - permanece igual;
 - agravou;
@@ -409,8 +411,8 @@ Também será possível registrar novas avarias.
 ### Regras
 
 - não copiar automaticamente uma avaria como se ainda existisse;
-- exigir confirmação do inspetor;
-- exigir nova avaliação GUT;
+- exigir confirmação do preparador;
+- exigir nova classificação manual; GUT será opcional quando houver perfil validado;
 - exigir novas fotografias, salvo justificativa;
 - preservar todas as fotos antigas;
 - manter o código original da avaria;
@@ -486,17 +488,16 @@ Também será possível registrar novas avarias.
 
 ### 7.7 Classificação CIVIL
 
-- gravidade;
-- urgência;
-- tendência;
-- pontuação GUT;
-- classificação CV;
+- catálogo de classificações CIVIL por organização;
+- seleção manual da classificação em cada avaliação;
+- gravidade, urgência e tendência quando houver perfil GUT validado;
+- pontuação GUT e enquadramento CV como mecanismo opcional;
 - modelos de comentários;
 - modelos de recomendações.
 
-### 7.8 Revisão e aprovação
+### 7.8 Verificação e aprovação
 
-- envio para revisão;
+- envio para verificação;
 - devolução para correção;
 - aprovação;
 - liberação;
@@ -660,7 +661,7 @@ O MVP será considerado funcional quando:
 - GUT e classificação CV forem calculados;
 - uma reinspeção puder reutilizar o histórico;
 - uma avaria puder manter o mesmo código;
-- revisão e aprovação funcionarem;
+- verificação e aprovação funcionarem;
 - um PDF simplificado puder ser gerado;
 - uma organização não puder acessar dados de outra;
 - testes automatizados das regras críticas estiverem passando.

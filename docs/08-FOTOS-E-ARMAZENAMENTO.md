@@ -1,5 +1,7 @@
 # 08 — Fotos e Armazenamento
 
+> Status em 17/08/2026: as fotografias de avarias não possuem papéis especiais. Não existem fotografia principal, secundária, de destaque ou slots de relatório. A posição manual da galeria, seguida pelo `id`, define a ordem canônica exibida na avaliação, nos mapas e no relatório.
+
 ## 1. Objetivo
 
 Implementar o fluxo de captura, envio, processamento, armazenamento e uso das fotografias das inspeções.
@@ -117,11 +119,10 @@ Ao concluir esta etapa, o sistema deverá permitir:
 - corrigir orientação;
 - registrar metadados;
 - ordenar as fotografias;
-- definir fotografia principal;
 - adicionar legenda;
 - remover fotografia durante a edição;
-- impedir envio para revisão com processamento pendente;
-- impedir envio para revisão sem evidência obrigatória;
+- impedir envio para verificação com processamento pendente;
+- impedir envio para verificação sem evidência obrigatória;
 - exibir galeria responsiva;
 - visualizar imagem ampliada;
 - usar versão otimizada no relatório;
@@ -146,7 +147,6 @@ Será criado:
 - checksum;
 - metadados;
 - ordenação;
-- imagem principal;
 - legenda;
 - Policies;
 - Form Requests;
@@ -171,7 +171,7 @@ Não será implementado agora:
 - reconhecimento automático de avarias;
 - OCR;
 - anotação sobre a foto;
-- desenho de círculos ou setas;
+- desenho de círculos ou setas diretamente sobre fotografias; marcações em mapas são tratadas no módulo 08A;
 - edição avançada;
 - sincronização offline;
 - vídeo;
@@ -1004,16 +1004,18 @@ Regras:
 
 ---
 
-# 22. Action `SetPrimaryAssessmentPhoto`
+# 22. Ordem e numeração das fotografias
 
 Regras:
 
-- fotografia pronta;
-- mesma avaliação;
-- desmarcar principal anterior;
-- marcar uma única principal;
-- transação;
-- `lockForUpdate()`.
+- a ordem manual da galeria é persistida em `position`, com desempate por `id`;
+- a numeração do relatório é calculada por `InspectionLocationPhotoNumbering::buildForReport()`;
+- as categorias seguem TAC, REC, CIVIL e categorias futuras;
+- TAC começa na Foto 5; as demais categorias reiniciam na Foto 1;
+- mapas seguem `position` e `id`, e avarias seguem a ordem das marcações;
+- somente fotografias prontas recebem número;
+- rascunhos, avarias sem mapa e fotos fora do relatório permanecem sem número;
+- reordenar a galeria recalcula naturalmente a numeração, sem gravar papéis ou slots na fotografia.
 
 ---
 
@@ -1109,7 +1111,6 @@ create
 update
 delete
 reorder
-setPrimary
 retry
 ```
 
@@ -1126,9 +1127,8 @@ Usuários internos ativos da organização poderão visualizar a versão otimiza
 Somente:
 
 - administrador interno;
-- inspetor responsável;
 - preparador;
-- revisor;
+- verificador;
 - aprovador;
 - liberador.
 
@@ -1148,7 +1148,6 @@ Criar:
 Photos/StoreAssessmentPhotoRequest
 Photos/UpdateAssessmentPhotoRequest
 Photos/ReorderAssessmentPhotosRequest
-Photos/SetPrimaryAssessmentPhotoRequest
 ```
 
 ---
@@ -1267,11 +1266,6 @@ Route::post(
     [AssessmentPhotoController::class, 'retry'],
 )->name('assessment-photos.retry');
 
-Route::post(
-    'assessment-photos/{assessmentPhoto}/primary',
-    [AssessmentPhotoController::class, 'setPrimary'],
-)->name('assessment-photos.primary');
-
 Route::patch(
     'defect-assessments/{defectAssessment}/photos/order',
     [AssessmentPhotoOrderController::class, 'update'],
@@ -1355,7 +1349,7 @@ Criar:
 AssessmentPhotoCoverageValidator
 ```
 
-Antes de enviar para revisão:
+Antes de enviar para verificação:
 
 - não pode existir foto `pending`;
 - não pode existir foto `processing`;
@@ -1597,7 +1591,7 @@ Testar:
 - posições permanecem sequenciais;
 - não mistura avaliações;
 - não aceita foto de outro tenant;
-- mantém apenas uma principal.
+- altera a numeração canônica usada pela avaliação, pelo mapa e pelo relatório.
 
 ---
 
@@ -1642,42 +1636,44 @@ Storage::disk('inspection_photos')
 7. Abrir original com permissão.
 8. Alterar legenda.
 9. Reordenar.
-10. Definir principal.
+10. Confirmar a nova numeração na avaliação, no mapa e no relatório.
 11. Enviar foto inválida.
 12. Simular falha.
 13. Reprocessar.
-14. Tentar enviar inspeção com foto pendente.
+14. Tentar enviar inspeção com apenas uma fotografia obrigatória.
 15. Confirmar bloqueio.
-16. Completar processamento.
-17. Confirmar envio.
-18. Verificar arquivos no disco.
-19. Confirmar ausência em `public/`.
+16. Tentar enviar inspeção com qualquer fotografia pendente.
+17. Completar o mínimo de duas fotografias e todo o processamento.
+18. Confirmar envio.
+19. Verificar arquivos no disco e a ausência em `public/`.
 
 ---
 
 # 38. Critérios de aceite
 
-- [ ] disco privado configurado;
+- [x] disco privado configurado;
 - [ ] caminho físico fora do deploy em produção;
-- [ ] tabela `assessment_photos` criada;
-- [ ] original preservado;
-- [ ] versão otimizada criada;
-- [ ] miniatura criada;
-- [ ] processamento em fila;
-- [ ] status de processamento funciona;
-- [ ] checksum registrado;
-- [ ] metadados registrados;
-- [ ] upload pelo celular funciona;
-- [ ] galeria responsiva;
-- [ ] ordenação funciona;
-- [ ] fotografia principal funciona;
-- [ ] original possui acesso restrito;
+- [x] tabela `assessment_photos` criada;
+- [x] original preservado;
+- [x] versão otimizada criada;
+- [x] miniatura criada;
+- [x] processamento em fila;
+- [x] status de processamento funciona;
+- [x] checksum registrado;
+- [x] metadados registrados;
+- [x] upload pelo celular funciona;
+- [x] galeria responsiva;
+- [x] ordenação funciona;
+- [x] ordem manual alimenta a numeração única do relatório;
+- [x] remoção e reprocessamento funcionam;
+- [x] original possui acesso restrito;
 - [ ] cliente não acessa diretamente;
-- [ ] envio para revisão bloqueia pendências;
-- [ ] isolamento multiempresa funciona;
-- [ ] testes passam;
-- [ ] build passa;
-- [ ] documentação corresponde ao código.
+- [x] envio para verificação bloqueia pendências;
+- [x] isolamento multiempresa funciona;
+- [x] testes iniciais passam;
+- [ ] build passa em Node compatível;
+- [x] limpeza de uploads abandonados funciona;
+- [x] documentação corresponde ao código da fatia implementada.
 
 ---
 
@@ -1796,39 +1792,39 @@ Mitigação:
 
 # 40. Checklist de execução
 
-- [ ] Configurar disco privado.
-- [ ] Criar enums.
-- [ ] Criar migration.
-- [ ] Adicionar índice à avaliação.
-- [ ] Criar model.
-- [ ] Atualizar relacionamentos.
-- [ ] Escolher biblioteca de imagem.
-- [ ] Criar Action de upload.
-- [ ] Criar Job de processamento.
-- [ ] Criar retry.
-- [ ] Criar ordenação.
-- [ ] Criar foto principal.
-- [ ] Criar remoção.
-- [ ] Criar visualização.
-- [ ] Criar Policies.
-- [ ] Criar Form Requests.
-- [ ] Criar Controllers.
-- [ ] Criar rotas.
-- [ ] Criar componentes Vue.
-- [ ] Criar validador de cobertura.
-- [ ] Atualizar envio para revisão.
-- [ ] Criar limpeza de temporários.
-- [ ] Criar factories.
-- [ ] Criar testes de upload.
-- [ ] Criar testes de processamento.
-- [ ] Criar testes de permissão.
-- [ ] Criar testes de revisão.
-- [ ] Executar migration.
-- [ ] Executar Pint.
-- [ ] Executar testes.
-- [ ] Executar build.
+- [x] Configurar disco privado.
+- [x] Criar enums.
+- [x] Criar migration.
+- [x] Adicionar índice à avaliação.
+- [x] Criar model.
+- [x] Atualizar relacionamentos.
+- [x] Escolher biblioteca de imagem.
+- [x] Criar Action de upload.
+- [x] Criar Job de processamento.
+- [x] Criar retry.
+- [x] Criar ordenação.
+- [x] Criar numeração canônica por categoria, mapa, marcação e posição manual.
+- [x] Criar remoção.
+- [x] Criar visualização.
+- [x] Criar Policies.
+- [x] Criar Form Requests.
+- [x] Criar Controllers.
+- [x] Criar rotas.
+- [x] Criar componentes Vue.
+- [x] Criar validador de cobertura.
+- [x] Atualizar envio para verificação.
+- [x] Criar limpeza de temporários.
+- [x] Criar factories.
+- [x] Criar testes de upload.
+- [ ] Criar testes de processamento real com imagem.
+- [x] Criar testes de permissão.
+- [x] Criar testes de revisão.
+- [x] Executar migration.
+- [x] Executar Pint nos arquivos da fatia.
+- [x] Executar testes.
+- [ ] Executar build em Node compatível (`^20.19.0` ou `>=22.12.0`); o ambiente atual usa `21.7.2`.
 - [ ] Validar manualmente.
-- [ ] Atualizar roadmap.
+- [x] Atualizar roadmap.
 - [ ] Criar commit.
 
 ---
@@ -1845,21 +1841,12 @@ git commit -m "feat: add private inspection photo workflow"
 # 42. Próximo documento
 
 ```text
-09-CLASSIFICACAO-CIVIL-GUT.md
+08A-MAPAS-E-LOCALIZACAO-DA-INSPECAO.md
 ```
 
 O próximo documento definirá:
 
-- gravidade;
-- urgência;
-- tendência;
-- cálculo GUT;
-- classificação CV;
-- tipos de dano;
-- elementos;
-- quantitativos;
-- comentários;
-- recomendações;
-- regras versionadas;
-- validações;
-- testes.
+- mapas privados por inspeção e categoria;
+- marcações vetoriais vinculadas às avaliações;
+- relação entre regiões e fotografias;
+- composição de localização para o relatório.

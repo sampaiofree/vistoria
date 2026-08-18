@@ -24,7 +24,7 @@ function submit() { form.post(props.action, { preserveScroll: true, onSuccess: (
         </label>
         <label class="flex items-center gap-2 pb-2 text-sm text-slate-700">
             <input v-model="form.is_primary" type="checkbox">
-            Principal
+            Principal nesta função
         </label>
         <button :disabled="form.processing" class="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white">Atribuir</button>
     </form>

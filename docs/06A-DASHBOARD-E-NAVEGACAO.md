@@ -213,6 +213,22 @@ A migration `2026_07_30_000016_add_dashboard_query_indexes.php` adiciona:
 
 O corte foi consolidado com os módulos 05 e 06 porque rotas, seeder, hierarquia e layout são arquivos compartilhados e ainda não existiam commits intermediários íntegros.
 
-## 15. Próximo documento
+## 15. Evolução — navegação contextual da inspeção (10/08/2026)
+
+Ao entrar no contexto de uma inspeção, o shell passa a substituir a navegação global por uma árvore operacional própria da inspeção:
+
+- visão geral;
+- avarias agrupadas por categoria e identificadas por código, condição e quantidade de fotos;
+- mapas de localização agrupados por categoria, com estado e quantidade de marcações;
+- fotografias, documentos, equipe e responsáveis, histórico e relatório;
+- saída explícita para a navegação geral.
+
+O contexto não depende apenas do parâmetro `{inspection}`. Ele também é resolvido nas rotas de avaliação de avaria, detalhe da avaria e edição de mapa por meio das relações persistidas, sempre validando organização e Policy antes de compartilhar o payload pelo Inertia.
+
+No desktop, a árvore contextual substitui as abas internas para evitar duas navegações concorrentes. No mobile, as abas continuam visíveis no conteúdo e a árvore permanece disponível no drawer. A ramificação atual abre automaticamente e o item ativo acompanha avaliações e mapas acessados por rotas indiretas.
+
+Cobertura automatizada: `InspectionContextNavigationTest` valida o contrato hierárquico, a continuidade do contexto nas avaliações e mapas, os estados ativos e a ausência desse payload nas páginas globais.
+
+## 16. Próximo documento
 
 `07-AVARIAS-E-REINSPECOES.md`

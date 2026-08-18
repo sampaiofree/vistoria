@@ -64,6 +64,10 @@ final class TransitionInspection
                 ]);
             }
 
+            if ($inspection->report_date !== null) {
+                unset($attributes['report_date']);
+            }
+
             $inspection->update(array_merge($attributes, [
                 'status' => $toStatus,
                 'updated_by' => $actor->getKey(),

@@ -49,6 +49,20 @@ final class TextNormalizer
         return $normalized === '' ? null : $normalized;
     }
 
+    public static function hexColor(?string $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $normalized = (string) Str::of($value)
+            ->trim()
+            ->upper()
+            ->replaceMatches('/\s+/u', '');
+
+        return $normalized === '' ? null : $normalized;
+    }
+
     public static function equipmentTag(string $value): string
     {
         return (string) Str::of($value)

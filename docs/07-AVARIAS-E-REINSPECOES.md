@@ -33,7 +33,7 @@ Ao concluir esta etapa, o sistema deverá permitir:
 - manter esse código em todas as reinspeções;
 - criar uma avaliação diferente em cada inspeção;
 - mostrar as avarias da inspeção anterior;
-- exigir que o inspetor informe a situação de cada avaria anterior;
+- exigir que o preparador informe a situação de cada avaria anterior;
 - marcar avaria como igual, agravada, melhorada ou reparada;
 - registrar que a avaria não foi localizada;
 - registrar impossibilidade de inspeção;
@@ -85,7 +85,7 @@ Não será implementado nesta etapa:
 - comentários padronizados;
 - recomendações padronizadas;
 - fotografias;
-- localização em desenho técnico;
+- localização em desenho técnico, definida posteriormente no módulo 08A;
 - relatório PDF;
 - auditoria genérica;
 - importação automática das avarias antigas.
@@ -199,7 +199,7 @@ Uma correção excepcional exigirá procedimento administrativo e auditoria futu
 
 ## 6.3 Geração automática
 
-O inspetor não digitará livremente o código.
+O preparador não digitará livremente o código.
 
 O sistema utilizará:
 
@@ -361,7 +361,7 @@ O reparo foi confirmado.
 
 ### `not_located`
 
-O inspetor procurou, mas não conseguiu localizar a avaria.
+O preparador procurou, mas não conseguiu localizar a avaria.
 
 Isso não significa reparo.
 
@@ -479,7 +479,7 @@ Não basta criar as filhas e ignorar a original.
 
 Ao criar uma reinspeção, o sistema não criará avaliações novas automaticamente.
 
-Ele mostrará a lista anterior e aguardará a confirmação do inspetor.
+Ele mostrará a lista anterior e aguardará a confirmação do preparador.
 
 Isso evita presumir que uma avaria ainda existe.
 
@@ -487,7 +487,7 @@ Isso evita presumir que uma avaria ainda existe.
 
 ## 6.16 Cobertura obrigatória
 
-Antes de enviar uma reinspeção para revisão, todas as avarias que exigem acompanhamento deverão possuir avaliação na inspeção atual.
+Antes de enviar uma reinspeção para verificação, todas as avarias que exigem acompanhamento deverão possuir avaliação na inspeção atual.
 
 Entram no checklist:
 
@@ -510,7 +510,7 @@ As fotos serão tratadas no documento 08.
 
 Nesta etapa fica definida a regra:
 
-> avaliações `new`, `unchanged`, `worsened`, `improved` e `repaired` exigirão evidência fotográfica antes do envio para revisão.
+> avaliações `new`, `unchanged`, `worsened`, `improved` e `repaired` exigirão evidência fotográfica antes do envio para verificação.
 
 Exceções:
 
@@ -551,7 +551,7 @@ Não haverá exclusão definitiva pela interface.
 
 Uma avaliação criada incorretamente poderá ser corrigida enquanto estiver em rascunho.
 
-Depois de enviada para revisão, correções deverão ocorrer pelo fluxo:
+Depois de enviada para verificação, correções deverão ocorrer pelo fluxo:
 
 ```text
 in_correction
@@ -1563,7 +1563,7 @@ Regras:
 - mesmo tenant;
 - inspeção editável;
 - usuário ativo;
-- usuário atribuído como inspetor ou preparador;
+- usuário atribuído como preparador;
 - administrador pode visualizar, mas não editar tecnicamente sem responsabilidade atribuída.
 
 ---
@@ -1790,7 +1790,7 @@ Mostrar:
 12 de 15 avarias avaliadas
 ```
 
-Não permitir envio para revisão enquanto faltar cobertura.
+Não permitir envio para verificação enquanto faltar cobertura.
 
 ---
 
@@ -1942,7 +1942,7 @@ Testar:
 - avaria `not_inspected` entra;
 - avaria `not_located` entra;
 - nova avaliação resolve o item;
-- envio para revisão falha com pendências;
+- envio para verificação falha com pendências;
 - envio funciona quando tudo está resolvido.
 
 ---
@@ -2052,7 +2052,7 @@ php artisan migrate:fresh --seed
 - [x] recorrência gera nova avaria;
 - [x] divisão gera novas avarias relacionadas;
 - [x] checklist carrega pendências;
-- [x] envio para revisão bloqueia checklist incompleto;
+- [x] envio para verificação bloqueia checklist incompleto;
 - [ ] isolamento multiempresa funciona;
 - [ ] testes passam;
 - [ ] build passa;
@@ -2172,7 +2172,7 @@ Mitigação:
 - [ ] Criar relações entre avarias.
 - [ ] Criar checklist de reinspeção.
 - [ ] Criar validador de cobertura.
-- [ ] Atualizar envio para revisão.
+- [ ] Atualizar envio para verificação.
 - [ ] Criar Policies.
 - [ ] Criar Form Requests.
 - [ ] Criar Controllers.

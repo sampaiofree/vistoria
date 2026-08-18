@@ -25,6 +25,7 @@ final class StoreDefectRequest extends FormRequest
     {
         $this->merge([
             'title' => TextNormalizer::text((string) $this->input('title')),
+            'defect_category_id' => $this->input('defect_category_id'),
             'origin_description' => TextNormalizer::nullableText($this->input('origin_description')),
             'location_description' => TextNormalizer::nullableText($this->input('location_description')),
             'comment' => TextNormalizer::nullableText($this->input('comment')),
@@ -37,6 +38,7 @@ final class StoreDefectRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'defect_category_id' => ['nullable', 'integer', Rule::exists('defect_categories', 'id')->where('organization_id', $this->user()?->organization_id)],
             'title' => ['required', 'string', 'max:200'],
             'origin_description' => ['nullable', 'string', 'max:10000'],
             'location_description' => ['nullable', 'string', 'max:500'],

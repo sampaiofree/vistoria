@@ -19,7 +19,7 @@ enum InspectionStatus: string
         return match ($this) {
             self::Planned => 'Planejada',
             self::InProgress => 'Em inspeção',
-            self::AwaitingReview => 'Aguardando revisão',
+            self::AwaitingReview => 'Aguardando verificação',
             self::InCorrection => 'Em correção',
             self::AwaitingApproval => 'Aguardando aprovação',
             self::Approved => 'Aprovada',

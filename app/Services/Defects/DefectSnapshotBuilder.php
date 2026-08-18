@@ -12,15 +12,23 @@ final class DefectSnapshotBuilder
 
     public function build(Defect $defect): array
     {
-        $defect->loadMissing(['equipment']);
+        $defect->loadMissing(['equipment', 'categoryDefinition']);
+
+        $category = $defect->categoryDefinition;
 
         return [
             'defect' => [
                 'public_id' => $defect->public_id,
                 'code' => $defect->code,
                 'title' => $defect->title,
-                'category' => $defect->category->value,
-                'category_label' => $defect->category->label(),
+                'category' => $defect->categoryCode(),
+                'category_label' => $defect->categoryLabel(),
+                'category_definition' => $category === null ? null : [
+                    'public_id' => $category->public_id,
+                    'code' => $category->code,
+                    'name' => $category->name,
+                    'description' => $category->description,
+                ],
                 'origin_description' => $defect->origin_description,
                 'status' => $defect->status->value,
                 'sequence_number' => $defect->sequence_number,

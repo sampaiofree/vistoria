@@ -115,9 +115,9 @@ defineProps({
                     :complete-action="defect.assessment_actions.complete_url"
                     :allow-new-condition="defect.latest_assessment?.inspection?.id === defect.first_inspection.id"
                     title="Editar avaliação"
-                        :note="defect.current_assessment?.status === 'draft'
-                            ? 'Finalize ou ajuste o rascunho desta avaliação.'
-                            : 'Salvar rascunho reabre a avaliação para edição.'"
+                            :note="defect.current_assessment?.status === 'draft'
+                            ? 'Ajuste o rascunho e publique a avaliação quando estiver pronta.'
+                            : 'A avaliação está publicada; salvar como rascunho permite novos ajustes.'"
                 />
 
                 <PreviousAssessmentCard

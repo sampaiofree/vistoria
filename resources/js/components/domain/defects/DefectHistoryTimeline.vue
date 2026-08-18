@@ -83,7 +83,7 @@ defineProps({
         </li>
 
         <li v-if="assessments.length === 0" class="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500">
-            Nenhuma avaliação concluída ainda.
+            Nenhuma avaliação publicada ainda.
         </li>
     </ol>
 </template>

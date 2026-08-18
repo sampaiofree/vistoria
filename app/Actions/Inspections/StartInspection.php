@@ -22,7 +22,7 @@ final class StartInspection
     public function handle(Inspection $inspection, User $actor): Inspection
     {
         $this->validateTenant($inspection, $actor);
-        $this->ensureActorHasResponsibility($inspection, $actor, InspectionResponsibility::Inspector);
+        $this->ensureActorHasResponsibility($inspection, $actor, InspectionResponsibility::Preparer);
 
         if (! $inspection->equipment->canReceiveInspection()) {
             throw ValidationException::withMessages([
@@ -30,7 +30,7 @@ final class StartInspection
             ]);
         }
 
-        $this->ensureResponsibilityPresent($inspection, InspectionResponsibility::Inspector);
+        $this->ensureResponsibilityPresent($inspection, InspectionResponsibility::Preparer);
 
         return $this->transition->handle(
             $actor,

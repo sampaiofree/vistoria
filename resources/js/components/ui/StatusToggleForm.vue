@@ -48,7 +48,7 @@ function submit() {
         <button
             type="submit"
             :disabled="form.processing"
-            class="inline-flex items-center rounded-full border px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-60"
+            class="inline-flex items-center rounded-md border px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-60"
             :class="buttonClass"
         >
             {{ buttonLabel }}

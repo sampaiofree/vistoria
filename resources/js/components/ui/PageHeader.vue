@@ -14,13 +14,10 @@ defineProps({
 <template>
     <section class="flex flex-col gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-end sm:justify-between">
         <div class="min-w-0">
-            <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
-                Vistoria
-            </p>
-            <h1 class="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
+            <h1 class="text-2xl font-semibold text-slate-900">
                 {{ title }}
             </h1>
-            <p v-if="description" class="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+            <p v-if="description" class="mt-1.5 max-w-3xl text-sm leading-6 text-slate-600">
                 {{ description }}
             </p>
         </div>

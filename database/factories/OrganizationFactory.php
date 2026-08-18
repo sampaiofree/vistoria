@@ -19,14 +19,31 @@ class OrganizationFactory extends Factory
     public function definition(): array
     {
         $companyName = fake()->company();
+        $base = fake()->numerify('########').'0001';
+        $first = $this->cnpjDigit($base, [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+        $second = $this->cnpjDigit($base.$first, [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
 
         return [
             'name' => $companyName,
             'legal_name' => $companyName.' LTDA',
-            'document' => fake()->unique()->numerify('##############'),
+            'document' => $base.$first.$second,
+            'primary_color' => '#0F172A',
             'timezone' => 'America/Sao_Paulo',
             'status' => OrganizationStatus::Active->value,
         ];
+    }
+
+    private function cnpjDigit(string $value, array $weights): int
+    {
+        $sum = 0;
+
+        foreach ($weights as $index => $weight) {
+            $sum += (int) $value[$index] * $weight;
+        }
+
+        $remainder = $sum % 11;
+
+        return $remainder < 2 ? 0 : 11 - $remainder;
     }
 
     public function active(): static

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Actions\Defects;
 
+use App\Enums\DefectAssessmentCondition;
 use App\Enums\DefectAssessmentStatus;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
@@ -50,6 +51,16 @@ final class UpdateDefectAssessment
 
             $wasComplete = $assessment->isComplete();
 
+            if ($wasComplete) {
+                $markerCount = $assessment->locationMarkers()->count();
+
+                if ($markerCount > 0) {
+                    throw ValidationException::withMessages([
+                        'status' => "Esta avaliação possui {$markerCount} marcação(ões). Remova os vínculos na aba Localização antes de movê-la para rascunho.",
+                    ]);
+                }
+            }
+
             $assessment->fill([
                 'condition' => $data['condition'] ?? $assessment->condition,
                 'location_description' => TextNormalizer::nullableText($data['location_description'] ?? $assessment->location_description),
@@ -57,6 +68,9 @@ final class UpdateDefectAssessment
                 'recommendation' => TextNormalizer::nullableText($data['recommendation'] ?? $assessment->recommendation),
                 'reason' => TextNormalizer::nullableText($data['reason'] ?? $assessment->reason),
                 'internal_notes' => TextNormalizer::nullableText($data['internal_notes'] ?? $assessment->internal_notes),
+                'item_description' => TextNormalizer::nullableText($data['item_description'] ?? $assessment->item_description),
+                'project_reference' => TextNormalizer::nullableText($data['project_reference'] ?? $assessment->project_reference),
+                'impacts_activity' => $data['impacts_activity'] ?? $assessment->impacts_activity,
                 'updated_by' => $actor->getKey(),
             ]);
 
@@ -72,6 +86,30 @@ final class UpdateDefectAssessment
                     'status' => DefectAssessmentStatus::Draft,
                     'assessed_at' => null,
                     'defect_snapshot' => null,
+                ]);
+            }
+
+            if (in_array($assessment->condition, [
+                DefectAssessmentCondition::Repaired,
+                DefectAssessmentCondition::NotLocated,
+                DefectAssessmentCondition::NotInspected,
+            ], true)) {
+                $assessment->fill([
+                    'gravity' => null,
+                    'urgency' => null,
+                    'trend' => null,
+                    'gut_score' => null,
+                    'gut_snapshot' => null,
+                    'gut_classified_at' => null,
+                    'gut_classified_by' => null,
+                    'defect_classification_id' => null,
+                    'classification_code' => null,
+                    'classification_priority' => null,
+                    'deadline_months' => null,
+                    'recommended_due_date' => null,
+                    'classification_snapshot' => null,
+                    'classified_at' => null,
+                    'classified_by' => null,
                 ]);
             }
 
@@ -95,7 +133,6 @@ final class UpdateDefectAssessment
 
         if (! $inspection->hasAnyResponsibilityForUser(
             $actor,
-            InspectionResponsibility::Inspector,
             InspectionResponsibility::Preparer,
         )) {
             throw ValidationException::withMessages([

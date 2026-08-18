@@ -11,6 +11,7 @@ use App\Models\InspectionResponsible;
 use App\Models\Organization;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 final class InspectionResponsibleRoutesTest extends TestCase
@@ -33,7 +34,7 @@ final class InspectionResponsibleRoutesTest extends TestCase
         $this->actingAs($admin)
             ->post(route('inspections.responsibles.store', $inspection), [
                 'user_id' => $firstUser->id,
-                'responsibility' => InspectionResponsibility::Inspector->value,
+                'responsibility' => InspectionResponsibility::Preparer->value,
                 'is_primary' => true,
             ])
             ->assertRedirect();
@@ -45,7 +46,7 @@ final class InspectionResponsibleRoutesTest extends TestCase
         $this->actingAs($admin)
             ->post(route('inspections.responsibles.store', $inspection), [
                 'user_id' => $secondUser->id,
-                'responsibility' => InspectionResponsibility::Inspector->value,
+                'responsibility' => InspectionResponsibility::Preparer->value,
             ])
             ->assertRedirect();
 
@@ -101,5 +102,45 @@ final class InspectionResponsibleRoutesTest extends TestCase
         $this->actingAs($member)
             ->delete(route('inspections.responsibles.destroy', [$inspection, $responsible]))
             ->assertForbidden();
+    }
+
+    public function test_removed_inspector_role_is_rejected_by_the_assignment_route(): void
+    {
+        $organization = Organization::factory()->create();
+        $admin = User::factory()->for($organization)->create([
+            'account_type' => UserAccountType::CompanyAdmin->value,
+        ]);
+        $inspection = Inspection::factory()->create(['organization_id' => $organization->id]);
+        $user = User::factory()->for($organization)->create();
+
+        $this->actingAs($admin)
+            ->post(route('inspections.responsibles.store', $inspection), [
+                'user_id' => $user->id,
+                'responsibility' => 'inspector',
+            ])
+            ->assertSessionHasErrors('responsibility');
+
+        $this->assertDatabaseCount('inspection_responsibles', 0);
+    }
+
+    public function test_team_page_offers_only_the_four_official_responsibilities(): void
+    {
+        $organization = Organization::factory()->create();
+        $admin = User::factory()->for($organization)->create([
+            'account_type' => UserAccountType::CompanyAdmin->value,
+        ]);
+        $inspection = Inspection::factory()->create(['organization_id' => $organization->id]);
+
+        $this->actingAs($admin)
+            ->get(route('inspections.team', $inspection))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Inspections/Team')
+                ->has('assignment_options.roles', 4)
+                ->where('assignment_options.roles.0.value', InspectionResponsibility::Preparer->value)
+                ->where('assignment_options.roles.1.value', InspectionResponsibility::Reviewer->value)
+                ->where('assignment_options.roles.1.label', 'Verificador')
+                ->where('assignment_options.roles.2.value', InspectionResponsibility::Approver->value)
+                ->where('assignment_options.roles.3.value', InspectionResponsibility::Releaser->value));
     }
 }

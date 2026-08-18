@@ -7,7 +7,7 @@ use App\Enums\InspectionStatus;
 use App\Models\Inspection;
 use App\Models\InspectionStatusHistory;
 use App\Models\User;
-use App\Services\Demo\ViewFirstDemoPresenter;
+use App\Services\Inspections\InspectionReadModelPresenter;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -17,7 +17,7 @@ final class DashboardController extends Controller
 {
     public function index(
         Request $request,
-        ViewFirstDemoPresenter $demoPresenter,
+        InspectionReadModelPresenter $demoPresenter,
     ): InertiaResponse {
         $user = $request->user();
         $user->loadMissing('organization');
@@ -83,7 +83,7 @@ final class DashboardController extends Controller
                         'status' => InspectionStatus::Planned->value,
                         'scheduled_to' => $today->subDay()->toDateString(),
                     ], $personalFilters, $companySummary ? [] : [
-                        'responsibility' => InspectionResponsibility::Inspector->value,
+                        'responsibility' => InspectionResponsibility::Preparer->value,
                     ])),
                     'awaiting_review' => route('inspections.index', array_merge([
                         'status' => InspectionStatus::AwaitingReview->value,
@@ -161,7 +161,7 @@ final class DashboardController extends Controller
         int $organizationId,
         int $userId,
         bool $companySummary,
-        ViewFirstDemoPresenter $demoPresenter,
+        InspectionReadModelPresenter $demoPresenter,
     ): ?array {
         $query = Inspection::query()
             ->forOrganization($organizationId)
@@ -244,7 +244,7 @@ final class DashboardController extends Controller
                 ->whereDate('scheduled_for', '<', $today->toDateString())
                 ->whereHas('responsibles', fn ($query) => $query
                     ->where('user_id', $userId)
-                    ->where('responsibility', InspectionResponsibility::Inspector->value))
+                    ->where('responsibility', InspectionResponsibility::Preparer->value))
                 ->count(),
             'awaiting_review' => Inspection::query()
                 ->forOrganization($organizationId)
@@ -411,7 +411,7 @@ final class DashboardController extends Controller
         $steps = [
             InspectionStatus::Planned->value => 'Planejadas',
             InspectionStatus::InProgress->value => 'Em inspeção',
-            InspectionStatus::AwaitingReview->value => 'Revisão',
+            InspectionStatus::AwaitingReview->value => 'Verificação',
             InspectionStatus::InCorrection->value => 'Correção',
             InspectionStatus::AwaitingApproval->value => 'Aprovação',
             InspectionStatus::Approved->value => 'Aprovadas',
@@ -493,12 +493,12 @@ final class DashboardController extends Controller
                 ? 'Iniciar inspeção'
                 : 'Ver planejamento',
             InspectionStatus::InProgress => $user->can('submitForReview', $inspection)
-                ? 'Preparar revisão'
+                ? 'Preparar verificação'
                 : 'Acompanhar inspeção',
             InspectionStatus::AwaitingReview => (
                 $user->can('completeReview', $inspection)
                 || $user->can('returnForCorrection', $inspection)
-            ) ? 'Abrir para revisar' : 'Acompanhar revisão',
+            ) ? 'Abrir para verificar' : 'Acompanhar verificação',
             InspectionStatus::InCorrection => $user->can('submitForReview', $inspection)
                 ? 'Corrigir pendências'
                 : 'Acompanhar correção',
@@ -555,7 +555,7 @@ final class DashboardController extends Controller
         return match ($history->to_status) {
             InspectionStatus::Planned => sprintf('%s planejou a inspeção %s.', $actor, $inspectionNumber),
             InspectionStatus::InProgress => sprintf('%s iniciou a inspeção %s.', $actor, $inspectionNumber),
-            InspectionStatus::AwaitingReview => sprintf('%s enviou a inspeção %s para revisão.', $actor, $inspectionNumber),
+            InspectionStatus::AwaitingReview => sprintf('%s enviou a inspeção %s para verificação.', $actor, $inspectionNumber),
             InspectionStatus::InCorrection => sprintf('%s devolveu a inspeção %s para correção.', $actor, $inspectionNumber),
             InspectionStatus::AwaitingApproval => sprintf('%s enviou a inspeção %s para aprovação.', $actor, $inspectionNumber),
             InspectionStatus::Approved => sprintf('%s aprovou a inspeção %s.', $actor, $inspectionNumber),

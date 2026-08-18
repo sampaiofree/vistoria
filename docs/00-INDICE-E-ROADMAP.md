@@ -18,6 +18,7 @@ Inclui:
 - avarias permanentes com código único por empresa;
 - avaliações da avaria por inspeção;
 - fotos capturadas pelo celular;
+- mapas de localização por inspeção, categoria e avaliação;
 - cálculo GUT e classificação CV;
 - revisão, aprovação e liberação;
 - relatório PDF simplificado;
@@ -56,10 +57,12 @@ Nas colunas de dimensão, **Concluída** significa que aquela dimensão terminou
 | 05 | `05-EQUIPAMENTOS-E-DOCUMENTOS.md` | Criar equipamentos, TAGs, desenhos e documentos | Concluída | Concluída | Concluída | Concluído |
 | 06 | `06-INSPECOES-E-FLUXO.md` | Criar inspeções, responsáveis, estados e histórico | Concluída | Concluída | Concluída | Concluído |
 | 06A | `06A-DASHBOARD-E-NAVEGACAO.md` | Criar dashboard operacional, shell e navegação principal | Concluída | Concluída | Concluída | Concluído |
-| 06B | `06B-VIEW-FIRST-DEMO.md` | Entregar o fluxo visual completo e repetível para apresentação | Concluída | Concluída | Parcial | Em validação — validação manual pendente |
-| 07 | `07-AVARIAS-E-REINSPECOES.md` | Modelar avarias permanentes e avaliações históricas | Concluída | Parcial | Parcial | Em validação |
-| 08 | `08-FOTOS-E-ARMAZENAMENTO.md` | Definir captura, compressão, upload e armazenamento | Concluída | Pendente | Pendente | Documentado |
-| 09 | `09-CLASSIFICACAO-CIVIL-GUT.md` | Implementar regras GUT, CV, danos e recomendações | Concluída | Pendente | Pendente | Documentado |
+| 06B | `06B-VIEW-FIRST-DEMO.md` | Entregar o fluxo visual completo e repetível para apresentação | Concluída | Concluída — dados demonstrativos no fluxo oficial | Parcial | Em validação — validação manual pendente |
+| 07 | `07-AVARIAS-E-REINSPECOES.md` | Modelar avarias permanentes e avaliações históricas | Concluída | Concluída | Concluída | Concluído |
+| 07A | `07A-CATEGORIAS-E-CLASSIFICACOES.md` | Tornar categorias e classificações configuráveis por organização | Concluída | Concluída | Parcial | Em validação — validação manual pendente |
+| 08 | `08-FOTOS-E-ARMAZENAMENTO.md` | Definir captura, compressão, upload e armazenamento | Concluída | Concluída | Parcial | Em validação final |
+| 08A | `08A-MAPAS-E-LOCALIZACAO-DA-INSPECAO.md` | Modelar mapas, marcações e localização fotográfica | Concluída | Concluída — Fatias 1 a 7 | Parcial | Em validação — gates ambientais e manuais pendentes |
+| 09 | `09-CLASSIFICACAO-CIVIL-GUT.md` | Implementar regras opcionais GUT/CV após o catálogo | Concluída | Parcial — núcleo, formulário e quantitativos concluídos | Parcial | Em validação — procedimento e templates pendentes |
 | 10 | `10-REVISAO-APROVACAO-E-AUDITORIA.md` | Implementar controle técnico e rastreabilidade | Pendente | Pendente | Pendente | Pendente |
 | 11 | `11-RELATORIO-PDF.md` | Gerar o relatório simplificado do MVP | Pendente | Pendente | Pendente | Pendente |
 | 12 | `12-TESTES-E-SEGURANCA.md` | Cobrir regras críticas, permissões e isolamento | Pendente | Pendente | Pendente | Pendente |
@@ -140,8 +143,50 @@ Evidências do corte:
 - Chrome validado em 1440, 1280, 1024, 768 e 375 px, sem overflow horizontal ou erros no console;
 - filtros, abas, viewer, teclado, persistência, impressão e bloqueio explicado do PDF conferidos.
 
-O 06B permanece `Em validação` apenas porque o registro em commit ainda está pendente. Os módulos 08, 09 e 11 continuam documentados ou pendentes e não são considerados implementados por este corte.
+O 06B foi consolidado em commits próprios e permanece como experiência visual aprovada. O módulo 07 foi concluído com relações entre avarias, avaliações históricas, checklist de reinspeção, cobertura obrigatória e bloqueio de envio incompleto. O módulo 08 está em validação final, com fluxo privado de fotografias e cobertura automatizada implementados. A análise do relatório real originou o módulo 08A, que separa mapa da inspeção, marcação da avaliação, fotografia e folha do relatório.
+
+## Corte de implementação 08A — Fatias 1 a 7
+
+As sete fatias de `08A-PLANO-DE-IMPLEMENTACAO.md` foram implementadas em 09/08/2026. O corte entrega:
+
+- mapas privados por inspeção e categoria, com origem documental ou upload;
+- processamento da imagem-base, editor SVG e geometria versionada;
+- marcações vinculadas às avaliações e às fotografias selecionadas;
+- cópia controlada para reinspeções e numeração fotográfica global;
+- cobertura configurável antes da revisão, com ativação auditada por categoria;
+- compositor neutro e snapshot estável usados pela prévia do relatório;
+- cenário View First com duas folhas CIVIL e quatorze marcações idempotentes;
+- hardening de tenant, assets privados, caminhos, limites, concorrência, Jobs e limpeza;
+- thumbnail sob demanda, payloads limitados e alternativa textual/teclado no editor.
+
+Evidências automatizadas do corte:
+
+- `php artisan test`: 176 testes, 175 aprovados, 1 ignorado e 1.932 assertions;
+- testes focados de localização, classificação, seeder, View First e avarias: 91 testes e 1.047 assertions;
+- instalação com seed e rollback/reapply 08A aprovados em SQLite isolado;
+- processamento real de PNG, JPEG, WEBP e PDF aprovado;
+- `composer validate --strict --no-check-publish`, `vendor/bin/pint --test`, `npm run build` com Node 22.21.1 e `git diff --check` aprovados;
+- seeder demonstrativo executado duas vezes nos testes sem duplicar mapas ou marcações;
+- categorias existentes e novas permanecem com `requires_location_map = false` até ativação explícita.
+
+Permanecem pendentes: migration/rollback em MySQL isolado, worker assíncrono real, validação manual responsiva, impressão, decisão de ativação CIVIL e commits.
+
+## Oficialização da configuração de demonstração
+
+Em 10/08/2026, o cenário View First passou a utilizar o mesmo fluxo operacional das demais organizações:
+
+- organização identificada por `is_demo`, sem propagação de valores demonstrativos para outros tenants;
+- perfil GUT/CV ativo somente no tenant de demonstração e perfis comuns preservados em rascunho;
+- contexto, GUT/CV e snapshots gravados nas avaliações;
+- quantitativos persistidos e consolidados separadamente por unidade;
+- 36 fotos privadas vinculadas às avaliações e às 14 marcações dos mapas;
+- requisito de mapa ativado apenas para a categoria CIVIL do tenant demonstrativo;
+- formulário oficial com edição de contexto, classificação, quantitativos, textos e fotografias;
+- estados vazios reais quando uma organização comum ainda não cadastrou informação técnica;
+- prévia derivada dos dados persistidos, mantendo o PDF oficial desabilitado até o módulo 11.
+
+Os gates automatizados de código, suíte e build foram executados: 179 testes, 178 aprovados, 1 ignorado e 1.962 assertions; Pint, Composer, build Vite e `git diff --check` aprovados. A migration foi aplicada e o seeder foi executado duas vezes no SQLite local sem duplicação. Permanecem a validação manual responsiva/impressa, os gates MySQL/worker já registrados no corte 08A e o commit.
 
 ## Próximo documento
 
-O próximo passo do MVP continua sendo `07-AVARIAS-E-REINSPECOES.md`, substituindo progressivamente os dados demonstrativos pelos contratos definitivos sem refazer a experiência aprovada no 06B.
+O próximo passo é concluir os gates ambientais e manuais descritos na Fatia 7 de `08A-PLANO-DE-IMPLEMENTACAO.md`, incluindo a conferência do cenário demo oficializado. Depois dessas evidências, o fluxo pode avançar para os módulos 10 e 11 sem reconstruir a localização a partir de textos soltos ou dados demonstrativos paralelos.

@@ -10,6 +10,10 @@ const props = defineProps({
         type: Object,
         required: true,
     },
+    variant: {
+        type: String,
+        default: 'card',
+    },
 });
 
 const assessment = computed(() => props.defect.current_assessment ?? props.defect.assessment ?? {});
@@ -17,6 +21,10 @@ const condition = computed(() => assessment.value.condition ?? props.defect.cond
 const status = computed(() => assessment.value.status ?? props.defect.assessment_status ?? 'draft');
 const classification = computed(() => props.defect.classification ?? {});
 const gut = computed(() => props.defect.gut ?? {});
+const gutSummary = computed(() => [['G', gut.value.severity], ['U', gut.value.urgency], ['T', gut.value.tendency]]
+    .filter(([, value]) => value !== null && value !== undefined)
+    .map(([label, value]) => `${label} ${value}`)
+    .join(' · '));
 const discipline = computed(() => props.defect.discipline_label ?? 'Civil');
 const project = computed(() => props.defect.project ?? '—');
 const drawing = computed(() => props.defect.drawing ?? '—');
@@ -31,6 +39,16 @@ const evidenceCount = computed(() => (
         ? props.defect.evidence.length
         : (props.defect.evidence?.count ?? props.defect.photos_count ?? props.defect.photo_count ?? 0)
 ));
+const thumbnailPhoto = computed(() => {
+    const photos = Array.isArray(props.defect.evidence)
+        ? props.defect.evidence.filter((photo) => photo.thumbnail_url || photo.url)
+        : [];
+
+    return photos[0] ?? null;
+});
+const conditionLabel = computed(() => assessment.value.condition_label ?? props.defect.condition_label ?? 'Condição não informada');
+const publicationLabel = computed(() => assessment.value.status_label
+    ?? (status.value === 'draft' ? 'Rascunho' : status.value === 'complete' ? 'Publicada' : null));
 const actionUrl = computed(() => props.defect.assessment_url ?? props.defect.show_url ?? null);
 const element = computed(() => {
     if (props.defect.element) {
@@ -46,7 +64,47 @@ const element = computed(() => {
 </script>
 
 <template>
-    <article class="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-slate-300 hover:shadow-md">
+    <article v-if="variant === 'list'" class="group rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-slate-300 hover:shadow-md sm:p-5">
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div class="h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-slate-100 sm:h-24 sm:w-24">
+                <img
+                    v-if="thumbnailPhoto"
+                    :src="thumbnailPhoto.thumbnail_url || thumbnailPhoto.url"
+                    :alt="thumbnailPhoto.title || defect.title"
+                    class="h-full w-full object-cover"
+                >
+                <div v-else class="flex h-full items-center justify-center px-2 text-center text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                    {{ evidenceCount ? 'Foto pendente' : 'Sem foto' }}
+                </div>
+            </div>
+            <div class="min-w-0 flex-1">
+                <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">{{ defect.code }}</p>
+                <h3 class="mt-1 truncate text-base font-semibold text-slate-950">{{ defect.title }}</h3>
+                <p class="mt-1 truncate text-sm text-slate-500">{{ location }}</p>
+                <p class="mt-2 truncate text-xs text-slate-500">
+                    {{ discipline }} · {{ conditionLabel }} ·
+                    <span v-if="gutSummary">{{ gutSummary }} · </span>
+                    {{ evidenceCount }} {{ evidenceCount === 1 ? 'foto' : 'fotos' }}
+                    <span v-if="classification.code"> · {{ classification.code }}</span>
+                    <span v-if="element !== '—'"> · {{ element }}</span>
+                </p>
+            </div>
+
+            <div class="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
+                <span v-if="publicationLabel" class="text-xs font-medium text-slate-500">{{ publicationLabel }}</span>
+                <Link
+                    v-if="actionUrl"
+                    :href="actionUrl"
+                    class="inline-flex min-h-10 items-center justify-center rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
+                >
+                    {{ status === 'draft' ? 'Continuar' : 'Abrir' }}
+                    <span class="ml-2" aria-hidden="true">→</span>
+                </Link>
+            </div>
+        </div>
+    </article>
+
+    <article v-else class="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-slate-300 hover:shadow-md">
         <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div class="min-w-0">
                 <div class="flex flex-wrap items-center gap-2">
@@ -68,9 +126,9 @@ const element = computed(() => {
 
         <div class="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <div class="rounded-xl bg-slate-50 px-3.5 py-3">
-                <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Pontuação GUT</div>
-                <div class="mt-1 font-semibold text-slate-900">{{ gut.score ?? gut.gut_score ?? 'Não aplicável' }}</div>
-                <div class="mt-0.5 text-xs text-slate-500">{{ classification.score_band || '—' }}</div>
+                <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Notas GUT</div>
+                <div class="mt-1 font-semibold text-slate-900">{{ gutSummary || 'Não informadas' }}</div>
+                <div class="mt-0.5 text-xs text-slate-500">Produto pendente de definição</div>
             </div>
             <div class="rounded-xl bg-slate-50 px-3.5 py-3">
                 <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Quantitativo</div>

@@ -28,7 +28,6 @@ final class UpdatePlannedInspectionRequest extends FormRequest
             'scheduled_for' => blank($this->input('scheduled_for'))
                 ? (blank($this->input('scheduled_at')) ? null : $this->input('scheduled_at'))
                 : $this->input('scheduled_for'),
-            'general_notes' => TextNormalizer::nullableText($this->input('general_notes')),
         ]);
     }
 
@@ -40,7 +39,6 @@ final class UpdatePlannedInspectionRequest extends FormRequest
             'procedure_number' => ['nullable', 'string', 'max:150'],
             'atmospheric_classification' => ['nullable', 'string', 'max:50'],
             'scheduled_for' => ['nullable', 'date'],
-            'general_notes' => ['nullable', 'string', 'max:10000'],
         ];
     }
 }

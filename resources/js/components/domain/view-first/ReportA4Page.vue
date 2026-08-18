@@ -22,26 +22,33 @@ defineProps({
 <template>
     <section class="report-a4-page" :class="{ 'report-a4-cover': cover }">
         <div v-if="!cover" class="report-a4-header">
-            <div class="report-brand report-brand-client">
+            <div class="report-header-cell report-header-logo">
                 <img v-if="report.client_logo_url" :src="report.client_logo_url" :alt="report.client || 'Cliente'">
-                <span v-else>{{ report.client || 'CLIENTE' }}</span>
             </div>
-            <div class="report-brand report-brand-provider">SEND <small>INSPEÇÃO &amp; ENGENHARIA</small></div>
-            <div class="report-header-meta">
-                <strong>{{ report.number }}</strong>
-                <span>{{ report.revision }} · PÁGINA {{ page }}</span>
+            <div class="report-header-cell report-header-logo">
+                <img v-if="report.provider_logo_url" :src="report.provider_logo_url" :alt="report.provider || 'Empresa responsável'">
+            </div>
+            <div class="report-header-cell report-header-designer">
+                {{ report.report_designer || 'PROJETISTA II' }}
+            </div>
+            <div class="report-header-cell report-header-field report-header-samarco">
+                <span class="report-header-label">nº SAMARCO</span>
+                <strong>{{ report.external_report_number || '—' }}</strong>
+            </div>
+            <div class="report-header-cell report-header-field report-header-compact">
+                <span class="report-header-label">rev.</span>
+                <strong>{{ report.current_revision ?? '—' }}</strong>
+            </div>
+            <div class="report-header-cell report-header-field report-header-compact">
+                <span class="report-header-label">página nº</span>
+                <strong>{{ page }}</strong>
             </div>
         </div>
 
-        <div class="report-a4-content">
+        <div class="report-a4-content" :class="{ 'report-a4-content-cover': cover }">
             <slot />
         </div>
 
-        <footer class="report-a4-footer">
-            <span>{{ report.provider || 'Vistoria Serviços de Inspeção Ltda.' }}</span>
-            <span>{{ report.number }} · {{ report.revision }}</span>
-            <span>PÁGINA {{ page }} / {{ total }}</span>
-        </footer>
     </section>
 </template>
 
@@ -58,6 +65,8 @@ defineProps({
     background: #fff;
     color: #111827;
     box-shadow: 0 18px 40px rgba(15, 23, 42, .12);
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
 }
 
 .report-a4-cover {
@@ -66,66 +75,78 @@ defineProps({
 
 .report-a4-header {
     display: grid;
-    grid-template-columns: 1fr 1fr 1.2fr;
+    grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) 32mm 42mm 15mm 22mm;
     align-items: stretch;
-    min-height: 13mm;
+    min-height: 16mm;
     border-top: 1.2px solid #111827;
-    border-bottom: 1px solid #111827;
+    border-bottom: 1.5px solid #111827;
     font-size: 7pt;
 }
 
-.report-brand,
-.report-header-meta {
+.report-header-cell {
     display: flex;
     align-items: center;
+    justify-content: center;
     min-width: 0;
-    padding: 2mm 3mm;
+    padding: 1.5mm 2mm;
     border-right: 1px solid #111827;
 }
 
-.report-brand:last-child,
-.report-header-meta:last-child {
+.report-header-cell:last-child {
     border-right: 0;
 }
 
-.report-brand img {
-    max-width: 32mm;
-    max-height: 8mm;
+.report-header-logo img {
+    display: block;
+    width: 100%;
+    height: 11mm;
     object-fit: contain;
 }
 
-.report-brand-client {
-    color: #075985;
-    font-size: 8pt;
-    font-weight: 800;
-    text-transform: uppercase;
-}
-
-.report-brand-provider {
-    color: #07519a;
-    font-size: 11pt;
-    font-weight: 900;
-    letter-spacing: -.06em;
-}
-
-.report-brand-provider small {
-    margin-left: 2mm;
+.report-header-designer {
     color: #111827;
-    font-size: 4.5pt;
-    letter-spacing: .03em;
+    font-size: 10pt;
+    font-weight: 700;
+    line-height: 1.15;
+    text-align: center;
 }
 
-.report-header-meta {
+.report-header-field {
     flex-direction: column;
     align-items: flex-start;
     justify-content: center;
-    gap: 1mm;
-    text-transform: uppercase;
+    color: #111827;
+    line-height: 1.1;
 }
 
-.report-header-meta span {
-    color: #4b5563;
-    font-size: 6pt;
+.report-header-label {
+    font-size: 7.5pt;
+    font-weight: 700;
+}
+
+.report-header-field strong {
+    margin-top: 1.5mm;
+    overflow: hidden;
+    max-width: 100%;
+    font-size: 8pt;
+    font-weight: 500;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.report-header-compact {
+    align-items: center;
+    padding-right: 1mm;
+    padding-left: 1mm;
+    text-align: center;
+}
+
+.report-header-compact .report-header-label {
+    font-size: 8pt;
+}
+
+.report-header-compact strong {
+    font-size: 9pt;
 }
 
 .report-a4-content {
@@ -134,16 +155,10 @@ defineProps({
     padding-top: 6mm;
 }
 
-.report-a4-footer {
+.report-a4-content-cover {
     display: flex;
-    justify-content: space-between;
-    gap: 4mm;
-    margin-top: 5mm;
-    padding-top: 3mm;
-    border-top: 1px solid #111827;
-    color: #374151;
-    font-size: 6.5pt;
-    text-transform: uppercase;
+    flex-direction: column;
+    padding-top: 0;
 }
 
 @media screen and (max-width: 880px) {

@@ -22,7 +22,7 @@ class InspectionResponsibleFactory extends Factory
             'organization_id' => Organization::factory(),
             'inspection_id' => null,
             'user_id' => null,
-            'responsibility' => InspectionResponsibility::Inspector,
+            'responsibility' => InspectionResponsibility::Preparer,
             'is_primary' => false,
             'assigned_by' => null,
             'assigned_at' => now(),

@@ -44,6 +44,37 @@ defineProps({
             <path d="M18.5 9.5a3 3 0 1 1 0 6" />
         </template>
 
+        <template v-else-if="name === 'classification'">
+            <path d="M6 5.5h12v13H6z" />
+            <path d="M9 9h6M9 12h6M9 15h3" />
+        </template>
+
+        <template v-else-if="name === 'map'">
+            <path d="m4.5 6 5-2 5 2 5-2v14l-5 2-5-2-5 2Z" />
+            <path d="M9.5 4v14M14.5 6v14" />
+        </template>
+
+        <template v-else-if="name === 'photos'">
+            <rect x="4.5" y="5.5" width="15" height="13" rx="2" />
+            <circle cx="9" cy="10" r="1.5" />
+            <path d="m6.5 16 3.5-3 2.5 2 2.5-2 2.5 3" />
+        </template>
+
+        <template v-else-if="name === 'document'">
+            <path d="M7 3.75h6.5L18 8.25V20H7Z" />
+            <path d="M13.5 3.75v4.5H18M9.5 12h6M9.5 15.5h6" />
+        </template>
+
+        <template v-else-if="name === 'users'">
+            <circle cx="9" cy="9" r="3" />
+            <path d="M3.75 19a5.25 5.25 0 0 1 10.5 0M15.5 7a2.5 2.5 0 0 1 0 5M16 14a4.5 4.5 0 0 1 4.25 4.5" />
+        </template>
+
+        <template v-else-if="name === 'report'">
+            <path d="M6 4.5h12v15H6Z" />
+            <path d="M9 8h6M9 12h6M9 16h3" />
+        </template>
+
         <template v-else-if="name === 'search'">
             <circle cx="10.25" cy="10.25" r="4.75" />
             <path d="m14 14 4.5 4.5" />
@@ -57,6 +88,11 @@ defineProps({
         <template v-else-if="name === 'user'">
             <circle cx="12" cy="8.5" r="3.25" />
             <path d="M5.75 20a6.25 6.25 0 0 1 12.5 0" />
+        </template>
+
+        <template v-else-if="name === 'settings'">
+            <circle cx="12" cy="12" r="3.25" />
+            <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-1.8 1.8-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.02 1.56V20h-2.55v-.1a1.7 1.7 0 0 0-1.02-1.56 1.7 1.7 0 0 0-1.88.34l-.06.06-1.8-1.8.06-.06A1.7 1.7 0 0 0 8.13 15a1.7 1.7 0 0 0-1.56-1.02H6.5v-2.55h.07A1.7 1.7 0 0 0 8.13 10a1.7 1.7 0 0 0-.34-1.88l-.06-.06 1.8-1.8.06.06a1.7 1.7 0 0 0 1.88.34 1.7 1.7 0 0 0 1.02-1.56V5h2.55v.1a1.7 1.7 0 0 0 1.02 1.56 1.7 1.7 0 0 0 1.88-.34l.06-.06 1.8 1.8-.06.06A1.7 1.7 0 0 0 19.4 10a1.7 1.7 0 0 0 1.56 1.02H21v2.55h-.1A1.7 1.7 0 0 0 19.4 15Z" />
         </template>
 
         <template v-else-if="name === 'menu'">
@@ -82,6 +118,10 @@ defineProps({
 
         <template v-else-if="name === 'chevron-right'">
             <path d="m9.5 6.5 5 5-5 5" />
+        </template>
+
+        <template v-else-if="name === 'chevron-down'">
+            <path d="m6.5 9.5 5 5 5-5" />
         </template>
 
         <template v-else-if="name === 'clock'">

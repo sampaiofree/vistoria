@@ -49,7 +49,19 @@ return [
 
         'equipment_documents' => [
             'driver' => 'local',
-            'root' => storage_path('app/private/equipment-documents'),
+            'root' => env('EQUIPMENT_DOCUMENTS_ROOT', storage_path('app/private/equipment-documents')),
+            'throw' => true,
+        ],
+
+        'inspection_photos' => [
+            'driver' => 'local',
+            'root' => env('INSPECTION_PHOTOS_ROOT', storage_path('app/private/inspection-photos')),
+            'throw' => true,
+        ],
+
+        'inspection_maps' => [
+            'driver' => 'local',
+            'root' => env('INSPECTION_MAPS_ROOT', storage_path('app/private/inspection-maps')),
             'throw' => true,
         ],
 

@@ -2,6 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Enums\OrganizationStatus;
+use App\Enums\UserAccountType;
+use App\Models\Organization;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -15,13 +18,18 @@ class AuthenticationTest extends TestCase
         $this->get('/login')
             ->assertOk()
             ->assertSee('Boas-vindas ao Vistoria')
-            ->assertDontSee('admin@vistoria.test')
-            ->assertDontSee('Conta local');
+            ->assertDontSee('Credenciais de demonstração');
     }
 
     public function test_valid_credentials_log_the_user_in(): void
     {
-        $this->seed();
+        $organization = Organization::factory()->create(['status' => OrganizationStatus::Active]);
+        User::factory()->create([
+            'organization_id' => $organization->id,
+            'email' => 'admin@vistoria.test',
+            'password' => 'password',
+            'account_type' => UserAccountType::CompanyAdmin,
+        ]);
 
         $response = $this->post('/login', [
             'email' => 'admin@vistoria.test',
@@ -38,7 +46,13 @@ class AuthenticationTest extends TestCase
 
     public function test_invalid_credentials_are_rejected(): void
     {
-        $this->seed();
+        $organization = Organization::factory()->create(['status' => OrganizationStatus::Active]);
+        User::factory()->create([
+            'organization_id' => $organization->id,
+            'email' => 'admin@vistoria.test',
+            'password' => 'password',
+            'account_type' => UserAccountType::CompanyAdmin,
+        ]);
 
         $response = $this->from('/login')->post('/login', [
             'email' => 'admin@vistoria.test',

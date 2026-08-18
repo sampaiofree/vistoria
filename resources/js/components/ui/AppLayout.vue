@@ -21,19 +21,21 @@ const props = defineProps({
 });
 
 const page = usePage();
+const collapsed = ref(false);
+const mobileOpen = ref(false);
+const mobileMenuTrigger = ref(null);
 
 const user = computed(() => page.props.auth?.user ?? null);
 const organization = computed(() => user.value?.organization ?? null);
 const navigation = computed(() => page.props.navigation ?? []);
+const inspectionNavigation = computed(() => page.props.inspection_navigation ?? null);
+const sidebarNavigation = computed(() => inspectionNavigation.value?.items ?? navigation.value);
+const sidebarCollapsed = computed(() => inspectionNavigation.value ? false : collapsed.value);
 const dashboardUrl = computed(() => navigation.value.find((item) => item.icon === 'dashboard')?.href ?? '/');
 const logoutUrl = computed(() => page.props.auth?.logout_url ?? '');
 
 const flashSuccess = computed(() => page.props.flash?.success ?? '');
 const flashError = computed(() => page.props.flash?.error ?? '');
-
-const collapsed = ref(false);
-const mobileOpen = ref(false);
-const mobileMenuTrigger = ref(null);
 
 const storageKey = 'vistoria.sidebar.collapsed';
 
@@ -72,6 +74,10 @@ function closeMobileSidebar(restoreFocus = true) {
 }
 
 function toggleCollapse() {
+    if (inspectionNavigation.value) {
+        return;
+    }
+
     collapsed.value = !collapsed.value;
 }
 
@@ -116,28 +122,29 @@ function handleKeydown(event) {
 }
 
 const shellStyle = computed(() => ({
-    '--sidebar-width': collapsed.value ? '4.5rem' : '16rem',
+    '--sidebar-width': inspectionNavigation.value ? '18rem' : (collapsed.value ? '4.5rem' : '16rem'),
 }));
 
 const contentWidthClass = computed(() => (props.wide ? 'w-full' : 'mx-auto w-full max-w-7xl'));
 </script>
 
 <template>
-    <div class="min-h-screen bg-slate-100 text-slate-900" :style="shellStyle">
+    <div class="app-ui min-h-screen bg-slate-100 text-slate-900" :style="shellStyle">
         <a
             href="#main-content"
-            class="fixed left-4 top-4 z-50 -translate-y-24 rounded-xl bg-white px-4 py-3 text-sm font-semibold text-slate-950 shadow-lg transition focus:translate-y-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
+            class="fixed left-4 top-4 z-50 -translate-y-24 rounded-md border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-950 shadow-md transition focus:translate-y-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500"
         >
             Pular para o conteúdo
         </a>
 
         <AppSidebar
-            :items="navigation"
+            :items="sidebarNavigation"
             :user="user"
             :organization="organization"
-            :collapsed="collapsed"
+            :collapsed="sidebarCollapsed"
             :mobile-open="mobileOpen"
             :home-url="dashboardUrl"
+            :context="inspectionNavigation"
             @close-mobile="closeMobileSidebar"
         />
 
@@ -149,9 +156,10 @@ const contentWidthClass = computed(() => (props.wide ? 'w-full' : 'mx-auto w-ful
             <AppTopbar
                 :user="user"
                 :organization="organization"
-                :collapsed="collapsed"
+                :collapsed="sidebarCollapsed"
                 :mobile-open="mobileOpen"
                 :logout-url="logoutUrl"
+                :collapsible="!inspectionNavigation"
                 @toggle-sidebar="toggleSidebar"
                 @toggle-collapse="toggleCollapse"
             />
@@ -168,14 +176,14 @@ const contentWidthClass = computed(() => (props.wide ? 'w-full' : 'mx-auto w-ful
                         <div
                             v-if="flashSuccess"
                             role="status"
-                            class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"
+                            class="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"
                         >
                             {{ flashSuccess }}
                         </div>
                         <div
                             v-if="flashError"
                             role="alert"
-                            class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800"
+                            class="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800"
                         >
                             {{ flashError }}
                         </div>

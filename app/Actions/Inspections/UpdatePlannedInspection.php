@@ -44,7 +44,6 @@ final class UpdatePlannedInspection
                 'procedure_number' => TextNormalizer::nullableText($data['procedure_number'] ?? null),
                 'atmospheric_classification' => TextNormalizer::nullableText($data['atmospheric_classification'] ?? null),
                 'scheduled_for' => $data['scheduled_for'] ?? null,
-                'general_notes' => TextNormalizer::nullableText($data['general_notes'] ?? null),
                 'updated_by' => $actor->getKey(),
             ]);
 

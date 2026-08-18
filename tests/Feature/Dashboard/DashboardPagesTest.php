@@ -40,7 +40,7 @@ final class DashboardPagesTest extends TestCase
             $equipment,
             $user,
             InspectionStatus::Planned,
-            InspectionResponsibility::Inspector,
+            InspectionResponsibility::Preparer,
             'INS-2026-000001',
             now()->subDays(2),
             now()->subHours(5),
@@ -88,7 +88,7 @@ final class DashboardPagesTest extends TestCase
                     ->where('can.create_inspection', true)
                     ->where('can.view_company_summary', true)
                     ->has('auth.logout_url')
-                    ->has('navigation', 4)
+                    ->has('navigation', 6)
                     ->has('links.dashboard')
                     ->has('links.inspections_index')
                     ->has('links.inspections_create')
@@ -113,7 +113,7 @@ final class DashboardPagesTest extends TestCase
                             ->has('workflow_summary', 8)
                             ->where('workflow_summary.0.label', 'Planejadas')
                             ->where('workflow_summary.0.count', 1)
-                            ->where('workflow_summary.2.label', 'Revisão')
+                            ->where('workflow_summary.2.label', 'Verificação')
                             ->where('workflow_summary.2.count', 1)
                             ->where('workflow_summary.3.label', 'Correção')
                             ->where('workflow_summary.3.count', 1)
@@ -233,11 +233,11 @@ final class DashboardPagesTest extends TestCase
             now()->subMinutes(10),
         );
 
-        $reviewAsInspector = $this->createInspectionWithResponsibility(
+        $reviewAsPreparer = $this->createInspectionWithResponsibility(
             Equipment::factory()->create(['organization_id' => $organization->id]),
             $member,
             InspectionStatus::AwaitingReview,
-            InspectionResponsibility::Inspector,
+            InspectionResponsibility::Preparer,
             'INS-2026-000102',
             now()->addDays(2),
             now()->subMinutes(20),
@@ -284,7 +284,7 @@ final class DashboardPagesTest extends TestCase
         $response->assertOk()->assertInertia(function (Assert $page) use (
             $member,
             $priorityUrl,
-            $reviewAsInspector,
+            $reviewAsPreparer,
             $reviewAsReviewer,
             $workflowUrl,
         ): void {
@@ -306,15 +306,15 @@ final class DashboardPagesTest extends TestCase
                         ->missing('recent_activities');
                 })
                 ->loadDeferredProps('dashboard-my-inspections', function (Assert $deferred) use (
-                    $reviewAsInspector,
+                    $reviewAsPreparer,
                     $reviewAsReviewer,
                 ): void {
                     $deferred
                         ->has('my_inspections', 2)
                         ->where('my_inspections.0.number', $reviewAsReviewer->number)
-                        ->where('my_inspections.0.next_action.label', 'Abrir para revisar')
-                        ->where('my_inspections.1.number', $reviewAsInspector->number)
-                        ->where('my_inspections.1.next_action.label', 'Acompanhar revisão')
+                        ->where('my_inspections.0.next_action.label', 'Abrir para verificar')
+                        ->where('my_inspections.1.number', $reviewAsPreparer->number)
+                        ->where('my_inspections.1.next_action.label', 'Acompanhar verificação')
                         ->missing('priority_counts')
                         ->missing('workflow_summary')
                         ->missing('recent_activities');
@@ -366,7 +366,7 @@ final class DashboardPagesTest extends TestCase
             Equipment::factory()->create(['organization_id' => $organization->id]),
             $user,
             InspectionStatus::Planned,
-            InspectionResponsibility::Inspector,
+            InspectionResponsibility::Preparer,
             'INS-2026-000201',
             CarbonImmutable::parse('2026-07-30'),
             now()->subMinutes(10),
@@ -386,7 +386,7 @@ final class DashboardPagesTest extends TestCase
                 Equipment::factory()->create(['organization_id' => $organization->id]),
                 $user,
                 $status,
-                InspectionResponsibility::Inspector,
+                InspectionResponsibility::Preparer,
                 sprintf('INS-2026-00020%d', $index + 3),
                 CarbonImmutable::parse('2026-06-01'),
                 now()->subMinutes(30 + $index),

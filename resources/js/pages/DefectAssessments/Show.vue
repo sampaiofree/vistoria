@@ -1,366 +1,399 @@
 <script setup>
-import { computed } from 'vue';
-import { Link, useForm } from '@inertiajs/vue3';
+import { computed, reactive } from 'vue';
+import { useForm } from '@inertiajs/vue3';
 import AppLayout from '@/components/ui/AppLayout.vue';
 import DefectAssessmentStatusBadge from '@/components/domain/defects/DefectAssessmentStatusBadge.vue';
-import DefectConditionBadge from '@/components/domain/defects/DefectConditionBadge.vue';
-import CivilClassificationBadge from '@/components/domain/view-first/CivilClassificationBadge.vue';
-import GutScoreCard from '@/components/domain/view-first/GutScoreCard.vue';
 import PhotoGallery from '@/components/domain/view-first/PhotoGallery.vue';
-import ProvisionalDataNotice from '@/components/domain/view-first/ProvisionalDataNotice.vue';
+import AssessmentPhotoUpload from '@/components/domain/defects/AssessmentPhotoUpload.vue';
 
 const props = defineProps({
     assessment: { type: Object, required: true },
-    previous_assessment: { type: Object, default: null },
-    classification: { type: Object, default: () => ({}) },
-    gut: { type: Object, default: null },
-    characterization: { type: Array, default: () => [] },
-    quantities: { type: Array, default: () => [] },
-    quantity_summary: { type: Object, default: () => ({}) },
+    quantity: { type: Object, default: null },
     evidence: { type: Array, default: () => [] },
-    discipline: { type: String, default: '' },
-    discipline_label: { type: String, default: '' },
-    classification_family: { type: String, default: '' },
-    unit: { type: String, default: '' },
-    project: { type: String, default: '' },
-    drawing: { type: String, default: '' },
-    item: { type: String, default: '' },
-    element: { type: String, default: '' },
-    manifestation: { type: String, default: '' },
-    impact: { type: Object, default: () => ({}) },
-    photo_interval: { type: String, default: '' },
-    occurrence: { type: Object, default: () => ({}) },
-    assessment_navigation: { type: Object, required: true },
-    condition_options: { type: Array, default: () => [] },
+    measurement_units: { type: Array, default: () => [] },
     capabilities: { type: Object, default: () => ({}) },
-    demo: { type: Object, default: () => ({}) },
+    manual_classifications: { type: Array, default: () => [] },
+    gut_options: { type: Object, default: () => ({ gravity: [], urgency: [], trend: [] }) },
+    gut_snapshot: { type: Object, default: null },
+    classification: { type: Object, default: null },
+    condition_options: { type: Array, default: () => [] },
 });
 
 const form = useForm({
+    status: props.assessment.status,
     condition: props.assessment.condition,
     location_description: props.assessment.location_description ?? '',
     comment: props.assessment.comment ?? '',
     recommendation: props.assessment.recommendation ?? '',
     reason: props.assessment.reason ?? '',
     internal_notes: props.assessment.internal_notes ?? '',
+    item_description: props.assessment.item_description ?? '',
+    project_reference: props.assessment.project_reference ?? '',
+    impacts_activity: props.assessment.impacts_activity ?? null,
+    gravity: props.assessment.gravity ?? null,
+    urgency: props.assessment.urgency ?? null,
+    trend: props.assessment.trend ?? null,
+    defect_classification_id: props.assessment.defect_classification_id ?? '',
 });
 
-const requiresReason = computed(() => ['not_located', 'not_inspected'].includes(form.condition));
-const isComplete = computed(() => props.assessment.status === 'complete');
-const title = computed(() => props.assessment.defect?.code ?? 'Avaliação CIVIL');
+const classificationForm = useForm({
+    defect_classification_id: props.assessment.defect_classification_id ?? '',
+});
+
+const gutForm = useForm({
+    condition: props.assessment.condition,
+    gravity: props.assessment.gravity ?? null,
+    urgency: props.assessment.urgency ?? null,
+    trend: props.assessment.trend ?? null,
+});
+
+const editing = reactive({ quantity: false, classification: false, gut: false, narrative: false });
+
+const quantityForm = useForm({
+    measurement_value: props.quantity?.measurement_value ?? '',
+    measurement_unit: props.quantity?.measurement_unit ?? props.measurement_units[0]?.value ?? 'unit',
+});
+
+const title = computed(() => props.assessment.defect?.code ?? 'Avaliação da avaria');
 const subtitle = computed(() => `${props.assessment.defect?.equipment?.tag ?? ''} — ${props.assessment.defect?.title ?? ''}`);
-const quantityRows = computed(() => props.quantities ?? []);
-const quantitySummary = computed(() => props.quantity_summary ?? {});
-const impactSummary = computed(() => props.impact ?? {});
-const technicalContext = computed(() => ([
-    { label: 'Disciplina', value: props.discipline_label ?? 'Civil' },
-    { label: 'Família', value: props.classification_family ?? 'CV' },
-    { label: 'Projeto', value: props.project ?? '—' },
-    { label: 'Desenho', value: props.drawing ?? '—' },
-    { label: 'Item', value: props.item ?? '—' },
-    { label: 'Elemento', value: props.element ?? '—' },
-    { label: 'Manifestações', value: props.manifestation ?? '—' },
-    { label: 'Intervalo de fotos', value: props.photo_interval ?? '—' },
-]));
+const isPublished = computed(() => props.assessment.status === 'complete');
+const keepPublished = computed(() => Boolean(props.capabilities.keep_published));
+const canMoveToDraft = computed(() => props.capabilities.can_move_to_draft !== false);
+const workflowErrors = computed(() => [...new Set(Object.values(form.errors).filter(Boolean))]);
+const gutCriteria = [
+    { key: 'gravity', label: 'Gravidade (G)' },
+    { key: 'urgency', label: 'Urgência (U)' },
+    { key: 'trend', label: 'Tendência (T)' },
+];
+const configuredGutCriteria = computed(() => gutCriteria.filter((criterion) => props.gut_options[criterion.key]?.length));
+const gutReady = computed(() => configuredGutCriteria.value.every((criterion) => gutForm[criterion.key] !== null && gutForm[criterion.key] !== ''));
+const classificationDisplay = computed(() => props.classification ?? {
+    code: props.assessment.classification_code,
+    label: 'Classificação não encontrada',
+    color: null,
+});
+const quantityUnitLabel = computed(() => props.measurement_units.find((unit) => unit.value === props.quantity?.measurement_unit)?.label ?? props.quantity?.measurement_unit ?? '');
+const gutDisplay = computed(() => configuredGutCriteria.value.map((criterion) => {
+    const snapshot = props.gut_snapshot?.criteria?.[criterion.key] ?? null;
+    const score = props.assessment[criterion.key] ?? snapshot?.score ?? null;
+    const option = props.gut_options[criterion.key]?.find((item) => Number(item.score) === Number(score));
+
+    return { ...criterion, score, color: option?.color ?? snapshot?.color ?? null };
+}));
 
 const inputClass = 'mt-1.5 block min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100 disabled:cursor-not-allowed disabled:bg-slate-100';
 const labelClass = 'text-sm font-semibold text-slate-700';
 const errorClass = 'mt-1.5 text-xs font-medium text-rose-600';
 
-function saveDraft() {
-    if (!props.capabilities.update_url) {
+function changeStatus(status) {
+    if (!props.capabilities.status_url
+        || status === props.assessment.status
+        || (status === 'draft' && !canMoveToDraft.value)) {
         return;
     }
 
-    form.patch(props.capabilities.update_url, {
+    form.status = status;
+    form.patch(props.capabilities.status_url, { preserveScroll: true });
+}
+
+function saveNarrative() {
+    const action = keepPublished.value
+        ? props.capabilities.status_url
+        : props.capabilities.update_url;
+
+    if (!action) return;
+
+    form.status = keepPublished.value ? 'complete' : 'draft';
+    form.patch(action, {
         preserveScroll: true,
+        only: ['assessment', 'classification', 'capabilities', 'flash'],
+        onSuccess: () => { editing.narrative = false; },
     });
 }
 
-function completeAssessment() {
-    if (!props.capabilities.complete_url) {
-        return;
-    }
-
-    form.post(props.capabilities.complete_url, {
+function saveManualClassification() {
+    if (!props.capabilities.manual_classification_url || !classificationForm.defect_classification_id) return;
+    classificationForm.put(props.capabilities.manual_classification_url, {
         preserveScroll: true,
+        only: ['assessment', 'classification', 'manual_classifications', 'capabilities', 'flash'],
+        onSuccess: () => { editing.classification = false; },
     });
+}
+
+function selectGut(criterion, score) {
+    if (props.capabilities.gut_url) gutForm[criterion] = score;
+}
+
+function isGutSelected(criterion, score) {
+    return gutForm[criterion] !== null
+        && gutForm[criterion] !== ''
+        && Number(gutForm[criterion]) === Number(score);
+}
+
+function saveGut() {
+    if (!props.capabilities.gut_url || !configuredGutCriteria.value.every((criterion) => gutForm[criterion.key] !== null && gutForm[criterion.key] !== '')) return;
+    gutForm.put(props.capabilities.gut_url, {
+        preserveScroll: true,
+        only: ['assessment', 'gut_snapshot', 'gut_options', 'capabilities', 'flash'],
+        onSuccess: () => { editing.gut = false; },
+    });
+}
+
+function saveQuantity() {
+    if (!props.capabilities.quantity_url) return;
+
+    quantityForm
+        .transform((data) => ({
+            quantity: data.measurement_value === '' || data.measurement_value === null
+                ? null
+                : {
+                    measurement_value: data.measurement_value,
+                    measurement_unit: data.measurement_unit,
+                },
+        }))
+        .put(props.capabilities.quantity_url, {
+            preserveScroll: true,
+            only: ['assessment', 'quantity', 'capabilities', 'flash'],
+            onSuccess: () => { editing.quantity = false; },
+        });
+}
+
+function removeQuantity() {
+    if (!props.capabilities.quantity_url) return;
+
+    quantityForm.measurement_value = '';
+    quantityForm
+        .transform(() => ({ quantity: null }))
+        .put(props.capabilities.quantity_url, {
+            preserveScroll: true,
+            only: ['assessment', 'quantity', 'capabilities', 'flash'],
+            onSuccess: () => { editing.quantity = false; },
+        });
+}
+
+function startEditing(card) {
+    if (card === 'quantity') {
+        quantityForm.defaults({ measurement_value: props.quantity?.measurement_value ?? '', measurement_unit: props.quantity?.measurement_unit ?? props.measurement_units[0]?.value ?? 'unit' });
+        quantityForm.reset();
+    }
+    if (card === 'classification') {
+        classificationForm.defaults({ defect_classification_id: props.assessment.defect_classification_id ?? '' });
+        classificationForm.reset();
+    }
+    if (card === 'gut') {
+        gutForm.defaults({ condition: props.assessment.condition, gravity: props.assessment.gravity ?? null, urgency: props.assessment.urgency ?? null, trend: props.assessment.trend ?? null });
+        gutForm.reset();
+    }
+    if (card === 'narrative') {
+        form.defaults({ status: props.assessment.status, condition: props.assessment.condition, location_description: props.assessment.location_description ?? '', comment: props.assessment.comment ?? '', recommendation: props.assessment.recommendation ?? '', reason: props.assessment.reason ?? '', internal_notes: props.assessment.internal_notes ?? '', item_description: props.assessment.item_description ?? '', project_reference: props.assessment.project_reference ?? '', impacts_activity: props.assessment.impacts_activity ?? null, gravity: props.assessment.gravity ?? null, urgency: props.assessment.urgency ?? null, trend: props.assessment.trend ?? null, defect_classification_id: props.assessment.defect_classification_id ?? '' });
+        form.reset();
+    }
+    editing[card] = true;
+}
+
+function cancelEditing(card) {
+    editing[card] = false;
+    if (card === 'quantity') { quantityForm.reset(); quantityForm.clearErrors(); }
+    if (card === 'classification') { classificationForm.reset(); classificationForm.clearErrors(); }
+    if (card === 'gut') { gutForm.reset(); gutForm.clearErrors(); }
+    if (card === 'narrative') { form.reset(); form.clearErrors(); }
 }
 </script>
 
 <template>
     <AppLayout :title="title" :subtitle="subtitle" wide>
-        <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
-            <Link :href="assessment_navigation.defects_url" class="text-sm font-semibold text-teal-700 hover:text-teal-800">
-                ← Voltar às avarias
-            </Link>
-            <div class="flex items-center gap-2 text-sm text-slate-500">
-                <span>Avaria {{ assessment_navigation.position }} de {{ assessment_navigation.total }}</span>
-                <DefectAssessmentStatusBadge :status="assessment.status" />
+        <template #actions>
+            <div v-if="capabilities.status_url" class="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1" role="group" aria-label="Status da avaliação">
+                <button
+                    type="button"
+                    class="rounded-lg px-3 py-1.5 text-xs font-semibold transition"
+                    :class="!isPublished ? 'bg-amber-100 text-amber-800 shadow-sm' : 'text-slate-500 hover:text-slate-900'"
+                    :disabled="form.processing || (isPublished && !canMoveToDraft)"
+                    :title="isPublished && !canMoveToDraft ? 'Remova as marcações antes de mover para rascunho.' : undefined"
+                    :aria-pressed="!isPublished"
+                    @click="changeStatus('draft')"
+                >
+                    Rascunho
+                </button>
+                <button
+                    type="button"
+                    class="rounded-lg px-3 py-1.5 text-xs font-semibold transition"
+                    :class="isPublished ? 'bg-emerald-100 text-emerald-800 shadow-sm' : 'text-slate-500 hover:text-slate-900'"
+                    :disabled="form.processing"
+                    :aria-pressed="isPublished"
+                    @click="changeStatus('complete')"
+                >
+                    Publicada
+                </button>
             </div>
-        </div>
+            <DefectAssessmentStatusBadge v-else :status="assessment.status" />
+        </template>
 
-        <section class="relative overflow-hidden rounded-3xl bg-slate-950 p-6 text-white shadow-xl shadow-slate-950/10 sm:p-8">
-            <div class="pointer-events-none absolute -right-20 -top-28 h-72 w-72 rounded-full border-[52px] border-teal-400/10"></div>
-            <div class="relative flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
-                <div class="max-w-3xl">
+        <div class="mx-auto max-w-5xl space-y-6">
+            <div v-if="workflowErrors.length" class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800" role="alert">
+                <p class="font-semibold">Não foi possível concluir a ação:</p>
+                <ul class="mt-1 list-disc space-y-1 pl-5">
+                    <li v-for="message in workflowErrors" :key="message">{{ message }}</li>
+                </ul>
+            </div>
+
+            <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">01 · Quantitativo</p>
+                        <h2 class="mt-2 text-xl font-semibold text-slate-950">Dimensão principal da manifestação</h2>
+                        <p class="mt-1 text-sm text-slate-500">Valor total observado na avaria.</p>
+                    </div>
+                    <button v-if="capabilities.quantity_url && !editing.quantity" type="button" class="rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 hover:border-slate-400" @click="startEditing('quantity')">Editar</button>
+                </div>
+                <div v-if="editing.quantity" class="mt-5 grid gap-4 border-t border-slate-100 pt-5 sm:grid-cols-2">
+                    <label class="block">
+                        <span :class="labelClass">Valor</span>
+                        <input v-model.number="quantityForm.measurement_value" :disabled="!capabilities.quantity_url" type="number" min="0.0001" step="0.0001" placeholder="Ex.: 1,20" :class="inputClass">
+                        <p v-if="quantityForm.errors['quantity.measurement_value']" :class="errorClass">{{ quantityForm.errors['quantity.measurement_value'] }}</p>
+                    </label>
+                    <label class="block">
+                        <span :class="labelClass">Unidade</span>
+                        <select v-model="quantityForm.measurement_unit" :disabled="!capabilities.quantity_url" :class="inputClass">
+                            <option v-for="unitOption in measurement_units" :key="unitOption.value" :value="unitOption.value">{{ unitOption.label }}</option>
+                        </select>
+                        <p v-if="quantityForm.errors['quantity.measurement_unit']" :class="errorClass">{{ quantityForm.errors['quantity.measurement_unit'] }}</p>
+                    </label>
+                </div>
+                <p v-if="editing.quantity && quantityForm.errors.quantity" :class="errorClass">{{ quantityForm.errors.quantity }}</p>
+                <div v-if="editing.quantity && capabilities.quantity_url" class="mt-4 flex flex-wrap justify-end gap-3">
+                    <button v-if="quantity" type="button" :disabled="quantityForm.processing" class="rounded-xl border border-rose-200 bg-white px-4 py-2.5 text-sm font-semibold text-rose-700 disabled:opacity-50" @click="removeQuantity">Remover quantitativo</button>
+                    <button type="button" :disabled="quantityForm.processing" class="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700" @click="cancelEditing('quantity')">Cancelar</button>
+                    <button type="button" :disabled="quantityForm.processing" class="rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50" @click="saveQuantity">Salvar quantitativo</button>
+                </div>
+                <div v-else class="mt-5 border-t border-slate-100 pt-5">
+                    <p v-if="quantity" class="text-base font-semibold text-slate-900">{{ quantity.measurement_value }} {{ quantityUnitLabel }}</p>
+                    <p v-else class="text-sm text-slate-500">Nenhum quantitativo informado.</p>
+                </div>
+            </section>
+
+            <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">02 · Classificação da categoria</p>
+                        <h2 class="mt-2 text-xl font-semibold text-slate-950">{{ assessment.defect?.category_label || 'Categoria da avaria' }}</h2>
+                        <p class="mt-1 text-sm text-slate-500">Selecione uma classificação ativa cadastrada para esta categoria.</p>
+                    </div>
+                    <button v-if="capabilities.manual_classification_url && !editing.classification" type="button" class="rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 hover:border-slate-400" @click="startEditing('classification')">Editar</button>
+                </div>
+
+                <div v-if="editing.classification && manual_classifications.length" class="mt-5 flex flex-col gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:items-end">
+                    <label class="block flex-1">
+                        <span :class="labelClass">Classificação</span>
+                        <select v-model="classificationForm.defect_classification_id" :disabled="!capabilities.update" :class="inputClass">
+                            <option value="">Selecione</option>
+                            <option v-for="option in manual_classifications" :key="option.id" :value="option.id">{{ option.code }} — {{ option.name }}</option>
+                        </select>
+                        <p v-if="classificationForm.errors.defect_classification_id || classificationForm.errors.classification" :class="errorClass">{{ classificationForm.errors.defect_classification_id || classificationForm.errors.classification }}</p>
+                    </label>
+                    <div class="flex gap-3">
+                        <button type="button" class="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700" @click="cancelEditing('classification')">Cancelar</button>
+                        <button type="button" :disabled="classificationForm.processing || !classificationForm.defect_classification_id" class="rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50" @click="saveManualClassification">Salvar classificação</button>
+                    </div>
+                </div>
+                <div v-else-if="!classificationDisplay.code" class="mt-5 border-t border-slate-100 pt-5 text-sm text-slate-500">
+                    Nenhuma classificação ativa cadastrada para esta categoria.
+                </div>
+                <div v-else class="mt-5 flex items-center gap-3 border-t border-slate-100 pt-5">
+                    <span class="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-bold" :style="classificationDisplay.color ? { backgroundColor: classificationDisplay.color, color: '#fff' } : {}" :class="classificationDisplay.color ? '' : 'bg-slate-100 text-slate-800'">
+                        {{ classificationDisplay.code }}
+                    </span>
+                    <span class="text-sm text-slate-700">{{ classificationDisplay.label || 'Sem nome' }}</span>
+                </div>
+            </section>
+
+            <section v-if="configuredGutCriteria.length" class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <p class="text-xs font-bold uppercase tracking-[0.16em] text-slate-600">03 · Classificação GUT</p>
+                        <h2 class="mt-2 text-xl font-semibold text-slate-950">Notas desta categoria</h2>
+                        <p class="mt-1 text-sm text-slate-500">Selecione uma nota para cada critério configurado. O produto G×U×T será definido posteriormente.</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span v-if="gut_snapshot" class="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600">Snapshot salvo</span>
+                        <button v-if="capabilities.gut_url && !editing.gut" type="button" class="rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 hover:border-slate-400" @click="startEditing('gut')">Editar</button>
+                    </div>
+                </div>
+                <div v-if="editing.gut" class="mt-5 grid gap-4 border-t border-slate-100 pt-5 md:grid-cols-3">
+                    <div v-for="criterion in configuredGutCriteria" :key="criterion.key" class="rounded-2xl border border-slate-200 p-4">
+                        <h3 class="text-sm font-semibold text-slate-800">{{ criterion.label }}</h3>
+                        <div class="mt-3 flex flex-wrap gap-2" role="group" :aria-label="criterion.label">
+                            <button v-for="option in gut_options[criterion.key]" :key="option.id" type="button" :disabled="gutForm.processing" class="min-w-11 rounded-lg border px-3 py-2 text-sm font-bold transition focus:outline-none focus:ring-2 focus:ring-slate-400 disabled:cursor-not-allowed disabled:opacity-70" :class="isGutSelected(criterion.key, option.score) ? 'ring-2 ring-slate-800 ring-offset-1' : ''" :style="{ borderColor: option.color, backgroundColor: `${option.color}22` }" :aria-pressed="isGutSelected(criterion.key, option.score)" @click="selectGut(criterion.key, option.score)">{{ option.score }}</button>
+                        </div>
+                        <p v-if="gutForm.errors[criterion.key]" :class="errorClass">{{ gutForm.errors[criterion.key] }}</p>
+                    </div>
+                </div>
+                <div v-if="editing.gut" class="mt-5 flex justify-end gap-3">
+                    <button type="button" class="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700" @click="cancelEditing('gut')">Cancelar</button>
+                    <button type="button" :disabled="gutForm.processing || !gutReady" class="rounded-xl bg-slate-800 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50" @click="saveGut">Salvar GUT</button>
+                </div>
+                <div v-else class="mt-5 grid gap-3 border-t border-slate-100 pt-5 md:grid-cols-3">
+                    <div v-for="item in gutDisplay" :key="item.key" class="rounded-2xl border border-slate-200 p-4">
+                        <p class="text-xs font-semibold text-slate-500">{{ item.label }}</p>
+                        <span v-if="item.score !== null" class="mt-3 inline-flex min-w-10 items-center justify-center rounded-lg px-3 py-2 text-base font-bold" :style="item.color ? { backgroundColor: item.color, color: '#111827' } : {}" :class="item.color ? '' : 'bg-slate-100 text-slate-700'">{{ item.score }}</span>
+                        <p v-else class="mt-3 text-sm text-slate-500">Não definida</p>
+                    </div>
+                </div>
+            </section>
+
+            <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">04 · Comentário e recomendação</p>
+                        <h2 class="mt-2 text-xl font-semibold text-slate-950">Registro técnico</h2>
+                    </div>
+                    <button v-if="capabilities.update_url && !editing.narrative" type="button" class="rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 hover:border-slate-400" @click="startEditing('narrative')">Editar</button>
+                </div>
+                <div v-if="editing.narrative" class="mt-5 space-y-4 border-t border-slate-100 pt-5">
+                    <label class="block">
+                        <span :class="labelClass">Comentário técnico</span>
+                        <textarea v-model="form.comment" rows="5" maxlength="10000" :class="inputClass" :disabled="!capabilities.update"></textarea>
+                        <p class="mt-1.5 text-xs text-slate-500">Obrigatório para publicar a avaliação.</p>
+                        <p v-if="form.errors.comment" :class="errorClass">{{ form.errors.comment }}</p>
+                    </label>
+                    <label class="block">
+                        <span :class="labelClass">Recomendação</span>
+                        <textarea v-model="form.recommendation" rows="5" maxlength="10000" :class="inputClass" :disabled="!capabilities.update"></textarea>
+                        <p v-if="form.errors.recommendation" :class="errorClass">{{ form.errors.recommendation }}</p>
+                    </label>
+                </div>
+                <div v-if="editing.narrative && capabilities.update_url" class="mt-4 flex justify-end gap-3">
+                    <button type="button" class="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700" @click="cancelEditing('narrative')">Cancelar</button>
+                    <button type="button" :disabled="form.processing" class="rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50" @click="saveNarrative">Salvar comentário e recomendação</button>
+                </div>
+                <div v-else class="mt-5 space-y-4 border-t border-slate-100 pt-5">
+                    <div>
+                        <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Comentário técnico</p>
+                        <p class="mt-2 whitespace-pre-line text-sm text-slate-700">{{ assessment.comment || 'Nenhum comentário informado.' }}</p>
+                    </div>
+                    <div>
+                        <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Recomendação</p>
+                        <p class="mt-2 whitespace-pre-line text-sm text-slate-700">{{ assessment.recommendation || 'Nenhuma recomendação informada.' }}</p>
+                    </div>
+                </div>
+            </section>
+
+            <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">05 · Registros fotográficos</p>
+                        <h2 class="mt-2 text-xl font-semibold text-slate-950">Documentação da avaria</h2>
+                    </div>
                     <div class="flex flex-wrap items-center gap-2">
-                        <DefectConditionBadge :condition="assessment.condition" />
-                        <CivilClassificationBadge :code="classification.code" :label="classification.label" :historical="classification.historical" />
-                        <span class="rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-xs font-semibold text-slate-300">{{ assessment.defect?.category_label }}</span>
-                    </div>
-                    <p class="mt-5 text-xs font-bold uppercase tracking-[0.18em] text-teal-300">{{ assessment.defect?.code }}</p>
-                    <h2 class="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">{{ assessment.defect?.title }}</h2>
-                    <p class="mt-3 text-sm leading-6 text-slate-400">{{ assessment.location_description || 'Localização ainda não informada.' }}</p>
-                </div>
-                <div class="flex gap-2">
-                    <Link
-                        v-if="assessment_navigation.previous_url"
-                        :href="assessment_navigation.previous_url"
-                        class="inline-flex min-h-11 items-center rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10"
-                    >
-                        ← Anterior
-                    </Link>
-                    <Link
-                        v-if="assessment_navigation.next_url"
-                        :href="assessment_navigation.next_url"
-                        class="inline-flex min-h-11 items-center rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10"
-                    >
-                        Próxima →
-                    </Link>
-                </div>
-            </div>
-        </section>
-
-        <ProvisionalDataNotice v-if="demo.enabled" class="mt-5" :message="demo.provisional_notice" />
-
-        <div class="mt-6 grid gap-6 2xl:grid-cols-[minmax(0,1.55fr)_minmax(21rem,0.65fr)]">
-            <main class="space-y-6">
-                <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-                    <div class="flex flex-wrap items-start justify-between gap-4">
-                        <div>
-                            <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">01 · Identificação</p>
-                            <h2 class="mt-2 text-xl font-semibold text-slate-950">Condição observada</h2>
-                            <p class="mt-1 text-sm text-slate-500">Estes campos fazem parte do registro real da avaliação.</p>
-                        </div>
-                        <DefectAssessmentStatusBadge :status="assessment.status" />
-                    </div>
-
-                    <div class="mt-6 grid gap-4 md:grid-cols-2">
-                        <label class="block">
-                            <span :class="labelClass">Condição atual</span>
-                            <select v-model="form.condition" :class="inputClass" :disabled="!capabilities.update">
-                                <option v-for="option in condition_options" :key="option.value" :value="option.value">{{ option.label }}</option>
-                            </select>
-                            <p v-if="form.errors.condition" :class="errorClass">{{ form.errors.condition }}</p>
-                        </label>
-                        <label class="block">
-                            <span :class="labelClass">Localização</span>
-                            <input v-model="form.location_description" type="text" maxlength="500" :class="inputClass" :disabled="!capabilities.update">
-                            <p v-if="form.errors.location_description" :class="errorClass">{{ form.errors.location_description }}</p>
-                        </label>
-                        <label v-if="requiresReason" class="block md:col-span-2">
-                            <span :class="labelClass">Justificativa obrigatória</span>
-                            <textarea v-model="form.reason" rows="3" maxlength="10000" :class="inputClass" :disabled="!capabilities.update"></textarea>
-                            <p v-if="form.errors.reason" :class="errorClass">{{ form.errors.reason }}</p>
-                        </label>
-                    </div>
-                </section>
-
-                <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-                    <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">02 · Projeto e localização</p>
-                    <h2 class="mt-2 text-xl font-semibold text-slate-950">Contexto estruturado da ocorrência</h2>
-                    <dl class="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                        <div v-for="item in technicalContext" :key="item.label" class="rounded-2xl bg-slate-50 p-4">
-                            <dt class="text-[11px] font-bold uppercase tracking-wider text-slate-400">{{ item.label }}</dt>
-                            <dd class="mt-1 text-sm font-semibold text-slate-900">{{ item.value }}</dd>
-                        </div>
-                    </dl>
-                </section>
-
-                <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-                    <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">03 · Caracterização</p>
-                    <h2 class="mt-2 text-xl font-semibold text-slate-950">Leitura técnica</h2>
-                    <dl class="mt-5 grid gap-3 sm:grid-cols-2">
-                        <div v-for="item in characterization" :key="item.label" class="rounded-2xl bg-slate-50 p-4">
-                            <dt class="text-[11px] font-bold uppercase tracking-wider text-slate-400">{{ item.label }}</dt>
-                            <dd class="mt-1 text-sm font-semibold text-slate-900">{{ item.value }}</dd>
-                        </div>
-                    </dl>
-                </section>
-
-                <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-                    <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">04 · Quantitativos</p>
-                    <div class="mt-2 flex flex-wrap items-end justify-between gap-3">
-                        <div>
-                            <h2 class="text-xl font-semibold text-slate-950">Dimensão da manifestação</h2>
-                            <p class="mt-1 text-sm text-slate-500">Comprimento, altura, largura, quantidade e volumes derivados no backend.</p>
-                        </div>
-                        <span class="rounded-full bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700">Somente leitura</span>
-                    </div>
-                    <div class="mt-5 overflow-hidden rounded-2xl border border-slate-200">
-                        <div class="overflow-x-auto">
-                            <table class="min-w-full divide-y divide-slate-200 text-sm">
-                                <thead class="bg-slate-50 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                                    <tr>
-                                        <th class="px-4 py-3">Linha</th>
-                                        <th class="px-4 py-3">Compr.</th>
-                                        <th class="px-4 py-3">Altura</th>
-                                        <th class="px-4 py-3">Largura</th>
-                                        <th class="px-4 py-3">Qtd.</th>
-                                        <th class="px-4 py-3">Vol. unit.</th>
-                                        <th class="px-4 py-3">Vol. total</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y divide-slate-100 bg-white">
-                                    <tr v-for="quantity in quantityRows" :key="`${quantity.label}-${quantity.unit_volume_label}`">
-                                        <td class="px-4 py-3 font-medium text-slate-900">{{ quantity.label }}</td>
-                                        <td class="px-4 py-3 text-slate-600">{{ quantity.length_label || quantity.value || '—' }}</td>
-                                        <td class="px-4 py-3 text-slate-600">{{ quantity.height_label || '—' }}</td>
-                                        <td class="px-4 py-3 text-slate-600">{{ quantity.width_label || '—' }}</td>
-                                        <td class="px-4 py-3 text-slate-600">{{ quantity.quantity ?? '—' }}</td>
-                                        <td class="px-4 py-3 text-slate-600">{{ quantity.unit_volume_label || quantity.unit || '—' }}</td>
-                                        <td class="px-4 py-3 font-semibold text-slate-900">{{ quantity.total_volume_label || quantity.unit_volume_label || '—' }}</td>
-                                    </tr>
-                                    <tr v-if="quantityRows.length === 0">
-                                        <td colspan="7" class="px-4 py-6 text-center text-slate-500">Não aplicável para esta condição.</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                    <div class="mt-4 grid gap-3 sm:grid-cols-3">
-                        <div class="rounded-2xl bg-slate-50 p-4">
-                            <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Total consolidado</p>
-                            <p class="mt-1 text-lg font-semibold text-slate-900">{{ quantitySummary.total_label || '—' }}</p>
-                        </div>
-                        <div class="rounded-2xl bg-slate-50 p-4">
-                            <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Linhas de medição</p>
-                            <p class="mt-1 text-lg font-semibold text-slate-900">{{ quantitySummary.line_count ?? quantityRows.length }}</p>
-                        </div>
-                        <div class="rounded-2xl bg-slate-50 p-4">
-                            <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Unidade</p>
-                            <p class="mt-1 text-lg font-semibold text-slate-900">{{ quantitySummary.unit || unit || '—' }}</p>
-                        </div>
-                    </div>
-                </section>
-
-                <section class="grid gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(18rem,0.75fr)]">
-                    <article class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-                        <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">05 · Impacto</p>
-                        <h2 class="mt-2 text-xl font-semibold text-slate-950">Classificação do efeito observado</h2>
-                        <div class="mt-5 rounded-2xl bg-slate-50 p-4">
-                            <div class="flex flex-wrap items-center gap-2">
-                                <span class="rounded-full bg-slate-950 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-white">
-                                    {{ impactSummary.code || '—' }}
-                                </span>
-                                <span class="rounded-full bg-white px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-600 shadow-sm">
-                                    {{ impactSummary.label || 'Sem impacto direto' }}
-                                </span>
-                            </div>
-                            <p class="mt-3 text-sm leading-6 text-slate-700">
-                                {{ impactSummary.description || 'Classificação derivada da leitura técnica estruturada da ocorrência.' }}
-                            </p>
-                        </div>
-                    </article>
-                    <GutScoreCard :gut="gut" :classification="classification" />
-                </section>
-
-                <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-                    <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">06 · Comentário e recomendação</p>
-                    <h2 class="mt-2 text-xl font-semibold text-slate-950">Registro técnico</h2>
-                    <div class="mt-6 space-y-4">
-                        <label class="block">
-                            <span :class="labelClass">Comentário técnico</span>
-                            <textarea v-model="form.comment" rows="5" maxlength="10000" :class="inputClass" :disabled="!capabilities.update"></textarea>
-                            <p class="mt-1.5 text-xs text-slate-500">Obrigatório para concluir a avaliação.</p>
-                            <p v-if="form.errors.comment" :class="errorClass">{{ form.errors.comment }}</p>
-                        </label>
-                        <label class="block">
-                            <span :class="labelClass">Recomendação</span>
-                            <textarea v-model="form.recommendation" rows="5" maxlength="10000" :class="inputClass" :disabled="!capabilities.update"></textarea>
-                            <p v-if="form.errors.recommendation" :class="errorClass">{{ form.errors.recommendation }}</p>
-                        </label>
-                        <details class="group rounded-2xl border border-slate-200 bg-slate-50">
-                            <summary class="flex cursor-pointer list-none items-center justify-between gap-3 p-4 text-sm font-semibold text-slate-700">
-                                Observações internas
-                                <span class="text-lg text-slate-400 transition group-open:rotate-45">+</span>
-                            </summary>
-                            <div class="border-t border-slate-200 p-4">
-                                <textarea v-model="form.internal_notes" rows="3" maxlength="10000" :class="inputClass" :disabled="!capabilities.update"></textarea>
-                                <p v-if="form.errors.internal_notes" :class="errorClass">{{ form.errors.internal_notes }}</p>
-                            </div>
-                        </details>
-                    </div>
-                </section>
-
-                <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-                    <div class="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                            <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">07 · Evidências</p>
-                            <h2 class="mt-2 text-xl font-semibold text-slate-950">Registro fotográfico</h2>
-                        </div>
                         <span class="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600">{{ evidence.length }} item(ns)</span>
                     </div>
-                    <p class="mt-2 text-sm text-slate-500">{{ demo.photo_notice }}</p>
-                    <div class="mt-5">
-                        <PhotoGallery :photos="evidence" />
-                    </div>
-                </section>
-
-                <div v-if="capabilities.update || capabilities.complete" class="sticky bottom-3 z-20 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-xl shadow-slate-950/10 backdrop-blur sm:p-4">
-                    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <p class="hidden text-xs leading-5 text-slate-500 sm:block">
-                            GUT, CV, quantitativos e evidências não são alterados por estas ações.
-                        </p>
-                        <div class="flex gap-2 sm:flex-row">
-                            <button
-                                v-if="capabilities.update"
-                                type="button"
-                                :disabled="form.processing"
-                                class="inline-flex min-h-11 flex-1 items-center justify-center rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 disabled:cursor-not-allowed disabled:opacity-60 sm:flex-none sm:px-4"
-                                @click="saveDraft"
-                            >
-                                {{ isComplete ? 'Reabrir como rascunho' : 'Salvar rascunho' }}
-                            </button>
-                            <button
-                                v-if="capabilities.complete && !isComplete"
-                                type="button"
-                                :disabled="form.processing"
-                                class="inline-flex min-h-11 flex-1 items-center justify-center rounded-xl bg-teal-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-teal-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 disabled:cursor-not-allowed disabled:opacity-60 sm:flex-none sm:px-5"
-                                @click="completeAssessment"
-                            >
-                                Concluir avaliação
-                            </button>
-                        </div>
-                    </div>
                 </div>
-            </main>
-
-            <aside class="space-y-6 2xl:sticky 2xl:top-6 2xl:self-start">
-                <section v-if="previous_assessment" class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                    <p class="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Avaliação anterior</p>
-                    <div class="mt-3 flex flex-wrap items-center gap-2">
-                        <DefectConditionBadge :condition="previous_assessment.condition" />
-                        <span class="text-xs font-medium text-slate-500">{{ previous_assessment.inspection?.number }}</span>
-                    </div>
-                    <dl class="mt-5 space-y-4 text-sm">
-                        <div><dt class="font-semibold text-slate-500">Localização</dt><dd class="mt-1 leading-6 text-slate-800">{{ previous_assessment.location_description || '—' }}</dd></div>
-                        <div><dt class="font-semibold text-slate-500">Comentário</dt><dd class="mt-1 leading-6 text-slate-800">{{ previous_assessment.comment || '—' }}</dd></div>
-                        <div><dt class="font-semibold text-slate-500">Recomendação</dt><dd class="mt-1 leading-6 text-slate-800">{{ previous_assessment.recommendation || '—' }}</dd></div>
-                    </dl>
-                </section>
-
-                <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                    <p class="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Navegação</p>
-                    <h2 class="mt-2 font-semibold text-slate-950">Continue pela inspeção</h2>
-                    <div class="mt-4 grid gap-2">
-                        <Link v-if="assessment_navigation.next_url" :href="assessment_navigation.next_url" class="rounded-xl bg-slate-950 px-4 py-3 text-center text-sm font-semibold text-white hover:bg-teal-700">Próxima avaria →</Link>
-                        <Link v-if="assessment_navigation.previous_url" :href="assessment_navigation.previous_url" class="rounded-xl border border-slate-300 px-4 py-3 text-center text-sm font-semibold text-slate-700 hover:bg-slate-50">← Avaria anterior</Link>
-                        <Link :href="assessment_navigation.inspection_url" class="rounded-xl px-4 py-3 text-center text-sm font-semibold text-teal-700 hover:bg-teal-50">Visão geral da inspeção</Link>
-                    </div>
-                </section>
-            </aside>
+                <p class="mt-2 text-sm text-slate-500">Todas as fotografias prontas serão incluídas no documento conforme a ordem definida abaixo.</p>
+                <AssessmentPhotoUpload v-if="capabilities.photo_upload_url" class="mt-5" :action="capabilities.photo_upload_url" />
+                <div class="mt-5">
+                    <PhotoGallery :photos="evidence" :editable="capabilities.update" empty-message="Nenhuma fotografia anexada." />
+                </div>
+            </section>
         </div>
     </AppLayout>
 </template>

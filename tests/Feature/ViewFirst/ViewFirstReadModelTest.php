@@ -8,18 +8,25 @@ use App\Enums\DefectAssessmentCondition;
 use App\Enums\DefectAssessmentStatus;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
+use App\Enums\RegistrationStatus;
 use App\Enums\UserAccountType;
+use App\Models\AssessmentPhoto;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
+use App\Models\DefectCategory;
+use App\Models\DefectClassification;
 use App\Models\Equipment;
 use App\Models\Inspection;
+use App\Models\InspectionLocationMap;
+use App\Models\InspectionLocationMarker;
+use App\Models\InspectionOverviewBlock;
+use App\Models\InspectionOverviewPhoto;
 use App\Models\InspectionResponsible;
 use App\Models\Organization;
 use App\Models\User;
-use App\Services\Demo\ViewFirstCivilScenario;
 use App\Services\Demo\ViewFirstDemoPresenter;
-use Database\Seeders\ViewFirstDemoSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -33,6 +40,7 @@ final class ViewFirstReadModelTest extends TestCase
 
         foreach ([
             route('inspections.show', $inspection),
+            route('inspections.report-overview', $inspection),
             route('inspections.defects', $inspection),
             route('inspections.locations', $inspection),
             route('inspections.photos', $inspection),
@@ -51,6 +59,7 @@ final class ViewFirstReadModelTest extends TestCase
 
         $routes = [
             'overview' => route('inspections.show', $inspection),
+            'report_overview' => route('inspections.report-overview', $inspection),
             'defects' => route('inspections.defects', $inspection),
             'locations' => route('inspections.locations', $inspection),
             'photos' => route('inspections.photos', $inspection),
@@ -60,6 +69,32 @@ final class ViewFirstReadModelTest extends TestCase
         ];
 
         foreach ($routes as $activeTab => $url) {
+            if ($activeTab === 'report_overview') {
+                $this->actingAs($admin)
+                    ->get($url)
+                    ->assertOk()
+                    ->assertInertia(fn (Assert $page) => $page
+                        ->component('Inspections/ReportOverview')
+                        ->where('active_tab', 'report_overview')
+                        ->has('overview.blocks', 2)
+                        ->has('tabs', 8));
+
+                continue;
+            }
+
+            if ($activeTab === 'locations') {
+                $this->actingAs($admin)
+                    ->get($url)
+                    ->assertOk()
+                    ->assertInertia(fn (Assert $page) => $page
+                        ->component('InspectionLocationMaps/Index')
+                        ->where('active_tab', 'locations')
+                        ->has('categories')
+                        ->has('tabs', 8));
+
+                continue;
+            }
+
             $this->actingAs($admin)
                 ->get($url)
                 ->assertOk()
@@ -79,14 +114,13 @@ final class ViewFirstReadModelTest extends TestCase
                     ->has('summary.criticality.code')
                     ->has('summary.condition_breakdown')
                     ->has('summary.classification_breakdown')
-                    ->has('tabs', 7)
+                    ->has('tabs', 8)
                     ->has('content')
-                    ->where('demo.enabled', true)
-                    ->where('demo.report_revision', ViewFirstCivilScenario::REPORT_REVISION));
+                    ->missing('demo'));
         }
     }
 
-    public function test_defects_photos_and_report_expose_provisional_read_models(): void
+    public function test_regular_organization_does_not_receive_demo_fallback_data(): void
     {
         [$organization, $admin, , $inspection] = $this->viewFirstScenario();
 
@@ -97,13 +131,12 @@ final class ViewFirstReadModelTest extends TestCase
                 ->component('Inspections/Show')
                 ->where('active_tab', 'defects')
                 ->has('content.items', 2)
-                ->where('content.items.0.classification.code', 'CV-2')
-                ->where('content.items.0.gut.score', 36)
-                ->where('content.items.0.gut.provisional', true)
+                ->where('content.items.0.classification.code', '—')
+                ->where('content.items.0.gut', null)
                 ->has('content.items.0.characterization')
-                ->has('content.items.0.quantities')
-                ->has('content.items.0.evidence', 4)
-                ->has('content.items.1.evidence', 3)
+                ->has('content.items.0.quantities', 0)
+                ->has('content.items.0.evidence', 0)
+                ->has('content.items.1.evidence', 0)
                 ->has('content.filters', 5));
 
         $this->actingAs($admin)
@@ -111,27 +144,131 @@ final class ViewFirstReadModelTest extends TestCase
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->where('active_tab', 'photos')
-                ->has('content.items', 7)
-                ->where('content.counts', ['ready' => 7])
-                ->where('content.items.0.illustrative', true)
-                ->where('content.items.0.url', null));
+                ->has('content.items', 0)
+                ->where('content.counts', []));
 
         $this->actingAs($admin)
             ->get(route('inspections.report-preview', $inspection))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->where('active_tab', 'report')
-                ->where('content.number', ViewFirstCivilScenario::REPORT_NUMBER)
-                ->where('content.revision', ViewFirstCivilScenario::REPORT_REVISION)
+                ->where('content.number', 'U0306VT-G-6RI002')
+                ->where('content.external_report_number', 'U0306VT-G-6RI002')
+                ->where('content.report_designer', 'PROJETISTA II')
+                ->where('content.designer_i_report_number', 'SM-IIE-1717')
+                ->where('content.revision', 'Prévia')
                 ->where('content.print_enabled', true)
-                ->where('content.pdf_enabled', false)
                 ->where('content.validation.blocked', true)
                 ->where('content.cover.provider', $organization->name)
+                ->where('content.cover.client_logo_url', null)
+                ->where('content.cover.provider_logo_url', null)
+                ->where('content.cover.external_report_number', 'U0306VT-G-6RI002')
+                ->where('content.cover.report_designer', 'PROJETISTA II')
+                ->where('content.cover.designer_i_report_number', 'SM-IIE-1717')
+                ->has('content.cover.approval_flow', 4)
+                ->where('content.cover.approval_flow.0.label', 'Preparado')
+                ->where('content.cover.approval_flow.0.name', $admin->name)
+                ->where('content.cover.approval_flow.1.label', 'Verificado')
+                ->where('content.cover.approval_flow.1.name', null)
+                ->where('content.cover.approval_date', '—')
                 ->has('content.cover')
                 ->has('content.executive_summary')
-                ->has('content.locations', 1)
+                ->where('content.location_source', 'inspection_maps')
+                ->has('content.locations', 0)
                 ->has('content.findings', 1)
                 ->has('content.sections', 4));
+    }
+
+    public function test_report_header_payload_exposes_client_and_provider_logos(): void
+    {
+        [$organization, $admin, $equipment, $inspection] = $this->viewFirstScenario();
+        $organization->update(['logo_path' => 'organizations/provider-logo.png']);
+        $equipment->client->update(['logo_path' => 'clients/client-logo.png']);
+
+        $this->actingAs($admin)
+            ->get(route('inspections.report-preview', $inspection))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where(
+                    'content.cover.client_logo_url',
+                    Storage::disk('public')->url('clients/client-logo.png'),
+                )
+                ->where(
+                    'content.cover.provider_logo_url',
+                    Storage::disk('public')->url('organizations/provider-logo.png'),
+                )
+                ->where('content.cover.external_report_number', 'U0306VT-G-6RI002')
+                ->where('content.cover.report_designer', 'PROJETISTA II')
+                ->where('content.cover.designer_i_report_number', 'SM-IIE-1717')
+                ->where('content.cover.current_revision', '1'));
+    }
+
+    public function test_report_export_is_disabled_when_external_report_number_is_missing(): void
+    {
+        [, $admin, , $inspection] = $this->viewFirstScenario();
+        $inspection->update(['external_report_number' => null]);
+
+        $this->actingAs($admin)
+            ->get(route('inspections.report-preview', $inspection))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('content.print_enabled', false)
+                ->where('content.number', $inspection->number)
+                ->where('content.external_report_number', null)
+                ->where('content.cover.external_report_number', null)
+                ->where(
+                    'content.export_disabled_reason',
+                    'Informe o Número do relatório externo para exportar o relatório.',
+                )
+                ->where('content.validation.issues', fn ($issues): bool => collect($issues)->contains(
+                    'Informe o Número do relatório externo para exportar o relatório.',
+                )));
+    }
+
+    public function test_report_export_is_disabled_when_designer_i_report_number_is_missing(): void
+    {
+        [, $admin, , $inspection] = $this->viewFirstScenario();
+        $inspection->update(['designer_i_report_number' => null]);
+
+        $this->actingAs($admin)
+            ->get(route('inspections.report-preview', $inspection))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('content.print_enabled', false)
+                ->where('content.external_report_number', 'U0306VT-G-6RI002')
+                ->where('content.designer_i_report_number', null)
+                ->where('content.cover.designer_i_report_number', null)
+                ->where(
+                    'content.export_disabled_reason',
+                    'Informe o Nº Projetista I para exportar o relatório.',
+                )
+                ->where('content.validation.issues', fn ($issues): bool => collect($issues)->contains(
+                    'Informe o Nº Projetista I para exportar o relatório.',
+                )));
+    }
+
+    public function test_report_export_accumulates_missing_external_and_designer_numbers(): void
+    {
+        [, $admin, , $inspection] = $this->viewFirstScenario();
+        $inspection->update([
+            'external_report_number' => null,
+            'designer_i_report_number' => null,
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('inspections.report-preview', $inspection))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('content.print_enabled', false)
+                ->where(
+                    'content.export_disabled_reason',
+                    'Informe o Número do relatório externo para exportar o relatório. Informe o Nº Projetista I para exportar o relatório.',
+                )
+                ->where('content.validation.issues', fn ($issues): bool => collect($issues)->contains(
+                    'Informe o Número do relatório externo para exportar o relatório.',
+                ) && collect($issues)->contains(
+                    'Informe o Nº Projetista I para exportar o relatório.',
+                )));
     }
 
     public function test_assessment_page_exposes_real_fields_and_read_only_technical_data(): void
@@ -145,21 +282,189 @@ final class ViewFirstReadModelTest extends TestCase
                 ->component('DefectAssessments/Show')
                 ->where('assessment.public_id', $assessment->public_id)
                 ->where('assessment.defect.title', 'Fissura longitudinal no pedestal de concreto')
-                ->where('classification.code', 'CV-2')
-                ->where('classification.provisional', true)
-                ->where('gut.formula', '3×4×3 = 36')
+                ->where('classification.code', '—')
+                ->where('classification.provisional', false)
+                ->where('gut', null)
                 ->has('characterization')
-                ->has('quantities')
-                ->has('evidence', 4)
+                ->where('quantity', null)
+                ->has('manual_classifications', 0)
+                ->has('evidence', 0)
+                ->has('measurement_units', 9)
                 ->where('assessment_navigation.inspection_url', route('inspections.show', $inspection))
                 ->where('assessment_navigation.defects_url', route('inspections.defects', $inspection))
+                ->where('assessment_navigation.locations_url', route('inspections.locations', $inspection))
                 ->where('assessment_navigation.position', 1)
                 ->where('assessment_navigation.total', 2)
-                ->has('assessment_navigation', 6)
+                ->has('assessment_navigation', 7)
                 ->has('condition_options', 7)
                 ->where('capabilities.update', true)
                 ->where('capabilities.complete', true)
-                ->where('demo.enabled', true));
+                ->has('capabilities.quantity_url')
+                ->missing('demo'));
+    }
+
+    public function test_assessment_page_exposes_active_category_classifications_with_read_only_capabilities(): void
+    {
+        [$organization, $admin, , , $assessment] = $this->viewFirstScenario();
+        $category = DefectCategory::factory()->create([
+            'organization_id' => $organization->id,
+            'code' => 'CV-TEST',
+            'name' => 'Categoria de teste',
+        ]);
+        $assessment->defect->update(['defect_category_id' => $category->id]);
+
+        DefectClassification::factory()->for($category, 'category')->create([
+            'organization_id' => $organization->id,
+            'code' => 'CV-A',
+            'name' => 'Classificação ativa',
+            'status' => RegistrationStatus::Active,
+        ]);
+        DefectClassification::factory()->for($category, 'category')->create([
+            'organization_id' => $organization->id,
+            'code' => 'CV-I',
+            'name' => 'Classificação inativa',
+            'status' => RegistrationStatus::Inactive,
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('defect-assessments.show', $assessment))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('manual_classifications', 1)
+                ->where('manual_classifications.0.code', 'CV-A')
+                ->has('capabilities.manual_classification_url')
+                ->has('capabilities.status_url'));
+
+        $viewer = User::factory()->for($organization)->create([
+            'account_type' => UserAccountType::Member,
+        ]);
+
+        $this->actingAs($viewer)
+            ->get(route('defect-assessments.show', $assessment))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('manual_classifications', 1)
+                ->where('capabilities.update', false)
+                ->where('capabilities.manual_classification_url', null)
+                ->where('capabilities.quantity_url', null)
+                ->where('capabilities.photo_upload_url', null)
+                ->where('capabilities.status_url', null));
+    }
+
+    public function test_report_uses_persisted_ready_photo_when_available(): void
+    {
+        [, $admin, , $inspection] = $this->viewFirstScenario();
+        $assessment = DefectAssessment::query()
+            ->where('inspection_id', $inspection->getKey())
+            ->where('status', DefectAssessmentStatus::Complete)
+            ->firstOrFail();
+        $category = DefectCategory::factory()->create([
+            'organization_id' => $inspection->organization_id,
+            'code' => 'MAP-TEST',
+        ]);
+        $assessment->defect->update(['defect_category_id' => $category->id]);
+        $map = InspectionLocationMap::factory()->forInspection($inspection, $category)->create();
+        InspectionLocationMarker::factory()->forMapAndAssessment($map, $assessment)->create();
+        Storage::fake('inspection_photos');
+        Storage::disk('inspection_photos')->put('photos/optimized.webp', 'optimized');
+        Storage::disk('inspection_photos')->put('photos/thumbnail.webp', 'thumbnail');
+        Storage::disk('inspection_photos')->put('photos/original.jpg', 'original');
+
+        $photo = AssessmentPhoto::factory()
+            ->for($inspection)
+            ->for($assessment, 'assessment')
+            ->ready()
+            ->create([
+                'organization_id' => $inspection->organization_id,
+                'original_path' => 'photos/original.jpg',
+                'optimized_path' => 'photos/optimized.webp',
+                'thumbnail_path' => 'photos/thumbnail.webp',
+            ]);
+        $unmappedDefect = Defect::factory()->forEquipment($inspection->equipment, $inspection)->create([
+            'defect_category_id' => $category->id,
+            'code' => 'VT002-CV-003',
+            'sequence_number' => 3,
+            'title' => 'Avaria sem localização no mapa',
+        ]);
+        $unmappedAssessment = DefectAssessment::factory()
+            ->forDefect($unmappedDefect, $inspection)
+            ->complete()
+            ->create();
+        $unmappedPhoto = AssessmentPhoto::factory()
+            ->for($inspection)
+            ->for($unmappedAssessment, 'assessment')
+            ->ready()
+            ->create(['organization_id' => $inspection->organization_id]);
+
+        $this->actingAs($admin)
+            ->get(route('defect-assessments.show', $assessment))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('evidence.0.id', $photo->public_id)
+                ->where('evidence.0.reorder_url', route('defect-assessments.photos.reorder', $assessment))
+                ->where('evidence.0.report_number', 1)
+                ->where('evidence.0.report_category', 'MAP-TEST')
+                ->where('evidence.0.retry_url', route('assessment-photos.retry', $photo))
+                ->where('evidence.0.delete_url', route('assessment-photos.destroy', $photo)));
+
+        $viewer = User::factory()->for($inspection->organization)->create([
+            'account_type' => UserAccountType::Member,
+        ]);
+
+        $this->actingAs($viewer)
+            ->get(route('defect-assessments.show', $assessment))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('evidence.0.id', $photo->public_id)
+                ->where('evidence.0.reorder_url', null)
+                ->where('evidence.0.report_number', 1)
+                ->where('evidence.0.report_category', 'MAP-TEST')
+                ->where('evidence.0.retry_url', null)
+                ->where('evidence.0.delete_url', null));
+
+        $this->actingAs($admin)
+            ->get(route('defect-assessments.show', $unmappedAssessment))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('evidence.0.id', $unmappedPhoto->public_id)
+                ->where('evidence.0.report_number', null)
+                ->where('evidence.0.report_category', 'MAP-TEST'));
+
+        $this->actingAs($admin)
+            ->get(route('inspections.report-preview', $inspection))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('content.sections.1.items.0.id', $photo->public_id)
+                ->where('content.sections.1.items.0.url', route('assessment-photos.show', [$photo, 'optimized']))
+                ->has('content.sections.1.items', 1)
+                ->has('content.photographic_documentation.blocks', 1)
+                ->where('content.photographic_documentation.photo_count', 1)
+                ->where('content.photographic_documentation.blocks.0.assessment_public_id', $assessment->public_id)
+                ->has('content.location_sequence', 1)
+                ->where('content.location_sequence.0.map.public_id', $map->public_id)
+                ->where('content.location_sequence.0.annex_title', fn ($title): bool => is_string($title)
+                    && str_starts_with($title, 'ANEXO B – LOCALIZAÇÃO E DOCUMENTAÇÃO FOTOGRÁFICA - '))
+                ->where('content.location_sequence.0.photographic_blocks.0.assessment_public_id', $assessment->public_id)
+                ->where('content.photographic_documentation.blocks.0.photos.0.id', $photo->public_id)
+                ->where('content.photographic_documentation.blocks.0.photos.0.title', 'Umidade superficial na canaleta adjacente')
+                ->where('content.photographic_documentation.blocks.0.comment', 'Condição melhorou.')
+                ->where('content.photographic_documentation.blocks', fn ($blocks): bool => collect($blocks)
+                    ->flatMap(fn (array $block): array => $block['photos'])
+                    ->doesntContain('id', $unmappedPhoto->public_id)));
+
+        $inspection->update(['status' => InspectionStatus::Released]);
+
+        $this->actingAs($admin)
+            ->get(route('defect-assessments.show', $assessment))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('capabilities.update', false)
+                ->where('evidence.0.id', $photo->public_id)
+                ->where('evidence.0.reorder_url', null)
+                ->where('evidence.0.report_number', 1)
+                ->where('evidence.0.report_category', 'MAP-TEST')
+                ->where('evidence.0.retry_url', null)
+                ->where('evidence.0.delete_url', null));
     }
 
     public function test_shared_presenter_exposes_equipment_criticality_and_inspection_progress(): void
@@ -169,9 +474,10 @@ final class ViewFirstReadModelTest extends TestCase
 
         $this->assertSame([
             'criticality' => [
-                'value' => 'CV-2',
-                'label' => 'Alta',
-                'is_provisional' => true,
+                'value' => '—',
+                'label' => 'Não classificada',
+                'is_critical' => false,
+                'is_provisional' => false,
             ],
         ], $presenter->equipment($equipment));
 
@@ -239,6 +545,11 @@ final class ViewFirstReadModelTest extends TestCase
 
     public function test_official_demo_scenario_delivers_fourteen_findings_and_full_photo_gallery(): void
     {
+        $this->markTestSkipped('O cenário demonstrativo foi removido; os dados operacionais são criados por factories.');
+
+        Storage::fake('equipment_documents');
+        Storage::fake('inspection_photos');
+        Storage::fake('inspection_maps');
         $this->seed(ViewFirstDemoSeeder::class);
 
         $admin = User::query()->where('email', 'demo@vistoria.test')->firstOrFail();
@@ -268,7 +579,35 @@ final class ViewFirstReadModelTest extends TestCase
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->has('content.items', 36)
-                ->where('content.counts', ['ready' => 36]));
+                ->where('content.counts', ['ready' => 36])
+                ->where('content.items.0.illustrative', false)
+                ->where('content.items.0.url', fn ($url): bool => is_string($url) && $url !== ''));
+
+        $this->actingAs($admin)
+            ->get(route('inspections.report-preview', $inspection))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('content.location_source', 'inspection_maps')
+                ->has('content.locations', 2)
+                ->has('content.locations.0.maps', 1)
+                ->has('content.locations.1.maps', 1)
+                ->has('content.locations.0.maps.0.markers', 6)
+                ->has('content.locations.1.maps.0.markers', 7)
+                ->where('content.location_snapshot.map_count', 2)
+                ->where('content.location_snapshot.marker_count', 13)
+                ->has('content.cover.approval_flow', 4)
+                ->where('content.cover.approval_flow.0.label', 'Preparado')
+                ->where('content.cover.approval_flow.0.name', 'Ricardo Almeida — Diretor Técnico')
+                ->where('content.cover.approval_flow.1.label', 'Verificado')
+                ->where('content.cover.approval_flow.1.name', 'Ana Paula Mendes — Verificadora Técnica')
+                ->where('content.cover.approval_flow.2.label', 'Aprovado')
+                ->where('content.cover.approval_flow.3.label', 'Liberado')
+                ->where('content.cover.service_order', ViewFirstDemoSeeder::CURRENT_INSPECTION_SERVICE_ORDER)
+                ->where('content.photographic_documentation.photo_count', 33)
+                ->has('content.photographic_documentation.blocks', 18)
+                ->where('content.photographic_documentation.blocks.0.category', 'CV')
+                ->where('content.photographic_documentation.blocks.0.photos.0.sequence', 1)
+                ->where('content.photographic_documentation.blocks.0.photos.1.sequence', 2));
 
         $this->actingAs($admin)
             ->get(route('defect-assessments.show', $draft))
@@ -306,8 +645,7 @@ final class ViewFirstReadModelTest extends TestCase
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->where('assessment_navigation.total', 13)
-                ->has('evidence', 4)
-                ->where('evidence.0.location', 'Face norte do pedestal, eixo do motor, entre as cotas +0,10 m e +0,70 m.'));
+                ->has('evidence', 0));
 
         $futureInspection = Inspection::factory()
             ->reinspection($inspection)
@@ -419,6 +757,9 @@ final class ViewFirstReadModelTest extends TestCase
             ->forEquipment($equipment)
             ->create([
                 'number' => 'INS-2026-000002',
+                'external_report_number' => 'U0306VT-G-6RI002',
+                'report_designer' => 'PROJETISTA II',
+                'designer_i_report_number' => 'SM-IIE-1717',
                 'status' => InspectionStatus::InProgress,
                 'scheduled_for' => '2026-08-04',
                 'inspected_on' => '2026-08-04',
@@ -430,6 +771,24 @@ final class ViewFirstReadModelTest extends TestCase
                 'responsibility' => InspectionResponsibility::Preparer,
                 'is_primary' => true,
             ]);
+
+        foreach ([1, 2] as $position) {
+            $overviewBlock = InspectionOverviewBlock::factory()
+                ->forInspection($inspection, $position)
+                ->create([
+                    'comment' => "Comentário da Vista geral {$position}.",
+                    'recommendation' => "Recomendação da Vista geral {$position}.",
+                    'created_by' => $admin->id,
+                    'updated_by' => $admin->id,
+                ]);
+
+            foreach ([1, 2] as $slot) {
+                InspectionOverviewPhoto::factory()
+                    ->forBlock($overviewBlock, $slot)
+                    ->ready()
+                    ->create(['uploaded_by' => $admin->id]);
+            }
+        }
 
         $fissure = Defect::factory()
             ->forEquipment($equipment, $inspection)

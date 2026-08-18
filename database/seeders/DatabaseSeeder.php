@@ -14,8 +14,7 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        if (app()->environment('local', 'testing')) {
-            $this->call(DevelopmentSeeder::class);
-        }
+        // Operational data is created through the application and factories.
+        // The former demonstration seeder was intentionally retired.
     }
 }

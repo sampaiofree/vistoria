@@ -125,7 +125,7 @@ function submitComplete() {
                     A avaliação será iniciada como rascunho nesta inspeção.
                 </p>
                 <p v-else-if="isCompleteAssessment" class="mt-1 text-sm text-slate-500">
-                    Salvar rascunho reabre a avaliação para edição.
+                    A avaliação está publicada. Mude para rascunho para editá-la.
                 </p>
             </div>
 
@@ -163,7 +163,7 @@ function submitComplete() {
                     <div class="mt-1 text-sm font-semibold text-slate-900">{{ currentAssessmentSummary.condition_label }}</div>
                 </div>
                 <div class="rounded-xl border border-slate-200 bg-white p-3">
-                    <div class="text-xs uppercase text-slate-500">Concluída em</div>
+                    <div class="text-xs uppercase text-slate-500">Publicada em</div>
                     <div class="mt-1 text-sm font-semibold text-slate-900">{{ currentAssessmentSummary.assessed_at || '—' }}</div>
                 </div>
             </div>
@@ -225,7 +225,7 @@ function submitComplete() {
                 class="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
                 @click="submitDraft"
             >
-                {{ isCompleteAssessment ? 'Reabrir rascunho' : 'Salvar rascunho' }}
+                Salvar rascunho
             </button>
             <button
                 v-if="canComplete"
@@ -234,7 +234,7 @@ function submitComplete() {
                 class="inline-flex items-center justify-center rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
                 @click="submitComplete"
             >
-                Concluir avaliação
+                Publicar avaliação
             </button>
         </div>
     </section>

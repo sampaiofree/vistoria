@@ -11,6 +11,7 @@ use App\Http\Requests\Defects\StoreDefectRequest;
 use App\Http\Requests\Defects\StoreRelatedDefectRequest;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
+use App\Models\DefectCategory;
 use App\Models\Inspection;
 use App\Services\Tenancy\TenantContext;
 use Illuminate\Http\RedirectResponse;
@@ -22,6 +23,46 @@ use Inertia\Response as InertiaResponse;
 final class DefectController extends Controller
 {
     use ResolvesTenantStructure;
+
+    public function create(
+        TenantContext $tenant,
+        Request $request,
+        Inspection $inspection,
+    ): InertiaResponse {
+        $inspection = $this->tenantInspection($tenant, $inspection);
+
+        $this->authorize('create', [Defect::class, $inspection]);
+
+        $categories = DefectCategory::query()
+            ->forOrganization($tenant->id())
+            ->active()
+            ->orderBy('position')
+            ->orderBy('name')
+            ->get(['id', 'public_id', 'name', 'code'])
+            ->map(fn (DefectCategory $category): array => [
+                'id' => $category->id,
+                'public_id' => $category->public_id,
+                'name' => $category->name,
+                'code' => $category->code,
+            ])
+            ->values()
+            ->all();
+
+        return Inertia::render('Defects/Create', [
+            'inspection' => [
+                'number' => $inspection->number,
+                'status' => $inspection->status->value,
+                'status_label' => $inspection->status->label(),
+                'equipment' => [
+                    'tag' => $inspection->equipment->tag,
+                    'name' => $inspection->equipment->name,
+                ],
+            ],
+            'categories' => $categories,
+            'action' => route('inspections.defects.store', $inspection),
+            'cancel_url' => route('inspections.defects', $inspection),
+        ]);
+    }
 
     public function show(
         TenantContext $tenant,
@@ -153,8 +194,8 @@ final class DefectController extends Controller
             'code' => $defect->code,
             'title' => $defect->title,
             'origin_description' => $defect->origin_description,
-            'category' => $defect->category->value,
-            'category_label' => $defect->category->label(),
+            'category' => $defect->categoryCode(),
+            'category_label' => $defect->categoryLabel(),
             'status' => $defect->status->value,
             'status_label' => $defect->status->label(),
             'sequence_number' => $defect->sequence_number,
@@ -266,6 +307,14 @@ final class DefectController extends Controller
             'previous_condition_label' => $assessment->previousAssessment?->condition?->label(),
             'status' => $assessment->status->value,
             'status_label' => $assessment->status->label(),
+            'defect_classification_id' => $assessment->defect_classification_id,
+            'classification_code' => $assessment->classification_code,
+            'classification' => $assessment->classification === null ? null : [
+                'code' => $assessment->classification->code,
+                'name' => $assessment->classification->name,
+                'status' => $assessment->classification->status->value,
+                'severity_rank' => $assessment->classification->severity_rank,
+            ],
             'location_description' => $assessment->location_description,
             'comment' => $assessment->comment,
             'recommendation' => $assessment->recommendation,

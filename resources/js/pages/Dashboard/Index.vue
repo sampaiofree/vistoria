@@ -69,7 +69,7 @@ const priorityCards = [
     },
     {
         key: 'awaiting_review',
-        title: 'Aguardando revisão',
+        title: 'Aguardando verificação',
         description: 'Inspeções prontas para validação',
         icon: 'review',
         variant: 'info',
@@ -104,7 +104,7 @@ function retry(prop) {
             <Link
                 v-if="can.create_inspection && links.inspections_create"
                 :href="links.inspections_create"
-                class="inline-flex min-h-11 items-center justify-center rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/80"
+                class="inline-flex min-h-11 items-center justify-center rounded-md bg-slate-800 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
             >
                 + Nova inspeção
             </Link>
@@ -112,10 +112,10 @@ function retry(prop) {
 
         <section
             v-if="mode === 'global'"
-            class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm shadow-slate-950/5"
+            class="rounded-lg border border-slate-200 bg-white p-6"
         >
             <div class="flex items-start gap-4">
-                <span class="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-500">
+                <span class="inline-flex h-10 w-10 items-center justify-center text-slate-500">
                     <UiIcon name="dashboard" class="h-6 w-6" />
                 </span>
                 <div>

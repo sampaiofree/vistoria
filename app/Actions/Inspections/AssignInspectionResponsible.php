@@ -42,7 +42,9 @@ final class AssignInspectionResponsible
                 throw ValidationException::withMessages(['user' => 'O usuário já possui esta responsabilidade na inspeção.']);
             }
 
-            if ($isPrimary) {
+            $makePrimary = $isPrimary || ! (clone $assignments)->exists();
+
+            if ($makePrimary) {
                 (clone $assignments)->where('is_primary', true)->update(['is_primary' => false]);
             }
 
@@ -51,7 +53,7 @@ final class AssignInspectionResponsible
                 'inspection_id' => $inspection->getKey(),
                 'user_id' => $user->getKey(),
                 'responsibility' => $responsibility,
-                'is_primary' => $isPrimary,
+                'is_primary' => $makePrimary,
                 'assigned_by' => $actor->getKey(),
                 'assigned_at' => now(),
                 'completed_at' => $completedAt,

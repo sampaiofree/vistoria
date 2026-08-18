@@ -31,7 +31,7 @@ final class CompleteInspectionReview
 
         if ($inspection->status !== InspectionStatus::AwaitingReview) {
             throw ValidationException::withMessages([
-                'status' => 'A inspeção não está aguardando revisão.',
+                'status' => 'A inspeção não está aguardando verificação.',
             ]);
         }
 
@@ -43,7 +43,7 @@ final class CompleteInspectionReview
             [
                 'reviewed_at' => now(),
             ],
-            'Revisão concluída.',
+            'Verificação concluída.',
         );
     }
 }

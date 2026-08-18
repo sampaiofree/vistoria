@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\EquipmentRevisionEmissionType;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
 use App\Enums\InspectionType;
@@ -28,6 +29,8 @@ final class Inspection extends Model
         'status',
         'service_order',
         'external_report_number',
+        'report_designer',
+        'designer_i_report_number',
         'procedure_number',
         'atmospheric_classification',
         'scheduled_for',
@@ -40,6 +43,9 @@ final class Inspection extends Model
         'reviewed_at',
         'approved_at',
         'report_generated_at',
+        'report_date',
+        'emission_type',
+        'first_page_text_template',
         'released_at',
         'canceled_at',
         'created_by',
@@ -59,6 +65,8 @@ final class Inspection extends Model
             'reviewed_at' => 'datetime',
             'approved_at' => 'datetime',
             'report_generated_at' => 'datetime',
+            'report_date' => 'date',
+            'emission_type' => EquipmentRevisionEmissionType::class,
             'released_at' => 'datetime',
             'canceled_at' => 'datetime',
         ];
@@ -67,6 +75,11 @@ final class Inspection extends Model
     public function equipment(): BelongsTo
     {
         return $this->belongsTo(Equipment::class);
+    }
+
+    public function updatedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'updated_by');
     }
 
     public function previousInspection(): BelongsTo
@@ -104,6 +117,31 @@ final class Inspection extends Model
             ->orderBy('assessed_at');
     }
 
+    public function assessmentPhotos(): HasMany
+    {
+        return $this->hasMany(AssessmentPhoto::class);
+    }
+
+    public function overviewBlocks(): HasMany
+    {
+        return $this->hasMany(InspectionOverviewBlock::class)->orderBy('position');
+    }
+
+    public function overviewPhotos(): HasMany
+    {
+        return $this->hasMany(InspectionOverviewPhoto::class)->orderBy('slot');
+    }
+
+    public function locationMaps(): HasMany
+    {
+        return $this->hasMany(InspectionLocationMap::class)->orderBy('position')->orderBy('id');
+    }
+
+    public function locationMarkers(): HasMany
+    {
+        return $this->hasMany(InspectionLocationMarker::class)->orderBy('position')->orderBy('id');
+    }
+
     public function hasResponsibility(InspectionResponsibility $responsibility): bool
     {
         return $this->responsibles()->where('responsibility', $responsibility->value)->exists();
@@ -114,6 +152,14 @@ final class Inspection extends Model
         return $this->responsibles()
             ->where('user_id', $user->getKey())
             ->where('responsibility', $responsibility->value)
+            ->exists();
+    }
+
+    public function hasPrimaryResponsibility(InspectionResponsibility $responsibility): bool
+    {
+        return $this->responsibles()
+            ->where('responsibility', $responsibility->value)
+            ->where('is_primary', true)
             ->exists();
     }
 

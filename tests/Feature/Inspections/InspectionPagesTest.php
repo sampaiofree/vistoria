@@ -101,7 +101,6 @@ final class InspectionPagesTest extends TestCase
                 'procedure_number' => 'PROC-123',
                 'atmospheric_classification' => 'C4',
                 'scheduled_at' => '29/07/2026',
-                'general_notes' => 'Notas da inspeção',
                 'context_snapshot' => ['equipment' => ['tag' => 'EQ-01', 'name' => 'Bomba']],
                 'snapshot_version' => 1,
                 'responsibles' => [],
@@ -157,7 +156,6 @@ final class InspectionPagesTest extends TestCase
                 'atmospheric_classification' => 'C4',
                 'scheduled_at' => '29/07/2026',
                 'scheduled_for_input' => '2026-07-29',
-                'general_notes' => 'Notas da inspeção',
             ],
             'action' => '/inspections/1',
             'cancel_url' => '/inspections/1',
@@ -174,7 +172,7 @@ final class InspectionPagesTest extends TestCase
                 ->where('inspection.number', 'INS-2026-000001')
                 ->where('inspection.scheduled_for_input', '2026-07-29')
                 ->where('inspection.service_order', 'OS-123')
-                ->where('inspection.general_notes', 'Notas da inspeção')
+                ->missing('inspection.general_notes')
                 ->has('inspection.equipment.client')
                 ->has('inspection_types', 2));
     }

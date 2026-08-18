@@ -2,19 +2,26 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\InspectionLocations\BuildInspectionLocationSnapshot;
 use App\Actions\Inspections\CreateInspection;
+use App\Actions\Inspections\UpdateGeneralAspects;
 use App\Actions\Inspections\UpdatePlannedInspection;
+use App\Actions\Inspections\UpdateReportMetadata;
+use App\Enums\EquipmentRevisionEmissionType;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
 use App\Enums\InspectionType;
 use App\Enums\UserStatus;
 use App\Http\Controllers\Concerns\ResolvesTenantStructure;
 use App\Http\Requests\Inspections\StoreInspectionRequest;
+use App\Http\Requests\Inspections\UpdateGeneralAspectsRequest;
 use App\Http\Requests\Inspections\UpdatePlannedInspectionRequest;
+use App\Http\Requests\Inspections\UpdateReportMetadataRequest;
 use App\Models\Client;
 use App\Models\ClientUnit;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
+use App\Models\DefectCategory;
 use App\Models\Equipment;
 use App\Models\EquipmentDocument;
 use App\Models\Inspection;
@@ -22,7 +29,11 @@ use App\Models\InspectionReferenceDocument;
 use App\Models\InspectionResponsible;
 use App\Models\InspectionStatusHistory;
 use App\Models\User;
-use App\Services\Demo\ViewFirstDemoPresenter;
+use App\Services\InspectionLocations\InspectionLocationPresenter;
+use App\Services\InspectionLocations\InspectionLocationReportComposer;
+use App\Services\InspectionLocations\InspectionLocationReportSequenceComposer;
+use App\Services\Inspections\InspectionReadModelPresenter;
+use App\Services\Reports\GeneralAspectsDocument;
 use App\Services\Tenancy\TenantContext;
 use App\Support\TextNormalizer;
 use Illuminate\Http\RedirectResponse;
@@ -167,16 +178,152 @@ final class InspectionController extends Controller
         TenantContext $tenant,
         Request $request,
         Inspection $inspection,
-        ViewFirstDemoPresenter $presenter,
+        InspectionReadModelPresenter $presenter,
     ): InertiaResponse {
-        return $this->renderHub($tenant, $request, $inspection, $presenter, 'overview');
+        $inspection = $this->tenantInspection($tenant, $inspection);
+        $this->authorize('view', $inspection);
+        $inspection->loadMissing([
+            'equipment.client',
+            'equipment.unit',
+            'previousInspection',
+            'responsibles.user',
+            'referenceDocuments.document.uploader',
+            'referenceDocuments.actor',
+            'statusHistories.actor',
+            'updatedBy',
+        ]);
+
+        $canManageReportMetadata = $request->user()->can('manageReportMetadata', $inspection);
+        $canManageGeneralAspects = $request->user()->can('manageGeneralAspects', $inspection);
+
+        return Inertia::render('Inspections/Show', [
+            'inspection' => [
+                'id' => $inspection->id,
+                'public_id' => $inspection->public_id,
+                'number' => $inspection->number,
+                'inspection_type' => $inspection->inspection_type->value,
+                'type' => $inspection->inspection_type->value,
+                'inspection_type_label' => $inspection->inspection_type->label(),
+                'status' => $inspection->status->value,
+                'status_label' => $inspection->status->label(),
+                'report_generated_at' => $inspection->report_generated_at?->toISOString(),
+                'released_at' => $inspection->released_at?->toISOString(),
+                'previous_inspection' => $inspection->previousInspection === null ? null : [
+                    'number' => $inspection->previousInspection->number,
+                    'show_url' => route('inspections.show', $inspection->previousInspection),
+                ],
+                'reinspection_checklist_url' => $inspection->previousInspection === null
+                    ? null
+                    : route('inspections.reinspection-checklist', $inspection),
+                'overview_url' => route('inspections.show', $inspection),
+                'report_overview_url' => route('inspections.report-overview', $inspection),
+                'defects_url' => route('inspections.defects', $inspection),
+                'locations_url' => route('inspections.locations', $inspection),
+                'photos_url' => route('inspections.photos', $inspection),
+                'documents_url' => route('inspections.documents', $inspection),
+                'history_url' => route('inspections.history', $inspection),
+                'report_url' => route('inspections.report-preview', $inspection),
+                'equipment' => $this->inspectionEquipmentPayload($inspection->equipment),
+                // Mantidos para compatibilidade com consumidores legados do payload; a Visão geral não os renderiza.
+                'context_snapshot' => $inspection->context_snapshot,
+                'reference_document_ids' => $inspection->referenceDocuments->pluck('equipment_document_id')->map(fn ($id): int => (int) $id)->values()->all(),
+                'history' => $inspection->statusHistories->map(fn (InspectionStatusHistory $history): array => $this->inspectionHistoryPayload($history))->values()->all(),
+            ],
+            'summary' => [
+                'total' => 0,
+                'completed' => 0,
+                'pending' => 0,
+                'progress_percent' => 0,
+                'criticality' => ['code' => '—', 'label' => 'Não classificada'],
+                'condition_breakdown' => [],
+                'classification_breakdown' => [],
+            ],
+            'tabs' => $this->inspectionTabs($inspection),
+            'active_tab' => 'overview',
+            // Compatibilidade do contrato legado; a nova Visão geral não renderiza estes resumos.
+            'content' => ['highlights' => [], 'metrics' => []],
+            'capabilities' => [
+                'update_planned' => $request->user()->can('updatePlanned', $inspection)
+                    ? ['action' => route('inspections.edit', $inspection)]
+                    : false,
+                'manage_report_metadata' => $canManageReportMetadata
+                    ? ['action' => route('inspections.report-metadata.update', $inspection)]
+                    : false,
+                'manage_general_aspects' => $canManageGeneralAspects
+                    ? ['action' => route('inspections.general-aspects.update', $inspection)]
+                    : false,
+                'assign_responsibles' => $request->user()->can('assignResponsibles', $inspection)
+                    ? ['action' => route('inspections.responsibles.store', $inspection)]
+                    : false,
+                'manage_references' => $request->user()->can('manageReferences', $inspection)
+                    ? ['action' => route('inspections.reference-documents.update', $inspection)]
+                    : false,
+                'transition' => $this->availableTransitions($request, $inspection) !== [],
+            ],
+            'report_metadata' => $this->reportMetadataPayload($inspection, $canManageReportMetadata),
+            'general_aspects' => $this->generalAspectsPayload($inspection, $canManageGeneralAspects),
+            'emission_options' => EquipmentRevisionEmissionType::options(),
+            'transitions' => $this->availableTransitions($request, $inspection),
+            'index_url' => route('inspections.index'),
+        ]);
+    }
+
+    public function team(
+        TenantContext $tenant,
+        Request $request,
+        Inspection $inspection,
+    ): InertiaResponse {
+        $inspection = $this->tenantInspection($tenant, $inspection);
+        $this->authorize('view', $inspection);
+        $inspection->loadMissing(['equipment', 'responsibles.user']);
+
+        $canAssign = $request->user()->can('assignResponsibles', $inspection);
+
+        return Inertia::render('Inspections/Team', [
+            'inspection' => [
+                'public_id' => $inspection->public_id,
+                'number' => $inspection->number,
+                'status' => $inspection->status->value,
+                'status_label' => $inspection->status->label(),
+                'equipment' => [
+                    'tag' => $inspection->equipment->tag,
+                    'name' => $inspection->equipment->name,
+                ],
+            ],
+            'responsibles' => $inspection->responsibles
+                ->map(fn (InspectionResponsible $responsible): array => $this->inspectionResponsiblePayload($inspection, $responsible))
+                ->values()
+                ->all(),
+            'capabilities' => [
+                'assign' => $canAssign
+                    ? ['action' => route('inspections.responsibles.store', $inspection)]
+                    : false,
+            ],
+            'assignment_options' => [
+                'users' => $canAssign ? $this->responsibleAssignmentOptions($tenant) : [],
+                'roles' => $canAssign ? InspectionResponsibility::options() : [],
+            ],
+            'tabs' => [
+                ['key' => 'overview', 'label' => 'Visão geral', 'url' => route('inspections.show', $inspection)],
+                ['key' => 'report_overview', 'label' => 'Vista geral', 'url' => route('inspections.report-overview', $inspection)],
+                ['key' => 'defects', 'label' => 'Avarias', 'url' => route('inspections.defects', $inspection)],
+                ['key' => 'locations', 'label' => 'Localização', 'url' => route('inspections.locations', $inspection)],
+                ['key' => 'team', 'label' => 'Equipe', 'url' => route('inspections.team', $inspection), 'count' => $inspection->responsibles->count()],
+                ['key' => 'photos', 'label' => 'Fotografias', 'url' => route('inspections.photos', $inspection)],
+                ['key' => 'documents', 'label' => 'Documentos', 'url' => route('inspections.documents', $inspection)],
+                ['key' => 'history', 'label' => 'Histórico', 'url' => route('inspections.history', $inspection)],
+                ['key' => 'report', 'label' => 'Relatório', 'url' => route('inspections.report-preview', $inspection)],
+            ],
+            'active_tab' => 'team',
+            'back_url' => route('inspections.show', $inspection),
+        ]);
     }
 
     public function defects(
         TenantContext $tenant,
         Request $request,
         Inspection $inspection,
-        ViewFirstDemoPresenter $presenter,
+        InspectionReadModelPresenter $presenter,
     ): InertiaResponse {
         return $this->renderHub($tenant, $request, $inspection, $presenter, 'defects');
     }
@@ -185,16 +332,19 @@ final class InspectionController extends Controller
         TenantContext $tenant,
         Request $request,
         Inspection $inspection,
-        ViewFirstDemoPresenter $presenter,
+        InspectionLocationPresenter $presenter,
     ): InertiaResponse {
-        return $this->renderHub($tenant, $request, $inspection, $presenter, 'locations');
+        $inspection = $this->tenantInspection($tenant, $inspection);
+        $this->authorize('view', $inspection);
+
+        return Inertia::render('InspectionLocationMaps/Index', $presenter->present($inspection, $request->user()));
     }
 
     public function photos(
         TenantContext $tenant,
         Request $request,
         Inspection $inspection,
-        ViewFirstDemoPresenter $presenter,
+        InspectionReadModelPresenter $presenter,
     ): InertiaResponse {
         return $this->renderHub($tenant, $request, $inspection, $presenter, 'photos');
     }
@@ -203,7 +353,7 @@ final class InspectionController extends Controller
         TenantContext $tenant,
         Request $request,
         Inspection $inspection,
-        ViewFirstDemoPresenter $presenter,
+        InspectionReadModelPresenter $presenter,
     ): InertiaResponse {
         return $this->renderHub($tenant, $request, $inspection, $presenter, 'documents');
     }
@@ -212,7 +362,7 @@ final class InspectionController extends Controller
         TenantContext $tenant,
         Request $request,
         Inspection $inspection,
-        ViewFirstDemoPresenter $presenter,
+        InspectionReadModelPresenter $presenter,
     ): InertiaResponse {
         return $this->renderHub($tenant, $request, $inspection, $presenter, 'history');
     }
@@ -221,17 +371,32 @@ final class InspectionController extends Controller
         TenantContext $tenant,
         Request $request,
         Inspection $inspection,
-        ViewFirstDemoPresenter $presenter,
+        InspectionReadModelPresenter $presenter,
+        InspectionLocationReportComposer $locationComposer,
+        BuildInspectionLocationSnapshot $locationSnapshot,
+        InspectionLocationReportSequenceComposer $locationSequence,
     ): InertiaResponse {
-        return $this->renderHub($tenant, $request, $inspection, $presenter, 'report');
+        return $this->renderHub(
+            $tenant,
+            $request,
+            $inspection,
+            $presenter,
+            'report',
+            $locationComposer,
+            $locationSnapshot,
+            $locationSequence,
+        );
     }
 
     private function renderHub(
         TenantContext $tenant,
         Request $request,
         Inspection $inspection,
-        ViewFirstDemoPresenter $presenter,
+        InspectionReadModelPresenter $presenter,
         string $activeTab,
+        ?InspectionLocationReportComposer $locationComposer = null,
+        ?BuildInspectionLocationSnapshot $locationSnapshot = null,
+        ?InspectionLocationReportSequenceComposer $locationSequence = null,
     ): InertiaResponse {
         $inspection = $this->tenantInspection($tenant, $inspection);
 
@@ -252,6 +417,7 @@ final class InspectionController extends Controller
             'previousInspection.equipment',
             'nextInspections.equipment',
             'responsibles.user',
+            'updatedBy',
             'referenceDocuments.document.uploader',
             'referenceDocuments.actor',
             'statusHistories.actor',
@@ -260,6 +426,8 @@ final class InspectionController extends Controller
         $canAssignResponsibles = $request->user()->can('assignResponsibles', $inspection);
         $canManageReferences = $request->user()->can('manageReferences', $inspection);
         $canUpdatePlanned = $request->user()->can('updatePlanned', $inspection);
+        $canManageReportMetadata = $request->user()->can('manageReportMetadata', $inspection);
+        $canManageGeneralAspects = $request->user()->can('manageGeneralAspects', $inspection);
         $canCreateDefects = $request->user()->can('create', [Defect::class, $inspection]);
         $transitions = $this->availableTransitions($request, $inspection);
         $viewFirstPayload = $presenter->inspection(
@@ -269,12 +437,30 @@ final class InspectionController extends Controller
             $activeTab,
         );
 
+        if ($activeTab === 'report' && $locationComposer !== null && $locationSnapshot !== null && $locationSequence !== null) {
+            $locationReport = $locationComposer->compose($inspection);
+            $viewFirstPayload['content']['location_source'] = 'inspection_maps';
+            $viewFirstPayload['content']['locations'] = $locationReport['sheets'];
+            $viewFirstPayload['content']['location_documentation'] = $locationReport;
+            $viewFirstPayload['content']['location_snapshot'] = $locationSnapshot->fromComposition($inspection, $locationReport);
+            $viewFirstPayload['content']['location_sequence'] = $locationSequence->compose(
+                $locationReport['sheets'],
+                $viewFirstPayload['content']['photographic_documentation']['blocks'] ?? [],
+            );
+        }
+
         return Inertia::render('Inspections/Show', array_merge($viewFirstPayload, [
             'capabilities' => [
                 'update_planned' => $canUpdatePlanned
                     ? [
                         'action' => route('inspections.edit', $inspection),
                     ]
+                    : false,
+                'manage_report_metadata' => $canManageReportMetadata
+                    ? ['action' => route('inspections.report-metadata.update', $inspection)]
+                    : false,
+                'manage_general_aspects' => $canManageGeneralAspects
+                    ? ['action' => route('inspections.general-aspects.update', $inspection)]
                     : false,
                 'assign_responsibles' => $canAssignResponsibles
                     ? [
@@ -290,6 +476,20 @@ final class InspectionController extends Controller
                     ? [
                         'create' => [
                             'action' => route('inspections.defects.store', $inspection),
+                            'categories' => DefectCategory::query()
+                                ->forOrganization($tenant->id())
+                                ->active()
+                                ->orderBy('position')
+                                ->orderBy('name')
+                                ->get(['id', 'public_id', 'name', 'code'])
+                                ->map(fn (DefectCategory $category): array => [
+                                    'id' => $category->id,
+                                    'public_id' => $category->public_id,
+                                    'name' => $category->name,
+                                    'code' => $category->code,
+                                ])
+                                ->values()
+                                ->all(),
                         ],
                     ]
                     : false,
@@ -303,6 +503,9 @@ final class InspectionController extends Controller
                 ? $this->availableReferenceDocumentOptions($tenant, $inspection)
                 : [],
             'transitions' => $transitions,
+            'report_metadata' => $this->reportMetadataPayload($inspection, $canManageReportMetadata),
+            'general_aspects' => $this->generalAspectsPayload($inspection, $canManageGeneralAspects),
+            'emission_options' => EquipmentRevisionEmissionType::options(),
             'index_url' => route('inspections.index'),
         ]));
     }
@@ -349,6 +552,38 @@ final class InspectionController extends Controller
         return redirect()
             ->route('inspections.show', $inspection)
             ->with('success', 'Inspeção atualizada.');
+    }
+
+    public function updateReportMetadata(
+        UpdateReportMetadataRequest $request,
+        TenantContext $tenant,
+        Inspection $inspection,
+        UpdateReportMetadata $action,
+    ): RedirectResponse {
+        $inspection = $this->tenantInspection($tenant, $inspection);
+        $this->authorize('manageReportMetadata', $inspection);
+
+        $action->handle($inspection, $request->user(), $request->validated());
+
+        return redirect()
+            ->route('inspections.show', $inspection)
+            ->with('success', 'Dados do relatório atualizados.');
+    }
+
+    public function updateGeneralAspects(
+        UpdateGeneralAspectsRequest $request,
+        TenantContext $tenant,
+        Inspection $inspection,
+        UpdateGeneralAspects $action,
+    ): RedirectResponse {
+        $inspection = $this->tenantInspection($tenant, $inspection);
+        $this->authorize('manageGeneralAspects', $inspection);
+
+        $action->handle($inspection, $request->user(), $request->validated());
+
+        return redirect()
+            ->route('inspections.show', $inspection)
+            ->with('success', 'Aspectos gerais atualizados.');
     }
 
     /**
@@ -485,6 +720,23 @@ final class InspectionController extends Controller
     }
 
     /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function inspectionTabs(Inspection $inspection): array
+    {
+        return [
+            ['key' => 'overview', 'label' => 'Visão geral', 'url' => route('inspections.show', $inspection)],
+            ['key' => 'report_overview', 'label' => 'Vista geral', 'url' => route('inspections.report-overview', $inspection)],
+            ['key' => 'defects', 'label' => 'Avarias', 'url' => route('inspections.defects', $inspection)],
+            ['key' => 'locations', 'label' => 'Localização', 'url' => route('inspections.locations', $inspection)],
+            ['key' => 'photos', 'label' => 'Fotografias', 'url' => route('inspections.photos', $inspection)],
+            ['key' => 'documents', 'label' => 'Documentos', 'url' => route('inspections.documents', $inspection)],
+            ['key' => 'history', 'label' => 'Histórico', 'url' => route('inspections.history', $inspection)],
+            ['key' => 'report', 'label' => 'Relatório', 'url' => route('inspections.report-preview', $inspection)],
+        ];
+    }
+
+    /**
      * @return array{id:int, public_id:string, number:?string, inspection_type:string, type:string, inspection_type_label:string, status:string, status_label:string, scheduled_for:?string, scheduled_at:?string, equipment:array{id:int, public_id:string, tag:string, defect_code_prefix:?string, name:string, show_url:string}, defects:array<int, array{id:int, public_id:string, code:string, title:string, origin_description:?string, category:string, category_label:string, status:string, status_label:string, sequence_number:int, latest_assessment:?array{id:int, public_id:string, condition:string, condition_label:string, status:string, status_label:string, assessed_at:?string}, show_url:string}>, previous_inspection:?array{id:int, public_id:string, number:?string, inspection_type:string, type:string, status:string, show_url:string}, responsibles:array<int, array{id:int, public_id:string, name:string, responsibility:string, responsibility_label:string, is_primary:bool, assigned_at:?string, completed_at:?string, user:array{id:int, public_id:string, name:string}, set_primary_url:string, destroy_url:string}>, reference_documents:array<int, array{id:int, created_at:string, document:array{id:int, public_id:string, document_group:string, document_type:string, document_type_label:string, title:string, document_number:?string, revision:?string, description:?string, original_name:string, mime_type:string, extension:?string, size:int, checksum:string, is_current:bool, status:string, status_label:string, issued_at:?string, created_at:?string, updated_at:?string, download_url:string, show_url:string, uploaded_by:?array{id:int, public_id:string, name:string}}, added_by:?array{id:int, public_id:string, name:string}, delete_url:string}>, reference_document_ids:array<int, int>, history:array<int, array{id:int, from_status:?string, to_status:string, reason:?string, justification:?string, created_at:string, user:?array{id:int, public_id:string, name:string}}>, context_snapshot:array<string, mixed>, snapshot_version:int}
      */
     private function inspectionDetailPayload(Request $request, Inspection $inspection): array
@@ -500,8 +752,16 @@ final class InspectionController extends Controller
             'inspection_type_label' => $inspection->inspection_type->label(),
             'status' => $inspection->status->value,
             'status_label' => $inspection->status->label(),
+            'report_generated_at' => $inspection->report_generated_at?->toISOString(),
+            'released_at' => $inspection->released_at?->toISOString(),
             'service_order' => $inspection->service_order,
+            'report_date' => $inspection->report_date?->toDateString(),
+            'emission_type' => $inspection->emission_type?->value,
+            'emission_type_label' => $inspection->emission_type?->label(),
+            'first_page_text_template' => $inspection->first_page_text_template,
             'external_report_number' => $inspection->external_report_number,
+            'report_designer' => $inspection->report_designer,
+            'designer_i_report_number' => $inspection->designer_i_report_number,
             'procedure_number' => $inspection->procedure_number,
             'atmospheric_classification' => $inspection->atmospheric_classification,
             'scheduled_for' => $inspection->scheduled_for?->format('d/m/Y'),
@@ -509,7 +769,6 @@ final class InspectionController extends Controller
             'scheduled_for_input' => $inspection->scheduled_for?->toDateString(),
             'inspected_on' => $inspection->inspected_on?->format('d/m/Y'),
             'inspected_on_input' => $inspection->inspected_on?->toDateString(),
-            'general_notes' => $inspection->general_notes,
             'equipment' => $this->inspectionEquipmentPayload($inspection->equipment),
             'defects' => $inspection->equipment->defects
                 ->map(fn (Defect $defect): array => $this->defectPayload($request, $inspection, $defect))
@@ -563,6 +822,45 @@ final class InspectionController extends Controller
                 ->all(),
             'context_snapshot' => $inspection->context_snapshot,
             'snapshot_version' => (int) $inspection->snapshot_version,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function reportMetadataPayload(Inspection $inspection, bool $canEdit): array
+    {
+        return [
+            'emission_type' => $inspection->emission_type?->value,
+            'emission_type_label' => $inspection->emission_type?->label(),
+            'report_date' => $inspection->report_date?->toDateString(),
+            'service_order' => $inspection->service_order,
+            'external_report_number' => $inspection->external_report_number,
+            'report_designer' => $inspection->report_designer,
+            'designer_i_report_number' => $inspection->designer_i_report_number,
+            'first_page_text_template' => $inspection->first_page_text_template,
+            'updated_at' => $inspection->updated_at?->format('d/m/Y H:i'),
+            'updated_by' => $inspection->updatedBy === null ? null : [
+                'id' => $inspection->updatedBy->id,
+                'name' => $inspection->updatedBy->name,
+            ],
+            'can_edit' => $canEdit,
+            'update_url' => $canEdit ? route('inspections.report-metadata.update', $inspection) : null,
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function generalAspectsPayload(Inspection $inspection, bool $canEdit): array
+    {
+        $documents = app(GeneralAspectsDocument::class);
+        $stored = $documents->fromStored($inspection->general_notes);
+
+        return [
+            'schema_version' => GeneralAspectsDocument::SCHEMA_VERSION,
+            'document' => $stored['document'] ?? $documents->emptyDocument(),
+            'has_content' => $stored !== null,
+            'can_edit' => $canEdit,
+            'update_url' => $canEdit ? route('inspections.general-aspects.update', $inspection) : null,
         ];
     }
 
@@ -667,8 +965,8 @@ final class InspectionController extends Controller
             'code' => $defect->code,
             'title' => $defect->title,
             'origin_description' => $defect->origin_description,
-            'category' => $defect->category->value,
-            'category_label' => $defect->category->label(),
+            'category' => $defect->categoryCode(),
+            'category_label' => $defect->categoryLabel(),
             'status' => $defect->status->value,
             'status_label' => $defect->status->label(),
             'sequence_number' => $defect->sequence_number,
@@ -721,6 +1019,14 @@ final class InspectionController extends Controller
             'condition_label' => $assessment->condition->label(),
             'status' => $assessment->status->value,
             'status_label' => $assessment->status->label(),
+            'defect_classification_id' => $assessment->defect_classification_id,
+            'classification_code' => $assessment->classification_code,
+            'classification' => $assessment->classification === null ? null : [
+                'code' => $assessment->classification->code,
+                'name' => $assessment->classification->name,
+                'status' => $assessment->classification->status->value,
+                'severity_rank' => $assessment->classification->severity_rank,
+            ],
             'location_description' => $assessment->location_description,
             'comment' => $assessment->comment,
             'recommendation' => $assessment->recommendation,
@@ -865,11 +1171,11 @@ final class InspectionController extends Controller
             $transitions[] = [
                 'key' => 'submit_for_review',
                 'label' => $inspection->status === InspectionStatus::InCorrection
-                    ? 'Reenviar para revisão'
-                    : 'Enviar para revisão',
+                    ? 'Reenviar para verificação'
+                    : 'Enviar para verificação',
                 'description' => $inspection->status === InspectionStatus::InCorrection
                     ? 'Retoma o fluxo após a correção.'
-                    : 'Envia a inspeção concluída para a revisão.',
+                    : 'Envia a inspeção concluída para a verificação.',
                 'action' => route('inspections.submit-for-review', $inspection),
                 'requires_justification' => false,
             ];
@@ -883,7 +1189,7 @@ final class InspectionController extends Controller
                     : 'Solicitar correção',
                 'description' => $inspection->status === InspectionStatus::AwaitingApproval
                     ? 'Retorna a inspeção para ajustes antes da aprovação.'
-                    : 'Retorna a inspeção para ajustes após a revisão.',
+                    : 'Retorna a inspeção para ajustes após a verificação.',
                 'action' => route('inspections.return-for-correction', $inspection),
                 'requires_justification' => true,
             ];
@@ -892,7 +1198,7 @@ final class InspectionController extends Controller
         if ($request->user()->can('completeReview', $inspection)) {
             $transitions[] = [
                 'key' => 'complete_review',
-                'label' => 'Concluir revisão',
+                'label' => 'Concluir verificação',
                 'description' => 'Avança a inspeção para aguardando aprovação.',
                 'action' => route('inspections.complete-review', $inspection),
                 'requires_justification' => false,
@@ -905,6 +1211,16 @@ final class InspectionController extends Controller
                 'label' => 'Aprovar inspeção',
                 'description' => 'Registra a aprovação técnica da inspeção.',
                 'action' => route('inspections.approve', $inspection),
+                'requires_justification' => false,
+            ];
+        }
+
+        if ($request->user()->can('generateReport', $inspection)) {
+            $transitions[] = [
+                'key' => 'generate_report',
+                'label' => 'Gerar relatório',
+                'description' => 'Registra a geração do relatório e prepara a inspeção para liberação.',
+                'action' => route('inspections.generate-report', $inspection),
                 'requires_justification' => false,
             ];
         }

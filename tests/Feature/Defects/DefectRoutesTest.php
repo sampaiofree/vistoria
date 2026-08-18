@@ -8,24 +8,41 @@ use App\Enums\DefectAssessmentCondition;
 use App\Enums\DefectAssessmentStatus;
 use App\Enums\DefectRelationType;
 use App\Enums\DefectStatus;
+use App\Enums\InspectionLocationMapProcessingStatus;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
+use App\Enums\PhotoProcessingStatus;
 use App\Enums\UserAccountType;
+use App\Jobs\ProcessAssessmentPhoto;
+use App\Models\AssessmentPhoto;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
+use App\Models\DefectCategory;
 use App\Models\Equipment;
 use App\Models\Inspection;
+use App\Models\InspectionLocationMap;
+use App\Models\InspectionLocationMarker;
 use App\Models\InspectionResponsible;
 use App\Models\Organization;
 use App\Models\User;
 use App\Services\Defects\DefectStatusSynchronizer;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 final class DefectRoutesTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_photo_role_routes_no_longer_exist(): void
+    {
+        $this->assertFalse(Route::has('assessment-photos.primary'));
+        $this->assertFalse(Route::has('assessment-photos.report-slot'));
+    }
 
     public function test_company_admin_can_create_first_defect_with_draft_assessment_by_default(): void
     {
@@ -154,7 +171,7 @@ final class DefectRoutesTest extends TestCase
         InspectionResponsible::factory()
             ->forInspection($otherInspection, $otherAdmin)
             ->create([
-                'responsibility' => InspectionResponsibility::Inspector,
+                'responsibility' => InspectionResponsibility::Preparer,
                 'is_primary' => true,
             ]);
 
@@ -174,6 +191,34 @@ final class DefectRoutesTest extends TestCase
             ['VT009-CV-001'],
             Defect::query()
                 ->where('organization_id', $otherOrganization->id)
+                ->orderBy('code')
+                ->pluck('code')
+                ->all(),
+        );
+    }
+
+    public function test_sequence_is_scoped_by_the_selected_taxonomy_category(): void
+    {
+        [$organization, $admin, , $inspection] = $this->createInspectionReadyForDefects();
+        $tac = DefectCategory::factory()->for($organization)->create([
+            'name' => 'TAC',
+            'code' => 'TAC',
+            'position' => 2,
+        ]);
+
+        $this->actingAs($admin)->post(route('inspections.defects.store', $inspection), [
+            'title' => 'Avaria civil',
+        ])->assertRedirect();
+
+        $this->actingAs($admin)->post(route('inspections.defects.store', $inspection), [
+            'defect_category_id' => $tac->id,
+            'title' => 'Novo tac',
+        ])->assertRedirect();
+
+        $this->assertSame(
+            ['VT009-CV-001', 'VT009-TAC-001'],
+            Defect::query()
+                ->where('organization_id', $organization->id)
                 ->orderBy('code')
                 ->pluck('code')
                 ->all(),
@@ -233,7 +278,7 @@ final class DefectRoutesTest extends TestCase
         InspectionResponsible::factory()
             ->forInspection($inspection, $admin)
             ->create([
-                'responsibility' => InspectionResponsibility::Inspector,
+                'responsibility' => InspectionResponsibility::Preparer,
                 'is_primary' => true,
             ]);
 
@@ -276,7 +321,7 @@ final class DefectRoutesTest extends TestCase
         InspectionResponsible::factory()
             ->forInspection($secondInspection, $admin)
             ->create([
-                'responsibility' => InspectionResponsibility::Inspector,
+                'responsibility' => InspectionResponsibility::Preparer,
                 'is_primary' => true,
             ]);
 
@@ -308,7 +353,8 @@ final class DefectRoutesTest extends TestCase
         $this->assertSame(DefectAssessmentStatus::Complete->value, $secondAssessment->status->value);
         $this->assertSame(DefectStatus::Repaired->value, $defect->status->value);
 
-        $this->actingAs($admin)->patch(route('defect-assessments.update', $secondAssessment), [
+        $this->actingAs($admin)->patch(route('defect-assessments.status.update', $secondAssessment), [
+            'status' => DefectAssessmentStatus::Draft->value,
             'condition' => DefectAssessmentCondition::Unchanged->value,
             'location_description' => 'Parte inferior',
             'comment' => 'Reaberto para ajuste.',
@@ -324,7 +370,8 @@ final class DefectRoutesTest extends TestCase
         $this->assertSame(DefectAssessmentStatus::Draft->value, $secondAssessment->status->value);
         $this->assertSame(DefectStatus::Active->value, $defect->status->value);
 
-        $this->actingAs($admin)->post(route('defect-assessments.complete', $secondAssessment), [
+        $this->actingAs($admin)->patch(route('defect-assessments.status.update', $secondAssessment), [
+            'status' => DefectAssessmentStatus::Complete->value,
             'condition' => DefectAssessmentCondition::Repaired->value,
             'location_description' => 'Parte inferior',
             'comment' => 'Reparo confirmado.',
@@ -339,6 +386,82 @@ final class DefectRoutesTest extends TestCase
         $this->assertSame(DefectAssessmentCondition::Repaired->value, $secondAssessment->condition->value);
         $this->assertSame(DefectAssessmentStatus::Complete->value, $secondAssessment->status->value);
         $this->assertSame(DefectStatus::Repaired->value, $defect->status->value);
+    }
+
+    public function test_published_assessment_with_map_markers_cannot_return_to_draft_and_can_be_republished(): void
+    {
+        [, $admin, , $inspection] = $this->createInspectionReadyForDefects();
+
+        $this->actingAs($admin)->post(route('inspections.defects.store', $inspection), [
+            'title' => 'Avaria localizada no mapa',
+            'comment' => 'Avaliação publicada originalmente.',
+            'recommendation' => 'Monitorar o ponto indicado.',
+            'assessment_action' => 'complete',
+        ])->assertRedirect();
+
+        $assessment = DefectAssessment::query()->with('defect.categoryDefinition')->firstOrFail();
+        $assessment->update([
+            'assessed_at' => now()->subDay(),
+            'defect_snapshot' => ['legacy' => true],
+        ]);
+        $previousAssessedAt = $assessment->assessed_at;
+        $map = InspectionLocationMap::factory()
+            ->forInspection($inspection, $assessment->defect->categoryDefinition)
+            ->create(['processing_status' => InspectionLocationMapProcessingStatus::Ready]);
+        $marker = InspectionLocationMarker::factory()->forMapAndAssessment($map, $assessment)->create();
+        $payload = [
+            'condition' => DefectAssessmentCondition::New->value,
+            'location_description' => 'Face inferior do equipamento.',
+            'comment' => 'Texto revisado para republicação.',
+            'recommendation' => 'Manter acompanhamento periódico.',
+            'reason' => null,
+            'internal_notes' => null,
+        ];
+
+        $this->actingAs($admin)->patch(route('defect-assessments.status.update', $assessment), [
+            ...$payload,
+            'status' => DefectAssessmentStatus::Draft->value,
+        ])->assertSessionHasErrors('status');
+
+        $assessment->refresh();
+        $this->assertSame(DefectAssessmentStatus::Complete, $assessment->status);
+        $this->assertSame('Avaliação publicada originalmente.', $assessment->comment);
+
+        $this->actingAs($admin)->patch(route('defect-assessments.status.update', $assessment), [
+            ...$payload,
+            'status' => DefectAssessmentStatus::Complete->value,
+            'condition' => DefectAssessmentCondition::NotLocated->value,
+            'reason' => 'Ponto não localizado durante a revisão.',
+        ])->assertSessionHasErrors('condition');
+
+        $assessment->refresh();
+        $this->assertSame(DefectAssessmentCondition::New, $assessment->condition);
+        $this->assertSame(DefectAssessmentStatus::Complete, $assessment->status);
+
+        $this->actingAs($admin)->patch(route('defect-assessments.status.update', $assessment), [
+            ...$payload,
+            'status' => DefectAssessmentStatus::Complete->value,
+        ])->assertRedirect(route('defect-assessments.show', $assessment))
+            ->assertSessionHasNoErrors();
+
+        $assessment->refresh();
+        $this->assertSame(DefectAssessmentStatus::Complete, $assessment->status);
+        $this->assertSame('Texto revisado para republicação.', $assessment->comment);
+        $this->assertGreaterThan($previousAssessedAt, $assessment->assessed_at);
+        $this->assertNull(data_get($assessment->defect_snapshot, 'legacy'));
+        $this->assertDatabaseHas('inspection_location_markers', [
+            'id' => $marker->id,
+            'deleted_at' => null,
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('defect-assessments.show', $assessment))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('capabilities.keep_published', true)
+                ->where('capabilities.can_move_to_draft', false)
+                ->where('capabilities.location_marker_count', 1)
+                ->where('capabilities.update', true));
     }
 
     public function test_completing_assessment_requires_comment(): void
@@ -363,7 +486,7 @@ final class DefectRoutesTest extends TestCase
         InspectionResponsible::factory()
             ->forInspection($secondInspection, $admin)
             ->create([
-                'responsibility' => InspectionResponsibility::Inspector,
+                'responsibility' => InspectionResponsibility::Preparer,
                 'is_primary' => true,
             ]);
 
@@ -403,7 +526,7 @@ final class DefectRoutesTest extends TestCase
         InspectionResponsible::factory()
             ->forInspection($secondInspection, $admin)
             ->create([
-                'responsibility' => InspectionResponsibility::Inspector,
+                'responsibility' => InspectionResponsibility::Preparer,
                 'is_primary' => true,
             ]);
 
@@ -447,7 +570,7 @@ final class DefectRoutesTest extends TestCase
             'number' => 'INS-2026-000003',
         ]);
         InspectionResponsible::factory()->forInspection($inspection, $admin)->create([
-            'responsibility' => InspectionResponsibility::Inspector,
+            'responsibility' => InspectionResponsibility::Preparer,
             'is_primary' => true,
         ]);
 
@@ -507,6 +630,149 @@ final class DefectRoutesTest extends TestCase
         $this->assertSame(InspectionStatus::InProgress, $inspection->refresh()->status);
     }
 
+    public function test_company_admin_can_upload_photo_for_assessment_and_queue_processing(): void
+    {
+        [, $admin, , $inspection] = $this->createInspectionReadyForDefects();
+        Queue::fake();
+        Storage::fake('inspection_photos');
+
+        $this->actingAs($admin)->post(route('inspections.defects.store', $inspection), [
+            'title' => 'Avaria com evidência',
+            'comment' => 'Registro inicial.',
+            'assessment_action' => 'complete',
+        ])->assertRedirect();
+
+        $assessment = DefectAssessment::query()->firstOrFail();
+        $response = $this->actingAs($admin)->post(route('defect-assessments.photos.store', $assessment), [
+            'file' => UploadedFile::fake()->image('fissura.jpg', 1200, 800),
+        ]);
+
+        $response->assertRedirect();
+        $photo = $assessment->photos()->firstOrFail();
+
+        $this->assertSame($assessment->organization_id, $photo->organization_id);
+        $this->assertSame('pending', $photo->processing_status->value);
+        $this->assertSame('detail', $photo->photo_type->value);
+        $this->assertNull($photo->caption);
+        $this->assertNull($photo->captured_at);
+        $this->assertNotNull($photo->original_path);
+        Storage::disk('inspection_photos')->assertExists($photo->original_path);
+        Queue::assertPushed(ProcessAssessmentPhoto::class, fn (ProcessAssessmentPhoto $job): bool => $job->photoId === $photo->id);
+    }
+
+    public function test_user_can_reorder_retry_and_remove_assessment_photos(): void
+    {
+        [, $admin, , $inspection] = $this->createInspectionReadyForDefects();
+        Queue::fake();
+        Storage::fake('inspection_photos');
+
+        $this->actingAs($admin)->post(route('inspections.defects.store', $inspection), [
+            'title' => 'Avaria fotografada',
+            'comment' => 'Registro inicial.',
+            'assessment_action' => 'complete',
+        ])->assertRedirect();
+        $assessment = DefectAssessment::query()->firstOrFail();
+
+        foreach (['primeira.jpg', 'segunda.jpg'] as $name) {
+            $this->actingAs($admin)->post(route('defect-assessments.photos.store', $assessment), [
+                'file' => UploadedFile::fake()->image($name, 800, 600),
+            ])->assertRedirect();
+        }
+
+        $photos = $assessment->photos()->get();
+        $first = $photos->get(0);
+        $second = $photos->get(1);
+        $this->assertSame(1, $first->position);
+        $this->assertSame(2, $second->position);
+        $second->update(['processing_status' => PhotoProcessingStatus::Ready, 'optimized_path' => $second->original_path, 'thumbnail_path' => $second->original_path]);
+
+        $this->actingAs($admin)
+            ->patch(route('defect-assessments.photos.reorder', $assessment), ['photo_ids' => [$second->public_id, $first->public_id]])
+            ->assertRedirect();
+        $this->assertSame(1, $second->refresh()->position);
+        $this->assertSame(2, $first->refresh()->position);
+
+        $failed = $first->refresh();
+        $failed->update(['processing_status' => PhotoProcessingStatus::Failed]);
+        $this->actingAs($admin)->post(route('assessment-photos.retry', $failed))->assertRedirect();
+        $this->assertSame(PhotoProcessingStatus::Pending, $failed->refresh()->processing_status);
+        Queue::assertPushed(ProcessAssessmentPhoto::class);
+
+        $this->actingAs($admin)->delete(route('assessment-photos.destroy', $failed))->assertRedirect();
+        $this->assertSoftDeleted('assessment_photos', ['id' => $failed->id]);
+    }
+
+    public function test_submission_is_blocked_until_required_assessment_photos_are_ready(): void
+    {
+        [, $admin, , $inspection] = $this->createInspectionReadyForDefects();
+        $reviewer = User::factory()->for($admin->organization)->create();
+        InspectionResponsible::factory()->forInspection($inspection, $reviewer)->create([
+            'responsibility' => InspectionResponsibility::Reviewer,
+            'is_primary' => true,
+        ]);
+
+        $this->actingAs($admin)->post(route('inspections.defects.store', $inspection), [
+            'title' => 'Avaria que exige evidência',
+            'comment' => 'Registro inicial.',
+            'assessment_action' => 'complete',
+        ])->assertRedirect();
+        $assessment = DefectAssessment::query()->firstOrFail();
+
+        $this->actingAs($admin)
+            ->post(route('inspections.submit-for-review', $inspection))
+            ->assertSessionHasErrors('inspection');
+        $this->assertSame(InspectionStatus::InProgress, $inspection->refresh()->status);
+
+        Queue::fake();
+        Storage::fake('inspection_photos');
+        $this->actingAs($admin)->post(route('defect-assessments.photos.store', $assessment), [
+            'file' => UploadedFile::fake()->image('evidencia-1.jpg', 800, 600),
+        ])->assertRedirect();
+        $firstPhoto = $assessment->photos()->firstOrFail();
+        $firstPhoto->update([
+            'processing_status' => PhotoProcessingStatus::Ready,
+            'optimized_path' => $firstPhoto->original_path,
+            'thumbnail_path' => $firstPhoto->original_path,
+        ]);
+
+        $this->actingAs($admin)
+            ->post(route('inspections.submit-for-review', $inspection))
+            ->assertSessionHasErrors('inspection');
+
+        $this->actingAs($admin)->post(route('defect-assessments.photos.store', $assessment), [
+            'file' => UploadedFile::fake()->image('evidencia-2.jpg', 800, 600),
+        ])->assertRedirect();
+        $assessment->photos()->get()->each(function (AssessmentPhoto $photo): void {
+            $photo->update([
+                'processing_status' => PhotoProcessingStatus::Ready,
+                'optimized_path' => $photo->original_path,
+                'thumbnail_path' => $photo->original_path,
+            ]);
+        });
+
+        $this->actingAs($admin)->post(route('defect-assessments.photos.store', $assessment), [
+            'file' => UploadedFile::fake()->image('evidencia-extra.jpg', 800, 600),
+        ])->assertRedirect();
+
+        $this->actingAs($admin)
+            ->post(route('inspections.submit-for-review', $inspection))
+            ->assertSessionHasErrors('inspection');
+        $this->assertSame(InspectionStatus::InProgress, $inspection->refresh()->status);
+
+        $assessment->photos()->whereNull('optimized_path')->get()->each(function (AssessmentPhoto $photo): void {
+            $photo->update([
+                'processing_status' => PhotoProcessingStatus::Ready,
+                'optimized_path' => $photo->original_path,
+                'thumbnail_path' => $photo->original_path,
+            ]);
+        });
+
+        $this->actingAs($admin)
+            ->post(route('inspections.submit-for-review', $inspection))
+            ->assertRedirect();
+        $this->assertSame(InspectionStatus::AwaitingReview, $inspection->refresh()->status);
+    }
+
     /**
      * @return array{0:Organization,1:User,2:Equipment,3:Inspection}
      */
@@ -533,7 +799,7 @@ final class DefectRoutesTest extends TestCase
         InspectionResponsible::factory()
             ->forInspection($inspection, $admin)
             ->create([
-                'responsibility' => InspectionResponsibility::Inspector,
+                'responsibility' => InspectionResponsibility::Preparer,
                 'is_primary' => true,
             ]);
 

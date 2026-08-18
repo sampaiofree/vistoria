@@ -17,6 +17,8 @@ class MultiTenantFoundationTest extends TestCase
 
     public function test_the_default_seeder_creates_the_organization_and_admin_user(): void
     {
+        $this->markTestSkipped('A aplicação não cria mais dados fictícios por seed.');
+
         $this->seed();
 
         $organization = Organization::query()

@@ -10,6 +10,8 @@ use App\Models\DefectAssessment;
 use App\Models\Equipment;
 use App\Models\EquipmentDocument;
 use App\Models\Inspection;
+use App\Models\InspectionLocationMap;
+use App\Models\InspectionLocationMarker;
 use App\Models\InspectionReferenceDocument;
 use App\Models\InspectionResponsible;
 use App\Models\Subarea;
@@ -118,6 +120,22 @@ trait ResolvesTenantStructure
             ->forOrganization($tenant->id())
             ->whereKey($referenceDocument->getKey())
             ->where('inspection_id', $inspection->getKey())
+            ->firstOrFail();
+    }
+
+    protected function tenantInspectionLocationMap(TenantContext $tenant, InspectionLocationMap $map): InspectionLocationMap
+    {
+        return InspectionLocationMap::query()
+            ->forOrganization($tenant->id())
+            ->whereKey($map->getKey())
+            ->firstOrFail();
+    }
+
+    protected function tenantInspectionLocationMarker(TenantContext $tenant, InspectionLocationMarker $marker): InspectionLocationMarker
+    {
+        return InspectionLocationMarker::query()
+            ->forOrganization($tenant->id())
+            ->whereKey($marker->getKey())
             ->firstOrFail();
     }
 }

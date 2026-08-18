@@ -1,5 +1,6 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import { router } from '@inertiajs/vue3';
 
 const props = defineProps({
     photos: {
@@ -10,11 +11,20 @@ const props = defineProps({
         type: String,
         default: 'Nenhuma evidência disponível.',
     },
+    editable: {
+        type: Boolean,
+        default: false,
+    },
 });
 
 const activePhoto = ref(null);
 const closeButton = ref(null);
 const trigger = ref(null);
+const orderedPhotos = ref([...props.photos]);
+
+watch(() => props.photos, (photos) => {
+    orderedPhotos.value = [...photos];
+}, { deep: true });
 
 const statusMeta = {
     ready: { label: 'Pronta', classes: 'bg-emerald-100 text-emerald-800' },
@@ -34,7 +44,7 @@ function statusFor(photo) {
 }
 
 function visualClass(photo, index = 0) {
-    const rawVariant = photo?.visual_variant ?? photo?.placeholder_variant ?? ['concrete', 'structure', 'surface', 'repair'][index % 4];
+    const rawVariant = photo?.visual_variant;
     const variant = typeof rawVariant === 'number'
         ? ['concrete', 'structure', 'surface', 'repair'][(rawVariant - 1) % 4]
         : rawVariant;
@@ -74,6 +84,35 @@ function handleKeydown(event) {
     }
 }
 
+function move(photo, direction) {
+    const index = orderedPhotos.value.indexOf(photo);
+    const target = index + direction;
+    if (index < 0 || target < 0 || target >= orderedPhotos.value.length || !photo.reorder_url) return;
+
+    const next = [...orderedPhotos.value];
+    [next[index], next[target]] = [next[target], next[index]];
+    orderedPhotos.value = next;
+    router.patch(photo.reorder_url, { photo_ids: next.map((item) => item.id) }, { preserveScroll: true });
+}
+
+function reportLabel(photo) {
+    const number = Number(photo?.report_number);
+
+    return Number.isInteger(number) && number > 0
+        ? `${photo.report_category || 'SEM CATEGORIA'} · Foto ${number}`
+        : 'Ainda sem número no relatório';
+}
+
+function retry(photo) {
+    if (!photo.retry_url) return;
+    router.post(photo.retry_url, {}, { preserveScroll: true });
+}
+
+function remove(photo) {
+    if (!photo.delete_url || !window.confirm('Remover esta fotografia?')) return;
+    router.delete(photo.delete_url, { preserveScroll: true });
+}
+
 onBeforeUnmount(() => {
     document.body.style.overflow = '';
     window.removeEventListener('keydown', handleKeydown);
@@ -83,7 +122,7 @@ onBeforeUnmount(() => {
 <template>
     <div>
         <div v-if="photos.length" class="grid gap-4 sm:grid-cols-2 xl:grid-cols-2">
-            <article v-for="(photo, index) in photos" :key="photo.id ?? `${photo.title}-${index}`" class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <article v-for="(photo, index) in orderedPhotos" :key="photo.id ?? `${photo.title}-${index}`" class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                 <button
                     type="button"
                     class="relative block aspect-[4/3] w-full overflow-hidden text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-teal-500 disabled:cursor-default"
@@ -105,7 +144,7 @@ onBeforeUnmount(() => {
                         </span>
                     </div>
                     <span class="absolute bottom-3 left-3 rounded-lg bg-slate-950/80 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-white">
-                        {{ photo.photo_interval || 'Imagem ilustrativa' }}
+                        {{ reportLabel(photo) }}
                     </span>
                 </button>
                 <div class="p-4">
@@ -114,13 +153,18 @@ onBeforeUnmount(() => {
                             <h3 class="font-semibold text-slate-950">{{ photo.title }}</h3>
                             <p class="mt-1 text-sm leading-5 text-slate-500">{{ photo.caption || 'Sem legenda.' }}</p>
                         </div>
-                        <span v-if="photo.is_primary" class="rounded-full bg-teal-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-teal-700">Principal</span>
                     </div>
                     <div class="mt-3 flex flex-wrap gap-2 text-[11px] font-semibold text-slate-500">
                         <span class="rounded-full bg-slate-100 px-2.5 py-1">{{ photo.group_label || photo.finding_code || 'Ocorrência' }}</span>
-                        <span class="rounded-full bg-slate-100 px-2.5 py-1">{{ photo.photo_interval || '—' }}</span>
+                        <span class="rounded-full bg-slate-100 px-2.5 py-1">{{ reportLabel(photo) }}</span>
                     </div>
-                    <p class="mt-3 text-xs text-slate-400">{{ photo.location || photo.captured_at || photo.type_label || 'Evidência demonstrativa' }}</p>
+                    <p class="mt-3 text-xs text-slate-400">{{ photo.location || photo.captured_at || photo.type_label || 'Nenhuma informação adicional' }}</p>
+                    <div v-if="editable && (photo.reorder_url || photo.delete_url || photo.retry_url)" class="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
+                        <button v-if="photo.reorder_url" type="button" class="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 disabled:opacity-40" :disabled="index === 0" @click="move(photo, -1)">↑ Subir</button>
+                        <button v-if="photo.reorder_url" type="button" class="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 disabled:opacity-40" :disabled="index === orderedPhotos.length - 1" @click="move(photo, 1)">↓ Descer</button>
+                        <button v-if="photo.retry_url && photo.processing_status === 'failed'" type="button" class="rounded-lg border border-amber-200 px-2.5 py-1.5 text-xs font-semibold text-amber-700" @click="retry(photo)">Reprocessar</button>
+                        <button v-if="photo.delete_url" type="button" class="rounded-lg border border-rose-200 px-2.5 py-1.5 text-xs font-semibold text-rose-700" @click="remove(photo)">Remover</button>
+                    </div>
                 </div>
             </article>
         </div>
@@ -153,7 +197,7 @@ onBeforeUnmount(() => {
                         </div>
                         <div class="mt-4 flex flex-wrap gap-2 text-[11px] font-semibold text-slate-500">
                             <span class="rounded-full bg-slate-100 px-2.5 py-1">{{ activePhoto.group_label || 'Ocorrência' }}</span>
-                            <span class="rounded-full bg-slate-100 px-2.5 py-1">{{ activePhoto.photo_interval || '—' }}</span>
+                            <span class="rounded-full bg-slate-100 px-2.5 py-1">{{ reportLabel(activePhoto) }}</span>
                             <span class="rounded-full bg-slate-100 px-2.5 py-1">{{ activePhoto.location || '—' }}</span>
                         </div>
                         <p class="mt-4 text-sm leading-6 text-slate-600">{{ activePhoto.caption }}</p>

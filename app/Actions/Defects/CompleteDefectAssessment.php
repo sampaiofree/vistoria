@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Actions\Defects;
 
+use App\Enums\DefectAssessmentCondition;
 use App\Enums\DefectAssessmentStatus;
+use App\Enums\GutCriterion;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
 use App\Models\DefectAssessment;
@@ -32,13 +34,13 @@ final class CompleteDefectAssessment
         return DB::transaction(function () use ($actor, $assessment, $data): DefectAssessment {
             $assessment = DefectAssessment::query()
                 ->forOrganization($this->tenant->id())
-                ->with(['defect', 'inspection'])
+                ->with(['defect.categoryDefinition.gutOptions', 'inspection'])
                 ->lockForUpdate()
                 ->findOrFail($assessment->getKey());
 
             $this->validateActor($actor, $assessment->inspection);
 
-            if ($assessment->isComplete()) {
+            if ($assessment->isComplete() && $data === []) {
                 return $assessment->refresh();
             }
 
@@ -50,6 +52,9 @@ final class CompleteDefectAssessment
                     'recommendation' => TextNormalizer::nullableText($data['recommendation'] ?? $assessment->recommendation),
                     'reason' => TextNormalizer::nullableText($data['reason'] ?? $assessment->reason),
                     'internal_notes' => TextNormalizer::nullableText($data['internal_notes'] ?? $assessment->internal_notes),
+                    'item_description' => TextNormalizer::nullableText($data['item_description'] ?? $assessment->item_description),
+                    'project_reference' => TextNormalizer::nullableText($data['project_reference'] ?? $assessment->project_reference),
+                    'impacts_activity' => $data['impacts_activity'] ?? $assessment->impacts_activity,
                     'updated_by' => $actor->getKey(),
                 ]);
             }
@@ -62,6 +67,39 @@ final class CompleteDefectAssessment
                 'updated_by' => $actor->getKey(),
             ]);
 
+            if (in_array($assessment->condition, [
+                DefectAssessmentCondition::Repaired,
+                DefectAssessmentCondition::NotLocated,
+                DefectAssessmentCondition::NotInspected,
+            ], true)) {
+                $assessment->fill([
+                    'gravity' => null,
+                    'urgency' => null,
+                    'trend' => null,
+                    'gut_score' => null,
+                    'gut_snapshot' => null,
+                    'gut_classified_at' => null,
+                    'gut_classified_by' => null,
+                    'defect_classification_id' => null,
+                    'classification_code' => null,
+                    'classification_priority' => null,
+                    'deadline_months' => null,
+                    'recommended_due_date' => null,
+                    'classification_snapshot' => null,
+                    'classified_at' => null,
+                    'classified_by' => null,
+                ]);
+            }
+
+            if (in_array($assessment->condition, [
+                DefectAssessmentCondition::NotLocated,
+                DefectAssessmentCondition::NotInspected,
+            ], true) && $assessment->locationMarkers()->exists()) {
+                throw ValidationException::withMessages([
+                    'condition' => 'Remova as marcações desta avaliação antes de publicar uma condição sem localização no mapa.',
+                ]);
+            }
+
             $this->validator->ensureConditionAllowed(
                 $assessment->defect,
                 $assessment->inspection,
@@ -70,6 +108,15 @@ final class CompleteDefectAssessment
             );
 
             $this->validator->ensureCanComplete($assessment);
+
+            if (in_array($assessment->condition, [
+                DefectAssessmentCondition::New,
+                DefectAssessmentCondition::Unchanged,
+                DefectAssessmentCondition::Worsened,
+                DefectAssessmentCondition::Improved,
+            ], true)) {
+                $this->ensureConfiguredGutSelected($assessment);
+            }
 
             $assessment->save();
 
@@ -89,7 +136,6 @@ final class CompleteDefectAssessment
 
         if (! $inspection->hasAnyResponsibilityForUser(
             $actor,
-            InspectionResponsibility::Inspector,
             InspectionResponsibility::Preparer,
         )) {
             throw ValidationException::withMessages([
@@ -104,6 +150,32 @@ final class CompleteDefectAssessment
             throw ValidationException::withMessages([
                 'inspection' => 'A inspeção não está em estado editável.',
             ]);
+        }
+    }
+
+    private function ensureConfiguredGutSelected(DefectAssessment $assessment): void
+    {
+        $options = $assessment->defect->categoryDefinition?->gutOptions
+            ?->groupBy(fn ($option): string => $option->criterion->value) ?? collect();
+
+        $errors = [];
+
+        foreach ([GutCriterion::Gravity, GutCriterion::Urgency, GutCriterion::Trend] as $criterion) {
+            $configured = $options->get($criterion->value, collect());
+
+            if ($configured->isEmpty()) {
+                continue;
+            }
+
+            $score = $assessment->{$criterion->value};
+
+            if ($score === null || $configured->firstWhere('score', (int) $score) === null) {
+                $errors[$criterion->value] = 'Escolha uma nota GUT configurada antes de publicar a avaliação.';
+            }
+        }
+
+        if ($errors !== []) {
+            throw ValidationException::withMessages($errors);
         }
     }
 }

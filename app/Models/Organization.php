@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Actions\Classification\ProvisionDefaultDefectTaxonomy;
 use App\Enums\OrganizationStatus;
 use App\Models\Concerns\HasPublicId;
 use Database\Factories\OrganizationFactory;
@@ -15,10 +16,17 @@ class Organization extends Model
     /** @use HasFactory<OrganizationFactory> */
     use HasFactory, HasPublicId, SoftDeletes;
 
+    protected static function booted(): void
+    {
+        static::created(function (self $organization): void {
+            app(ProvisionDefaultDefectTaxonomy::class)->handle($organization->getKey());
+        });
+    }
+
     protected $fillable = [
         'name',
         'legal_name',
-        'document',
+        'document', 'logo_path', 'primary_color', 'icon_path',
         'timezone',
         'status',
         'suspended_at',
@@ -36,6 +44,16 @@ class Organization extends Model
     public function users(): HasMany
     {
         return $this->hasMany(User::class);
+    }
+
+    public function defectCategories(): HasMany
+    {
+        return $this->hasMany(DefectCategory::class);
+    }
+
+    public function inspectionLocationMaps(): HasMany
+    {
+        return $this->hasMany(InspectionLocationMap::class);
     }
 
     public function clients(): HasMany

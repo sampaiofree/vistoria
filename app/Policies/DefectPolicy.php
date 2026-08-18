@@ -34,7 +34,6 @@ final class DefectPolicy
             ], true)
             && $inspection->hasAnyResponsibilityForUser(
                 $user,
-                InspectionResponsibility::Inspector,
                 InspectionResponsibility::Preparer,
             );
     }

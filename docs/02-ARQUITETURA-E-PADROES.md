@@ -815,7 +815,7 @@ A auditoria deverá registrar ações de negócio relevantes:
 
 - criação;
 - alteração;
-- envio para revisão;
+- envio para verificação;
 - devolução;
 - aprovação;
 - liberação;
@@ -919,7 +919,7 @@ Arquivo final privado
 Registro marcado como pronto
 ```
 
-Uma inspeção não poderá ser enviada para revisão enquanto houver foto:
+Uma inspeção não poderá ser enviada para verificação enquanto houver foto:
 
 ```text
 pending

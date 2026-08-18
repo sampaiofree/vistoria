@@ -2,9 +2,8 @@
 import { computed, ref } from 'vue';
 import { Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/components/ui/AppLayout.vue';
-import AssignmentForm from '@/components/domain/inspections/AssignmentForm.vue';
-import DefectCreateForm from '@/components/domain/defects/DefectCreateForm.vue';
-import InspectionSnapshot from '@/components/domain/inspections/InspectionSnapshot.vue';
+import ReportMetadataPanel from '@/components/domain/inspections/ReportMetadataPanel.vue';
+import GeneralAspectsPanel from '@/components/domain/inspections/GeneralAspectsPanel.vue';
 import InspectionStatusBadge from '@/components/domain/inspections/InspectionStatusBadge.vue';
 import InspectionTimeline from '@/components/domain/inspections/InspectionTimeline.vue';
 import ReferenceDocumentsForm from '@/components/domain/inspections/ReferenceDocumentsForm.vue';
@@ -14,9 +13,15 @@ import CivilClassificationBadge from '@/components/domain/view-first/CivilClassi
 import DefectCard from '@/components/domain/view-first/DefectCard.vue';
 import InspectionTabs from '@/components/domain/view-first/InspectionTabs.vue';
 import PhotoGallery from '@/components/domain/view-first/PhotoGallery.vue';
-import ProvisionalDataNotice from '@/components/domain/view-first/ProvisionalDataNotice.vue';
 import ReportSection from '@/components/domain/view-first/ReportSection.vue';
 import ReportPreview from '@/components/domain/view-first/ReportPreview.vue';
+import InspectionLocationReportMap from '@/components/domain/inspection-locations/InspectionLocationReportMap.vue';
+import {
+    captureReportPages,
+    downloadReportDoc,
+    downloadReportPdf,
+    reportFilename,
+} from '@/lib/reportExport.js';
 
 const props = defineProps({
     inspection: { type: Object, required: true },
@@ -24,8 +29,10 @@ const props = defineProps({
     tabs: { type: Array, default: () => [] },
     active_tab: { type: String, default: 'overview' },
     content: { type: Object, default: () => ({}) },
-    demo: { type: Object, default: () => ({}) },
     capabilities: { type: Object, default: () => ({}) },
+    report_metadata: { type: Object, default: () => ({}) },
+    general_aspects: { type: Object, default: () => ({}) },
+    emission_options: { type: Array, default: () => [] },
     assignment_options: { type: Object, default: () => ({ users: [], roles: [] }) },
     available_documents: { type: Array, default: () => [] },
     transitions: { type: Array, default: () => [] },
@@ -33,6 +40,30 @@ const props = defineProps({
 });
 
 const activeFilter = ref('all');
+const activeView = ref('blocks');
+const reportLayoutReady = ref(true);
+const reportPreview = ref(null);
+const exportingFormat = ref(null);
+const exportStatus = ref('');
+const exportError = ref('');
+
+if (typeof window !== 'undefined') {
+    const storedView = window.localStorage.getItem('vistoria.defects.view-mode');
+    activeView.value = ['blocks', 'list'].includes(storedView) ? storedView : 'blocks';
+}
+
+const sectionTitles = {
+    overview: 'Visão geral',
+    defects: 'Avarias',
+    photos: 'Fotografias',
+    documents: 'Documentos',
+    history: 'Histórico',
+    report: 'Relatório',
+};
+
+const inspectionContextNumber = computed(() => props.inspection.number || 'Inspeção');
+const pageTitle = computed(() => sectionTitles[props.active_tab] || 'Inspeção');
+const pageSubtitle = computed(() => `${inspectionContextNumber.value} · ${props.inspection.equipment.tag} — ${props.inspection.equipment.name}`);
 
 const defects = computed(() => props.content?.items ?? []);
 const filters = computed(() => props.content?.filters ?? []);
@@ -40,7 +71,7 @@ const filters = computed(() => props.content?.filters ?? []);
 const filteredDefects = computed(() => defects.value.filter((defect) => {
     switch (activeFilter.value) {
         case 'critical':
-            return ['CV-1', 'CV-2'].includes(defect.classification?.code);
+            return defect.classification?.is_critical === true;
         case 'pending':
             return defect.is_pending === true || defect.assessment?.status === 'draft';
         case 'repaired':
@@ -52,6 +83,14 @@ const filteredDefects = computed(() => defects.value.filter((defect) => {
     }
 }));
 
+function setView(view) {
+    activeView.value = view;
+
+    if (typeof window !== 'undefined') {
+        window.localStorage.setItem('vistoria.defects.view-mode', view);
+    }
+}
+
 const reportSections = computed(() => props.content?.sections ?? []);
 const reportEvidence = computed(() => reportSections.value.find((section) => section.key === 'evidence')?.items ?? []);
 const reportResponsibles = computed(() => reportSections.value.find((section) => section.key === 'responsibles')?.items ?? []);
@@ -59,7 +98,6 @@ const reportDocuments = computed(() => reportSections.value.find((section) => se
 const reportLocations = computed(() => props.content?.locations ?? []);
 const reportQuantities = computed(() => props.content?.quantities ?? {});
 const reportValidation = computed(() => props.content?.validation ?? {});
-const reportGeneralAspects = computed(() => props.content?.general_aspects ?? []);
 const reportFindings = computed(() => props.content?.findings ?? []);
 
 const photoStatusLabels = {
@@ -69,294 +107,114 @@ const photoStatusLabels = {
     failed: 'Falhas',
 };
 
-function setPrimaryResponsible(url) {
-    router.patch(url, {}, { preserveScroll: true });
-}
-
-function removeResponsible(url) {
-    if (!window.confirm('Remover este responsável?')) {
-        return;
-    }
-
-    router.delete(url, { preserveScroll: true });
-}
-
 function printReport() {
+    if (!reportLayoutReady.value || exportingFormat.value) return;
     window.print();
+}
+
+async function exportReport(format) {
+    if (!reportLayoutReady.value || exportingFormat.value) return;
+
+    const elements = reportPreview.value?.getPageElements?.() || [];
+    exportingFormat.value = format;
+    exportError.value = '';
+    exportStatus.value = 'Preparando páginas…';
+
+    try {
+        const pages = await captureReportPages(elements, ({ current, total }) => {
+            exportStatus.value = `Capturando página ${current} de ${total}…`;
+        });
+        const filename = reportFilename(props.content.number || props.inspection.number);
+        exportStatus.value = format === 'pdf' ? 'Montando PDF…' : 'Montando DOC…';
+
+        if (format === 'pdf') {
+            await downloadReportPdf(pages, filename);
+        } else {
+            await downloadReportDoc(pages, filename);
+        }
+    } catch (error) {
+        console.error(error);
+        exportError.value = 'Não foi possível gerar o arquivo. Verifique as imagens do relatório e tente novamente.';
+    } finally {
+        exportingFormat.value = null;
+        exportStatus.value = '';
+    }
 }
 </script>
 
 <template>
     <AppLayout
-        :title="inspection.number"
-        :subtitle="`${inspection.equipment.tag} — ${inspection.equipment.name}`"
+        :title="pageTitle"
+        :subtitle="pageSubtitle"
         wide
     >
-        <div class="print-hidden mb-5 flex flex-wrap items-center justify-between gap-3">
-            <Link :href="index_url" class="text-sm font-semibold text-teal-700 hover:text-teal-800">
-                ← Voltar às inspeções
+        <template #actions>
+            <InspectionStatusBadge :status="inspection.status" />
+            <div v-if="active_tab !== 'overview'" class="hidden min-w-44 sm:block">
+                <AssessmentProgress
+                    :progress="{ completed: summary.completed, total: summary.total, percentage: summary.progress_percent }"
+                    label="Avaliações"
+                />
+            </div>
+            <Link
+                v-if="inspection.equipment?.show_url"
+                :href="inspection.equipment.show_url"
+                class="rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400"
+            >
+                Equipamento
             </Link>
-            <div class="flex flex-wrap items-center gap-2">
-                <Link
-                    v-if="inspection.equipment?.show_url"
-                    :href="inspection.equipment.show_url"
-                    class="rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400"
-                >
-                    Ver equipamento
-                </Link>
-                <Link
-                    v-if="inspection.previous_inspection && inspection.reinspection_checklist_url"
-                    :href="inspection.reinspection_checklist_url"
-                    class="rounded-xl border border-teal-200 bg-teal-50 px-3.5 py-2 text-sm font-semibold text-teal-800 transition hover:border-teal-300"
-                >
-                    Checklist da reinspeção
-                </Link>
-                <details class="relative" v-if="capabilities.update_planned">
-                    <summary class="cursor-pointer list-none rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400">
-                        Mais ações
-                    </summary>
-                    <div class="absolute right-0 z-20 mt-2 w-56 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
-                        <Link :href="capabilities.update_planned.action" class="block rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-100">
-                            Editar planejamento
-                        </Link>
-                    </div>
-                </details>
-            </div>
-        </div>
-
-        <section class="print-hidden overflow-hidden rounded-3xl bg-slate-950 text-white shadow-xl shadow-slate-950/10">
-            <div class="relative p-6 sm:p-8">
-                <div class="pointer-events-none absolute -right-20 -top-28 h-72 w-72 rounded-full border-[52px] border-teal-400/10"></div>
-                <div class="relative flex flex-col gap-8 xl:flex-row xl:items-end xl:justify-between">
-                    <div>
-                        <div class="flex flex-wrap items-center gap-3">
-                            <InspectionStatusBadge :status="inspection.status" />
-                            <span class="rounded-full border border-white/15 bg-white/8 px-3 py-1 text-xs font-semibold text-slate-200">
-                                {{ inspection.inspection_type_label }}
-                            </span>
-                            <span v-if="inspection.service_order" class="text-xs font-medium text-slate-400">O.S. {{ inspection.service_order }}</span>
-                        </div>
-                        <h2 class="mt-5 text-2xl font-semibold tracking-tight sm:text-3xl">
-                            {{ inspection.equipment.tag }}
-                            <span class="font-normal text-slate-400">· {{ inspection.equipment.name }}</span>
-                        </h2>
-                        <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
-                            {{ inspection.equipment.client?.name }}<span v-if="inspection.equipment.unit?.name"> · {{ inspection.equipment.unit.name }}</span>
-                        </p>
-                    </div>
-
-                    <div class="grid w-full gap-3 sm:grid-cols-[minmax(0,1fr)_auto] xl:max-w-xl">
-                        <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
-                            <AssessmentProgress
-                                :progress="{ completed: summary.completed, total: summary.total, percentage: summary.progress_percent }"
-                                dark
-                            />
-                        </div>
-                        <div class="flex min-w-36 items-center justify-center rounded-2xl border border-white/10 bg-white/5 p-4">
-                            <CivilClassificationBadge
-                                :code="summary.criticality?.code"
-                                :label="summary.criticality?.label"
-                                large
-                            />
-                        </div>
-                    </div>
+            <Link
+                v-if="inspection.previous_inspection && inspection.reinspection_checklist_url"
+                :href="inspection.reinspection_checklist_url"
+                class="hidden rounded-xl border border-teal-200 bg-teal-50 px-3.5 py-2 text-sm font-semibold text-teal-800 transition hover:border-teal-300 md:inline-flex"
+            >
+                Checklist
+            </Link>
+            <details class="relative" v-if="capabilities.update_planned">
+                <summary class="cursor-pointer list-none rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400">
+                    Mais ações
+                </summary>
+                <div class="absolute right-0 z-20 mt-2 w-56 rounded-2xl border border-slate-200 bg-white p-2 text-left shadow-xl">
+                    <Link :href="capabilities.update_planned.action" class="block rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-100">
+                        Editar planejamento
+                    </Link>
+                    <Link :href="index_url" class="block rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-100">
+                        Voltar às inspeções
+                    </Link>
                 </div>
-            </div>
-        </section>
+            </details>
+        </template>
 
-        <div class="print-hidden mt-5">
+        <div class="print-hidden mt-5 lg:hidden">
             <InspectionTabs :tabs="tabs" :active="active_tab" />
         </div>
 
         <div v-if="active_tab === 'overview'" class="print-hidden mt-6 space-y-6">
-            <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                <article v-for="metric in (content.metrics || [])" :key="metric.key" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                    <p class="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">{{ metric.label }}</p>
-                    <div class="mt-3 flex items-end justify-between gap-3">
-                        <strong class="text-2xl font-semibold tracking-tight text-slate-950">{{ metric.value }}</strong>
-                        <span class="text-xs font-medium text-slate-500">{{ metric.detail }}</span>
-                    </div>
-                </article>
-            </section>
+            <ReportMetadataPanel
+                :inspection="inspection"
+                :metadata="report_metadata"
+                :emission-options="emission_options"
+                :capability="capabilities.manage_report_metadata"
+            />
 
-            <div class="grid gap-6 2xl:grid-cols-[minmax(0,1.55fr)_minmax(22rem,0.75fr)]">
-                <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-                    <div class="flex flex-wrap items-start justify-between gap-4">
-                        <div>
-                            <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Prioridades da inspeção</p>
-                            <h2 class="mt-2 text-xl font-semibold text-slate-950">Pontos que merecem atenção</h2>
-                            <p class="mt-1 text-sm text-slate-500">Avarias críticas ou com avaliação pendente.</p>
-                        </div>
-                        <Link
-                            v-if="content.primary_action?.url"
-                            :href="content.primary_action.url"
-                            class="inline-flex min-h-11 items-center rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700"
-                        >
-                            {{ content.primary_action.label }} →
-                        </Link>
-                    </div>
-                    <div class="mt-5 grid gap-4 xl:grid-cols-2">
-                        <DefectCard v-for="defect in (content.highlights || [])" :key="defect.id" :defect="defect" />
-                        <div v-if="!(content.highlights || []).length" class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-500">
-                            Nenhuma prioridade técnica em aberto.
-                        </div>
-                    </div>
-                </section>
+            <GeneralAspectsPanel :aspects="general_aspects" />
 
-                <aside class="space-y-6">
-                    <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                        <h2 class="text-lg font-semibold text-slate-950">Contexto operacional</h2>
-                        <dl class="mt-5 space-y-4">
-                            <div class="flex items-start justify-between gap-4 border-b border-slate-100 pb-3">
-                                <dt class="text-sm text-slate-500">Planejada para</dt>
-                                <dd class="text-right text-sm font-semibold text-slate-900">{{ inspection.scheduled_at || '—' }}</dd>
-                            </div>
-                            <div class="flex items-start justify-between gap-4 border-b border-slate-100 pb-3">
-                                <dt class="text-sm text-slate-500">Executada em</dt>
-                                <dd class="text-right text-sm font-semibold text-slate-900">{{ inspection.inspected_on || '—' }}</dd>
-                            </div>
-                            <div class="flex items-start justify-between gap-4 border-b border-slate-100 pb-3">
-                                <dt class="text-sm text-slate-500">Procedimento</dt>
-                                <dd class="max-w-52 text-right text-sm font-semibold text-slate-900">{{ inspection.procedure_number || '—' }}</dd>
-                            </div>
-                            <div class="flex items-start justify-between gap-4">
-                                <dt class="text-sm text-slate-500">Inspeção anterior</dt>
-                                <dd class="text-right text-sm font-semibold text-slate-900">
-                                    <Link v-if="inspection.previous_inspection" :href="inspection.previous_inspection.show_url" class="text-teal-700">
-                                        {{ inspection.previous_inspection.number }}
-                                    </Link>
-                                    <span v-else>—</span>
-                                </dd>
-                            </div>
-                        </dl>
-                    </section>
-
-                    <ProvisionalDataNotice v-if="demo.enabled" :message="demo.provisional_notice" compact />
-                </aside>
-            </div>
-
-            <section class="grid gap-4 lg:grid-cols-3" aria-label="Resumo técnico da inspeção">
-                <article class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-                    <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Condições observadas</p>
-                    <h2 class="mt-2 text-lg font-semibold text-slate-950">Evolução das avarias</h2>
-                    <ul class="mt-5 space-y-2.5">
-                        <li v-for="item in (summary.condition_breakdown || [])" :key="item.key" class="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3.5 py-2.5">
-                            <span class="text-sm font-medium text-slate-700">{{ item.label }}</span>
-                            <strong class="inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-white px-2 text-xs text-slate-950 shadow-sm">{{ item.count }}</strong>
-                        </li>
-                    </ul>
-                </article>
-
-                <article class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-                    <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Classificação CIVIL</p>
-                    <h2 class="mt-2 text-lg font-semibold text-slate-950">Distribuição de criticidade</h2>
-                    <ul class="mt-5 space-y-2.5">
-                        <li v-for="item in (summary.classification_breakdown || [])" :key="item.code" class="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3.5 py-2.5">
-                            <div class="min-w-0">
-                                <CivilClassificationBadge :code="item.code" :label="item.label" />
-                                <p v-if="item.historical_count" class="mt-1 text-[11px] text-slate-500">{{ item.historical_count }} classificação histórica</p>
-                            </div>
-                            <strong class="inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-white px-2 text-xs text-slate-950 shadow-sm">{{ item.count }}</strong>
-                        </li>
-                    </ul>
-                </article>
-
-                <article class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-                    <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Responsabilidade técnica</p>
-                    <h2 class="mt-2 text-lg font-semibold text-slate-950">Equipe e referência</h2>
-                    <ul class="mt-5 space-y-3">
-                        <li v-for="item in (inspection.responsibles || []).slice(0, 3)" :key="`${item.user.id}-${item.responsibility}`" class="border-b border-slate-100 pb-3 last:border-0 last:pb-0">
-                            <p class="text-sm font-semibold text-slate-900">{{ item.user.name }}</p>
-                            <p class="mt-0.5 text-xs text-slate-500">{{ item.responsibility_label }}</p>
-                        </li>
-                    </ul>
-                    <p v-if="(inspection.responsibles || []).length > 3" class="mt-3 text-xs font-semibold text-teal-700">+ {{ inspection.responsibles.length - 3 }} responsáveis no registro completo</p>
-                    <div v-if="inspection.reference_documents?.length" class="mt-5 rounded-2xl border border-teal-100 bg-teal-50 p-3.5">
-                        <p class="text-[11px] font-bold uppercase tracking-wider text-teal-700">Documento de referência</p>
-                        <p class="mt-1 text-sm font-semibold text-slate-900">{{ inspection.reference_documents[0].document.title }}</p>
-                        <p class="mt-1 text-xs text-slate-500">Revisão {{ inspection.reference_documents[0].document.revision || '—' }}</p>
-                    </div>
-                </article>
-            </section>
-
-            <details class="group rounded-3xl border border-slate-200 bg-white shadow-sm">
-                <summary class="flex cursor-pointer list-none items-center justify-between gap-4 p-5 sm:p-6">
-                    <div>
-                        <h2 class="text-lg font-semibold text-slate-950">Dados cadastrais e snapshot</h2>
-                        <p class="mt-1 text-sm text-slate-500">Contexto congelado no planejamento da inspeção.</p>
-                    </div>
-                    <span class="text-xl text-slate-400 transition group-open:rotate-45">+</span>
-                </summary>
-                <div class="border-t border-slate-200 p-5 sm:p-6">
-                    <InspectionSnapshot :snapshot="inspection.context_snapshot" :version="inspection.snapshot_version" />
+            <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                <div>
+                    <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Workflow</p>
+                    <h2 class="mt-2 text-xl font-semibold text-slate-950">Ações da inspeção</h2>
+                    <p class="mt-1 text-sm text-slate-500">As ações disponíveis dependem da etapa atual e da responsabilidade do usuário.</p>
                 </div>
-            </details>
-
-            <details
-                v-if="capabilities.assign_responsibles || capabilities.manage_references || (capabilities.transition && transitions.length)"
-                class="group rounded-3xl border border-slate-200 bg-white shadow-sm"
-            >
-                <summary class="flex cursor-pointer list-none items-center justify-between gap-4 p-5 sm:p-6">
-                    <div>
-                        <h2 class="text-lg font-semibold text-slate-950">Gestão da inspeção</h2>
-                        <p class="mt-1 text-sm text-slate-500">Responsáveis, documentos e transições operacionais.</p>
-                    </div>
-                    <span class="text-xl text-slate-400 transition group-open:rotate-45">+</span>
-                </summary>
-                <div class="grid gap-6 border-t border-slate-200 p-5 lg:grid-cols-2 sm:p-6">
-                    <section>
-                        <h3 class="font-semibold text-slate-950">Responsáveis</h3>
-                        <ul class="mt-4 divide-y divide-slate-100">
-                            <li v-for="item in inspection.responsibles" :key="`${item.user.id}-${item.responsibility}`" class="flex items-start justify-between gap-3 py-3">
-                                <div>
-                                    <div class="flex flex-wrap items-center gap-2">
-                                        <span class="font-medium text-slate-900">{{ item.user.name }}</span>
-                                        <span v-if="item.is_primary" class="rounded-full bg-teal-50 px-2 py-1 text-[10px] font-bold uppercase text-teal-700">Principal</span>
-                                    </div>
-                                    <p class="text-sm text-slate-500">{{ item.responsibility_label }}</p>
-                                </div>
-                                <div v-if="capabilities.assign_responsibles" class="flex gap-2">
-                                    <button v-if="!item.is_primary" type="button" class="text-xs font-semibold text-indigo-700" @click="setPrimaryResponsible(item.set_primary_url)">Principal</button>
-                                    <button type="button" class="text-xs font-semibold text-rose-700" @click="removeResponsible(item.destroy_url)">Remover</button>
-                                </div>
-                            </li>
-                        </ul>
-                        <AssignmentForm
-                            v-if="capabilities.assign_responsibles"
-                            class="mt-4"
-                            :action="capabilities.assign_responsibles.action"
-                            :users="assignment_options.users"
-                            :roles="assignment_options.roles"
-                        />
-                    </section>
-                    <section>
-                        <h3 class="font-semibold text-slate-950">Documentos de referência</h3>
-                        <ReferenceDocumentsForm
-                            v-if="capabilities.manage_references"
-                            class="mt-4"
-                            :action="capabilities.manage_references.action"
-                            :documents="available_documents"
-                            :selected-document-ids="inspection.reference_document_ids"
-                        />
-                    </section>
-                    <section v-if="capabilities.transition && transitions.length" class="lg:col-span-2">
-                        <h3 class="mb-4 font-semibold text-slate-950">Ações de fluxo</h3>
-                        <div class="grid gap-4 md:grid-cols-2">
-                            <TransitionForm v-for="transition in transitions" :key="transition.key" :transition="transition" />
-                        </div>
-                    </section>
+                <div v-if="transitions.length" class="mt-5 grid gap-4 md:grid-cols-2">
+                    <TransitionForm v-for="transition in transitions" :key="transition.key" :transition="transition" />
                 </div>
-            </details>
+                <p v-else class="mt-5 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500">Nenhuma ação disponível para este usuário nesta etapa.</p>
+            </section>
         </div>
 
         <div v-else-if="active_tab === 'defects'" class="print-hidden mt-6 space-y-6">
             <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-                <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                    <div>
-                        <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Leitura técnica</p>
-                        <h2 class="mt-2 text-xl font-semibold text-slate-950">Avarias da reinspeção</h2>
-                        <p class="mt-1 text-sm text-slate-500">Filtre por prioridade e abra a avaliação sem perder o contexto.</p>
-                    </div>
+                <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                     <div class="flex max-w-full gap-2 overflow-x-auto pb-1" role="group" aria-label="Filtrar avarias">
                         <button
                             v-for="filter in filters"
@@ -371,29 +229,38 @@ function printReport() {
                             <span class="rounded-full px-1.5 text-xs" :class="activeFilter === filter.key ? 'bg-white/15' : 'bg-white'">{{ filter.count }}</span>
                         </button>
                     </div>
+                    <div class="inline-flex shrink-0 rounded-xl border border-slate-200 bg-slate-50 p-1" role="group" aria-label="Modo de visualização">
+                        <button
+                            type="button"
+                            class="rounded-lg px-3 py-2 text-xs font-semibold transition"
+                            :class="activeView === 'blocks' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500 hover:text-slate-900'"
+                            :aria-pressed="activeView === 'blocks'"
+                            @click="setView('blocks')"
+                        >
+                            Blocos
+                        </button>
+                        <button
+                            type="button"
+                            class="rounded-lg px-3 py-2 text-xs font-semibold transition"
+                            :class="activeView === 'list' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500 hover:text-slate-900'"
+                            :aria-pressed="activeView === 'list'"
+                            @click="setView('list')"
+                        >
+                            Lista
+                        </button>
+                    </div>
                 </div>
             </section>
 
-            <div class="grid gap-4 xl:grid-cols-2">
-                <DefectCard v-for="defect in filteredDefects" :key="defect.id" :defect="defect" />
+            <div v-if="activeView === 'blocks'" class="grid gap-4 xl:grid-cols-2">
+                <DefectCard v-for="defect in filteredDefects" :id="`defect-${defect.public_id}`" :key="defect.id" :defect="defect" class="scroll-mt-24" />
+            </div>
+            <div v-else class="space-y-2">
+                <DefectCard v-for="defect in filteredDefects" :id="`defect-${defect.public_id}`" :key="defect.id" :defect="defect" variant="list" class="scroll-mt-24" />
             </div>
             <div v-if="filteredDefects.length === 0" class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center text-sm text-slate-500">
                 Nenhuma avaria corresponde a este filtro.
             </div>
-
-            <details v-if="capabilities.defects?.create" class="group rounded-3xl border border-slate-200 bg-white shadow-sm">
-                <summary class="flex cursor-pointer list-none items-center justify-between gap-4 p-5">
-                    <div>
-                        <h2 class="font-semibold text-slate-950">Adicionar avaria</h2>
-                        <p class="mt-1 text-sm text-slate-500">Ação operacional secundária nesta apresentação.</p>
-                    </div>
-                    <span class="text-xl text-slate-400 transition group-open:rotate-45">+</span>
-                </summary>
-                <div class="border-t border-slate-200 p-5">
-                    <DefectCreateForm v-if="inspection.equipment.defect_code_prefix" :action="capabilities.defects.create.action" />
-                    <p v-else class="text-sm text-amber-800">Configure o prefixo de avaria antes de criar um registro.</p>
-                </div>
-            </details>
         </div>
 
         <div v-else-if="active_tab === 'locations'" class="print-hidden mt-6 space-y-6">
@@ -464,8 +331,11 @@ function printReport() {
                                     <dd class="mt-1 font-medium text-slate-900">{{ item.impact?.label || '—' }}</dd>
                                 </div>
                                 <div>
-                                    <dt class="text-xs font-bold uppercase tracking-wider text-slate-400">GUT</dt>
-                                    <dd class="mt-1 font-medium text-slate-900">{{ item.gut?.score ?? '—' }}</dd>
+                                    <dt class="text-xs font-bold uppercase tracking-wider text-slate-400">Notas GUT</dt>
+                                    <dd class="mt-1 font-medium text-slate-900">
+                                        <span v-if="item.gut">G {{ item.gut.severity ?? '—' }} · U {{ item.gut.urgency ?? '—' }} · T {{ item.gut.tendency ?? '—' }}</span>
+                                        <span v-else>—</span>
+                                    </dd>
                                 </div>
                                 <div>
                                     <dt class="text-xs font-bold uppercase tracking-wider text-slate-400">Fotos</dt>
@@ -479,13 +349,12 @@ function printReport() {
         </div>
 
         <div v-else-if="active_tab === 'photos'" class="print-hidden mt-6 space-y-6">
-            <ProvisionalDataNotice :message="demo.photo_notice" />
             <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
                 <div class="flex flex-wrap items-start justify-between gap-4">
                     <div>
                         <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Evidências técnicas</p>
                         <h2 class="mt-2 text-xl font-semibold text-slate-950">Galeria da inspeção</h2>
-                        <p class="mt-1 text-sm text-slate-500">Placeholders neutros já preparados para receber os arquivos reais.</p>
+                        <p class="mt-1 text-sm text-slate-500">Arquivos privados vinculados oficialmente às avaliações da inspeção.</p>
                     </div>
                     <div class="flex flex-wrap gap-2 text-xs font-semibold text-slate-600">
                         <span v-for="(count, status) in (content.counts || {})" :key="status" class="rounded-full bg-slate-100 px-3 py-1.5">
@@ -559,42 +428,68 @@ function printReport() {
 
         <div v-else-if="active_tab === 'report'" class="mt-6">
             <div class="print-hidden mb-5 flex flex-wrap items-center justify-between gap-3">
-                <ProvisionalDataNotice
-                    class="max-w-3xl flex-1"
-                    title="Prévia de demonstração"
-                    message="O documento final ainda não foi gerado. Conteúdo e parâmetros técnicos permanecem provisórios."
-                    compact
-                />
+                <p class="max-w-3xl flex-1 text-sm leading-6 text-slate-500">
+                    Esta prévia usa os dados persistidos da inspeção.
+                </p>
                 <div class="max-w-sm">
                     <div class="flex gap-2">
                         <button
                             v-if="content.print_enabled"
                             type="button"
                             class="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
+                            :disabled="!reportLayoutReady || exportingFormat"
+                            :class="{ 'cursor-wait opacity-50': !reportLayoutReady || exportingFormat }"
                             @click="printReport"
                         >
-                            Imprimir prévia
+                            {{ reportLayoutReady ? 'Imprimir prévia' : 'Preparando páginas…' }}
                         </button>
                         <button
+                            v-if="content.print_enabled"
                             type="button"
-                            disabled
-                            aria-describedby="pdf-disabled-reason"
-                            class="cursor-not-allowed rounded-xl border border-slate-300 bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-400"
-                            :title="content.pdf_disabled_reason"
+                            class="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:border-teal-500 hover:text-teal-700 disabled:cursor-wait disabled:opacity-50"
+                            :disabled="!reportLayoutReady || exportingFormat"
+                            :aria-busy="exportingFormat === 'pdf'"
+                            @click="exportReport('pdf')"
                         >
-                            Gerar PDF
+                            {{ exportingFormat === 'pdf' ? 'Gerando PDF…' : 'Gerar PDF' }}
                         </button>
+                        <button
+                            v-if="content.print_enabled"
+                            type="button"
+                            class="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:border-slate-400 hover:text-slate-950 disabled:cursor-wait disabled:opacity-50"
+                            :disabled="!reportLayoutReady || exportingFormat"
+                            :aria-busy="exportingFormat === 'doc'"
+                            @click="exportReport('doc')"
+                        >
+                            {{ exportingFormat === 'doc' ? 'Gerando DOC…' : 'Gerar DOC' }}
+                        </button>
+                        <template v-if="!content.print_enabled">
+                            <button
+                                v-for="label in ['Imprimir prévia', 'Gerar PDF', 'Gerar DOC']"
+                                :key="label"
+                                type="button"
+                                disabled
+                                class="cursor-not-allowed rounded-xl border border-slate-300 bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-400"
+                                :title="content.export_disabled_reason"
+                            >
+                                {{ label }}
+                            </button>
+                        </template>
                     </div>
-                    <p id="pdf-disabled-reason" class="mt-2 text-xs leading-5 text-slate-500">{{ content.pdf_disabled_reason }}</p>
+                    <p v-if="!content.print_enabled" class="mt-2 text-right text-xs font-medium text-rose-700" role="alert">
+                        {{ content.export_disabled_reason }}
+                    </p>
+                    <p v-if="exportStatus" class="mt-2 text-right text-xs text-slate-500" role="status" aria-live="polite">{{ exportStatus }}</p>
+                    <p v-if="exportError" class="mt-2 text-right text-xs font-medium text-rose-700" role="alert">{{ exportError }}</p>
                 </div>
             </div>
 
-            <ReportPreview :content="content" />
+            <ReportPreview ref="reportPreview" :content="content" @layout-ready="reportLayoutReady = $event" />
         </div>
 
         <div v-else-if="false" class="mt-6">
             <div class="print-hidden mb-5 flex flex-wrap items-center justify-between gap-3">
-                <ProvisionalDataNotice class="max-w-3xl flex-1" title="Prévia de demonstração" message="O documento final ainda não foi gerado. Conteúdo e parâmetros técnicos permanecem provisórios." compact />
+                <p class="max-w-3xl flex-1 text-sm leading-6 text-slate-500">Prévia baseada nos dados persistidos da inspeção.</p>
                 <div class="max-w-sm">
                     <div class="flex gap-2">
                         <button v-if="content.print_enabled" type="button" class="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500" @click="printReport">
@@ -644,7 +539,7 @@ function printReport() {
                                     <p class="mt-1 text-lg font-semibold text-slate-900">{{ content.executive_summary?.metrics?.total ?? '—' }}</p>
                                 </div>
                                 <div class="rounded-2xl bg-white p-3 shadow-sm">
-                                    <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Concluídas</p>
+                                    <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Publicadas</p>
                                     <p class="mt-1 text-lg font-semibold text-slate-900">{{ content.executive_summary?.metrics?.completed ?? '—' }}</p>
                                 </div>
                                 <div class="rounded-2xl bg-white p-3 shadow-sm">
@@ -659,45 +554,24 @@ function printReport() {
                         </div>
                     </section>
 
-                    <ReportSection index="01" title="Aspectos gerais" content-class="mt-5">
-                        <dl class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                            <div v-for="item in reportGeneralAspects" :key="item.label" class="rounded-2xl border border-slate-200 bg-white p-4">
-                                <dt class="text-[11px] font-bold uppercase tracking-wider text-slate-400">{{ item.label }}</dt>
-                                <dd class="mt-1 text-sm font-semibold text-slate-900">{{ item.value }}</dd>
-                            </div>
-                        </dl>
-                    </ReportSection>
-
                     <ReportSection index="02" title="Mapa de localização" content-class="mt-5 space-y-4">
-                        <div class="grid gap-4 xl:grid-cols-2">
-                            <article v-for="location in reportLocations" :key="location.id" class="break-inside-avoid rounded-2xl border border-slate-200 p-4">
-                                <div class="flex flex-wrap items-start justify-between gap-3">
+                        <div class="space-y-5">
+                            <section v-for="sheet in reportLocations" :key="sheet.id" class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
                                     <div>
-                                        <p class="text-xs font-bold uppercase tracking-wider text-teal-700">{{ location.marker }}</p>
-                                        <h4 class="mt-1 font-semibold text-slate-950">{{ location.title }}</h4>
+                                        <p class="text-xs font-bold uppercase tracking-wider text-teal-700">{{ sheet.category.code }}</p>
+                                        <h4 class="mt-1 font-semibold text-slate-950">Localização fotográfica — {{ sheet.category.name }}</h4>
                                     </div>
-                                    <CivilClassificationBadge :code="location.classification?.code" :historical="location.classification?.historical" />
+                                    <span class="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600">Folha {{ sheet.number }}</span>
                                 </div>
-                                <p class="mt-3 text-sm leading-6 text-slate-600">{{ location.location }}</p>
-                                <dl class="mt-4 grid gap-3 text-sm sm:grid-cols-2">
-                                    <div>
-                                        <dt class="text-xs font-bold uppercase tracking-wider text-slate-400">Elemento</dt>
-                                        <dd class="mt-1 font-medium text-slate-900">{{ location.element }}</dd>
-                                    </div>
-                                    <div>
-                                        <dt class="text-xs font-bold uppercase tracking-wider text-slate-400">Impacto</dt>
-                                        <dd class="mt-1 font-medium text-slate-900">{{ location.impact?.label || '—' }}</dd>
-                                    </div>
-                                    <div>
-                                        <dt class="text-xs font-bold uppercase tracking-wider text-slate-400">GUT</dt>
-                                        <dd class="mt-1 font-medium text-slate-900">{{ location.gut?.score ?? '—' }}</dd>
-                                    </div>
-                                    <div>
-                                        <dt class="text-xs font-bold uppercase tracking-wider text-slate-400">Fotos</dt>
-                                        <dd class="mt-1 font-medium text-slate-900">{{ location.photo_count }} · {{ location.photo_interval }}</dd>
-                                    </div>
-                                </dl>
-                            </article>
+                                <div class="grid gap-4 xl:grid-cols-2">
+                                    <article v-for="map in sheet.maps" :key="map.public_id" class="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                                        <div class="border-b border-slate-900 px-3 py-2.5 text-center text-sm font-extrabold uppercase">{{ map.report_title || map.title }}</div>
+                                        <InspectionLocationReportMap :map="map" />
+                                    </article>
+                                </div>
+                            </section>
+                            <p v-if="!reportLocations.length" class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-600">Nenhum mapa de localização cadastrado. O relatório não inferirá localizações a partir de textos.</p>
                         </div>
                     </ReportSection>
 
@@ -721,7 +595,7 @@ function printReport() {
                             <div class="relative aspect-[4/3] bg-gradient-to-br from-slate-300 via-slate-400 to-slate-600">
                                 <span class="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,.12)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.12)_1px,transparent_1px)] bg-[size:32px_32px]"></span>
                                 <span class="absolute bottom-3 right-3 rounded-lg bg-slate-950/70 px-2 py-1 text-xs font-bold text-white">{{ String(index + 1).padStart(2, '0') }}</span>
-                                <span class="absolute left-3 top-3 rounded-full bg-white/90 px-2 py-1 text-[10px] font-bold uppercase text-slate-700">{{ photo.role_label || 'Ilustrativa' }}</span>
+                                <span class="absolute left-3 top-3 rounded-full bg-white/90 px-2 py-1 text-[10px] font-bold uppercase text-slate-700">{{ photo.role_label || 'Fotografia' }}</span>
                                 <span class="absolute left-3 bottom-3 rounded-full bg-slate-950/70 px-2 py-1 text-[10px] font-bold uppercase text-white">{{ photo.photo_interval || '—' }}</span>
                             </div>
                             <div class="p-3">
@@ -795,7 +669,7 @@ function printReport() {
 
                 <footer class="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-6 py-5 text-xs text-slate-500 sm:px-10">
                     <span>{{ content.cover?.provider || 'Vistoria Serviços de Inspeção Ltda.' }}</span>
-                    <span>{{ content.revision }} · Prévia de demonstração</span>
+                    <span>{{ content.revision || '—' }}</span>
                 </footer>
             </article>
         </div>
@@ -803,6 +677,19 @@ function printReport() {
 </template>
 
 <style>
+@page {
+    size: A4 portrait;
+    margin: 0;
+}
+
+.report-preview-pages.report-exporting .report-a4-page {
+    width: 210mm !important;
+    height: 297mm !important;
+    min-height: 297mm !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+}
+
 @media print {
     body {
         background: white !important;

@@ -24,16 +24,17 @@ const props = defineProps({
         type: String,
         default: '',
     },
+    collapsible: {
+        type: Boolean,
+        default: true,
+    },
 });
 
 const emit = defineEmits(['toggle-sidebar', 'toggle-collapse']);
 
 const page = usePage();
-const notificationsOpen = ref(false);
 const userMenuOpen = ref(false);
-const notificationsRegion = ref(null);
 const userRegion = ref(null);
-const notificationsButton = ref(null);
 const userButton = ref(null);
 
 const initials = computed(() => {
@@ -47,17 +48,12 @@ const initials = computed(() => {
 });
 
 function closeMenus() {
-    notificationsOpen.value = false;
     userMenuOpen.value = false;
 }
 
 function handleKeydown(event) {
     if (event.key === 'Escape') {
-        const returnTarget = notificationsOpen.value
-            ? notificationsButton.value
-            : userMenuOpen.value
-                ? userButton.value
-                : null;
+        const returnTarget = userMenuOpen.value ? userButton.value : null;
 
         closeMenus();
         returnTarget?.focus();
@@ -65,10 +61,6 @@ function handleKeydown(event) {
 }
 
 function handlePointerDown(event) {
-    if (!notificationsRegion.value?.contains(event.target)) {
-        notificationsOpen.value = false;
-    }
-
     if (!userRegion.value?.contains(event.target)) {
         userMenuOpen.value = false;
     }
@@ -93,11 +85,11 @@ watch(
 </script>
 
 <template>
-    <header class="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur">
+    <header class="sticky top-0 z-20 border-b border-slate-200 bg-white">
         <div class="flex h-16 items-center gap-3 px-4 sm:px-6 lg:px-8">
             <button
                 type="button"
-                class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition hover:border-slate-300 hover:text-slate-900 lg:hidden"
+                class="inline-flex h-11 w-11 items-center justify-center rounded-md border border-slate-300 text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 lg:hidden"
                 aria-label="Abrir menu lateral"
                 aria-controls="app-sidebar"
                 :aria-expanded="mobileOpen ? 'true' : 'false'"
@@ -107,8 +99,9 @@ watch(
             </button>
 
             <button
+                v-if="collapsible"
                 type="button"
-                class="hidden h-11 w-11 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition hover:border-slate-300 hover:text-slate-900 lg:inline-flex"
+                class="hidden h-11 w-11 items-center justify-center rounded-md border border-slate-300 text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 lg:inline-flex"
                 :aria-label="collapsed ? 'Abrir menu lateral' : 'Recolher menu lateral'"
                 aria-controls="app-sidebar"
                 :aria-expanded="collapsed ? 'false' : 'true'"
@@ -126,71 +119,18 @@ watch(
                 </div>
             </div>
 
-            <label class="hidden min-w-0 flex-1 xl:flex">
-                <span class="sr-only">Buscar TAG, inspeção, cliente ou equipamento</span>
-                <div class="relative w-full">
-                    <UiIcon name="search" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                    <input
-                        type="search"
-                        placeholder="Busca global em breve"
-                        class="h-11 w-full cursor-not-allowed rounded-2xl border border-slate-200 bg-slate-50 px-10 text-sm text-slate-500 outline-none placeholder:text-slate-400"
-                        aria-label="Busca global indisponível nesta etapa"
-                        title="Busca global em breve"
-                        disabled
-                    >
-                </div>
-            </label>
-
-            <button
-                type="button"
-                class="inline-flex h-11 w-11 cursor-not-allowed items-center justify-center rounded-xl border border-slate-200 text-slate-400 xl:hidden"
-                aria-label="Busca global indisponível nesta etapa"
-                title="Busca global em breve"
-                disabled
-            >
-                <UiIcon name="search" class="h-5 w-5" />
-            </button>
-
-            <div ref="notificationsRegion" class="relative">
-                <button
-                    ref="notificationsButton"
-                    type="button"
-                    class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
-                    aria-label="Notificações: nenhuma pendente"
-                    :aria-expanded="notificationsOpen ? 'true' : 'false'"
-                    aria-controls="notifications-menu"
-                    aria-haspopup="true"
-                    @click="notificationsOpen = !notificationsOpen; userMenuOpen = false"
-                >
-                    <UiIcon name="bell" class="h-5 w-5" />
-                </button>
-
-                <div
-                    v-if="notificationsOpen"
-                    id="notifications-menu"
-                    class="fixed left-4 right-4 top-16 mt-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-lg shadow-slate-950/10 sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:w-72"
-                >
-                    <div class="text-sm font-semibold text-slate-900">
-                        Notificações
-                    </div>
-                    <p class="mt-2 text-sm text-slate-600">
-                        Nenhuma notificação pendente no momento.
-                    </p>
-                </div>
-            </div>
-
             <div ref="userRegion" class="relative">
                 <button
                     ref="userButton"
                     type="button"
-                    class="flex h-11 items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-left transition hover:border-slate-300"
+                    class="flex h-11 items-center gap-3 rounded-md border border-slate-300 bg-white px-3 py-2 text-left transition hover:bg-slate-50"
                     :aria-expanded="userMenuOpen ? 'true' : 'false'"
                     aria-label="Menu do usuário"
                     aria-controls="user-menu"
                     aria-haspopup="menu"
-                    @click="userMenuOpen = !userMenuOpen; notificationsOpen = false"
+                    @click="userMenuOpen = !userMenuOpen"
                 >
-                    <span class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white">
+                    <span class="inline-flex h-8 w-8 items-center justify-center rounded bg-slate-800 text-xs font-semibold text-white">
                         {{ initials }}
                     </span>
                     <span class="hidden text-left sm:block">
@@ -201,14 +141,14 @@ watch(
                             {{ user?.email ?? '' }}
                         </span>
                     </span>
-                    <UiIcon name="chevron-right" class="hidden h-4 w-4 text-slate-400 sm:block" />
+                    <UiIcon name="chevron-down" class="hidden h-4 w-4 text-slate-400 sm:block" />
                 </button>
 
                 <div
                     v-if="userMenuOpen"
                     id="user-menu"
                     role="menu"
-                    class="fixed left-4 right-4 top-16 mt-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-lg shadow-slate-950/10 sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:w-64"
+                    class="fixed left-4 right-4 top-16 mt-2 rounded-md border border-slate-200 bg-white p-2 shadow-md sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:w-64"
                 >
                     <div class="border-b border-slate-100 px-3 py-3">
                         <div class="text-sm font-semibold text-slate-900">
@@ -218,21 +158,17 @@ watch(
                             {{ user?.email ?? '' }}
                         </div>
                     </div>
-                    <button
-                        type="button"
-                        class="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-medium text-slate-400"
-                        disabled
-                    >
+                    <Link href="/account/password" class="flex w-full items-center gap-3 rounded-md px-3 py-3 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-100 hover:text-slate-950">
                         <UiIcon name="user" class="h-4 w-4" />
-                        Meu perfil
-                    </button>
+                        Alterar senha
+                    </Link>
                     <Link
                         v-if="logoutUrl"
                         :href="logoutUrl"
                         method="post"
                         as="button"
                         role="menuitem"
-                        class="mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50 hover:text-slate-950"
+                        class="mt-1 flex w-full items-center gap-3 rounded-md px-3 py-3 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-100 hover:text-slate-950"
                     >
                         <UiIcon name="logout" class="h-4 w-4" />
                         Sair

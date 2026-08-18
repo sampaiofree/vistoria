@@ -30,7 +30,7 @@ A inspeção também terá:
 - snapshot dos dados cadastrais;
 - máquina de estados;
 - histórico de transições;
-- datas de execução, revisão, aprovação e liberação.
+- datas de execução, verificação, aprovação e liberação.
 
 ---
 
@@ -39,11 +39,11 @@ A inspeção também terá:
 Os documentos iniciais usaram o fluxo:
 
 ```text
-Aguardando revisão
+Aguardando verificação
 → Aprovada
 ```
 
-Esse fluxo não representa corretamente os casos em que revisão e aprovação são realizadas por pessoas diferentes.
+Esse fluxo não representa corretamente os casos em que verificação e aprovação são realizadas por pessoas diferentes.
 
 O fluxo oficial passa a ser:
 
@@ -52,11 +52,11 @@ Planejada
 ↓
 Em inspeção
 ↓
-Aguardando revisão
+Aguardando verificação
 ↓
 Em correção
 ↓
-Aguardando revisão
+Aguardando verificação
 ↓
 Aguardando aprovação
 ↓
@@ -88,9 +88,9 @@ Ao concluir esta etapa, o administrador interno deverá conseguir:
 - selecionar documentos técnicos de referência;
 - iniciar a inspeção;
 - acompanhar o status;
-- enviar para revisão;
+- enviar para verificação;
 - devolver para correção;
-- concluir a revisão;
+- concluir a verificação;
 - enviar para aprovação;
 - aprovar;
 - marcar o relatório como gerado;
@@ -134,7 +134,7 @@ Não será criado agora:
 - avaliações GUT;
 - fotos de campo;
 - comentários de correção por avaria;
-- revisão detalhada por item;
+- verificação detalhada por item;
 - auditoria genérica completa;
 - geração real do PDF;
 - assinatura eletrônica;
@@ -317,25 +317,22 @@ O snapshot:
 
 ### 6.8 Responsabilidades
 
-Responsabilidades iniciais:
+Responsabilidades oficiais, conforme a capa do relatório de referência `U0306VT-G-6RI002_R-04`:
 
 ```text
-inspector
 preparer
 reviewer
 approver
 releaser
 ```
 
-#### Inspetor
-
-Realiza o trabalho de campo.
+O valor técnico `reviewer`, assim como `awaiting_review` e `reviewed_at`, é preservado por compatibilidade; toda apresentação ao usuário utiliza “Verificador” e “Verificação”.
 
 #### Preparador
 
-Organiza e prepara o conteúdo técnico do relatório.
+Executa o trabalho técnico da inspeção, registra as evidências e prepara o conteúdo do relatório.
 
-#### Revisor
+#### Verificador
 
 Verifica o conteúdo.
 
@@ -347,6 +344,8 @@ Aprova tecnicamente.
 
 Libera oficialmente o relatório.
 
+O relatório original não comprova uma responsabilidade separada de Inspetor. Essa função não deve ser exigida nem oferecida. Se futuramente houver evidência de uma equipe de campo distinta, ela deverá ser modelada em uma decisão de domínio própria.
+
 ---
 
 ### 6.9 Mesma pessoa em várias funções
@@ -355,7 +354,6 @@ Permitido:
 
 ```text
 João
-- inspector
 - preparer
 - reviewer
 - approver
@@ -373,7 +371,7 @@ O sistema permitirá várias pessoas na mesma responsabilidade.
 Exemplo:
 
 ```text
-Inspectores
+Preparadores
 - João
 - Maria
 ```
@@ -386,7 +384,6 @@ is_primary = true
 
 No MVP:
 
-- pode haver vários inspetores;
 - pode haver vários preparadores;
 - deve haver apenas um principal por responsabilidade;
 - o sistema não bloqueará colaboradores adicionais;
@@ -412,10 +409,10 @@ Um usuário atribuído deve:
 Para iniciar:
 
 ```text
-pelo menos um inspector
+pelo menos um preparer
 ```
 
-Para enviar para revisão:
+Para enviar para verificação:
 
 ```text
 pelo menos um preparer
@@ -517,7 +514,7 @@ Depois da correção:
 in_correction → awaiting_review
 ```
 
-A revisão deve ocorrer novamente.
+A verificação deve ocorrer novamente.
 
 ---
 
@@ -539,9 +536,9 @@ Uma inspeção liberada não pode ser cancelada.
 
 Uma inspeção aprovada não poderá voltar ao fluxo normal por simples mudança de status.
 
-Uma reabertura excepcional exigirá uma Action específica, nova revisão e auditoria.
+Uma reabertura excepcional exigirá uma Action específica, nova verificação e auditoria.
 
-Essa funcionalidade será implementada no documento de revisão e auditoria.
+Essa funcionalidade será implementada no documento de verificação e auditoria.
 
 ---
 
@@ -652,7 +649,6 @@ namespace App\Enums;
 
 enum InspectionResponsibility: string
 {
-    case Inspector = 'inspector';
     case Preparer = 'preparer';
     case Reviewer = 'reviewer';
     case Approver = 'approver';
@@ -1144,12 +1140,12 @@ final class Inspection extends Model
         return $this->hasMany(InspectionReferenceDocument::class);
     }
 
-    public function inspectors(): HasMany
+    public function preparers(): HasMany
     {
         return $this->responsibles()
             ->where(
                 'responsibility',
-                InspectionResponsibility::Inspector->value,
+                InspectionResponsibility::Preparer->value,
             );
     }
 
@@ -1763,7 +1759,7 @@ planned → in_progress
 
 Exige:
 
-- pelo menos um inspetor;
+- pelo menos um preparador;
 - ator com permissão;
 - equipamento ainda operacional;
 - `inspected_on` definido ou preenchido com a data atual;
@@ -1781,7 +1777,7 @@ in_correction → awaiting_review
 Exige:
 
 - preparador;
-- revisor;
+- verificador;
 - nenhum upload pendente futuramente;
 - nenhuma avaria incompleta futuramente;
 - grava `field_completed_at` na primeira submissão.
@@ -1798,7 +1794,7 @@ awaiting_approval → in_correction
 Exige:
 
 - justificativa;
-- revisor ou aprovador conforme etapa;
+- verificador ou aprovador conforme etapa;
 - não altera `field_completed_at`.
 
 ---
@@ -1811,7 +1807,7 @@ awaiting_review → awaiting_approval
 
 Exige:
 
-- revisor responsável;
+- verificador responsável;
 - aprovador atribuído;
 - grava `reviewed_at`.
 
@@ -2222,7 +2218,7 @@ Exemplo:
 ```text
 29/07/2026 09:00 — Planejada — Carlos
 29/07/2026 10:15 — Em inspeção — João
-29/07/2026 16:40 — Aguardando revisão — João
+29/07/2026 16:40 — Aguardando verificação — João
 30/07/2026 08:20 — Em correção — Maria
 ```
 
@@ -2314,7 +2310,7 @@ Testar:
 - bloqueia usuário inativo;
 - mesma pessoa ocupa várias funções;
 - não duplica mesma pessoa na mesma função;
-- permite vários inspetores;
+- permite vários preparadores;
 - mantém apenas um principal por função;
 - membro não atribui sem permissão.
 
@@ -2340,10 +2336,10 @@ canceled → planned
 
 Testar:
 
-- não inicia sem inspetor;
-- não envia para revisão sem preparador;
-- não envia para revisão sem revisor;
-- não conclui revisão sem aprovador;
+- não inicia sem preparador;
+- não envia para verificação sem preparador;
+- não envia para verificação sem verificador;
+- não conclui verificação sem aprovador;
 - não aprova sem aprovador atribuído;
 - não libera sem liberador;
 - retorno exige justificativa;
@@ -2392,11 +2388,10 @@ Inspeção
 Atribuir usuários de demonstração:
 
 ```text
-Inspector
-Preparer
-Reviewer
-Approver
-Releaser
+Preparador
+Verificador
+Aprovador
+Liberador
 ```
 
 Podem ser a mesma pessoa no seed simples.
@@ -2406,15 +2401,15 @@ Podem ser a mesma pessoa no seed simples.
 # 30. Validação manual
 
 1. Criar inspeção inicial.
-2. Atribuir inspetor.
-3. Tentar iniciar sem inspetor em outra inspeção.
+2. Atribuir preparador.
+3. Tentar iniciar sem preparador em outra inspeção.
 4. Confirmar bloqueio.
 5. Iniciar.
-6. Atribuir preparador e revisor.
-7. Enviar para revisão.
+6. Atribuir verificador.
+7. Enviar para verificação.
 8. Devolver para correção.
 9. Reenviar.
-10. Concluir revisão.
+10. Concluir verificação.
 11. Aprovar.
 12. Confirmar bloqueio de edição comum.
 13. Simular relatório gerado.
@@ -2456,7 +2451,7 @@ php artisan migrate:fresh --seed
 - [x] reinspeção funciona;
 - [x] apenas uma inspeção aberta por equipamento;
 - [x] mesma pessoa pode ocupar várias funções;
-- [x] vários inspetores são permitidos;
+- [x] vários preparadores são permitidos;
 - [x] principal por função é controlado;
 - [x] máquina de estados funciona;
 - [x] transições inválidas são bloqueadas;
@@ -2475,7 +2470,7 @@ php artisan migrate:fresh --seed
 
 ## 33.1 Fluxo sem estado de aprovação
 
-Misturar revisão e aprovação elimina uma etapa real do relatório.
+Misturar verificação e aprovação elimina uma etapa real do relatório.
 
 Mitigação:
 

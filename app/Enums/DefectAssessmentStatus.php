@@ -13,7 +13,7 @@ enum DefectAssessmentStatus: string
     {
         return match ($this) {
             self::Draft => 'Rascunho',
-            self::Complete => 'Concluída',
+            self::Complete => 'Publicada',
         };
     }
 
