@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Actions\Defects;
 
+use App\Actions\Classification\SaveDefectAssessmentGut;
 use App\Enums\DefectAssessmentCondition;
 use App\Enums\DefectAssessmentStatus;
 use App\Enums\DefectStatus;
@@ -27,6 +28,7 @@ final class AssessExistingDefect
         private readonly ResolvePreviousDefectAssessment $previousAssessmentResolver,
         private readonly DefectAssessmentCompletionValidator $validator,
         private readonly CompleteDefectAssessment $completeAssessment,
+        private readonly SaveDefectAssessmentGut $saveGut,
     ) {}
 
     public function handle(User $actor, Inspection $inspection, Defect $defect, array $data): DefectAssessment
@@ -94,6 +96,13 @@ final class AssessExistingDefect
             ]);
 
             if (($data['assessment_action'] ?? DefectAssessmentStatus::Draft->value) === DefectAssessmentStatus::Complete->value) {
+                $assessment = $this->saveGut->handle($actor, $assessment, [
+                    'condition' => $assessment->condition->value,
+                    'gravity' => $data['gravity'] ?? null,
+                    'urgency' => $data['urgency'] ?? null,
+                    'trend' => $data['trend'] ?? null,
+                ]);
+
                 return $this->completeAssessment->handle($actor, $assessment, $data);
             }
 

@@ -6,6 +6,7 @@ namespace Tests\Feature\ViewFirst;
 
 use App\Enums\DefectAssessmentCondition;
 use App\Enums\DefectAssessmentStatus;
+use App\Enums\GutCriterion;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
 use App\Enums\RegistrationStatus;
@@ -14,6 +15,7 @@ use App\Models\AssessmentPhoto;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
 use App\Models\DefectCategory;
+use App\Models\DefectCategoryGutOption;
 use App\Models\DefectClassification;
 use App\Models\Equipment;
 use App\Models\Inspection;
@@ -287,7 +289,7 @@ final class ViewFirstReadModelTest extends TestCase
                 ->where('gut', null)
                 ->has('characterization')
                 ->where('quantity', null)
-                ->has('manual_classifications', 0)
+                ->has('gut_classification_ranges', 0)
                 ->has('evidence', 0)
                 ->has('measurement_units', 9)
                 ->where('assessment_navigation.inspection_url', route('inspections.show', $inspection))
@@ -303,7 +305,7 @@ final class ViewFirstReadModelTest extends TestCase
                 ->missing('demo'));
     }
 
-    public function test_assessment_page_exposes_active_category_classifications_with_read_only_capabilities(): void
+    public function test_assessment_page_exposes_active_category_gut_ranges_with_read_only_capabilities(): void
     {
         [$organization, $admin, , , $assessment] = $this->viewFirstScenario();
         $category = DefectCategory::factory()->create([
@@ -318,21 +320,25 @@ final class ViewFirstReadModelTest extends TestCase
             'code' => 'CV-A',
             'name' => 'Classificação ativa',
             'status' => RegistrationStatus::Active,
+            'lower_limit' => 0,
+            'upper_limit' => 25,
         ]);
         DefectClassification::factory()->for($category, 'category')->create([
             'organization_id' => $organization->id,
             'code' => 'CV-I',
             'name' => 'Classificação inativa',
             'status' => RegistrationStatus::Inactive,
+            'lower_limit' => 26,
+            'upper_limit' => 50,
         ]);
 
         $this->actingAs($admin)
             ->get(route('defect-assessments.show', $assessment))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
-                ->has('manual_classifications', 1)
-                ->where('manual_classifications.0.code', 'CV-A')
-                ->has('capabilities.manual_classification_url')
+                ->has('gut_classification_ranges', 1)
+                ->where('gut_classification_ranges.0.code', 'CV-A')
+                ->missing('capabilities.manual_classification_url')
                 ->has('capabilities.status_url'));
 
         $viewer = User::factory()->for($organization)->create([
@@ -343,9 +349,9 @@ final class ViewFirstReadModelTest extends TestCase
             ->get(route('defect-assessments.show', $assessment))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
-                ->has('manual_classifications', 1)
+                ->has('gut_classification_ranges', 1)
                 ->where('capabilities.update', false)
-                ->where('capabilities.manual_classification_url', null)
+                ->missing('capabilities.manual_classification_url')
                 ->where('capabilities.quantity_url', null)
                 ->where('capabilities.photo_upload_url', null)
                 ->where('capabilities.status_url', null));
@@ -696,7 +702,24 @@ final class ViewFirstReadModelTest extends TestCase
 
     public function test_assessment_writes_persist_only_real_fields_and_return_to_dedicated_page(): void
     {
-        [, $admin, , , $assessment] = $this->viewFirstScenario();
+        [$organization, $admin, , , $assessment] = $this->viewFirstScenario();
+        $category = DefectCategory::factory()->create(['organization_id' => $organization->id]);
+        $assessment->defect->update(['defect_category_id' => $category->id]);
+
+        foreach ([GutCriterion::Gravity, GutCriterion::Urgency, GutCriterion::Trend] as $criterion) {
+            DefectCategoryGutOption::factory()->create([
+                'organization_id' => $organization->id,
+                'defect_category_id' => $category->id,
+                'criterion' => $criterion,
+                'score' => 5,
+            ]);
+        }
+        DefectClassification::factory()->for($category, 'category')->create([
+            'organization_id' => $organization->id,
+            'code' => 'CV-1',
+            'lower_limit' => 125,
+            'upper_limit' => 125,
+        ]);
 
         $this->actingAs($admin)
             ->patch(route('defect-assessments.update', $assessment), [
@@ -706,8 +729,6 @@ final class ViewFirstReadModelTest extends TestCase
                 'recommendation' => 'Executar reparo estrutural prioritário.',
                 'reason' => null,
                 'internal_notes' => 'Confirmar tratamento com a engenharia.',
-                'gut' => ['severity' => 5, 'urgency' => 5, 'tendency' => 5],
-                'classification' => 'CV-1',
             ])
             ->assertRedirect(route('defect-assessments.show', $assessment));
 
@@ -729,14 +750,17 @@ final class ViewFirstReadModelTest extends TestCase
                 'recommendation' => 'Executar reparo estrutural prioritário.',
                 'reason' => null,
                 'internal_notes' => 'Confirmar tratamento com a engenharia.',
-                'gut_score' => 125,
-                'cv' => 'CV-1',
+                'gravity' => 5,
+                'urgency' => 5,
+                'trend' => 5,
             ])
             ->assertRedirect(route('defect-assessments.show', $assessment));
 
         $assessment->refresh();
 
         $this->assertSame(DefectAssessmentStatus::Complete, $assessment->status);
+        $this->assertSame(125, $assessment->gut_score);
+        $this->assertSame('CV-1', $assessment->classification_code);
         $this->assertNotNull($assessment->assessed_at);
         $this->assertSame($assessment->defect->code, data_get($assessment->defect_snapshot, 'defect.code'));
     }

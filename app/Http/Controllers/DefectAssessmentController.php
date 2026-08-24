@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
-use App\Actions\Classification\AssignDefectClassification;
 use App\Actions\Classification\SaveDefectAssessmentGut;
 use App\Actions\Classification\UpdateDefectAssessmentQuantity;
 use App\Actions\Defects\AssessExistingDefect;
@@ -17,7 +16,6 @@ use App\Actions\Photos\StoreAssessmentPhoto;
 use App\Enums\DefectAssessmentStatus;
 use App\Http\Controllers\Concerns\ResolvesTenantStructure;
 use App\Http\Requests\AssessmentPhotos\StoreAssessmentPhotoRequest;
-use App\Http\Requests\Classification\AssignDefectClassificationRequest;
 use App\Http\Requests\Defects\CompleteDefectAssessmentRequest;
 use App\Http\Requests\Defects\StoreExistingDefectAssessmentRequest;
 use App\Http\Requests\Defects\UpdateDefectAssessmentGutRequest;
@@ -151,7 +149,6 @@ final class DefectAssessmentController extends Controller
         DefectAssessment $defectAssessment,
         CompleteDefectAssessment $action,
         SaveDefectAssessmentGut $gut,
-        AssignDefectClassification $manualClassification,
     ): RedirectResponse {
         $defectAssessment = $this->tenantDefectAssessment($tenant, $defectAssessment);
         $defectAssessment->loadMissing(['defect', 'inspection']);
@@ -160,10 +157,6 @@ final class DefectAssessmentController extends Controller
 
         if ($request->filled('gravity') || $request->filled('urgency') || $request->filled('trend')) {
             $gut->handle($request->user(), $defectAssessment, $request->validated());
-        }
-
-        if ($request->filled('defect_classification_id')) {
-            $manualClassification->handle($request->user(), $defectAssessment, (int) $request->validated('defect_classification_id'));
         }
 
         $action->handle(
@@ -188,19 +181,6 @@ final class DefectAssessmentController extends Controller
         $action->handle($request->user(), $defectAssessment, $request->validated());
 
         return back()->with('success', 'Classificação GUT atualizada.');
-    }
-
-    public function assignClassification(
-        AssignDefectClassificationRequest $request,
-        TenantContext $tenant,
-        DefectAssessment $defectAssessment,
-        AssignDefectClassification $action,
-    ): RedirectResponse {
-        $defectAssessment = $this->tenantDefectAssessment($tenant, $defectAssessment);
-        $this->authorize('update', $defectAssessment);
-        $action->handle($request->user(), $defectAssessment, (int) $request->validated('defect_classification_id'));
-
-        return back()->with('success', 'Classificação atribuída à avaliação.');
     }
 
     public function updateQuantity(

@@ -1,0 +1,13 @@
+[program:vistoria-horizon]
+process_name=%(program_name)s
+command=/usr/bin/php /var/www/vistoria/artisan horizon
+directory=/var/www/vistoria
+autostart=true
+autorestart=true
+user=www-data
+redirect_stderr=true
+stdout_logfile=/var/log/supervisor/vistoria-horizon.log
+stopasgroup=true
+killasgroup=true
+stopwaitsecs=300
+

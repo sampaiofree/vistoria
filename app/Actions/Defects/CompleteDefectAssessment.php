@@ -12,6 +12,7 @@ use App\Enums\InspectionStatus;
 use App\Models\DefectAssessment;
 use App\Models\Inspection;
 use App\Models\User;
+use App\Services\Classification\GutClassificationResolver;
 use App\Services\Defects\DefectAssessmentCompletionValidator;
 use App\Services\Defects\DefectSnapshotBuilder;
 use App\Services\Defects\DefectStatusSynchronizer;
@@ -27,6 +28,7 @@ final class CompleteDefectAssessment
         private readonly DefectAssessmentCompletionValidator $validator,
         private readonly DefectStatusSynchronizer $statusSynchronizer,
         private readonly DefectSnapshotBuilder $snapshotBuilder,
+        private readonly GutClassificationResolver $gutResolver,
     ) {}
 
     public function handle(User $actor, DefectAssessment $assessment, array $data = []): DefectAssessment
@@ -34,7 +36,7 @@ final class CompleteDefectAssessment
         return DB::transaction(function () use ($actor, $assessment, $data): DefectAssessment {
             $assessment = DefectAssessment::query()
                 ->forOrganization($this->tenant->id())
-                ->with(['defect.categoryDefinition.gutOptions', 'inspection'])
+                ->with(['defect.categoryDefinition.gutOptions', 'defect.categoryDefinition.classifications', 'inspection'])
                 ->lockForUpdate()
                 ->findOrFail($assessment->getKey());
 
@@ -155,27 +157,24 @@ final class CompleteDefectAssessment
 
     private function ensureConfiguredGutSelected(DefectAssessment $assessment): void
     {
-        $options = $assessment->defect->categoryDefinition?->gutOptions
-            ?->groupBy(fn ($option): string => $option->criterion->value) ?? collect();
+        $category = $assessment->defect->categoryDefinition;
 
-        $errors = [];
-
-        foreach ([GutCriterion::Gravity, GutCriterion::Urgency, GutCriterion::Trend] as $criterion) {
-            $configured = $options->get($criterion->value, collect());
-
-            if ($configured->isEmpty()) {
-                continue;
-            }
-
-            $score = $assessment->{$criterion->value};
-
-            if ($score === null || $configured->firstWhere('score', (int) $score) === null) {
-                $errors[$criterion->value] = 'Escolha uma nota GUT configurada antes de publicar a avaliação.';
-            }
+        if ($category === null) {
+            throw ValidationException::withMessages([
+                'gut' => 'A avaria precisa possuir uma categoria configurada para publicar a avaliação.',
+            ]);
         }
 
-        if ($errors !== []) {
-            throw ValidationException::withMessages($errors);
+        $this->gutResolver->resolve($category, [
+            GutCriterion::Gravity->value => $assessment->gravity,
+            GutCriterion::Urgency->value => $assessment->urgency,
+            GutCriterion::Trend->value => $assessment->trend,
+        ]);
+
+        if ($assessment->gut_score === null || $assessment->defect_classification_id === null) {
+            throw ValidationException::withMessages([
+                'gut' => 'Salve a classificação GUT antes de publicar a avaliação.',
+            ]);
         }
     }
 }

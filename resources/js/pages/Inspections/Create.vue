@@ -19,10 +19,6 @@ defineProps({
         type: Array,
         required: true,
     },
-    inspection_types: {
-        type: Array,
-        default: () => [],
-    },
 });
 </script>
 
@@ -37,7 +33,6 @@ defineProps({
                 :cancel-url="cancel_url"
                 :equipment="equipment"
                 :released-inspections="released_inspections"
-                :inspection-types="inspection_types"
                 submit-label="Criar inspeção"
             />
         </section>

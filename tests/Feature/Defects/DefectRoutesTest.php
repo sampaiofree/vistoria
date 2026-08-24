@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Defects;
 
+use App\Actions\Classification\ProvisionDefaultDefectTaxonomy;
 use App\Enums\DefectAssessmentCondition;
 use App\Enums\DefectAssessmentStatus;
 use App\Enums\DefectRelationType;
 use App\Enums\DefectStatus;
+use App\Enums\GutCriterion;
 use App\Enums\InspectionLocationMapProcessingStatus;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
@@ -18,6 +20,7 @@ use App\Models\AssessmentPhoto;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
 use App\Models\DefectCategory;
+use App\Models\DefectCategoryGutOption;
 use App\Models\Equipment;
 use App\Models\Inspection;
 use App\Models\InspectionLocationMap;
@@ -98,6 +101,7 @@ final class DefectRoutesTest extends TestCase
             'location_description' => 'Lado esquerdo da carcaça.',
             'comment' => 'Identificada durante a inspeção de rotina.',
             'recommendation' => 'Monitorar e preparar reparo no próximo ciclo.',
+            ...$this->gutScores(),
             'assessment_action' => 'complete',
         ])->assertRedirect();
 
@@ -305,6 +309,7 @@ final class DefectRoutesTest extends TestCase
             'location_description' => 'Lado esquerdo da carcaça.',
             'comment' => 'Avaliação inicial concluída.',
             'recommendation' => 'Monitorar e preparar reparo no próximo ciclo.',
+            ...$this->gutScores(),
             'assessment_action' => 'complete',
         ])->assertRedirect();
 
@@ -336,6 +341,7 @@ final class DefectRoutesTest extends TestCase
             'location_description' => 'Parte inferior',
             'comment' => 'Avaria reparada na reinspeção.',
             'recommendation' => 'Manter monitoramento.',
+            ...$this->gutScores(),
             'assessment_action' => 'complete',
         ]);
 
@@ -396,6 +402,7 @@ final class DefectRoutesTest extends TestCase
             'title' => 'Avaria localizada no mapa',
             'comment' => 'Avaliação publicada originalmente.',
             'recommendation' => 'Monitorar o ponto indicado.',
+            ...$this->gutScores(),
             'assessment_action' => 'complete',
         ])->assertRedirect();
 
@@ -471,6 +478,7 @@ final class DefectRoutesTest extends TestCase
         $this->actingAs($admin)->post(route('inspections.defects.store', $firstInspection), [
             'title' => 'Vazamento na carcaça',
             'comment' => 'Avaliação inicial concluída.',
+            ...$this->gutScores(),
             'assessment_action' => 'complete',
         ])->assertRedirect();
 
@@ -500,6 +508,7 @@ final class DefectRoutesTest extends TestCase
             'condition' => DefectAssessmentCondition::Unchanged->value,
             'location_description' => 'Parte superior',
             'recommendation' => 'Sem ação imediata.',
+            ...$this->gutScores(),
             'assessment_action' => 'complete',
         ])->assertSessionHasErrors('comment');
     }
@@ -511,6 +520,7 @@ final class DefectRoutesTest extends TestCase
         $this->actingAs($admin)->post(route('inspections.defects.store', $firstInspection), [
             'title' => 'Vazamento na carcaça',
             'comment' => 'Avaliação inicial concluída.',
+            ...$this->gutScores(),
             'assessment_action' => 'complete',
         ])->assertRedirect();
 
@@ -541,6 +551,7 @@ final class DefectRoutesTest extends TestCase
             'location_description' => 'Sem acesso ao ponto de inspeção.',
             'comment' => 'Comentário presente.',
             'recommendation' => 'Revisar na próxima visita.',
+            ...$this->gutScores(),
             'assessment_action' => 'complete',
         ])->assertSessionHasErrors('reason');
     }
@@ -552,6 +563,7 @@ final class DefectRoutesTest extends TestCase
         $this->actingAs($admin)->post(route('inspections.defects.store', $firstInspection), [
             'title' => 'Avaria original',
             'comment' => 'Registrada.',
+            ...$this->gutScores(),
             'assessment_action' => 'complete',
         ])->assertRedirect();
 
@@ -598,6 +610,7 @@ final class DefectRoutesTest extends TestCase
         $this->actingAs($admin)->post(route('inspections.defects.store', $firstInspection), [
             'title' => 'Avaria a acompanhar',
             'comment' => 'Registrada.',
+            ...$this->gutScores(),
             'assessment_action' => 'complete',
         ])->assertRedirect();
 
@@ -639,12 +652,14 @@ final class DefectRoutesTest extends TestCase
         $this->actingAs($admin)->post(route('inspections.defects.store', $inspection), [
             'title' => 'Avaria com evidência',
             'comment' => 'Registro inicial.',
+            ...$this->gutScores(),
             'assessment_action' => 'complete',
         ])->assertRedirect();
 
         $assessment = DefectAssessment::query()->firstOrFail();
         $response = $this->actingAs($admin)->post(route('defect-assessments.photos.store', $assessment), [
-            'file' => UploadedFile::fake()->image('fissura.jpg', 1200, 800),
+            'file' => UploadedFile::fake()->image('fissura.jpg', 1200, 800)->size(3000),
+            'captured_at' => '2026-08-24T14:30:00-03:00',
         ]);
 
         $response->assertRedirect();
@@ -654,10 +669,12 @@ final class DefectRoutesTest extends TestCase
         $this->assertSame('pending', $photo->processing_status->value);
         $this->assertSame('detail', $photo->photo_type->value);
         $this->assertNull($photo->caption);
-        $this->assertNull($photo->captured_at);
+        $this->assertSame(strtotime('2026-08-24T14:30:00-03:00'), $photo->captured_at?->getTimestamp());
+        $this->assertGreaterThan(2 * 1024 * 1024, $photo->original_size);
         $this->assertNotNull($photo->original_path);
         Storage::disk('inspection_photos')->assertExists($photo->original_path);
-        Queue::assertPushed(ProcessAssessmentPhoto::class, fn (ProcessAssessmentPhoto $job): bool => $job->photoId === $photo->id);
+        Queue::assertPushed(ProcessAssessmentPhoto::class, fn (ProcessAssessmentPhoto $job): bool => $job->photoId === $photo->id
+            && $job->queue === 'images');
     }
 
     public function test_user_can_reorder_retry_and_remove_assessment_photos(): void
@@ -669,6 +686,7 @@ final class DefectRoutesTest extends TestCase
         $this->actingAs($admin)->post(route('inspections.defects.store', $inspection), [
             'title' => 'Avaria fotografada',
             'comment' => 'Registro inicial.',
+            ...$this->gutScores(),
             'assessment_action' => 'complete',
         ])->assertRedirect();
         $assessment = DefectAssessment::query()->firstOrFail();
@@ -714,6 +732,7 @@ final class DefectRoutesTest extends TestCase
         $this->actingAs($admin)->post(route('inspections.defects.store', $inspection), [
             'title' => 'Avaria que exige evidência',
             'comment' => 'Registro inicial.',
+            ...$this->gutScores(),
             'assessment_action' => 'complete',
         ])->assertRedirect();
         $assessment = DefectAssessment::query()->firstOrFail();
@@ -789,6 +808,22 @@ final class DefectRoutesTest extends TestCase
             ->create([
                 'defect_code_prefix' => 'VT009',
             ]);
+        $category = app(ProvisionDefaultDefectTaxonomy::class)->handle($organization->id);
+
+        foreach ([GutCriterion::Gravity, GutCriterion::Urgency, GutCriterion::Trend] as $criterion) {
+            DefectCategoryGutOption::factory()->create([
+                'organization_id' => $organization->id,
+                'defect_category_id' => $category->id,
+                'criterion' => $criterion,
+                'score' => 1,
+            ]);
+        }
+        $category->classifications()->orderBy('position')->get()->each(
+            fn ($classification, int $index) => $classification->update([
+                'lower_limit' => $index + 1,
+                'upper_limit' => $index + 1,
+            ]),
+        );
         $inspection = Inspection::factory()
             ->forEquipment($equipment)
             ->create([
@@ -810,5 +845,11 @@ final class DefectRoutesTest extends TestCase
         $inspection->refresh();
 
         return [$organization, $admin, $equipment, $inspection];
+    }
+
+    /** @return array{gravity:int,urgency:int,trend:int} */
+    private function gutScores(): array
+    {
+        return ['gravity' => 1, 'urgency' => 1, 'trend' => 1];
     }
 }

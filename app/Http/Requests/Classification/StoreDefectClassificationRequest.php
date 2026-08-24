@@ -45,6 +45,8 @@ final class StoreDefectClassificationRequest extends FormRequest
             'color' => ['required', 'string', 'regex:/^#[0-9A-F]{6}$/'],
             'position' => ['nullable', 'integer', 'min:1'],
             'severity_rank' => ['nullable', 'integer', 'min:1'],
+            'lower_limit' => ['required', 'integer', 'min:0', 'max:281462092005375', 'lte:upper_limit'],
+            'upper_limit' => ['required', 'integer', 'min:0', 'max:281462092005375', 'gte:lower_limit'],
             'status' => ['nullable', Rule::in(['active', 'inactive'])],
         ];
     }
@@ -54,6 +56,7 @@ final class StoreDefectClassificationRequest extends FormRequest
         return [
             'color.required' => 'Selecione uma cor para a classificação.',
             'color.regex' => 'Informe uma cor hexadecimal válida no formato #RRGGBB.',
+            'upper_limit.gte' => 'O limite superior deve ser maior ou igual ao limite inferior.',
         ];
     }
 }

@@ -55,6 +55,16 @@ function updateColor(value) {
                 <p class="mt-1 text-xs text-slate-500">Menor número representa maior criticidade.</p>
                 <p v-if="form.errors.severity_rank" class="mt-1 text-xs text-rose-600">{{ form.errors.severity_rank }}</p>
             </label>
+            <label class="block">
+                <span class="text-sm font-semibold text-slate-700">Limite inferior</span>
+                <input v-model.number="form.lower_limit" type="number" min="0" step="1" required class="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm">
+                <p v-if="form.errors.lower_limit" class="mt-1 text-xs text-rose-600">{{ form.errors.lower_limit }}</p>
+            </label>
+            <label class="block">
+                <span class="text-sm font-semibold text-slate-700">Limite superior</span>
+                <input v-model.number="form.upper_limit" type="number" min="0" step="1" required class="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm">
+                <p v-if="form.errors.upper_limit" class="mt-1 text-xs text-rose-600">{{ form.errors.upper_limit }}</p>
+            </label>
             <fieldset class="md:col-span-2">
                 <legend class="text-sm font-semibold text-slate-700">Cor</legend>
                 <div class="mt-1.5 flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:flex-row sm:items-center">

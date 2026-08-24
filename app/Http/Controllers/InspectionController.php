@@ -147,7 +147,6 @@ final class InspectionController extends Controller
             'cancel_url' => route('inspections.index'),
             'equipment' => $this->availableEquipmentOptions($tenant),
             'released_inspections' => $this->releasedInspectionOptions($tenant),
-            'inspection_types' => InspectionType::options(),
         ]);
     }
 
@@ -529,7 +528,6 @@ final class InspectionController extends Controller
             'inspection' => $this->inspectionDetailPayload($request, $inspection),
             'action' => route('inspections.update', $inspection),
             'cancel_url' => route('inspections.show', $inspection),
-            'inspection_types' => InspectionType::options(),
         ]);
     }
 
@@ -696,6 +694,7 @@ final class InspectionController extends Controller
                 'status' => $inspection->status->value,
                 'released_at' => $inspection->released_at?->format('d/m/Y'),
             ])
+            ->unique('equipment_id')
             ->values()
             ->all();
     }

@@ -66,7 +66,8 @@ Nas colunas de dimensão, **Concluída** significa que aquela dimensão terminou
 | 10 | `10-REVISAO-APROVACAO-E-AUDITORIA.md` | Implementar controle técnico e rastreabilidade | Pendente | Pendente | Pendente | Pendente |
 | 11 | `11-RELATORIO-PDF.md` | Gerar o relatório simplificado do MVP | Pendente | Pendente | Pendente | Pendente |
 | 12 | `12-TESTES-E-SEGURANCA.md` | Cobrir regras críticas, permissões e isolamento | Pendente | Pendente | Pendente | Pendente |
-| 13 | `13-DEPLOY-HETZNER.md` | Preparar ambiente de produção, filas, backups e storage | Pendente | Pendente | Pendente | Pendente |
+| 13 | `13-DEPLOY-HETZNER.md` | Preparar ambiente de produção, filas, backups e storage | Concluída | Concluída — Horizon e proteção de imagens | Parcial | Em validação — provisionamento do VPS pendente |
+| 13A | `13A-PASSO-A-PASSO-DEPLOY-PRODUCAO.md` | Orientar o responsável pelo primeiro deploy e pelas atualizações | Concluída | Não se aplica | Parcial | Em validação — execução no VPS pendente |
 | 14 | `14-ROADMAP-POS-MVP.md` | Planejar TAC, REC, desenhos, IA e SaaS comercial | Pendente | Pendente | Pendente | Pendente |
 
 ## Estrutura obrigatória de cada documento

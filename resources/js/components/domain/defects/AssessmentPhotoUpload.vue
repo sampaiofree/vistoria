@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, onBeforeUnmount, ref } from 'vue';
 import { router } from '@inertiajs/vue3';
 
 const props = defineProps({
@@ -9,11 +9,15 @@ const props = defineProps({
 const maxFiles = 10;
 const maxFileSize = 25 * 1024 * 1024;
 const acceptedTypes = ['image/jpeg', 'image/png', 'image/webp'];
-const fileInput = ref(null);
+const acceptedTypesAttribute = acceptedTypes.join(',');
+const cameraInput = ref(null);
+const galleryInput = ref(null);
 const queue = ref([]);
 const selectionError = ref('');
 const processing = ref(false);
 const currentPosition = ref(0);
+const uploadTotal = ref(0);
+let queueSequence = 0;
 
 const waitingCount = computed(() => queue.value.filter((item) => item.status === 'waiting').length);
 const sentCount = computed(() => queue.value.filter((item) => item.status === 'sent').length);
@@ -57,30 +61,83 @@ function validationError(file) {
     return null;
 }
 
-function selectFiles(event) {
+function releasePreview(item) {
+    if (!item.previewUrl) return;
+
+    URL.revokeObjectURL(item.previewUrl);
+    item.previewUrl = null;
+}
+
+function clearQueue() {
+    queue.value.forEach(releasePreview);
+    queue.value = [];
+}
+
+function resetCompletedBatch() {
+    if (queue.value.length > 0 && queue.value.every((item) => ['sent', 'failed'].includes(item.status))) {
+        clearQueue();
+    }
+}
+
+function selectFiles(event, source) {
     if (processing.value) return;
 
     const files = Array.from(event.target.files ?? []);
     selectionError.value = '';
 
-    if (files.length > maxFiles) {
-        queue.value = [];
-        selectionError.value = `Selecione no máximo ${maxFiles} imagens por envio.`;
+    if (files.length === 0) return;
+
+    resetCompletedBatch();
+
+    const remainingSlots = maxFiles - queue.value.length;
+
+    if (files.length > remainingSlots) {
+        selectionError.value = remainingSlots > 0
+            ? `Você pode adicionar mais ${remainingSlots} ${remainingSlots === 1 ? 'imagem' : 'imagens'} neste envio.`
+            : `Selecione no máximo ${maxFiles} imagens por envio.`;
         event.target.value = '';
 
         return;
     }
 
-    queue.value = files.map((file, index) => {
+    const capturedAt = source === 'camera' ? new Date().toISOString() : null;
+    const newItems = files.map((file) => {
         const error = validationError(file);
+        queueSequence += 1;
 
         return {
-            id: `${file.name}-${file.size}-${file.lastModified}-${index}`,
+            id: `${Date.now()}-${queueSequence}`,
             file,
+            source,
+            capturedAt,
+            previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
             status: error ? 'failed' : 'waiting',
             error,
         };
     });
+
+    queue.value.push(...newItems);
+    event.target.value = '';
+}
+
+function chooseCamera() {
+    cameraInput.value?.click();
+}
+
+function chooseGallery() {
+    galleryInput.value?.click();
+}
+
+function removeItem(id) {
+    if (processing.value) return;
+
+    const index = queue.value.findIndex((item) => item.id === id);
+
+    if (index === -1 || !['waiting', 'failed'].includes(queue.value[index].status)) return;
+
+    releasePreview(queue.value[index]);
+    queue.value.splice(index, 1);
+    selectionError.value = '';
 }
 
 function submit() {
@@ -88,6 +145,7 @@ function submit() {
 
     processing.value = true;
     currentPosition.value = 0;
+    uploadTotal.value = waitingCount.value;
     uploadNext();
 }
 
@@ -97,7 +155,8 @@ function uploadNext() {
     if (index === -1) {
         processing.value = false;
         currentPosition.value = 0;
-        if (fileInput.value) fileInput.value.value = '';
+        uploadTotal.value = 0;
+        queue.value.forEach(releasePreview);
 
         return;
     }
@@ -105,9 +164,15 @@ function uploadNext() {
     const item = queue.value[index];
     item.status = 'uploading';
     item.error = null;
-    currentPosition.value = sentCount.value + failedCount.value + 1;
+    currentPosition.value += 1;
 
-    router.post(props.action, { file: item.file }, {
+    const payload = { file: item.file };
+
+    if (item.capturedAt) {
+        payload.captured_at = item.capturedAt;
+    }
+
+    router.post(props.action, payload, {
         forceFormData: true,
         preserveScroll: true,
         preserveState: true,
@@ -122,6 +187,8 @@ function uploadNext() {
         onFinish: () => uploadNext(),
     });
 }
+
+onBeforeUnmount(clearQueue);
 </script>
 
 <template>
@@ -132,25 +199,76 @@ function uploadNext() {
                 <p class="mt-1 text-xs leading-5 text-slate-600">Selecione até 10 imagens JPG, PNG ou WebP, com no máximo 25 MB cada.</p>
             </div>
             <button type="submit" :disabled="processing || waitingCount === 0" class="inline-flex min-h-10 items-center rounded-xl bg-teal-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-50">
-                {{ processing ? `Enviando ${currentPosition}/${queue.length}…` : `Enviar ${waitingCount} ${waitingCount === 1 ? 'foto' : 'fotos'}` }}
+                {{ processing ? `Enviando ${currentPosition}/${uploadTotal}…` : `Enviar ${waitingCount} ${waitingCount === 1 ? 'foto' : 'fotos'}` }}
             </button>
         </div>
         <div class="mt-4">
-            <label class="block">
-                <span class="text-xs font-bold uppercase tracking-wider text-slate-600">Arquivo</span>
-                <input ref="fileInput" type="file" multiple accept="image/jpeg,image/png,image/webp" :disabled="processing" class="mt-1.5 block w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 disabled:cursor-not-allowed disabled:bg-slate-100" @change="selectFiles">
-                <p v-if="selectionError" class="mt-1.5 text-xs font-medium text-rose-600">{{ selectionError }}</p>
-            </label>
+            <span class="text-xs font-bold uppercase tracking-wider text-slate-600">Origem da fotografia</span>
+            <div class="mt-1.5 flex flex-wrap gap-2">
+                <input
+                    ref="cameraInput"
+                    type="file"
+                    :accept="acceptedTypesAttribute"
+                    capture="environment"
+                    :disabled="processing"
+                    class="sr-only"
+                    @change="selectFiles($event, 'camera')"
+                >
+                <button
+                    type="button"
+                    :disabled="processing"
+                    class="camera-action min-h-11 items-center rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    @click="chooseCamera"
+                >
+                    Tirar foto
+                </button>
+
+                <input
+                    ref="galleryInput"
+                    type="file"
+                    multiple
+                    :accept="acceptedTypesAttribute"
+                    :disabled="processing"
+                    class="sr-only"
+                    @change="selectFiles($event, 'gallery')"
+                >
+                <button
+                    type="button"
+                    :disabled="processing"
+                    class="inline-flex min-h-11 items-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:text-slate-950 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:opacity-50"
+                    @click="chooseGallery"
+                >
+                    Escolher da galeria
+                </button>
+            </div>
+            <p class="mt-2 text-xs leading-5 text-slate-500">No celular, “Tirar foto” solicita a câmera traseira quando o navegador oferece suporte.</p>
+            <p v-if="selectionError" class="mt-1.5 text-xs font-medium text-rose-600">{{ selectionError }}</p>
         </div>
 
         <div v-if="queue.length" class="mt-4 space-y-2" aria-live="polite">
-            <div v-for="item in queue" :key="item.id" class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm">
-                <div class="min-w-0">
-                    <p class="truncate font-medium text-slate-800">{{ item.file.name }}</p>
-                    <p class="mt-0.5 text-xs text-slate-500">{{ fileSize(item.file.size) }}</p>
-                    <p v-if="item.error" class="mt-1 text-xs font-medium text-rose-600">{{ item.error }}</p>
+            <div v-for="item in queue" :key="item.id" class="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm">
+                <div class="flex min-w-0 items-center gap-3">
+                    <img v-if="item.previewUrl" :src="item.previewUrl" alt="Prévia da fotografia selecionada" class="h-16 w-20 shrink-0 rounded-lg bg-slate-100 object-cover">
+                    <div v-else class="flex h-16 w-20 shrink-0 items-center justify-center rounded-lg bg-slate-100 px-2 text-center text-[10px] font-semibold uppercase text-slate-500">
+                        {{ item.source === 'camera' ? 'Câmera' : 'Imagem' }}
+                    </div>
+                    <div class="min-w-0">
+                        <p class="truncate font-medium text-slate-800">{{ item.file.name }}</p>
+                        <p class="mt-0.5 text-xs text-slate-500">{{ fileSize(item.file.size) }} · {{ item.source === 'camera' ? 'Câmera' : 'Galeria' }}</p>
+                        <p v-if="item.error" class="mt-1 text-xs font-medium text-rose-600">{{ item.error }}</p>
+                    </div>
                 </div>
-                <span class="rounded-full px-2.5 py-1 text-xs font-semibold" :class="statusClasses(item.status)">{{ statusLabel(item.status) }}</span>
+                <div class="flex shrink-0 flex-col items-end gap-2">
+                    <span class="rounded-full px-2.5 py-1 text-xs font-semibold" :class="statusClasses(item.status)">{{ statusLabel(item.status) }}</span>
+                    <button
+                        v-if="!processing && ['waiting', 'failed'].includes(item.status)"
+                        type="button"
+                        class="text-xs font-semibold text-rose-700 hover:text-rose-800"
+                        @click="removeItem(item.id)"
+                    >
+                        Remover
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -159,3 +277,15 @@ function uploadNext() {
         </p>
     </form>
 </template>
+
+<style scoped>
+.camera-action {
+    display: none;
+}
+
+@media (hover: none) and (pointer: coarse) {
+    .camera-action {
+        display: inline-flex;
+    }
+}
+</style>

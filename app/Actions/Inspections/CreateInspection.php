@@ -43,7 +43,7 @@ final class CreateInspection
 
             if (! $equipment->canReceiveInspection()) {
                 throw ValidationException::withMessages([
-                    'equipment' => 'O equipamento não pode receber nova inspeção.',
+                    'equipment_id' => 'O equipamento não pode receber nova inspeção.',
                 ]);
             }
 
@@ -58,16 +58,14 @@ final class CreateInspection
 
             if ($hasOpenInspection) {
                 throw ValidationException::withMessages([
-                    'equipment' => 'O equipamento já possui uma inspeção aberta.',
+                    'equipment_id' => 'O equipamento já possui uma inspeção aberta.',
                 ]);
             }
 
-            $type = InspectionType::from($data['inspection_type']);
-            $previousInspection = $this->resolvePreviousInspection(
-                $equipment,
-                $type,
-                $data['previous_inspection_id'] ?? null,
-            );
+            $previousInspection = $this->resolvePreviousInspection($equipment);
+            $type = $previousInspection === null
+                ? InspectionType::Initial
+                : InspectionType::Reinspection;
 
             $inspection = Inspection::query()->create([
                 'organization_id' => $this->tenant->id(),
@@ -114,31 +112,14 @@ final class CreateInspection
         });
     }
 
-    private function resolvePreviousInspection(
-        Equipment $equipment,
-        InspectionType $type,
-        mixed $previousInspectionId,
-    ): ?Inspection {
-        if ($type === InspectionType::Initial) {
-            if ($previousInspectionId !== null) {
-                throw ValidationException::withMessages([
-                    'previous_inspection_id' => 'Inspeção inicial não pode possuir inspeção anterior.',
-                ]);
-            }
-
-            return null;
-        }
-
-        if ($previousInspectionId === null) {
-            throw ValidationException::withMessages([
-                'previous_inspection_id' => 'Selecione a inspeção anterior.',
-            ]);
-        }
-
+    private function resolvePreviousInspection(Equipment $equipment): ?Inspection
+    {
         return Inspection::query()
             ->where('organization_id', $this->tenant->id())
             ->where('equipment_id', $equipment->getKey())
             ->where('status', InspectionStatus::Released->value)
-            ->findOrFail($previousInspectionId);
+            ->orderByDesc('released_at')
+            ->orderByDesc('id')
+            ->first();
     }
 }

@@ -55,6 +55,8 @@ final class DefectClassificationController extends Controller
                 'color' => $classification->color,
                 'position' => $classification->position,
                 'severity_rank' => $classification->severity_rank,
+                'lower_limit' => $classification->lower_limit,
+                'upper_limit' => $classification->upper_limit,
             ],
             'category' => [
                 'public_id' => $classification->category->public_id,

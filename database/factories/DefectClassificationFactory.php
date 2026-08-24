@@ -27,6 +27,8 @@ final class DefectClassificationFactory extends Factory
             'status' => RegistrationStatus::Active,
             'position' => 1,
             'severity_rank' => null,
+            'lower_limit' => null,
+            'upper_limit' => null,
             'created_by' => null,
             'updated_by' => null,
         ];

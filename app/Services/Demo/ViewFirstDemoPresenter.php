@@ -206,17 +206,17 @@ class ViewFirstDemoPresenter
             'gut' => $technical['gut'],
             'gut_options' => $this->gutOptionsPayload($category),
             'gut_snapshot' => $assessment->gut_snapshot,
-            'manual_classifications' => $category?->classifications
+            'gut_classification_ranges' => $category?->classifications
                 ?->filter(fn ($classification): bool => $classification->isActive())
+                ->filter(fn ($classification): bool => $classification->lower_limit !== null && $classification->upper_limit !== null)
                 ->map(fn ($classification): array => [
                     'id' => $classification->id,
                     'public_id' => $classification->public_id,
                     'code' => $classification->code,
                     'name' => $classification->name,
-                    'description' => $classification->description,
-                    'position' => $classification->position,
-                    'severity_rank' => $classification->severity_rank,
                     'color' => $classification->color,
+                    'lower_limit' => $classification->lower_limit,
+                    'upper_limit' => $classification->upper_limit,
                 ])
                 ->values()
                 ->all() ?? [],
@@ -295,9 +295,6 @@ class ViewFirstDemoPresenter
                 'gut_url' => $canEdit && $category !== null && $this->hasGutOptions($category)
                     ? route('defect-assessments.gut.update', $assessment)
                     : null,
-                'manual_classification_url' => $canEdit && $category !== null
-                    ? route('defect-assessments.manual-classification.update', $assessment)
-                    : null,
                 'quantity_url' => $canEdit
                     ? route('defect-assessments.quantity.update', $assessment)
                     : null,
@@ -345,7 +342,10 @@ class ViewFirstDemoPresenter
 
     private function hasGutOptions(?DefectCategory $category): bool
     {
-        return $category !== null && $category->gutOptions->isNotEmpty();
+        return $category !== null
+            && collect(['gravity', 'urgency', 'trend'])
+                ->every(fn (string $criterion): bool => $category->gutOptions
+                    ->contains(fn ($option): bool => $option->criterion->value === $criterion));
     }
 
     /**

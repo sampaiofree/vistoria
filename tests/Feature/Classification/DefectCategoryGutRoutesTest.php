@@ -15,6 +15,7 @@ use App\Models\Defect;
 use App\Models\DefectAssessment;
 use App\Models\DefectCategory;
 use App\Models\DefectCategoryGutOption;
+use App\Models\DefectClassification;
 use App\Models\Equipment;
 use App\Models\Inspection;
 use App\Models\InspectionResponsible;
@@ -108,6 +109,18 @@ final class DefectCategoryGutRoutesTest extends TestCase
             'score' => 4,
             'color' => '#123456',
         ]);
+        DefectCategoryGutOption::factory()->create([
+            'organization_id' => $organization->id,
+            'defect_category_id' => $category->id,
+            'criterion' => GutCriterion::Trend,
+            'score' => 1,
+            'color' => '#654321',
+        ]);
+        $classification = DefectClassification::factory()->for($category, 'category')->create([
+            'organization_id' => $organization->id,
+            'lower_limit' => 0,
+            'upper_limit' => 0,
+        ]);
 
         $equipment = Equipment::factory()->for($organization)->create();
         $inspection = Inspection::factory()->forEquipment($equipment)->create([
@@ -130,13 +143,14 @@ final class DefectCategoryGutRoutesTest extends TestCase
             'condition' => DefectAssessmentCondition::Worsened->value,
             'gravity' => 0,
             'urgency' => 4,
-            'trend' => null,
+            'trend' => 1,
         ]);
 
         $this->assertSame(0, $updated->gravity);
         $this->assertSame(4, $updated->urgency);
-        $this->assertNull($updated->trend);
-        $this->assertNull($updated->gut_score);
+        $this->assertSame(1, $updated->trend);
+        $this->assertSame(0, $updated->gut_score);
+        $this->assertSame($classification->id, $updated->defect_classification_id);
         $this->assertSame('#000000', $updated->gut_snapshot['criteria']['gravity']['color']);
         $this->assertSame('defect_category', $updated->gut_snapshot['source']);
 
@@ -145,6 +159,7 @@ final class DefectCategoryGutRoutesTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->where('gut_options.gravity.0.score', 0)
                 ->where('gut_options.urgency.0.color', '#123456')
+                ->where('gut_options.trend.0.color', '#654321')
                 ->where('gut_snapshot.criteria.gravity.score', 0)
                 ->where('capabilities.gut_url', route('defect-assessments.gut.update', $assessment)));
     }

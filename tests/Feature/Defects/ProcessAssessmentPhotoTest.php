@@ -15,6 +15,7 @@ use App\Models\Organization;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use PHPUnit\Framework\Attributes\DataProvider;
+use RuntimeException;
 use Tests\TestCase;
 
 final class ProcessAssessmentPhotoTest extends TestCase
@@ -76,6 +77,27 @@ final class ProcessAssessmentPhotoTest extends TestCase
         $this->assertSame(288, $photo->thumbnail_height);
         $this->assertImageDimensions($photo->optimized_path, 500, 300);
         $this->assertImageDimensions($photo->thumbnail_path, 480, 288);
+    }
+
+    public function test_processing_rejects_unsafe_dimensions_without_deleting_the_original(): void
+    {
+        Storage::fake('inspection_photos');
+        config()->set('photos.limits.max_pixels', 10_000);
+        $photo = $this->photoWithImage(200, 100);
+
+        try {
+            (new ProcessAssessmentPhoto($photo->id))->handle();
+            $this->fail('O processamento deveria rejeitar a imagem acima do limite seguro.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame(config('photos.processing.unsafe_image_message'), $exception->getMessage());
+        }
+
+        $photo->refresh();
+        $this->assertSame(PhotoProcessingStatus::Failed, $photo->processing_status);
+        $this->assertSame(config('photos.processing.unsafe_image_message'), $photo->processing_error);
+        Storage::disk('inspection_photos')->assertExists($photo->original_path);
+        Storage::disk('inspection_photos')->assertMissing(dirname($photo->original_path).'/optimized.webp');
+        Storage::disk('inspection_photos')->assertMissing(dirname($photo->original_path).'/thumbnail.webp');
     }
 
     private function photoWithImage(int $width, int $height, ?int $orientation = null): AssessmentPhoto

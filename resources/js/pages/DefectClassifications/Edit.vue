@@ -4,7 +4,7 @@ import AppLayout from '@/components/ui/AppLayout.vue';
 import DefectClassificationForm from '@/components/domain/classification/DefectClassificationForm.vue';
 
 const props = defineProps({ classification: { type: Object, required: true }, category: { type: Object, required: true }, action: { type: String, required: true }, cancel_url: { type: String, required: true } });
-const form = useForm({ code: props.classification.code, name: props.classification.name, description: props.classification.description ?? '', color: props.classification.color ?? '', position: props.classification.position, severity_rank: props.classification.severity_rank });
+const form = useForm({ code: props.classification.code, name: props.classification.name, description: props.classification.description ?? '', color: props.classification.color ?? '', position: props.classification.position, severity_rank: props.classification.severity_rank, lower_limit: props.classification.lower_limit ?? '', upper_limit: props.classification.upper_limit ?? '' });
 function submit() { form.patch(props.action); }
 </script>
 

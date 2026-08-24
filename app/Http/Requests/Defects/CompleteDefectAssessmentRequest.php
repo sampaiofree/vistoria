@@ -60,11 +60,6 @@ final class CompleteDefectAssessmentRequest extends FormRequest
             'internal_notes' => ['nullable', 'string', 'max:10000'],
             'item_description' => ['nullable', 'string', 'max:180'],
             'project_reference' => ['nullable', 'string', 'max:180'],
-            'defect_classification_id' => [
-                'nullable',
-                'integer',
-                Rule::exists('defect_classifications', 'id')->where('organization_id', $this->user()?->organization_id),
-            ],
             'impacts_activity' => ['nullable', 'boolean'],
             'gravity' => ['nullable', 'integer', 'min:0', 'max:65535'],
             'urgency' => ['nullable', 'integer', 'min:0', 'max:65535'],

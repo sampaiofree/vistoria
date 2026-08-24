@@ -2,8 +2,6 @@
 
 namespace App\Http\Requests\Inspections;
 
-use App\Enums\InspectionStatus;
-use App\Enums\InspectionType;
 use App\Models\Inspection;
 use App\Support\TextNormalizer;
 use Illuminate\Foundation\Http\FormRequest;
@@ -19,12 +17,6 @@ final class StoreInspectionRequest extends FormRequest
     protected function prepareForValidation(): void
     {
         $this->merge([
-            'inspection_type' => is_string($this->input('inspection_type'))
-                ? mb_strtolower(trim($this->input('inspection_type')))
-                : $this->input('inspection_type'),
-            'previous_inspection_id' => blank($this->input('previous_inspection_id'))
-                ? null
-                : $this->input('previous_inspection_id'),
             'service_order' => TextNormalizer::nullableText($this->input('service_order')),
             'external_report_number' => TextNormalizer::nullableText($this->input('external_report_number')),
             'procedure_number' => TextNormalizer::nullableText($this->input('procedure_number')),
@@ -46,19 +38,6 @@ final class StoreInspectionRequest extends FormRequest
                 Rule::exists('equipments', 'id')
                     ->where(fn ($query) => $query
                         ->where('organization_id', $organizationId)),
-            ],
-            'inspection_type' => [
-                'required',
-                Rule::enum(InspectionType::class),
-            ],
-            'previous_inspection_id' => [
-                'nullable',
-                'integer',
-                Rule::exists('inspections', 'id')
-                    ->where(fn ($query) => $query
-                        ->where('organization_id', $organizationId)
-                        ->where('equipment_id', $this->input('equipment_id'))
-                        ->where('status', InspectionStatus::Released->value)),
             ],
             'service_order' => ['nullable', 'string', 'max:100'],
             'external_report_number' => ['nullable', 'string', 'max:150'],

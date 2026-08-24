@@ -68,10 +68,6 @@ final class InspectionPagesTest extends TestCase
                 'id' => 'inspection-1', 'equipment_id' => 'eq-1', 'number' => 'INS-2025-000001',
                 'status' => 'released', 'released_at' => '10/12/2025',
             ]],
-            'inspection_types' => [
-                ['value' => 'initial', 'label' => 'Inspeção inicial'],
-                ['value' => 'reinspection', 'label' => 'Reinspeção'],
-            ],
         ]));
 
         $this->get('/_test/inspections/create')
@@ -79,7 +75,6 @@ final class InspectionPagesTest extends TestCase
             ->component('Inspections/Create')
             ->has('equipment', 1)
             ->has('released_inspections', 1)
-            ->has('inspection_types', 2)
             ->where('released_inspections.0.status', 'released')
             ->where('released_inspections.0.equipment_id', 'eq-1'));
     }
@@ -159,10 +154,6 @@ final class InspectionPagesTest extends TestCase
             ],
             'action' => '/inspections/1',
             'cancel_url' => '/inspections/1',
-            'inspection_types' => [
-                ['value' => 'initial', 'label' => 'Inspeção inicial'],
-                ['value' => 'reinspection', 'label' => 'Reinspeção'],
-            ],
         ]));
 
         $this->get('/_test/inspections/edit')
@@ -173,8 +164,7 @@ final class InspectionPagesTest extends TestCase
                 ->where('inspection.scheduled_for_input', '2026-07-29')
                 ->where('inspection.service_order', 'OS-123')
                 ->missing('inspection.general_notes')
-                ->has('inspection.equipment.client')
-                ->has('inspection_types', 2));
+                ->has('inspection.equipment.client'));
     }
 
     public function test_correction_and_cancel_forms_require_justification(): void

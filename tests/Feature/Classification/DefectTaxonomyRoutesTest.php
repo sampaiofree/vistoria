@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Classification;
 
-use App\Actions\Classification\AssignDefectClassification;
 use App\Actions\Classification\ProvisionDefaultDefectTaxonomy;
+use App\Actions\Classification\SaveDefectAssessmentGut;
 use App\Enums\DefectAssessmentCondition;
+use App\Enums\GutCriterion;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
 use App\Enums\RegistrationStatus;
@@ -14,6 +15,7 @@ use App\Enums\UserAccountType;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
 use App\Models\DefectCategory;
+use App\Models\DefectCategoryGutOption;
 use App\Models\DefectClassification;
 use App\Models\Equipment;
 use App\Models\Inspection;
@@ -50,6 +52,8 @@ final class DefectTaxonomyRoutesTest extends TestCase
                 'color' => ' #ab 12cd ',
                 'position' => 1,
                 'severity_rank' => 1,
+                'lower_limit' => 0,
+                'upper_limit' => 25,
             ])
             ->assertRedirect(route('defect-categories.show', $category));
 
@@ -69,6 +73,8 @@ final class DefectTaxonomyRoutesTest extends TestCase
             'code' => 'TA-1',
             'name' => 'Leve',
             'position' => 1,
+            'lower_limit' => 0,
+            'upper_limit' => 25,
         ];
 
         $this->actingAs($admin)
@@ -119,6 +125,8 @@ final class DefectTaxonomyRoutesTest extends TestCase
             'name' => 'Leve atualizada',
             'position' => $classification->position,
             'severity_rank' => $classification->severity_rank,
+            'lower_limit' => 0,
+            'upper_limit' => 25,
         ];
 
         $this->actingAs($admin)
@@ -172,6 +180,8 @@ final class DefectTaxonomyRoutesTest extends TestCase
             'name' => $classification->name,
             'color' => '#AB12CD',
             'position' => $classification->position,
+            'lower_limit' => 0,
+            'upper_limit' => 25,
         ];
 
         $this->actingAs($member)
@@ -316,22 +326,43 @@ final class DefectTaxonomyRoutesTest extends TestCase
         $this->assertSame(RegistrationStatus::Active, $category->status);
     }
 
-    public function test_manual_classification_is_linked_to_assessment_and_snapshotted(): void
+    public function test_gut_classification_is_selected_automatically_and_snapshotted(): void
     {
         [$organization, $admin] = $this->tenant();
         app(TenantContext::class)->set($organization);
-        $category = app(ProvisionDefaultDefectTaxonomy::class)->handle($organization->id);
-        $classification = $category->classifications()->where('code', 'CV-2')->firstOrFail();
+        $category = DefectCategory::factory()->create(['organization_id' => $organization->id]);
+        foreach ([GutCriterion::Gravity, GutCriterion::Urgency, GutCriterion::Trend] as $criterion) {
+            DefectCategoryGutOption::factory()->create([
+                'organization_id' => $organization->id,
+                'defect_category_id' => $category->id,
+                'criterion' => $criterion,
+                'score' => 2,
+            ]);
+        }
+        $classification = DefectClassification::factory()->for($category, 'category')->create([
+            'organization_id' => $organization->id,
+            'code' => 'CV-2',
+            'color' => '#FFC000',
+            'lower_limit' => 8,
+            'upper_limit' => 8,
+        ]);
         $equipment = Equipment::factory()->for($organization)->create();
         $inspection = Inspection::factory()->forEquipment($equipment)->create(['status' => InspectionStatus::InProgress]);
         $defect = Defect::factory()->forEquipment($equipment, $inspection)->create(['defect_category_id' => $category->id]);
         $assessment = DefectAssessment::factory()->forDefect($defect, $inspection)->create(['condition' => DefectAssessmentCondition::Worsened]);
 
-        $updated = app(AssignDefectClassification::class)->handle($admin, $assessment, $classification->id);
+        $updated = app(SaveDefectAssessmentGut::class)->handle($admin, $assessment, [
+            'condition' => DefectAssessmentCondition::Worsened->value,
+            'gravity' => 2,
+            'urgency' => 2,
+            'trend' => 2,
+            'defect_classification_id' => null,
+        ]);
 
         $this->assertSame($classification->id, $updated->defect_classification_id);
         $this->assertSame('CV-2', $updated->classification_code);
-        $this->assertSame('manual', $updated->classification_snapshot['source']);
+        $this->assertSame(8, $updated->gut_score);
+        $this->assertSame('gut_range', $updated->classification_snapshot['source']);
         $this->assertSame('CV-2', $updated->classification_snapshot['code']);
 
         $this->actingAs($admin)

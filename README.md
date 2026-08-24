@@ -9,7 +9,9 @@ O projeto usa Laravel 13, Inertia, Vue 3, MySQL 8 e Vite. O escopo, as decisões
 - PHP 8.3 ou superior;
 - Composer 2;
 - Node conforme `.nvmrc`;
-- MySQL 8.
+- MySQL 8;
+- Redis com a extensão PHP `redis`;
+- Imagick; `pcntl` e `posix` para o Horizon.
 
 ## Instalação local
 
@@ -22,13 +24,51 @@ php artisan migrate --seed
 npm run build
 ```
 
+Confirme que o Redis local está disponível com `redis-cli ping`. O comando deve
+responder `PONG`. O `.env.example` já configura a fila Redis.
+
+### Administrador mestre de produção
+
+Após executar as migrations no ambiente de produção, crie o administrador mestre
+manualmente em um terminal seguro:
+
+```bash
+php artisan app:bootstrap-super-admin
+```
+
+O comando cria `sampaio.free@gmail.com` como superadministrador global, gera uma
+senha temporária forte e a exibe somente nessa execução. A conta será obrigada a
+trocar a senha no primeiro acesso. Se o comando for executado novamente, uma conta
+já configurada não terá a senha nem os dados alterados. Caso o e-mail já pertença
+a outro tipo de usuário, o comando falhará sem promover essa conta.
+
 Para desenvolvimento:
 
 ```bash
 composer run dev
 ```
 
+Esse comando inicia servidor HTTP, Horizon, logs e Vite. O painel de filas fica
+em `/horizon` e exige login como superadministrador ativo com senha definitiva.
+
+### Limite para fotografias
+
+O upload de fotografias aceita arquivos de até 25 MB. O arquivo `public/.user.ini`
+configura esse limite em ambientes PHP-FPM que respeitam configurações por diretório.
+No Laravel Herd, ajuste também `upload_max_filesize` e `post_max_size` na configuração
+da versão ativa do PHP. O servidor HTTP ou proxy reverso deve aceitar corpos de pelo
+menos 30 MB (por exemplo, `client_max_body_size 30M` no Nginx). Depois de alterar a
+configuração, reinicie o PHP-FPM e o servidor HTTP antes de validar o envio.
+
 As credenciais previsíveis do `DevelopmentSeeder` são criadas somente nos ambientes `local` e `testing`.
+
+## Produção
+
+O provisionamento de Redis, Horizon, Supervisor, cron, storage privado, backup e
+testes de aceite está documentado em
+[`docs/13-DEPLOY-HETZNER.md`](docs/13-DEPLOY-HETZNER.md). O roteiro operacional
+completo para repasse está em
+[`docs/13A-PASSO-A-PASSO-DEPLOY-PRODUCAO.md`](docs/13A-PASSO-A-PASSO-DEPLOY-PRODUCAO.md).
 
 ## Demonstração View First
 

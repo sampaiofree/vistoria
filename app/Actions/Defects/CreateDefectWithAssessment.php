@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Actions\Defects;
 
 use App\Actions\Classification\ProvisionDefaultDefectTaxonomy;
+use App\Actions\Classification\SaveDefectAssessmentGut;
 use App\Enums\DefectAssessmentCondition;
 use App\Enums\DefectAssessmentStatus;
 use App\Enums\DefectCategory;
@@ -29,6 +30,7 @@ final class CreateDefectWithAssessment
         private readonly TenantContext $tenant,
         private readonly DefectCodeGenerator $codeGenerator,
         private readonly CompleteDefectAssessment $completeAssessment,
+        private readonly SaveDefectAssessmentGut $saveGut,
         private readonly ProvisionDefaultDefectTaxonomy $taxonomy,
     ) {}
 
@@ -115,6 +117,13 @@ final class CreateDefectWithAssessment
             ]);
 
             if (($data['assessment_action'] ?? DefectAssessmentStatus::Draft->value) === DefectAssessmentStatus::Complete->value) {
+                $assessment = $this->saveGut->handle($actor, $assessment, [
+                    'condition' => $assessment->condition->value,
+                    'gravity' => $data['gravity'] ?? null,
+                    'urgency' => $data['urgency'] ?? null,
+                    'trend' => $data['trend'] ?? null,
+                ]);
+
                 $assessment = $this->completeAssessment->handle($actor, $assessment, $data);
             }
 

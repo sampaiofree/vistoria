@@ -1,4 +1,5 @@
 <script setup>
+import { computed, ref } from 'vue';
 import { Link, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/components/ui/AppLayout.vue';
 import Pagination from '@/components/ui/Pagination.vue';
@@ -46,11 +47,28 @@ const form = useForm({
     to: props.filters.to ?? props.filters.scheduled_to ?? '',
 });
 
+const filtersOpen = ref(false);
+const activeFilterCount = computed(() => [
+    'search',
+    'client',
+    'unit',
+    'equipment',
+    'status',
+    'type',
+    'responsible',
+    'responsibility',
+    'scheduled_from',
+    'scheduled_to',
+    'inspected_from',
+    'inspected_to',
+].filter((key) => String(form[key] ?? '').trim() !== '').length);
+
 function submit() {
     form.number = form.search;
     form.inspection_type = form.type;
     form.from = form.scheduled_from;
     form.to = form.scheduled_to;
+    filtersOpen.value = false;
     form.get('/inspections', {
         preserveScroll: true,
         preserveState: true,
@@ -85,7 +103,34 @@ function clear() {
         subtitle="Planejamento, execução e liberação de inspeções."
     >
         <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <form class="grid gap-3 md:grid-cols-2 xl:grid-cols-4" @submit.prevent="submit">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <button
+                    type="button"
+                    class="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
+                    :aria-expanded="filtersOpen"
+                    aria-controls="inspection-filters"
+                    @click="filtersOpen = !filtersOpen"
+                >
+                    Filtros
+                    <span
+                        v-if="activeFilterCount > 0"
+                        class="inline-flex min-w-5 items-center justify-center rounded-full bg-teal-600 px-1.5 py-0.5 text-xs font-bold text-white"
+                    >
+                        {{ activeFilterCount }}
+                    </span>
+                </button>
+
+                <Link v-if="capabilities.create" :href="create_url" class="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white">
+                    Nova inspeção
+                </Link>
+            </div>
+
+            <form
+                v-if="filtersOpen"
+                id="inspection-filters"
+                class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4"
+                @submit.prevent="submit"
+            >
                 <label class="text-sm font-medium text-slate-700">
                     Buscar
                     <input
@@ -189,11 +234,6 @@ function clear() {
                 </div>
             </form>
 
-            <div v-if="capabilities.create" class="mt-4 flex justify-end">
-                <Link :href="create_url" class="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white">
-                    Nova inspeção
-                </Link>
-            </div>
         </section>
 
         <section class="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">

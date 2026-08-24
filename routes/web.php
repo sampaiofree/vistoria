@@ -245,11 +245,6 @@ Route::middleware([
         )->name('defect-assessments.gut.update');
 
         Route::put(
-            'defect-assessments/{defectAssessment}/classification',
-            [DefectAssessmentController::class, 'assignClassification'],
-        )->name('defect-assessments.manual-classification.update');
-
-        Route::put(
             'defect-assessments/{defectAssessment}/quantity',
             [DefectAssessmentController::class, 'updateQuantity'],
         )->name('defect-assessments.quantity.update');

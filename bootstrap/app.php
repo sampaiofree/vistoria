@@ -18,8 +18,9 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withSchedule(function (Schedule $schedule): void {
-        $schedule->command('photos:cleanup-abandoned')->dailyAt('03:00');
-        $schedule->command('inspection-maps:cleanup-deleted')->dailyAt('03:30');
+        $schedule->command('horizon:snapshot')->everyFiveMinutes()->withoutOverlapping();
+        $schedule->command('photos:cleanup-abandoned')->dailyAt('03:00')->withoutOverlapping();
+        $schedule->command('inspection-maps:cleanup-deleted')->dailyAt('03:30')->withoutOverlapping();
     })
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([

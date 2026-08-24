@@ -37,12 +37,10 @@ final class InspectionRoutesTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Inspections/Create')
                 ->has('equipment', 1)
-                ->has('inspection_types', 2)
                 ->has('released_inspections', 0));
 
         $response = $this->actingAs($admin)->post(route('inspections.store'), [
             'equipment_id' => $equipment->id,
-            'inspection_type' => InspectionType::Initial->value,
             'scheduled_at' => '2026-07-30',
             'general_notes' => 'Notas da criação',
         ]);
@@ -88,6 +86,37 @@ final class InspectionRoutesTest extends TestCase
                 ->where('capabilities.transition', true)
                 ->has('transitions', 1)
                 ->where('transitions.0.key', 'cancel'));
+    }
+
+    public function test_company_admin_sees_equipment_error_when_an_open_inspection_already_exists(): void
+    {
+        $organization = Organization::factory()->create();
+        $admin = User::factory()
+            ->for($organization)
+            ->create([
+                'account_type' => UserAccountType::CompanyAdmin->value,
+            ]);
+        $equipment = Equipment::factory()
+            ->for($organization)
+            ->create();
+
+        Inspection::factory()
+            ->forEquipment($equipment)
+            ->create([
+                'status' => InspectionStatus::InProgress,
+            ]);
+
+        $this->actingAs($admin)
+            ->from(route('inspections.create'))
+            ->post(route('inspections.store'), [
+                'equipment_id' => $equipment->id,
+            ])
+            ->assertRedirect(route('inspections.create'))
+            ->assertSessionHasErrors([
+                'equipment_id' => 'O equipamento já possui uma inspeção aberta.',
+            ]);
+
+        $this->assertDatabaseCount('inspections', 1);
     }
 
     public function test_company_admin_can_edit_only_planned_inspection_fields_through_real_routes(): void
@@ -152,7 +181,7 @@ final class InspectionRoutesTest extends TestCase
         $this->assertSame('Notas antigas', $inspection->general_notes);
     }
 
-    public function test_company_admin_can_create_reinspection_only_from_a_released_previous_inspection(): void
+    public function test_company_admin_automatically_creates_reinspection_from_the_latest_released_inspection(): void
     {
         $organization = Organization::factory()->create();
         $admin = User::factory()
@@ -168,7 +197,13 @@ final class InspectionRoutesTest extends TestCase
             ->for($organization)
             ->create();
 
-        $releasedPrevious = Inspection::factory()
+        $olderReleasedPrevious = Inspection::factory()
+            ->forEquipment($equipment)
+            ->create([
+                'status' => InspectionStatus::Released,
+                'released_at' => now()->subDay(),
+            ]);
+        $latestReleasedPrevious = Inspection::factory()
             ->forEquipment($equipment)
             ->create([
                 'status' => InspectionStatus::Released,
@@ -185,39 +220,60 @@ final class InspectionRoutesTest extends TestCase
             ->post(route('inspections.store'), [
                 'equipment_id' => $equipment->id,
                 'inspection_type' => InspectionType::Initial->value,
-                'previous_inspection_id' => $releasedPrevious->id,
-            ])
-            ->assertSessionHasErrors('previous_inspection_id');
-
-        $this->actingAs($admin)
-            ->post(route('inspections.store'), [
-                'equipment_id' => $equipment->id,
-                'inspection_type' => InspectionType::Reinspection->value,
                 'previous_inspection_id' => $foreignReleasedPrevious->id,
-            ])
-            ->assertSessionHasErrors('previous_inspection_id');
-
-        $this->actingAs($admin)
-            ->post(route('inspections.store'), [
-                'equipment_id' => $equipment->id,
-                'inspection_type' => InspectionType::Reinspection->value,
-                'previous_inspection_id' => $releasedPrevious->id,
                 'scheduled_at' => '2026-07-30',
-                'general_notes' => 'Reinspeção de teste',
             ])
             ->assertRedirect();
 
         $reinspection = Inspection::query()
             ->where('organization_id', $organization->id)
             ->where('inspection_type', InspectionType::Reinspection)
-            ->where('previous_inspection_id', $releasedPrevious->id)
+            ->where('previous_inspection_id', $latestReleasedPrevious->id)
             ->firstOrFail();
 
         $this->assertSame($equipment->id, $reinspection->equipment_id);
         $this->assertSame(InspectionStatus::Planned, $reinspection->status);
         $this->assertSame('2026-07-30', $reinspection->scheduled_for?->toDateString());
         $this->assertNull($reinspection->general_notes);
-        $this->assertDatabaseCount('inspections', 3);
+        $this->assertNotSame($olderReleasedPrevious->id, $reinspection->previous_inspection_id);
+        $this->assertNotSame($foreignReleasedPrevious->id, $reinspection->previous_inspection_id);
+        $this->assertDatabaseCount('inspections', 4);
+    }
+
+    public function test_company_admin_ignores_canceled_and_foreign_inspections_when_determining_type(): void
+    {
+        $organization = Organization::factory()->create();
+        $otherOrganization = Organization::factory()->create();
+        $admin = User::factory()
+            ->for($organization)
+            ->create([
+                'account_type' => UserAccountType::CompanyAdmin->value,
+            ]);
+        $equipment = Equipment::factory()->for($organization)->create();
+        $otherEquipment = Equipment::factory()->for($otherOrganization)->create();
+
+        Inspection::factory()->forEquipment($equipment)->create([
+            'status' => InspectionStatus::Canceled,
+            'canceled_at' => now(),
+        ]);
+        Inspection::factory()->forEquipment($otherEquipment)->create([
+            'status' => InspectionStatus::Released,
+            'released_at' => now(),
+        ]);
+
+        $this->actingAs($admin)
+            ->post(route('inspections.store'), [
+                'equipment_id' => $equipment->id,
+            ])
+            ->assertRedirect();
+
+        $inspection = Inspection::query()
+            ->where('equipment_id', $equipment->id)
+            ->where('status', InspectionStatus::Planned)
+            ->firstOrFail();
+
+        $this->assertSame(InspectionType::Initial, $inspection->inspection_type);
+        $this->assertNull($inspection->previous_inspection_id);
     }
 
     public function test_company_admin_cannot_edit_inspection_after_it_starts_through_real_routes(): void

@@ -112,7 +112,8 @@ final class InspectionReportOverviewTest extends TestCase
 
         $first = InspectionOverviewPhoto::query()->firstOrFail();
         Storage::disk('inspection_photos')->assertExists($first->original_path);
-        Queue::assertPushed(ProcessInspectionOverviewPhoto::class, fn ($job): bool => $job->photoId === $first->id);
+        Queue::assertPushed(ProcessInspectionOverviewPhoto::class, fn ($job): bool => $job->photoId === $first->id
+            && $job->queue === 'images');
 
         $this->actingAs($admin)
             ->post($uploadUrl, ['file' => UploadedFile::fake()->image('substituta.png', 800, 600)])

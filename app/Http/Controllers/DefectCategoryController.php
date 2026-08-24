@@ -83,6 +83,8 @@ final class DefectCategoryController extends Controller
                     'status' => $classification->status->value,
                     'position' => $classification->position,
                     'severity_rank' => $classification->severity_rank,
+                    'lower_limit' => $classification->lower_limit,
+                    'upper_limit' => $classification->upper_limit,
                     'edit_url' => route('defect-classifications.edit', $classification),
                     'status_url' => route('defect-classifications.status', $classification),
                 ])->values(),

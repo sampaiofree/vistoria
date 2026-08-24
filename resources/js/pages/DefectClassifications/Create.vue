@@ -4,7 +4,7 @@ import AppLayout from '@/components/ui/AppLayout.vue';
 import DefectClassificationForm from '@/components/domain/classification/DefectClassificationForm.vue';
 
 const props = defineProps({ category: { type: Object, required: true }, action: { type: String, required: true }, cancel_url: { type: String, required: true } });
-const form = useForm({ code: '', name: '', description: '', color: '', position: 1, severity_rank: null });
+const form = useForm({ code: '', name: '', description: '', color: '', position: 1, severity_rank: null, lower_limit: '', upper_limit: '' });
 function submit() { form.post(props.action); }
 </script>
 

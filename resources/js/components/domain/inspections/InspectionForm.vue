@@ -23,10 +23,6 @@ const props = defineProps({
         type: Object,
         default: null,
     },
-    inspectionTypes: {
-        type: Array,
-        default: () => [],
-    },
     mode: {
         type: String,
         default: 'create',
@@ -39,11 +35,6 @@ const props = defineProps({
 
 const isEditing = computed(() => props.mode === 'edit' || props.inspection !== null);
 
-const defaultInspectionTypes = [
-    { value: 'initial', label: 'Inspeção inicial' },
-    { value: 'reinspection', label: 'Reinspeção' },
-];
-
 const form = useForm({
     equipment_id: props.inspection?.equipment_id ?? '',
     inspection_type: props.inspection?.inspection_type ?? 'initial',
@@ -55,27 +46,31 @@ const form = useForm({
     scheduled_for: props.inspection?.scheduled_for_input ?? '',
 });
 
-const inspectionTypes = computed(() => props.inspectionTypes.length > 0 ? props.inspectionTypes : defaultInspectionTypes);
-
 const previousOptions = computed(() => props.releasedInspections.filter((inspection) =>
     inspection.status === 'released' && String(inspection.equipment_id) === String(form.equipment_id),
 ));
 
+const latestReleasedInspection = computed(() => previousOptions.value[0] ?? null);
+const automaticInspectionType = computed(() => latestReleasedInspection.value === null ? 'initial' : 'reinspection');
+const automaticInspectionTypeLabel = computed(() => automaticInspectionType.value === 'reinspection' ? 'Reinspeção' : 'Inspeção inicial');
+
 const previousInspection = computed(() => {
     if (! isEditing.value) {
-        return previousOptions.value.find((inspection) => String(inspection.id) === String(form.previous_inspection_id)) ?? null;
+        return latestReleasedInspection.value;
     }
 
     return props.inspection?.previous_inspection ?? null;
 });
 
 watch(
-    () => [form.equipment_id, form.inspection_type],
+    () => form.equipment_id,
     () => {
         if (! isEditing.value) {
-            form.previous_inspection_id = '';
+            form.inspection_type = automaticInspectionType.value;
+            form.previous_inspection_id = latestReleasedInspection.value?.id ?? '';
         }
     },
+    { immediate: true },
 );
 
 function submit() {
@@ -148,35 +143,20 @@ function submit() {
                 <span v-if="form.errors.equipment_id" class="block text-xs text-rose-600">{{ form.errors.equipment_id }}</span>
             </label>
 
-            <label class="space-y-1.5 text-sm font-medium text-slate-700">
-                <span>Tipo</span>
-                <select v-model="form.inspection_type" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2">
-                    <option v-for="item in inspectionTypes" :key="item.value" :value="item.value">
-                        {{ item.label }}
-                    </option>
-                </select>
-            </label>
+            <div class="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Tipo definido automaticamente</p>
+                <p class="mt-1 font-semibold text-slate-900">
+                    {{ form.equipment_id ? automaticInspectionTypeLabel : 'Selecione o equipamento' }}
+                </p>
+            </div>
 
-            <label v-if="form.inspection_type === 'reinspection'" class="space-y-1.5 text-sm font-medium text-slate-700 md:col-span-2">
-                <span>Inspeção anterior liberada</span>
-                <select
-                    v-model="form.previous_inspection_id"
-                    required
-                    class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2"
-                >
-                    <option value="" disabled>Selecione uma inspeção do mesmo equipamento</option>
-                    <option v-for="inspection in previousOptions" :key="inspection.id" :value="inspection.id">
-                        {{ inspection.number }} · liberada em {{ inspection.released_at }}
-                    </option>
-                </select>
-                <span
-                    v-if="previousOptions.length === 0"
-                    class="block text-xs font-normal text-slate-500"
-                >
-                    Não há inspeções liberadas para este equipamento.
-                </span>
-                <span v-if="form.errors.previous_inspection_id" class="block text-xs text-rose-600">{{ form.errors.previous_inspection_id }}</span>
-            </label>
+            <div v-if="form.equipment_id" class="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm md:col-span-2">
+                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Inspeção anterior</p>
+                <p v-if="latestReleasedInspection" class="mt-1 font-semibold text-slate-900">
+                    {{ latestReleasedInspection.number }} · liberada em {{ latestReleasedInspection.released_at }}
+                </p>
+                <p v-else class="mt-1 text-slate-600">Nenhuma inspeção liberada anterior.</p>
+            </div>
         </section>
 
         <section class="space-y-4 rounded-2xl border border-slate-200 bg-white p-5">

@@ -56,6 +56,7 @@ final class InspectionPhotographicDocumentationComposer
                     'category_label' => $item['category_label'] ?? null,
                     'defect_id' => $item['id'] ?? null,
                     'defect_code' => $item['code'] ?? null,
+                    'classification_code' => data_get($item, 'classification.code') ?? data_get($item, 'assessment.classification_code'),
                     'defect_title' => $item['title'] ?? 'Avaria',
                     'equipment_label' => null,
                     'comment' => data_get($item, 'assessment.comment'),

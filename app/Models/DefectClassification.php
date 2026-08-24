@@ -18,7 +18,7 @@ final class DefectClassification extends Model
     use BelongsToOrganization, HasFactory, HasPublicId;
 
     protected $fillable = [
-        'public_id', 'organization_id', 'defect_category_id', 'code', 'name', 'description', 'color', 'status', 'position', 'severity_rank', 'created_by', 'updated_by',
+        'public_id', 'organization_id', 'defect_category_id', 'code', 'name', 'description', 'color', 'status', 'position', 'severity_rank', 'lower_limit', 'upper_limit', 'created_by', 'updated_by',
     ];
 
     protected function casts(): array
@@ -27,6 +27,8 @@ final class DefectClassification extends Model
             'status' => RegistrationStatus::class,
             'position' => 'integer',
             'severity_rank' => 'integer',
+            'lower_limit' => 'integer',
+            'upper_limit' => 'integer',
         ];
     }
 
