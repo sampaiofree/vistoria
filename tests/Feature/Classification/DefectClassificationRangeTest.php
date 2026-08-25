@@ -122,7 +122,7 @@ final class DefectClassificationRangeTest extends TestCase
         $this->assertSame(125, $updated->classification_snapshot['upper_limit']);
     }
 
-    public function test_gut_score_rejects_gaps_and_legacy_overlapping_ranges_and_clears_exception_conditions(): void
+    public function test_gut_score_without_a_range_is_saved_unclassified_and_legacy_overlaps_are_rejected(): void
     {
         [$organization, $admin] = $this->tenant();
         app(TenantContext::class)->set($organization);
@@ -135,17 +135,17 @@ final class DefectClassificationRangeTest extends TestCase
             'upper_limit' => 7,
         ]);
 
-        try {
-            app(SaveDefectAssessmentGut::class)->handle($admin, $assessment, [
-                'condition' => DefectAssessmentCondition::Worsened->value,
-                'gravity' => 2,
-                'urgency' => 2,
-                'trend' => 2,
-            ]);
-            $this->fail('Uma lacuna de faixa deveria impedir a classificação.');
-        } catch (ValidationException $exception) {
-            $this->assertArrayHasKey('gut', $exception->errors());
-        }
+        $unclassified = app(SaveDefectAssessmentGut::class)->handle($admin, $assessment, [
+            'condition' => DefectAssessmentCondition::Worsened->value,
+            'gravity' => 2,
+            'urgency' => 2,
+            'trend' => 2,
+        ]);
+
+        $this->assertSame(8, $unclassified->gut_score);
+        $this->assertNull($unclassified->defect_classification_id);
+        $this->assertNull($unclassified->classification_code);
+        $this->assertNull($unclassified->classification_snapshot);
 
         DefectClassification::factory()->for($category, 'category')->create([
             'organization_id' => $organization->id,

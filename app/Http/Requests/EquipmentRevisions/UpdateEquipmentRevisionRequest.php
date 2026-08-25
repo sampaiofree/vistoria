@@ -28,37 +28,23 @@ final class UpdateEquipmentRevisionRequest extends FormRequest
             'revision_date' => blank($this->input('revision_date'))
                 ? null
                 : $this->input('revision_date'),
+            ...collect(['preparer_name', 'reviewer_name', 'approver_name', 'releaser_name'])
+                ->mapWithKeys(fn (string $field): array => [
+                    $field => is_string($this->input($field)) ? trim($this->input($field)) : $this->input($field),
+                ])
+                ->all(),
         ]);
     }
 
     public function rules(): array
     {
-        $organizationId = $this->user()?->organization_id;
-        $revision = $this->route('equipmentRevision');
-
         return [
             'emission_type' => ['required', Rule::enum(EquipmentRevisionEmissionType::class)],
             'revision_date' => ['required', 'date'],
-            'preparer_id' => $this->userRule($organizationId, (int) $revision->preparer_id),
-            'reviewer_id' => $this->userRule($organizationId, (int) $revision->reviewer_id),
-            'approver_id' => $this->userRule($organizationId, (int) $revision->approver_id),
-            'releaser_id' => $this->userRule($organizationId, (int) $revision->releaser_id),
-        ];
-    }
-
-    /** @return array<int, mixed> */
-    private function userRule(?int $organizationId, int $currentUserId): array
-    {
-        return [
-            'required',
-            'integer',
-            Rule::exists('users', 'id')->where(fn ($query) => $query
-                ->where('organization_id', $organizationId)
-                ->where(function ($query) use ($currentUserId): void {
-                    $query
-                        ->where('status', 'active')
-                        ->orWhere('id', $currentUserId);
-                })),
+            'preparer_name' => ['required', 'string', 'max:180'],
+            'reviewer_name' => ['required', 'string', 'max:180'],
+            'approver_name' => ['required', 'string', 'max:180'],
+            'releaser_name' => ['required', 'string', 'max:180'],
         ];
     }
 }

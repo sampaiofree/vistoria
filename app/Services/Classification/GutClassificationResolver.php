@@ -13,7 +13,7 @@ final class GutClassificationResolver
 {
     /**
      * @param  array{gravity:?int,urgency:?int,trend:?int}  $scores
-     * @return array{classification:DefectClassification,gut_score:int,criteria:array<string, array{score:int,color:string}>}
+     * @return array{classification:?DefectClassification,gut_score:int,criteria:array<string, array{score:int,color:string}>}
      */
     public function resolve(DefectCategory $category, array $scores): array
     {
@@ -60,12 +60,6 @@ final class GutClassificationResolver
                 && $classification->lower_limit <= $gutScore
                 && $classification->upper_limit >= $gutScore)
             ->values();
-
-        if ($matches->isEmpty()) {
-            throw ValidationException::withMessages([
-                'gut' => "Nenhuma classificação ativa possui faixa para o resultado GUT {$gutScore}.",
-            ]);
-        }
 
         if ($matches->count() > 1) {
             throw ValidationException::withMessages([

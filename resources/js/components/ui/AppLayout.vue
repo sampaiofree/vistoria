@@ -29,6 +29,7 @@ const user = computed(() => page.props.auth?.user ?? null);
 const organization = computed(() => user.value?.organization ?? null);
 const navigation = computed(() => page.props.navigation ?? []);
 const inspectionNavigation = computed(() => page.props.inspection_navigation ?? null);
+const notifications = computed(() => page.props.notifications ?? null);
 const sidebarNavigation = computed(() => inspectionNavigation.value?.items ?? navigation.value);
 const sidebarCollapsed = computed(() => inspectionNavigation.value ? false : collapsed.value);
 const dashboardUrl = computed(() => navigation.value.find((item) => item.icon === 'dashboard')?.href ?? '/');
@@ -79,6 +80,12 @@ function toggleCollapse() {
     }
 
     collapsed.value = !collapsed.value;
+}
+
+function expandSidebar() {
+    if (!inspectionNavigation.value) {
+        collapsed.value = false;
+    }
 }
 
 onMounted(() => {
@@ -146,6 +153,7 @@ const contentWidthClass = computed(() => (props.wide ? 'w-full' : 'mx-auto w-ful
             :home-url="dashboardUrl"
             :context="inspectionNavigation"
             @close-mobile="closeMobileSidebar"
+            @expand-desktop="expandSidebar"
         />
 
         <div
@@ -160,6 +168,7 @@ const contentWidthClass = computed(() => (props.wide ? 'w-full' : 'mx-auto w-ful
                 :mobile-open="mobileOpen"
                 :logout-url="logoutUrl"
                 :collapsible="!inspectionNavigation"
+                :notifications="notifications"
                 @toggle-sidebar="toggleSidebar"
                 @toggle-collapse="toggleCollapse"
             />

@@ -126,15 +126,6 @@ final class InspectionReportOverviewTest extends TestCase
         Storage::disk('inspection_photos')->assertMissing($first->original_path);
 
         $active->update([
-            'processing_status' => PhotoProcessingStatus::Failed,
-            'processing_error' => 'Falha simulada.',
-        ]);
-        $this->actingAs($admin)
-            ->post(route('inspection-overview-photos.retry', $active))
-            ->assertRedirect();
-        $this->assertSame(PhotoProcessingStatus::Pending, $active->refresh()->processing_status);
-
-        $active->update([
             'processing_status' => PhotoProcessingStatus::Ready,
             'optimized_path' => 'overview/ready.webp',
             'thumbnail_path' => 'overview/thumb.webp',

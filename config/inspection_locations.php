@@ -14,7 +14,7 @@ return [
     ],
 
     'processing' => [
-        'max_output_dimension' => 3200,
+        'max_output_dimension' => 3000,
         'thumbnail_dimension' => 640,
         'memory_megabytes' => 256,
         'map_megabytes' => 512,

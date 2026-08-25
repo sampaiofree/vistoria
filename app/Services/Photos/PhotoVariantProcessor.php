@@ -10,7 +10,7 @@ use RuntimeException;
 
 final class PhotoVariantProcessor
 {
-    private const OPTIMIZED_MAX_DIMENSION = 2000;
+    private const OPTIMIZED_MAX_DIMENSION = 3000;
 
     private const THUMBNAIL_MAX_DIMENSION = 480;
 

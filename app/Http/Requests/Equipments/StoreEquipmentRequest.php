@@ -83,7 +83,7 @@ final class StoreEquipmentRequest extends FormRequest
                         ->where('client_unit_id', $this->input('client_unit_id'))),
             ],
             'defect_code_prefix' => [
-                'nullable',
+                'required',
                 'string',
                 'max:80',
                 Rule::unique('equipments', 'defect_code_prefix')

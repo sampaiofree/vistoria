@@ -3,8 +3,10 @@
 namespace App\Http\Middleware;
 
 use App\Enums\UserAccountType;
+use App\Models\User;
 use App\Services\Navigation\InspectionContextNavigation;
 use Illuminate\Http\Request;
+use Illuminate\Notifications\DatabaseNotification;
 use Inertia\Middleware;
 
 final class HandleInertiaRequests extends Middleware
@@ -23,6 +25,7 @@ final class HandleInertiaRequests extends Middleware
         return array_merge(parent::share($request), [
             'navigation' => $this->navigation($request),
             'inspection_navigation' => fn (): ?array => app(InspectionContextNavigation::class)->forRequest($request),
+            'notifications' => fn (): ?array => $this->notificationSummary($user),
             'auth' => [
                 'logout_url' => $user ? route('logout') : null,
                 'user' => $user ? [
@@ -49,6 +52,34 @@ final class HandleInertiaRequests extends Middleware
         ]);
     }
 
+    /** @return array<string, mixed>|null */
+    private function notificationSummary(?User $user): ?array
+    {
+        if ($user === null || $user->isSuperAdmin()) {
+            return null;
+        }
+
+        return [
+            'unread_count' => $user->unreadNotifications()->count(),
+            'index_url' => route('notifications.index'),
+            'read_all_url' => route('notifications.read-all'),
+            'recent' => $user->notifications()
+                ->latest()
+                ->limit(5)
+                ->get()
+                ->map(fn (DatabaseNotification $notification): array => [
+                    'id' => $notification->id,
+                    'title' => $notification->data['title'] ?? 'Notificação',
+                    'message' => $notification->data['message'] ?? '',
+                    'read' => $notification->read_at !== null,
+                    'created_at' => $notification->created_at?->diffForHumans(),
+                    'read_url' => route('notifications.read', $notification->id),
+                ])
+                ->values()
+                ->all(),
+        ];
+    }
+
     /**
      * @return array<int, array{label:string, href:string, icon:string, active:bool}>
      */
@@ -70,6 +101,13 @@ final class HandleInertiaRequests extends Middleware
         ];
 
         if ($user->account_type === UserAccountType::SuperAdmin) {
+            $items[] = [
+                'label' => 'Empresas',
+                'href' => route('admin.organizations.index'),
+                'icon' => 'clients',
+                'active' => $request->routeIs('admin.organizations.*'),
+            ];
+
             return $items;
         }
 

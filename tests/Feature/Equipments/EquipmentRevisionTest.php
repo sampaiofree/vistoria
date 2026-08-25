@@ -7,7 +7,6 @@ namespace Tests\Feature\Equipments;
 use App\Enums\EquipmentRevisionEmissionType;
 use App\Enums\InspectionStatus;
 use App\Enums\UserAccountType;
-use App\Enums\UserStatus;
 use App\Models\Equipment;
 use App\Models\EquipmentRevision;
 use App\Models\Inspection;
@@ -23,12 +22,16 @@ final class EquipmentRevisionTest extends TestCase
 
     public function test_company_admin_can_create_revision_and_equipment_page_exposes_it(): void
     {
-        [$organization, $admin, $equipment, $users] = $this->scenario();
+        [$organization, $admin, $equipment] = $this->scenario();
 
         $this->actingAs($admin)
-            ->post(route('equipments.revisions.store', $equipment), $this->payload($users, [
+            ->post(route('equipments.revisions.store', $equipment), $this->payload([
                 'emission_type' => 'c',
                 'revision_date' => '2025-06-23',
+                'preparer_name' => 'Preparador externo',
+                'reviewer_name' => 'Verificador externo',
+                'approver_name' => 'Aprovador externo',
+                'releaser_name' => 'Liberador externo',
             ]))
             ->assertRedirect(route('equipments.show', $equipment));
 
@@ -37,7 +40,7 @@ final class EquipmentRevisionTest extends TestCase
         $this->assertSame($organization->id, $revision->organization_id);
         $this->assertSame(EquipmentRevisionEmissionType::ForKnowledge, $revision->emission_type);
         $this->assertSame('2025-06-23', $revision->revision_date->toDateString());
-        $this->assertSame($users['preparer']->name, $revision->preparer_name);
+        $this->assertSame('Preparador externo', $revision->preparer_name);
 
         $this->actingAs($admin)
             ->get(route('equipments.show', $equipment))
@@ -50,18 +53,18 @@ final class EquipmentRevisionTest extends TestCase
                 ->where('history_entries.0.source', 'manual')
                 ->where('history_entries.0.emission_type', 'C')
                 ->where('history_entries.0.date', '23/06/2025')
+                ->where('history_entries.0.preparer_name', 'Preparador externo')
                 ->has('revision_emission_types', 9)
-                ->has('revision_users', 5)
                 ->where('revision_store_url', route('equipments.revisions.store', $equipment)));
     }
 
     public function test_revision_numbers_follow_date_and_creation_order_and_recalculate_after_edit_and_delete(): void
     {
-        [, $admin, $equipment, $users] = $this->scenario();
+        [, $admin, $equipment] = $this->scenario();
 
-        $first = $this->createRevision($admin, $equipment, $users, '2025-06-23');
-        $sameDay = $this->createRevision($admin, $equipment, $users, '2025-06-23');
-        $latest = $this->createRevision($admin, $equipment, $users, '2026-05-11');
+        $first = $this->createRevision($admin, $equipment, '2025-06-23');
+        $sameDay = $this->createRevision($admin, $equipment, '2025-06-23');
+        $latest = $this->createRevision($admin, $equipment, '2026-05-11');
 
         $this->actingAs($admin)
             ->get(route('equipments.show', $equipment))
@@ -75,7 +78,7 @@ final class EquipmentRevisionTest extends TestCase
                 ->where('history_entries.1.description', 'Reinspeção'));
 
         $this->actingAs($admin)
-            ->put(route('equipment-revisions.update', $latest), $this->payload($users, [
+            ->put(route('equipment-revisions.update', $latest), $this->payload([
                 'revision_date' => '2025-01-13',
             ]))
             ->assertRedirect();
@@ -96,9 +99,9 @@ final class EquipmentRevisionTest extends TestCase
 
     public function test_history_entries_combine_manual_and_system_records_with_official_numbering(): void
     {
-        [, $admin, $equipment, $users] = $this->scenario();
+        [, $admin, $equipment] = $this->scenario();
 
-        $firstManual = $this->createRevision($admin, $equipment, $users, '2024-01-01');
+        $firstManual = $this->createRevision($admin, $equipment, '2024-01-01');
         $released = Inspection::factory()->forEquipment($equipment)->create([
             'number' => 'INS-2025-000001',
             'status' => InspectionStatus::Released,
@@ -120,7 +123,7 @@ final class EquipmentRevisionTest extends TestCase
             'canceled_at' => '2026-02-02 10:00:00',
             'created_at' => '2026-02-02 10:00:00',
         ]);
-        $latestManual = $this->createRevision($admin, $equipment, $users, '2026-03-01');
+        $latestManual = $this->createRevision($admin, $equipment, '2026-03-01');
 
         $this->actingAs($admin)
             ->get(route('equipments.show', $equipment))
@@ -142,50 +145,27 @@ final class EquipmentRevisionTest extends TestCase
                 ->where('history_entries.4.description', 'Inspeção'));
     }
 
-    public function test_suspended_user_can_be_kept_and_name_snapshot_is_not_changed(): void
+    public function test_editing_a_responsible_updates_the_free_text_name(): void
     {
-        [, $admin, $equipment, $users] = $this->scenario();
-        $revision = $this->createRevision($admin, $equipment, $users, '2025-06-23');
-        $originalName = $revision->preparer_name;
-
-        $users['preparer']->update([
-            'name' => 'Nome atualizado',
-            'status' => UserStatus::Suspended,
-        ]);
+        [, $admin, $equipment] = $this->scenario();
+        $revision = $this->createRevision($admin, $equipment, '2025-06-23');
 
         $this->actingAs($admin)
-            ->put(route('equipment-revisions.update', $revision), $this->payload($users))
-            ->assertRedirect();
-
-        $this->assertSame($originalName, $revision->refresh()->preparer_name);
-        $this->assertSame(UserStatus::Suspended, $users['preparer']->refresh()->status);
-    }
-
-    public function test_changing_a_responsible_updates_the_link_and_frozen_name(): void
-    {
-        [$organization, $admin, $equipment, $users] = $this->scenario();
-        $revision = $this->createRevision($admin, $equipment, $users, '2025-06-23');
-        $replacement = User::factory()->for($organization)->create(['name' => 'Novo Preparador']);
-
-        $this->actingAs($admin)
-            ->put(route('equipment-revisions.update', $revision), $this->payload($users, [
-                'preparer_id' => $replacement->id,
+            ->put(route('equipment-revisions.update', $revision), $this->payload([
+                'preparer_name' => 'Novo Preparador manual',
             ]))
             ->assertRedirect();
 
-        $revision->refresh();
-        $this->assertSame($replacement->id, $revision->preparer_id);
-        $this->assertSame('Novo Preparador', $revision->preparer_name);
+        $this->assertSame('Novo Preparador manual', $revision->refresh()->preparer_name);
     }
 
-    public function test_member_cannot_manage_revisions_and_foreign_users_are_rejected(): void
+    public function test_member_cannot_manage_revisions(): void
     {
-        [$organization, $admin, $equipment, $users] = $this->scenario();
+        [$organization, , $equipment] = $this->scenario();
         $member = User::factory()->for($organization)->create(['account_type' => UserAccountType::Member->value]);
-        $otherUser = User::factory()->create();
 
         $this->actingAs($member)
-            ->post(route('equipments.revisions.store', $equipment), $this->payload($users))
+            ->post(route('equipments.revisions.store', $equipment), $this->payload())
             ->assertForbidden();
 
         $this->actingAs($member)
@@ -193,14 +173,7 @@ final class EquipmentRevisionTest extends TestCase
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->where('can.manage_revisions', false)
-                ->has('history_entries', 0)
-                ->has('revision_users', 0));
-
-        $this->actingAs($admin)
-            ->post(route('equipments.revisions.store', $equipment), $this->payload($users, [
-                'reviewer_id' => $otherUser->id,
-            ]))
-            ->assertSessionHasErrors('reviewer_id');
+                ->has('history_entries', 0));
     }
 
     public function test_required_fields_and_invalid_emission_type_are_validated(): void
@@ -212,14 +185,33 @@ final class EquipmentRevisionTest extends TestCase
             ->assertSessionHasErrors([
                 'emission_type',
                 'revision_date',
-                'preparer_id',
-                'reviewer_id',
-                'approver_id',
-                'releaser_id',
+                'preparer_name',
+                'reviewer_name',
+                'approver_name',
+                'releaser_name',
             ]);
     }
 
-    /** @return array{0:Organization, 1:User, 2:Equipment, 3:array<string, User>} */
+    public function test_responsible_names_are_trimmed_and_limited_to_180_characters(): void
+    {
+        [, $admin, $equipment] = $this->scenario();
+
+        $this->actingAs($admin)
+            ->post(route('equipments.revisions.store', $equipment), $this->payload([
+                'preparer_name' => str_repeat('A', 181),
+            ]))
+            ->assertSessionHasErrors('preparer_name');
+
+        $this->actingAs($admin)
+            ->post(route('equipments.revisions.store', $equipment), $this->payload([
+                'preparer_name' => '  Preparador manual  ',
+            ]))
+            ->assertRedirect();
+
+        $this->assertSame('Preparador manual', EquipmentRevision::query()->firstOrFail()->preparer_name);
+    }
+
+    /** @return array{0:Organization, 1:User, 2:Equipment} */
     private function scenario(): array
     {
         $organization = Organization::factory()->create();
@@ -227,20 +219,14 @@ final class EquipmentRevisionTest extends TestCase
             'account_type' => UserAccountType::CompanyAdmin->value,
         ]);
         $equipment = Equipment::factory()->for($organization)->create();
-        $users = [
-            'preparer' => User::factory()->for($organization)->create(['name' => 'Preparador Histórico']),
-            'reviewer' => User::factory()->for($organization)->create(['name' => 'Verificador Histórico']),
-            'approver' => User::factory()->for($organization)->create(['name' => 'Aprovador Histórico']),
-            'releaser' => User::factory()->for($organization)->create(['name' => 'Liberador Histórico']),
-        ];
 
-        return [$organization, $admin, $equipment, $users];
+        return [$organization, $admin, $equipment];
     }
 
-    private function createRevision(User $admin, Equipment $equipment, array $users, string $date): EquipmentRevision
+    private function createRevision(User $admin, Equipment $equipment, string $date): EquipmentRevision
     {
         $this->actingAs($admin)
-            ->post(route('equipments.revisions.store', $equipment), $this->payload($users, [
+            ->post(route('equipments.revisions.store', $equipment), $this->payload([
                 'revision_date' => $date,
             ]))
             ->assertRedirect();
@@ -248,16 +234,15 @@ final class EquipmentRevisionTest extends TestCase
         return EquipmentRevision::query()->latest('id')->firstOrFail();
     }
 
-    /** @param array<string, User> $users */
-    private function payload(array $users, array $overrides = []): array
+    private function payload(array $overrides = []): array
     {
         return array_merge([
             'emission_type' => 'C',
             'revision_date' => '2025-01-13',
-            'preparer_id' => $users['preparer']->id,
-            'reviewer_id' => $users['reviewer']->id,
-            'approver_id' => $users['approver']->id,
-            'releaser_id' => $users['releaser']->id,
+            'preparer_name' => 'Preparador Histórico',
+            'reviewer_name' => 'Verificador Histórico',
+            'approver_name' => 'Aprovador Histórico',
+            'releaser_name' => 'Liberador Histórico',
         ], $overrides);
     }
 }

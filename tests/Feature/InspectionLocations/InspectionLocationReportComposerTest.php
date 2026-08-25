@@ -236,18 +236,16 @@ final class InspectionLocationReportComposerTest extends TestCase
         $organization = Organization::factory()->create();
         $equipment = Equipment::factory()->for($organization)->create();
         $inspection = Inspection::factory()->forEquipment($equipment)->create();
-        $tac = DefectCategory::factory()->create([
-            'organization_id' => $organization->id,
-            'code' => 'tac',
-            'name' => 'TAC',
-            'position' => 30,
-        ]);
-        $rec = DefectCategory::factory()->create([
-            'organization_id' => $organization->id,
-            'code' => 'REC',
-            'name' => 'REC',
-            'position' => 20,
-        ]);
+        $tac = DefectCategory::query()
+            ->where('organization_id', $organization->id)
+            ->where('code', 'TAC')
+            ->firstOrFail();
+        $tac->update(['name' => 'TAC', 'position' => 30]);
+        $rec = DefectCategory::query()
+            ->where('organization_id', $organization->id)
+            ->where('code', 'REC')
+            ->firstOrFail();
+        $rec->update(['name' => 'REC', 'position' => 20]);
         $cv = DefectCategory::query()
             ->where('organization_id', $organization->id)
             ->where('code', 'CV')
@@ -328,7 +326,7 @@ final class InspectionLocationReportComposerTest extends TestCase
         ], $numbering);
         $this->assertCount(6, $numbering);
         $this->assertSame(
-            ['tac', 'REC', 'CV'],
+            ['TAC', 'REC', 'CV'],
             collect($report['categories'])->pluck('category.code')->all(),
         );
     }

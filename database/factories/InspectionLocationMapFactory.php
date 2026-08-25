@@ -37,6 +37,7 @@ final class InspectionLocationMapFactory extends Factory
             'source_mime_type' => null,
             'source_size' => null,
             'source_checksum' => null,
+            'source_uploaded_by' => null,
             'background_disk' => null,
             'background_path' => null,
             'background_mime_type' => null,

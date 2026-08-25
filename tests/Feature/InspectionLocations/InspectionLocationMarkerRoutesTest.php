@@ -72,7 +72,10 @@ final class InspectionLocationMarkerRoutesTest extends TestCase
     public function test_marker_rejects_incompatible_category_and_stale_updates(): void
     {
         [, $user, $inspection, , $assessment, $map] = $this->context();
-        $otherCategory = DefectCategory::factory()->create(['organization_id' => $inspection->organization_id, 'code' => 'REC']);
+        $otherCategory = DefectCategory::query()
+            ->where('organization_id', $inspection->organization_id)
+            ->where('code', 'REC')
+            ->firstOrFail();
         $otherDefect = Defect::factory()->forEquipment($inspection->equipment, $inspection)->create(['defect_category_id' => $otherCategory->id]);
         $otherAssessment = DefectAssessment::factory()->forDefect($otherDefect, $inspection)->create();
 

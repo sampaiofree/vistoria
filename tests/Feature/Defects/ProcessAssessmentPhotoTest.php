@@ -11,7 +11,9 @@ use App\Models\Defect;
 use App\Models\DefectAssessment;
 use App\Models\Equipment;
 use App\Models\Inspection;
+use App\Models\InspectionResponsible;
 use App\Models\Organization;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -33,7 +35,7 @@ final class ProcessAssessmentPhotoTest extends TestCase
     ): void {
         Storage::fake('inspection_photos');
         $photo = $this->photoWithImage($sourceWidth, $sourceHeight);
-        $originalContents = Storage::disk('inspection_photos')->get($photo->original_path);
+        $originalPath = $photo->original_path;
 
         (new ProcessAssessmentPhoto($photo->id))->handle();
 
@@ -47,14 +49,15 @@ final class ProcessAssessmentPhotoTest extends TestCase
         $this->assertSame($thumbnailHeight, $photo->thumbnail_height);
         $this->assertImageDimensions($photo->optimized_path, $optimizedWidth, $optimizedHeight);
         $this->assertImageDimensions($photo->thumbnail_path, $thumbnailWidth, $thumbnailHeight);
-        $this->assertSame($originalContents, Storage::disk('inspection_photos')->get($photo->original_path));
+        $this->assertNull($photo->original_path);
+        Storage::disk('inspection_photos')->assertMissing($originalPath);
     }
 
     public static function imageDimensions(): array
     {
         return [
             'uploaded landscape' => [754, 502, 754, 502, 480, 320],
-            'large landscape' => [4000, 3000, 2000, 1500, 480, 360],
+            'large landscape' => [4000, 3000, 3000, 2250, 480, 360],
             'portrait' => [300, 500, 300, 500, 288, 480],
             'square' => [800, 800, 800, 800, 480, 480],
             'small image' => [320, 240, 320, 240, 320, 240],
@@ -79,25 +82,38 @@ final class ProcessAssessmentPhotoTest extends TestCase
         $this->assertImageDimensions($photo->thumbnail_path, 480, 288);
     }
 
-    public function test_processing_rejects_unsafe_dimensions_without_deleting_the_original(): void
+    public function test_final_processing_failure_deletes_the_temporary_original(): void
     {
         Storage::fake('inspection_photos');
         config()->set('photos.limits.max_pixels', 10_000);
         $photo = $this->photoWithImage(200, 100);
+        $uploader = User::factory()->for($photo->inspection->organization)->create();
+        $responsible = User::factory()->for($photo->inspection->organization)->create();
+        InspectionResponsible::factory()->forInspection($photo->inspection, $responsible)->create();
+        $photo->update(['uploaded_by' => $uploader->id]);
+
+        $originalPath = $photo->original_path;
+        $job = new ProcessAssessmentPhoto($photo->id);
 
         try {
-            (new ProcessAssessmentPhoto($photo->id))->handle();
+            $job->handle();
             $this->fail('O processamento deveria rejeitar a imagem acima do limite seguro.');
         } catch (RuntimeException $exception) {
             $this->assertSame(config('photos.processing.unsafe_image_message'), $exception->getMessage());
+            $job->failed($exception);
         }
 
         $photo->refresh();
         $this->assertSame(PhotoProcessingStatus::Failed, $photo->processing_status);
         $this->assertSame(config('photos.processing.unsafe_image_message'), $photo->processing_error);
-        Storage::disk('inspection_photos')->assertExists($photo->original_path);
-        Storage::disk('inspection_photos')->assertMissing(dirname($photo->original_path).'/optimized.webp');
-        Storage::disk('inspection_photos')->assertMissing(dirname($photo->original_path).'/thumbnail.webp');
+        $this->assertNull($photo->original_path);
+        Storage::disk('inspection_photos')->assertMissing($originalPath);
+        Storage::disk('inspection_photos')->assertMissing(dirname($originalPath).'/optimized.webp');
+        Storage::disk('inspection_photos')->assertMissing(dirname($originalPath).'/thumbnail.webp');
+        $this->assertDatabaseCount('notifications', 2);
+
+        $job->failed(new RuntimeException('Falha duplicada.'));
+        $this->assertDatabaseCount('notifications', 2);
     }
 
     private function photoWithImage(int $width, int $height, ?int $orientation = null): AssessmentPhoto

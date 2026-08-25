@@ -64,7 +64,7 @@ final class InspectionLocationPagesTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->component('InspectionLocationMaps/Index')
                 ->where('active_tab', 'locations')
-                ->has('categories', 2)
+                ->has('categories', 4)
                 ->has('maps', 2)
                 ->has('unlocated_assessments', 1));
     }
@@ -91,11 +91,10 @@ final class InspectionLocationPagesTest extends TestCase
     public function test_editor_exposes_the_same_canonical_numbers_used_by_the_report(): void
     {
         [$organization, $user, $inspection] = $this->context();
-        $category = DefectCategory::factory()->create([
-            'organization_id' => $organization->id,
-            'code' => 'TAC',
-            'name' => 'TAC',
-        ]);
+        $category = DefectCategory::query()
+            ->where('organization_id', $organization->id)
+            ->where('code', 'TAC')
+            ->firstOrFail();
         $defect = Defect::factory()->forEquipment($inspection->equipment, $inspection)->create([
             'defect_category_id' => $category->id,
         ]);

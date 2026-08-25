@@ -11,7 +11,6 @@ use App\Actions\Equipments\DecommissionEquipment;
 use App\Actions\Equipments\UpdateEquipment;
 use App\Enums\EquipmentRevisionEmissionType;
 use App\Enums\EquipmentStatus;
-use App\Enums\UserStatus;
 use App\Http\Controllers\Concerns\ResolvesTenantStructure;
 use App\Http\Requests\Equipments\StoreEquipmentRequest;
 use App\Http\Requests\Equipments\UpdateEquipmentRequest;
@@ -23,13 +22,11 @@ use App\Models\Equipment;
 use App\Models\EquipmentDocument;
 use App\Models\EquipmentRevision;
 use App\Models\Subarea;
-use App\Models\User;
 use App\Services\Reports\EquipmentRevisionChronology;
 use App\Services\Tenancy\TenantContext;
 use App\Support\TextNormalizer;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Collection;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 
@@ -170,15 +167,6 @@ final class EquipmentController extends Controller
             'client',
         ]);
 
-        $revisionHistory = $equipment->revisions()
-            ->with(['preparer', 'reviewer', 'approver', 'releaser'])
-            ->get()
-            ->sortBy([
-                ['revision_date', 'asc'],
-                ['id', 'asc'],
-            ])
-            ->values();
-
         $canManageRevisions = $request->user()->can('create', [EquipmentRevision::class, $equipment]);
 
         return Inertia::render('Equipments/Show', [
@@ -188,9 +176,6 @@ final class EquipmentController extends Controller
             ],
             'history_entries' => $chronology->forEquipment($equipment)->all(),
             'revision_emission_types' => EquipmentRevisionEmissionType::options(),
-            'revision_users' => $canManageRevisions
-                ? $this->revisionUserOptions($tenant, $revisionHistory)
-                : [],
             'can' => [
                 'update' => $request->user()->can('update', $equipment),
                 'manage_revisions' => $canManageRevisions,
@@ -545,42 +530,6 @@ final class EquipmentController extends Controller
             'status' => $equipment->status->value,
             'show_url' => route('equipments.show', $equipment),
         ];
-    }
-
-    /**
-     * @param  Collection<int, EquipmentRevision>  $revisions
-     * @return array<int, array{id:int, public_id:string, name:string, status:string}>
-     */
-    private function revisionUserOptions(TenantContext $tenant, Collection $revisions): array
-    {
-        $linkedUserIds = $revisions
-            ->flatMap(fn (EquipmentRevision $revision): array => [
-                $revision->preparer_id,
-                $revision->reviewer_id,
-                $revision->approver_id,
-                $revision->releaser_id,
-            ])
-            ->filter()
-            ->unique()
-            ->values();
-
-        return User::query()
-            ->where('organization_id', $tenant->id())
-            ->where(function ($query) use ($linkedUserIds): void {
-                $query
-                    ->where('status', UserStatus::Active->value)
-                    ->when($linkedUserIds->isNotEmpty(), fn ($query) => $query->orWhereIn('id', $linkedUserIds));
-            })
-            ->orderBy('name')
-            ->get(['id', 'public_id', 'name', 'status'])
-            ->map(fn (User $user): array => [
-                'id' => $user->id,
-                'public_id' => $user->public_id,
-                'name' => $user->name,
-                'status' => $user->status->value,
-            ])
-            ->values()
-            ->all();
     }
 
     /**

@@ -171,9 +171,9 @@ final class CompleteDefectAssessment
             GutCriterion::Trend->value => $assessment->trend,
         ]);
 
-        if ($assessment->gut_score === null || $assessment->defect_classification_id === null) {
+        if ($assessment->gut_score === null) {
             throw ValidationException::withMessages([
-                'gut' => 'Salve a classificação GUT antes de publicar a avaliação.',
+                'gut' => 'Salve a avaliação GUT antes de publicar a avaliação.',
             ]);
         }
     }

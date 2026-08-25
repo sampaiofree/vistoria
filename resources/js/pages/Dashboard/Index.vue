@@ -102,6 +102,13 @@ function retry(prop) {
     <AppLayout :title="title" :subtitle="subtitle" wide>
         <template #actions>
             <Link
+                v-if="mode === 'global' && links.organizations_index"
+                :href="links.organizations_index"
+                class="inline-flex min-h-11 items-center justify-center rounded-md bg-slate-800 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
+            >
+                Gerenciar empresas
+            </Link>
+            <Link
                 v-if="can.create_inspection && links.inspections_create"
                 :href="links.inspections_create"
                 class="inline-flex min-h-11 items-center justify-center rounded-md bg-slate-800 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
@@ -123,8 +130,9 @@ function retry(prop) {
                         Visão global sem organização operacional
                     </h2>
                     <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-                        Superadministradores continuam com acesso ao ambiente, mas a central operacional aparece apenas quando uma organização for selecionada ou vinculada.
+                        Cadastre e administre as empresas que utilizam a plataforma. A central operacional permanece isolada dentro de cada organização.
                     </p>
+                    <Link v-if="links.organizations_index" :href="links.organizations_index" class="mt-4 inline-flex text-sm font-semibold text-teal-700 hover:text-teal-900">Ir para empresas</Link>
                 </div>
             </div>
         </section>

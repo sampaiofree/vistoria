@@ -9,7 +9,7 @@ function submit() { form.put('/account/password'); }
 <template>
     <AppLayout title="Alterar senha" subtitle="Mantenha o acesso da sua conta protegido.">
         <section class="max-w-xl rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-            <div class="mb-6 rounded-xl bg-slate-50 p-4 text-sm leading-6 text-slate-600">A senha deve ter pelo menos 12 caracteres, incluindo letras maiúsculas, minúsculas e números.</div>
+            <div class="mb-6 rounded-xl bg-slate-50 p-4 text-sm leading-6 text-slate-600">A senha deve ter pelo menos 6 caracteres, incluindo letras maiúsculas, minúsculas, números e caracteres especiais.</div>
             <form class="space-y-5" @submit.prevent="submit">
                 <label class="block"><span class="text-sm font-semibold text-slate-700">Senha atual</span><input v-model="form.current_password" type="password" autocomplete="current-password" class="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"><p v-if="form.errors.current_password" class="mt-1 text-xs text-rose-600">{{ form.errors.current_password }}</p></label>
                 <label class="block"><span class="text-sm font-semibold text-slate-700">Nova senha</span><input v-model="form.password" type="password" autocomplete="new-password" class="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"><p v-if="form.errors.password" class="mt-1 text-xs text-rose-600">{{ form.errors.password }}</p></label>

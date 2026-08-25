@@ -76,6 +76,7 @@ final class StoreInspectionLocationMapSource
                     'source_mime_type' => $file->getMimeType(),
                     'source_size' => $file->getSize(),
                     'source_checksum' => (string) hash_file('sha256', $file->getRealPath()),
+                    'source_uploaded_by' => $actor->id,
                     'source_page' => null,
                     'source_crop' => null,
                     'background_disk' => null,

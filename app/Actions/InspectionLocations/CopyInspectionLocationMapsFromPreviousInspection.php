@@ -42,13 +42,12 @@ final class CopyInspectionLocationMapsFromPreviousInspection
             throw ValidationException::withMessages(['maps' => 'A inspeção anterior não possui mapas para copiar.']);
         }
 
-        $attachedDocumentIds = $inspection->referenceDocuments()->pluck('equipment_document_id')->map(fn ($id): int => (int) $id)->all();
         $summary = ['maps' => 0, 'markers' => 0, 'pending_markers' => 0];
         $processMaps = [];
         $copiedPaths = [];
 
         try {
-            DB::transaction(function () use ($actor, $inspection, $previousMaps, $attachedDocumentIds, &$summary, &$processMaps, &$copiedPaths): void {
+            DB::transaction(function () use ($actor, $inspection, $previousMaps, &$summary, &$processMaps, &$copiedPaths): void {
                 Inspection::query()->whereKey($inspection->id)->lockForUpdate()->firstOrFail();
                 if ($inspection->locationMaps()->exists()) {
                     throw ValidationException::withMessages(['maps' => 'A inspeção atual já possui mapas de localização.']);
@@ -59,27 +58,19 @@ final class CopyInspectionLocationMapsFromPreviousInspection
                     if ($previousMap->markers->count() > (int) config('inspection_locations.limits.markers_per_map')) {
                         throw ValidationException::withMessages(['markers' => 'Um mapa anterior excede o limite de marcações.']);
                     }
-                    $documentAttached = $previousMap->equipment_document_id !== null
-                        && in_array((int) $previousMap->equipment_document_id, $attachedDocumentIds, true);
-                    $sourceKind = $documentAttached ? InspectionLocationMapSourceKind::ReferenceDocument : InspectionLocationMapSourceKind::Upload;
-
                     $map = InspectionLocationMap::query()->create([
                         'organization_id' => $inspection->organization_id,
                         'equipment_id' => $inspection->equipment_id,
                         'inspection_id' => $inspection->id,
                         'defect_category_id' => $previousMap->defect_category_id,
-                        'equipment_document_id' => $documentAttached ? $previousMap->equipment_document_id : null,
+                        'equipment_document_id' => null,
                         'title' => $previousMap->title,
                         'description' => $previousMap->description,
-                        'source_kind' => $sourceKind,
-                        'source_page' => $previousMap->source_page,
-                        'source_crop' => $previousMap->source_crop,
-                        'reference_snapshot' => $documentAttached ? $previousMap->reference_snapshot : null,
-                        'source_disk' => $documentAttached ? $previousMap->source_disk : null,
-                        'source_path' => $documentAttached ? $previousMap->source_path : null,
-                        'source_mime_type' => $documentAttached ? $previousMap->source_mime_type : null,
-                        'source_size' => $documentAttached ? $previousMap->source_size : null,
-                        'source_checksum' => $documentAttached ? $previousMap->source_checksum : null,
+                        'source_kind' => InspectionLocationMapSourceKind::Upload,
+                        'source_page' => null,
+                        'source_crop' => null,
+                        'reference_snapshot' => null,
+                        'source_uploaded_by' => $actor->id,
                         'processing_status' => InspectionLocationMapProcessingStatus::Pending,
                         'geometry_schema_version' => $previousMap->geometry_schema_version,
                         'position' => $previousMap->position,
@@ -87,11 +78,9 @@ final class CopyInspectionLocationMapsFromPreviousInspection
                         'updated_by' => $actor->id,
                     ]);
 
-                    if (! $documentAttached && $previousMap->source_kind === InspectionLocationMapSourceKind::Upload) {
-                        $copiedPath = $this->copyUploadedSource($previousMap, $map, $inspection);
-                        if ($copiedPath !== null) {
-                            $copiedPaths[] = $copiedPath;
-                        }
+                    $copiedPath = $this->copyProcessedBackground($previousMap, $map, $inspection);
+                    if ($copiedPath !== null) {
+                        $copiedPaths[] = $copiedPath;
                     }
 
                     foreach ($previousMap->markers as $previousMarker) {
@@ -143,10 +132,10 @@ final class CopyInspectionLocationMapsFromPreviousInspection
         return $summary;
     }
 
-    private function copyUploadedSource(InspectionLocationMap $source, InspectionLocationMap $target, Inspection $inspection): ?string
+    private function copyProcessedBackground(InspectionLocationMap $source, InspectionLocationMap $target, Inspection $inspection): ?string
     {
         try {
-            $asset = $this->assetGuard->source($source);
+            $asset = $this->assetGuard->background($source);
         } catch (\RuntimeException) {
             return null;
         }
@@ -155,8 +144,7 @@ final class CopyInspectionLocationMapsFromPreviousInspection
             return null;
         }
 
-        $extension = pathinfo($asset['path'], PATHINFO_EXTENSION);
-        $path = sprintf('organizations/%d/inspections/%s/maps/%s/source%s', $inspection->organization_id, $inspection->public_id, $target->public_id, $extension === '' ? '' : '.'.$extension);
+        $path = sprintf('organizations/%d/inspections/%s/maps/%s/source.webp', $inspection->organization_id, $inspection->public_id, $target->public_id);
         $stream = $asset['disk']->readStream($asset['path']);
         if (! is_resource($stream)) {
             return null;
@@ -171,9 +159,9 @@ final class CopyInspectionLocationMapsFromPreviousInspection
         $target->update([
             'source_disk' => 'inspection_maps',
             'source_path' => $path,
-            'source_mime_type' => $source->source_mime_type,
+            'source_mime_type' => 'image/webp',
             'source_size' => Storage::disk('inspection_maps')->size($path),
-            'source_checksum' => $source->source_checksum,
+            'source_checksum' => hash('sha256', Storage::disk('inspection_maps')->get($path)),
         ]);
 
         return $path;

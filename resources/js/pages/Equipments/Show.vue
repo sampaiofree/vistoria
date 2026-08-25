@@ -22,10 +22,6 @@ const props = defineProps({
         type: Array,
         default: () => [],
     },
-    revision_users: {
-        type: Array,
-        default: () => [],
-    },
     can: {
         type: Object,
         required: true,
@@ -76,7 +72,6 @@ const subtitle = computed(() => `${props.client.name} · TAG ${props.equipment.t
             <EquipmentHistory
                 :entries="history_entries"
                 :emission-types="revision_emission_types"
-                :users="revision_users"
                 :can-manage="can.manage_revisions"
                 :store-url="revision_store_url"
             />

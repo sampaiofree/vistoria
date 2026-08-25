@@ -64,7 +64,7 @@ const gutConfigured = computed(() => gutCriteria.every((criterion) => props.gut_
 const gutReady = computed(() => gutConfigured.value && gutCriteria.every((criterion) => gutForm[criterion.key] !== null && gutForm[criterion.key] !== ''));
 const classificationDisplay = computed(() => props.classification ?? {
     code: props.assessment.classification_code,
-    label: 'Classificação não encontrada',
+    label: props.assessment.gut_score === null ? 'Não classificada' : 'Sem classificação para este resultado GUT',
     color: null,
 });
 const quantityUnitLabel = computed(() => props.measurement_units.find((unit) => unit.value === props.quantity?.measurement_unit)?.label ?? props.quantity?.measurement_unit ?? '');
@@ -285,7 +285,7 @@ function cancelEditing(card) {
                 <div v-if="editing.gut" class="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm">
                     <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Resultado automático</p>
                     <p v-if="gutScorePreview !== null" class="mt-1 font-semibold text-slate-900">
-                        {{ gutScorePreview }} · {{ previewClassification ? `${previewClassification.code} — ${previewClassification.name}` : 'Nenhuma faixa configurada para este resultado' }}
+                        {{ gutScorePreview }} · {{ previewClassification ? `${previewClassification.code} — ${previewClassification.name}` : 'Sem classificação para este resultado GUT' }}
                     </p>
                     <p v-else class="mt-1 text-slate-600">Selecione G, U e T para calcular o resultado.</p>
                     <p v-if="gutForm.errors.gut" :class="errorClass">{{ gutForm.errors.gut }}</p>

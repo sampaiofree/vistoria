@@ -31,12 +31,6 @@ function upload(event) {
     });
 }
 
-function retry() {
-    if (props.slot.photo?.retry_url) {
-        router.post(props.slot.photo.retry_url, {}, { preserveScroll: true, only: ['overview', 'flash'] });
-    }
-}
-
 function remove() {
     if (props.slot.photo?.delete_url && window.confirm(`Remover a fotografia ${props.slot.number}?`)) {
         router.delete(props.slot.photo.delete_url, { preserveScroll: true, only: ['overview', 'flash'] });
@@ -80,6 +74,7 @@ function refresh() {
             </div>
 
             <p v-if="form.errors.file" class="mt-2 text-xs text-rose-700">{{ form.errors.file }}</p>
+            <p v-if="slot.photo?.status === 'failed'" class="mt-2 text-xs font-medium text-rose-700">Escolha outra imagem para substituir este envio.</p>
 
             <div v-if="slot.upload_url" class="mt-3 flex flex-wrap gap-2">
                 <input ref="input" type="file" accept="image/jpeg,image/png,image/webp" class="sr-only" @change="upload">
@@ -91,7 +86,6 @@ function refresh() {
                 >
                     {{ form.processing ? 'Enviando…' : (slot.photo ? 'Substituir' : 'Enviar foto') }}
                 </button>
-                <button v-if="slot.photo?.retry_url" type="button" class="rounded-md border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50" @click="retry">Tentar novamente</button>
                 <button v-if="slot.photo && ['pending', 'processing'].includes(slot.photo.status)" type="button" class="rounded-md border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50" @click="refresh">Atualizar</button>
                 <button v-if="slot.photo?.delete_url" type="button" class="rounded-md border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50" @click="remove">Remover</button>
             </div>

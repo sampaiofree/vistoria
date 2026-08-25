@@ -25,10 +25,6 @@ final class EquipmentRevisionChronology
     public function forEquipment(Equipment $equipment, bool $includeNonOfficial = true): Collection
     {
         $equipment->loadMissing([
-            'revisions.preparer',
-            'revisions.reviewer',
-            'revisions.approver',
-            'revisions.releaser',
             'inspections.responsibles.user',
         ]);
 
@@ -131,9 +127,11 @@ final class EquipmentRevisionChronology
                 $entry['revision_number'] = $index + 1;
                 $entry['description'] = $entry['revision_number'] === 1 ? 'Inspeção' : 'Reinspeção';
                 $entry['is_current'] = $entry['key'] === $currentKey;
-                $entry['compact_responsibles'] = collect($entry['responsibles'])
-                    ->mapWithKeys(fn (?string $name, string $role): array => [$role => $this->initials($name)])
-                    ->all();
+                $entry['compact_responsibles'] = $entry['source'] === 'manual'
+                    ? $entry['responsibles']
+                    : collect($entry['responsibles'])
+                        ->mapWithKeys(fn (?string $name, string $role): array => [$role => $this->initials($name)])
+                        ->all();
                 $entry['full_responsibles'] = collect($entry['responsibles'])
                     ->mapWithKeys(fn (?string $name, string $role): array => [$role => $this->withoutSuffix($name)])
                     ->all();
@@ -189,10 +187,10 @@ final class EquipmentRevisionChronology
             'is_current' => false,
             'show_url' => null,
             'revision_date_input' => $revision->revision_date?->toDateString(),
-            'preparer_id' => $revision->preparer_id,
-            'reviewer_id' => $revision->reviewer_id,
-            'approver_id' => $revision->approver_id,
-            'releaser_id' => $revision->releaser_id,
+            'preparer_name' => $revision->preparer_name,
+            'reviewer_name' => $revision->reviewer_name,
+            'approver_name' => $revision->approver_name,
+            'releaser_name' => $revision->releaser_name,
             'update_url' => route('equipment-revisions.update', $revision),
             'destroy_url' => route('equipment-revisions.destroy', $revision),
         ];
@@ -234,10 +232,10 @@ final class EquipmentRevisionChronology
             'is_current' => false,
             'show_url' => route('inspections.show', $inspection),
             'revision_date_input' => null,
-            'preparer_id' => null,
-            'reviewer_id' => null,
-            'approver_id' => null,
-            'releaser_id' => null,
+            'preparer_name' => null,
+            'reviewer_name' => null,
+            'approver_name' => null,
+            'releaser_name' => null,
             'update_url' => null,
             'destroy_url' => null,
         ];

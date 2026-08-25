@@ -4,7 +4,6 @@ import InspectionLocationMapStatus from './InspectionLocationMapStatus.vue';
 
 const props = defineProps({ map: { type: Object, required: true }, variant: { type: String, default: 'card' } });
 
-function retry() { if (props.map.retry_url) router.post(props.map.retry_url, {}, { preserveScroll: true }); }
 function remove() {
     if (props.map.delete_url && window.confirm('Remover este mapa de localização?')) {
         router.delete(props.map.delete_url, { preserveScroll: true });
@@ -33,10 +32,10 @@ function remove() {
                 Documento: {{ map.source.document.title }} <span v-if="map.source.document.revision">· Rev. {{ map.source.document.revision }}</span>
             </p>
             <p v-if="map.processing_error" class="mt-3 rounded-xl bg-rose-50 p-3 text-xs text-rose-700">{{ map.processing_error }}</p>
+            <p v-if="map.processing_status === 'failed'" class="mt-2 text-xs font-medium text-rose-700">Abra o gerenciamento e escolha outra imagem.</p>
             <div class="mt-4 flex flex-wrap gap-2">
                 <Link v-if="map.editor_url" :href="map.editor_url" class="rounded-xl bg-teal-700 px-3.5 py-2 text-sm font-semibold text-white hover:bg-teal-800">Abrir editor</Link>
                 <Link v-if="map.edit_url" :href="map.edit_url" class="rounded-xl bg-slate-950 px-3.5 py-2 text-sm font-semibold text-white hover:bg-teal-700">Gerenciar</Link>
-                <button v-if="map.capabilities.retry" type="button" class="rounded-xl border border-amber-300 px-3.5 py-2 text-sm font-semibold text-amber-800" @click="retry">Tentar novamente</button>
                 <button v-if="map.capabilities.delete" type="button" class="rounded-xl border border-rose-200 px-3.5 py-2 text-sm font-semibold text-rose-700" @click="remove">Remover</button>
             </div>
         </div>

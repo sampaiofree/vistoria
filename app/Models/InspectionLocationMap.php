@@ -23,7 +23,7 @@ final class InspectionLocationMap extends Model
     protected $fillable = [
         'public_id', 'organization_id', 'equipment_id', 'inspection_id', 'defect_category_id', 'equipment_document_id',
         'title', 'description', 'source_kind', 'source_page', 'source_crop', 'reference_snapshot', 'source_disk', 'source_path',
-        'source_mime_type', 'source_size', 'source_checksum', 'background_disk', 'background_path', 'background_mime_type',
+        'source_mime_type', 'source_size', 'source_checksum', 'source_uploaded_by', 'background_disk', 'background_path', 'background_mime_type',
         'background_size', 'background_width', 'background_height', 'background_checksum', 'processing_status', 'processing_error',
         'processed_at', 'geometry_schema_version', 'position', 'lock_version', 'created_by', 'updated_by',
     ];
@@ -65,6 +65,11 @@ final class InspectionLocationMap extends Model
     public function equipmentDocument(): BelongsTo
     {
         return $this->belongsTo(EquipmentDocument::class);
+    }
+
+    public function sourceUploader(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'source_uploaded_by');
     }
 
     public function markers(): HasMany

@@ -11,7 +11,6 @@ use App\Actions\Defects\CompleteDefectAssessment;
 use App\Actions\Defects\UpdateDefectAssessment;
 use App\Actions\Photos\DeleteAssessmentPhoto;
 use App\Actions\Photos\ReorderAssessmentPhotos;
-use App\Actions\Photos\RetryAssessmentPhoto;
 use App\Actions\Photos\StoreAssessmentPhoto;
 use App\Enums\DefectAssessmentStatus;
 use App\Http\Controllers\Concerns\ResolvesTenantStructure;
@@ -210,19 +209,6 @@ final class DefectAssessmentController extends Controller
         $action->handle($request->user(), $defectAssessment, $data['photo_ids']);
 
         return back()->with('success', 'Ordem das fotografias atualizada.');
-    }
-
-    public function retryPhoto(
-        Request $request,
-        TenantContext $tenant,
-        AssessmentPhoto $assessmentPhoto,
-        RetryAssessmentPhoto $action,
-    ): RedirectResponse {
-        $photo = $this->tenantAssessmentPhoto($tenant, $assessmentPhoto);
-        $this->authorize('update', $photo);
-        $action->handle($request->user(), $photo);
-
-        return back()->with('success', 'Fotografia reenviada para processamento.');
     }
 
     public function destroyPhoto(

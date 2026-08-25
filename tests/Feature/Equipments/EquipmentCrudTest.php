@@ -44,6 +44,7 @@ final class EquipmentCrudTest extends TestCase
                 'area_id' => $area->id,
                 'subarea_id' => $subarea->id,
                 'tag' => ' u03-06vt002 ',
+                'defect_code_prefix' => ' vt002 ',
                 'name' => ' Ventilador principal ',
                 'description' => '  Descricao tecnica  ',
                 'manufacturer' => ' Weg ',
@@ -63,6 +64,7 @@ final class EquipmentCrudTest extends TestCase
         $this->assertSame($organization->id, $equipment->organization_id);
         $this->assertSame('U03-06VT002', $equipment->tag);
         $this->assertSame('U03-06VT002', $equipment->normalized_tag);
+        $this->assertSame('VT002', $equipment->defect_code_prefix);
         $this->assertSame('Ventilador principal', $equipment->name);
         $this->assertSame('Descricao tecnica', $equipment->description);
         $this->assertSame('Weg', $equipment->manufacturer);
@@ -97,6 +99,37 @@ final class EquipmentCrudTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_prefix_is_required_when_creating_or_editing_an_equipment(): void
+    {
+        $organization = Organization::factory()->create();
+        $admin = User::factory()->for($organization)->create([
+            'account_type' => UserAccountType::CompanyAdmin->value,
+        ]);
+        [$client, $unit, $area, $subarea] = $this->createActiveHierarchy($organization);
+        $payload = [
+            'client_id' => $client->id,
+            'client_unit_id' => $unit->id,
+            'area_id' => $area->id,
+            'subarea_id' => $subarea->id,
+            'tag' => 'EQ-SEM-PREFIXO',
+            'name' => 'Equipamento legado',
+        ];
+
+        $this->actingAs($admin)
+            ->post(route('equipments.store'), $payload)
+            ->assertSessionHasErrors('defect_code_prefix');
+
+        $equipment = Equipment::factory()
+            ->inStructure($client, $unit, $area, $subarea)
+            ->create(['defect_code_prefix' => null]);
+
+        $this->actingAs($admin)
+            ->put(route('equipments.update', $equipment), $payload)
+            ->assertSessionHasErrors('defect_code_prefix');
+
+        $this->assertNull($equipment->fresh()->defect_code_prefix);
+    }
+
     public function test_duplicate_tag_is_blocked_in_same_unit_and_allowed_in_another_unit(): void
     {
         $organization = Organization::factory()->create();
@@ -115,12 +148,20 @@ final class EquipmentCrudTest extends TestCase
             'area_id' => $area->id,
             'subarea_id' => $subarea->id,
             'tag' => 'BOMBA-001',
+            'defect_code_prefix' => 'BOMBA-A',
             'name' => 'Bomba principal',
         ];
 
         $this->actingAs($admin)
             ->post(route('equipments.store'), $basePayload)
             ->assertRedirect();
+
+        $this->actingAs($admin)
+            ->post(route('equipments.store'), [
+                ...$basePayload,
+                'tag' => 'BOMBA-002',
+            ])
+            ->assertSessionHasErrors('defect_code_prefix');
 
         $this->actingAs($admin)
             ->post(route('equipments.store'), $basePayload)
@@ -137,6 +178,7 @@ final class EquipmentCrudTest extends TestCase
                 'area_id' => $otherArea->id,
                 'subarea_id' => $otherSubarea->id,
                 'tag' => 'BOMBA-001',
+                'defect_code_prefix' => 'BOMBA-B',
                 'name' => 'Bomba secundaria',
             ])
             ->assertRedirect();
@@ -177,6 +219,7 @@ final class EquipmentCrudTest extends TestCase
                 'area_id' => $activeArea->id,
                 'subarea_id' => $activeSubarea->id,
                 'tag' => 'EQ-001',
+                'defect_code_prefix' => 'EQ-001',
                 'name' => 'Bomba',
             ])
             ->assertSessionHasErrors('client_id');
@@ -205,6 +248,7 @@ final class EquipmentCrudTest extends TestCase
                 'area_id' => $areaOfInactiveUnit->id,
                 'subarea_id' => $subareaOfInactiveUnit->id,
                 'tag' => 'EQ-002',
+                'defect_code_prefix' => 'EQ-002',
                 'name' => 'Bomba 2',
             ])
             ->assertSessionHasErrors('client_unit_id');
@@ -229,6 +273,7 @@ final class EquipmentCrudTest extends TestCase
                 'area_id' => $inactiveArea->id,
                 'subarea_id' => $subareaOfInactiveArea->id,
                 'tag' => 'EQ-003',
+                'defect_code_prefix' => 'EQ-003',
                 'name' => 'Bomba 3',
             ])
             ->assertSessionHasErrors('area_id');
@@ -249,6 +294,7 @@ final class EquipmentCrudTest extends TestCase
                 'area_id' => $activeArea->id,
                 'subarea_id' => $inactiveSubarea->id,
                 'tag' => 'EQ-004',
+                'defect_code_prefix' => 'EQ-004',
                 'name' => 'Bomba 4',
             ])
             ->assertSessionHasErrors('subarea_id');
@@ -324,6 +370,7 @@ final class EquipmentCrudTest extends TestCase
                 'area_id' => $area->id,
                 'subarea_id' => $subarea->id,
                 'tag' => ' eq-101 ',
+                'defect_code_prefix' => ' av-101 ',
                 'name' => ' Ventilador atualizado ',
                 'description' => 'Descricao nova',
                 'manufacturer' => ' Weg ',
@@ -341,6 +388,7 @@ final class EquipmentCrudTest extends TestCase
 
         $this->assertSame('EQ-101', $equipment->tag);
         $this->assertSame('EQ-101', $equipment->normalized_tag);
+        $this->assertSame('AV-101', $equipment->defect_code_prefix);
         $this->assertSame('Ventilador atualizado', $equipment->name);
         $this->assertSame('Descricao nova', $equipment->description);
         $this->assertSame('Weg', $equipment->manufacturer);
@@ -507,6 +555,7 @@ final class EquipmentCrudTest extends TestCase
         $this->assertSame($organization->id, $equipment->unit->organization_id);
         $this->assertSame($organization->id, $equipment->area->organization_id);
         $this->assertSame($organization->id, $equipment->subarea?->organization_id);
+        $this->assertNotNull($equipment->defect_code_prefix);
         $this->assertTrue($equipment->canReceiveInspection());
     }
 

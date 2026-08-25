@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\InspectionLocations;
 
 use App\Actions\InspectionLocations\CreateInspectionLocationMap;
-use App\Actions\InspectionLocations\RetryInspectionLocationMapProcessing;
+use App\Actions\InspectionLocations\DeleteInspectionLocationMap;
 use App\Actions\InspectionLocations\StoreInspectionLocationMapSource;
 use App\Enums\InspectionLocationMapProcessingStatus;
 use App\Enums\InspectionLocationMapSourceKind;
@@ -124,7 +124,13 @@ final class InspectionLocationHardeningTest extends TestCase
         (new ProcessInspectionLocationMap($map->id, 'old-checksum'))->handle(app(InspectionLocationAssetGuard::class));
         $this->assertSame(InspectionLocationMapProcessingStatus::Pending, $map->fresh()->processing_status);
 
-        (new ProcessInspectionLocationMap($map->id, 'new-checksum'))->handle(app(InspectionLocationAssetGuard::class));
+        $job = new ProcessInspectionLocationMap($map->id, 'new-checksum');
+        try {
+            $job->handle(app(InspectionLocationAssetGuard::class));
+            $this->fail('O processamento deveria falhar sem o arquivo de origem.');
+        } catch (\RuntimeException $exception) {
+            $job->failed($exception);
+        }
         $map->refresh();
         $this->assertSame(InspectionLocationMapProcessingStatus::Failed, $map->processing_status);
         $this->assertSame(config('inspection_locations.processing.error_message'), $map->processing_error);
@@ -135,25 +141,44 @@ final class InspectionLocationHardeningTest extends TestCase
         $this->assertSame(InspectionLocationMapProcessingStatus::Ready, $map->fresh()->processing_status);
     }
 
-    public function test_retry_is_compare_and_set_and_does_not_enqueue_duplicates(): void
+    public function test_map_processing_uses_three_automatic_attempts(): void
     {
-        Queue::fake();
+        $job = new ProcessInspectionLocationMap(123, 'checksum');
+
+        $this->assertSame(3, $job->tries);
+        $this->assertSame([10, 60, 300], $job->backoff());
+        $this->assertSame(3000, config('inspection_locations.processing.max_output_dimension'));
+    }
+
+    public function test_successful_map_processing_removes_uploaded_source_and_keeps_derivatives(): void
+    {
+        Storage::fake('inspection_maps');
         [, $user, , , $map] = $this->context();
+        config()->set('inspection_locations.processing.max_output_dimension', 300);
+        $upload = UploadedFile::fake()->image('mapa.jpg', 400, 300);
+        $sourcePath = $this->mapDirectory($map).'/source.jpg';
+        Storage::disk('inspection_maps')->put($sourcePath, $upload->getContent());
+        $checksum = hash('sha256', $upload->getContent());
         $map->update([
-            'source_path' => $this->mapDirectory($map).'/source.png',
-            'source_checksum' => hash('sha256', 'source'),
-            'processing_status' => InspectionLocationMapProcessingStatus::Failed,
+            'source_kind' => InspectionLocationMapSourceKind::Upload,
+            'source_disk' => 'inspection_maps',
+            'source_path' => $sourcePath,
+            'source_mime_type' => 'image/jpeg',
+            'source_size' => $upload->getSize(),
+            'source_checksum' => $checksum,
+            'source_uploaded_by' => $user->id,
+            'processing_status' => InspectionLocationMapProcessingStatus::Pending,
         ]);
 
-        app(RetryInspectionLocationMapProcessing::class)->handle($user, $map);
+        (new ProcessInspectionLocationMap($map->id, $checksum))->handle(app(InspectionLocationAssetGuard::class));
 
-        Queue::assertPushed(ProcessInspectionLocationMap::class, fn (ProcessInspectionLocationMap $job): bool => $job->queue === 'images'
-            && $job->expectedSourceChecksum === $map->source_checksum);
-        Queue::assertPushed(ProcessInspectionLocationMap::class, 1);
-        $this->assertSame(InspectionLocationMapProcessingStatus::Pending, $map->fresh()->processing_status);
-
-        $this->expectException(ValidationException::class);
-        app(RetryInspectionLocationMapProcessing::class)->handle($user, $map->fresh());
+        $map->refresh();
+        $this->assertSame(InspectionLocationMapProcessingStatus::Ready, $map->processing_status);
+        $this->assertNull($map->source_path);
+        $this->assertSame(300, max($map->background_width, $map->background_height));
+        Storage::disk('inspection_maps')->assertMissing($sourcePath);
+        Storage::disk('inspection_maps')->assertExists($map->background_path);
+        Storage::disk('inspection_maps')->assertExists(dirname($map->background_path).'/thumbnail.webp');
     }
 
     public function test_replacing_an_uploaded_source_removes_the_previous_private_file(): void
@@ -267,11 +292,11 @@ final class InspectionLocationHardeningTest extends TestCase
         $this->assertSame(2, $firstMarker->fresh()->position);
     }
 
-    public function test_cleanup_keeps_shared_reference_documents_and_map_storage_is_private(): void
+    public function test_map_deletion_removes_derivatives_immediately_and_keeps_shared_reference_document(): void
     {
         Storage::fake('inspection_maps');
         Storage::fake('equipment_documents');
-        [, , $inspection, , $map] = $this->context();
+        [, $user, $inspection, , $map] = $this->context();
         $document = EquipmentDocument::factory()->forEquipment($inspection->equipment)->create();
         Storage::disk('equipment_documents')->put($document->path, 'shared document');
         $this->storeBackground($map, 'private background', 'image/webp');
@@ -285,20 +310,41 @@ final class InspectionLocationHardeningTest extends TestCase
             'source_size' => $document->size,
             'source_checksum' => $document->checksum,
         ]);
-        $map->delete();
-        InspectionLocationMap::withTrashed()->whereKey($map->id)->update(['deleted_at' => now()->subDays(31)]);
-
-        $this->artisan('inspection-maps:cleanup-deleted', ['--days' => 30])->assertSuccessful();
+        app(DeleteInspectionLocationMap::class)->handle($user, $map);
 
         Storage::disk('equipment_documents')->assertExists($document->path);
         Storage::disk('inspection_maps')->assertMissing($backgroundPath);
-        $this->assertNull(InspectionLocationMap::withTrashed()->find($map->id));
+        $this->assertNotNull(InspectionLocationMap::withTrashed()->find($map->id));
         $publicPath = rtrim(public_path(), DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR;
         foreach (['inspection_maps', 'equipment_documents'] as $disk) {
             $root = rtrim((string) config("filesystems.disks.{$disk}.root"), DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR;
             $this->assertFalse(str_starts_with($root, $publicPath));
         }
         $this->assertDirectoryDoesNotExist(public_path('inspection-maps'));
+    }
+
+    public function test_map_deletion_removes_its_uploaded_source_immediately(): void
+    {
+        Storage::fake('inspection_maps');
+        [, $user, , , $map] = $this->context();
+        $sourcePath = $this->mapDirectory($map).'/source.png';
+        Storage::disk('inspection_maps')->put($sourcePath, 'uploaded source');
+        $this->storeBackground($map, 'private background', 'image/webp');
+        $backgroundPath = $map->fresh()->background_path;
+        $map->update([
+            'source_kind' => InspectionLocationMapSourceKind::Upload,
+            'source_disk' => 'inspection_maps',
+            'source_path' => $sourcePath,
+            'source_mime_type' => 'image/png',
+            'source_size' => 15,
+            'source_checksum' => hash('sha256', 'uploaded source'),
+        ]);
+
+        app(DeleteInspectionLocationMap::class)->handle($user, $map);
+
+        Storage::disk('inspection_maps')->assertMissing($sourcePath);
+        Storage::disk('inspection_maps')->assertMissing($backgroundPath);
+        $this->assertSoftDeleted('inspection_location_maps', ['id' => $map->id]);
     }
 
     public function test_report_composition_has_bounded_queries_and_payload(): void

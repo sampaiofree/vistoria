@@ -62,6 +62,42 @@ final class SaveDefectAssessmentGut
             $resolved = $this->resolver->resolve($category, $values);
             $classification = $resolved['classification'];
 
+            $classificationValues = $classification === null
+                ? [
+                    'defect_classification_id' => null,
+                    'classification_code' => null,
+                    'classification_priority' => null,
+                    'deadline_months' => null,
+                    'recommended_due_date' => null,
+                    'classification_snapshot' => null,
+                    'classified_at' => null,
+                    'classified_by' => null,
+                ]
+                : [
+                    'defect_classification_id' => $classification->getKey(),
+                    'classification_code' => $classification->code,
+                    'classification_priority' => $classification->severity_rank,
+                    'deadline_months' => null,
+                    'recommended_due_date' => null,
+                    'classification_snapshot' => [
+                        'source' => 'gut_range',
+                        'classification_id' => $classification->public_id,
+                        'category_id' => $category->public_id,
+                        'category_code' => $category->code,
+                        'category_name' => $category->name,
+                        'code' => $classification->code,
+                        'name' => $classification->name,
+                        'description' => $classification->description,
+                        'position' => $classification->position,
+                        'severity_rank' => $classification->severity_rank,
+                        'lower_limit' => $classification->lower_limit,
+                        'upper_limit' => $classification->upper_limit,
+                        'gut_score' => $resolved['gut_score'],
+                    ],
+                    'classified_at' => now(),
+                    'classified_by' => $actor->getKey(),
+                ];
+
             $assessment->fill([
                 'gravity' => $resolved['criteria'][GutCriterion::Gravity->value]['score'],
                 'urgency' => $resolved['criteria'][GutCriterion::Urgency->value]['score'],
@@ -77,30 +113,8 @@ final class SaveDefectAssessmentGut
                 ],
                 'gut_classified_at' => now(),
                 'gut_classified_by' => $actor->getKey(),
-                'defect_classification_id' => $classification->getKey(),
-                'classification_code' => $classification->code,
-                'classification_priority' => $classification->severity_rank,
-                'deadline_months' => null,
-                'recommended_due_date' => null,
-                'classification_snapshot' => [
-                    'source' => 'gut_range',
-                    'classification_id' => $classification->public_id,
-                    'category_id' => $category->public_id,
-                    'category_code' => $category->code,
-                    'category_name' => $category->name,
-                    'code' => $classification->code,
-                    'name' => $classification->name,
-                    'description' => $classification->description,
-                    'position' => $classification->position,
-                    'severity_rank' => $classification->severity_rank,
-                    'lower_limit' => $classification->lower_limit,
-                    'upper_limit' => $classification->upper_limit,
-                    'gut_score' => $resolved['gut_score'],
-                ],
-                'classified_at' => now(),
-                'classified_by' => $actor->getKey(),
                 'updated_by' => $actor->getKey(),
-            ])->save();
+            ] + $classificationValues)->save();
 
             return $assessment->refresh();
         });

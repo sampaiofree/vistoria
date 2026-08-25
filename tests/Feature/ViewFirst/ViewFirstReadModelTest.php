@@ -6,6 +6,7 @@ namespace Tests\Feature\ViewFirst;
 
 use App\Enums\DefectAssessmentCondition;
 use App\Enums\DefectAssessmentStatus;
+use App\Enums\EquipmentRevisionEmissionType;
 use App\Enums\GutCriterion;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
@@ -18,6 +19,7 @@ use App\Models\DefectCategory;
 use App\Models\DefectCategoryGutOption;
 use App\Models\DefectClassification;
 use App\Models\Equipment;
+use App\Models\EquipmentRevision;
 use App\Models\Inspection;
 use App\Models\InspectionLocationMap;
 use App\Models\InspectionLocationMarker;
@@ -203,6 +205,36 @@ final class ViewFirstReadModelTest extends TestCase
                 ->where('content.cover.report_designer', 'PROJETISTA II')
                 ->where('content.cover.designer_i_report_number', 'SM-IIE-1717')
                 ->where('content.cover.current_revision', '1'));
+    }
+
+    public function test_report_cover_shows_full_free_text_names_for_manual_revisions_and_initials_for_system_rows(): void
+    {
+        [$organization, $admin, $equipment, $inspection] = $this->viewFirstScenario();
+        $admin->update(['name' => 'Ana Maria da Silva']);
+
+        EquipmentRevision::query()->create([
+            'organization_id' => $organization->id,
+            'equipment_id' => $equipment->id,
+            'emission_type' => EquipmentRevisionEmissionType::ForKnowledge,
+            'revision_date' => '2026-07-01',
+            'preparer_name' => 'João Pedro de Oliveira',
+            'reviewer_name' => 'Maria das Graças Souza',
+            'approver_name' => 'Carlos Eduardo Lima',
+            'releaser_name' => 'Fernanda Alves da Costa',
+            'created_by' => $admin->id,
+            'updated_by' => $admin->id,
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('inspections.report-preview', $inspection))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('content.cover.revision_history.0.compact_responsibles.preparer', 'AMS')
+                ->where('content.cover.revision_history.1.source', 'manual')
+                ->where('content.cover.revision_history.1.compact_responsibles.preparer', 'João Pedro de Oliveira')
+                ->where('content.cover.revision_history.1.compact_responsibles.reviewer', 'Maria das Graças Souza')
+                ->where('content.cover.revision_history.1.compact_responsibles.approver', 'Carlos Eduardo Lima')
+                ->where('content.cover.revision_history.1.compact_responsibles.releaser', 'Fernanda Alves da Costa'));
     }
 
     public function test_report_export_is_disabled_when_external_report_number_is_missing(): void
@@ -410,7 +442,6 @@ final class ViewFirstReadModelTest extends TestCase
                 ->where('evidence.0.reorder_url', route('defect-assessments.photos.reorder', $assessment))
                 ->where('evidence.0.report_number', 1)
                 ->where('evidence.0.report_category', 'MAP-TEST')
-                ->where('evidence.0.retry_url', route('assessment-photos.retry', $photo))
                 ->where('evidence.0.delete_url', route('assessment-photos.destroy', $photo)));
 
         $viewer = User::factory()->for($inspection->organization)->create([
@@ -425,7 +456,6 @@ final class ViewFirstReadModelTest extends TestCase
                 ->where('evidence.0.reorder_url', null)
                 ->where('evidence.0.report_number', 1)
                 ->where('evidence.0.report_category', 'MAP-TEST')
-                ->where('evidence.0.retry_url', null)
                 ->where('evidence.0.delete_url', null));
 
         $this->actingAs($admin)
@@ -469,7 +499,6 @@ final class ViewFirstReadModelTest extends TestCase
                 ->where('evidence.0.reorder_url', null)
                 ->where('evidence.0.report_number', 1)
                 ->where('evidence.0.report_category', 'MAP-TEST')
-                ->where('evidence.0.retry_url', null)
                 ->where('evidence.0.delete_url', null));
     }
 

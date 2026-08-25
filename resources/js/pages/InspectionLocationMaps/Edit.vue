@@ -10,7 +10,6 @@ const props = defineProps({
     inspection: { type: Object, required: true },
     update_url: { type: String, required: true },
     source_url: { type: String, required: true },
-    retry_url: { type: String, required: true },
     delete_url: { type: String, required: true },
     cancel_url: { type: String, required: true },
 });
@@ -55,7 +54,6 @@ function upload() {
         },
     });
 }
-function retry() { router.post(props.retry_url); }
 function remove() {
     const suffix = props.map.marker_count ? ` e suas ${props.map.marker_count} marcação(ões)` : '';
     if (window.confirm(`Remover este mapa${suffix}?`)) router.delete(props.delete_url);
@@ -86,7 +84,7 @@ onUnmounted(() => {
                     </div>
                     <div class="p-5">
                         <p v-if="map.processing_error" class="mt-3 rounded-xl bg-rose-50 p-3 text-xs text-rose-700">{{ map.processing_error }}</p>
-                        <button v-if="map.processing_status === 'failed'" type="button" class="mt-3 rounded-xl border border-amber-300 px-3 py-2 text-sm font-semibold text-amber-800" @click="retry">Tentar novamente</button>
+                        <p v-if="map.processing_status === 'failed'" class="mt-3 text-xs font-medium text-rose-700">Escolha outra imagem no formulário abaixo.</p>
                         <a v-if="map.editor_url" :href="map.editor_url" class="mt-3 block rounded-xl bg-slate-950 px-4 py-2.5 text-center text-sm font-semibold text-white hover:bg-teal-700">Abrir editor de marcações</a>
                     </div>
                 </section>

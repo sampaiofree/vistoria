@@ -35,7 +35,7 @@ const props = defineProps({
     },
 });
 
-const emit = defineEmits(['close-mobile']);
+const emit = defineEmits(['close-mobile', 'expand-desktop']);
 const aside = ref(null);
 const closeButton = ref(null);
 const sidebarStyle = computed(() => ({
@@ -190,6 +190,7 @@ function handleKeydown(event) {
                     :item="item"
                     :collapsed="collapsed"
                     @navigate="$emit('close-mobile')"
+                    @expand-desktop="$emit('expand-desktop')"
                 />
             </nav>
 

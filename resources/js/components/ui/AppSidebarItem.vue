@@ -20,7 +20,7 @@ const props = defineProps({
     },
 });
 
-const emit = defineEmits(['navigate']);
+const emit = defineEmits(['navigate', 'expand-desktop']);
 const hasChildren = computed(() => (props.item.children || []).length > 0);
 const open = ref(Boolean(props.item.default_open || props.item.active));
 
@@ -63,6 +63,29 @@ watch(
 function toggle() {
     open.value = !open.value;
 }
+
+function expandCollapsedSidebar(event) {
+    if (!props.collapsed || typeof window === 'undefined' || !window.matchMedia('(min-width: 1024px)').matches) {
+        return false;
+    }
+
+    event.preventDefault();
+    emit('expand-desktop');
+
+    return true;
+}
+
+function navigate(event) {
+    if (!expandCollapsedSidebar(event)) {
+        emit('navigate');
+    }
+}
+
+function toggleOrExpand(event) {
+    if (!expandCollapsedSidebar(event)) {
+        toggle();
+    }
+}
 </script>
 
 <template>
@@ -77,7 +100,7 @@ function toggle() {
                 :title="collapsed ? item.label : undefined"
                 :aria-current="item.active ? 'page' : undefined"
                 class="flex min-w-0 flex-1 items-center gap-2.5 px-2.5 py-2.5 outline-none"
-                @click="$emit('navigate')"
+                @click.capture="navigate"
             >
                 <span
                     v-if="depth === 0"
@@ -115,7 +138,7 @@ function toggle() {
                 type="button"
                 class="flex min-w-0 flex-1 items-center gap-2.5 px-2.5 py-2.5 text-left outline-none"
                 :aria-expanded="hasChildren ? open : undefined"
-                @click="toggle"
+                @click="toggleOrExpand"
             >
                 <span class="flex h-5 w-3 shrink-0 items-center justify-center">
                     <span class="h-1.5 w-1.5 rounded-full" :class="toneClass" />
@@ -140,7 +163,7 @@ function toggle() {
                 class="mr-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-500 outline-none transition hover:bg-slate-600 hover:text-slate-200"
                 :aria-label="`${open ? 'Recolher' : 'Expandir'} ${item.label}`"
                 :aria-expanded="open"
-                @click="toggle"
+                @click="toggleOrExpand"
             >
                 <UiIcon :name="open ? 'chevron-down' : 'chevron-right'" class="h-3.5 w-3.5" />
             </button>
@@ -161,7 +184,9 @@ function toggle() {
                 :key="child.key || child.href || child.label"
                 :item="child"
                 :depth="depth + 1"
+                :collapsed="collapsed"
                 @navigate="$emit('navigate')"
+                @expand-desktop="$emit('expand-desktop')"
             />
         </div>
     </div>

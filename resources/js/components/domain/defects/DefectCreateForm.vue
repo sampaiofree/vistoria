@@ -35,6 +35,10 @@ function submit() {
             Informe a categoria e o título para criar a avaria. Os demais dados serão preenchidos depois, na avaliação.
         </div>
 
+        <div v-if="form.errors.defect_code_prefix" role="alert" class="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800">
+            {{ form.errors.defect_code_prefix }}
+        </div>
+
         <div class="grid gap-4 lg:grid-cols-2">
             <label v-if="categories.length" class="block lg:col-span-2">
                 <span :class="labelClass">Categoria da avaria</span>

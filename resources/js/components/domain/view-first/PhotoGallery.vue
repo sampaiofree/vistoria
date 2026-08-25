@@ -103,11 +103,6 @@ function reportLabel(photo) {
         : 'Ainda sem número no relatório';
 }
 
-function retry(photo) {
-    if (!photo.retry_url) return;
-    router.post(photo.retry_url, {}, { preserveScroll: true });
-}
-
 function remove(photo) {
     if (!photo.delete_url || !window.confirm('Remover esta fotografia?')) return;
     router.delete(photo.delete_url, { preserveScroll: true });
@@ -159,10 +154,10 @@ onBeforeUnmount(() => {
                         <span class="rounded-full bg-slate-100 px-2.5 py-1">{{ reportLabel(photo) }}</span>
                     </div>
                     <p class="mt-3 text-xs text-slate-400">{{ photo.location || photo.captured_at || photo.type_label || 'Nenhuma informação adicional' }}</p>
-                    <div v-if="editable && (photo.reorder_url || photo.delete_url || photo.retry_url)" class="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
+                    <p v-if="photoStatus(photo) === 'failed'" class="mt-3 text-xs font-medium text-rose-700">Este arquivo foi descartado. Escolha outra imagem.</p>
+                    <div v-if="editable && (photo.reorder_url || photo.delete_url)" class="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
                         <button v-if="photo.reorder_url" type="button" class="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 disabled:opacity-40" :disabled="index === 0" @click="move(photo, -1)">↑ Subir</button>
                         <button v-if="photo.reorder_url" type="button" class="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 disabled:opacity-40" :disabled="index === orderedPhotos.length - 1" @click="move(photo, 1)">↓ Descer</button>
-                        <button v-if="photo.retry_url && photo.processing_status === 'failed'" type="button" class="rounded-lg border border-amber-200 px-2.5 py-1.5 text-xs font-semibold text-amber-700" @click="retry(photo)">Reprocessar</button>
                         <button v-if="photo.delete_url" type="button" class="rounded-lg border border-rose-200 px-2.5 py-1.5 text-xs font-semibold text-rose-700" @click="remove(photo)">Remover</button>
                     </div>
                 </div>

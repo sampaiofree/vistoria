@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsureGlobalSuperAdmin;
 use App\Http\Middleware\EnsureOrganizationIsActive;
 use App\Http\Middleware\EnsurePasswordChanged;
 use App\Http\Middleware\EnsureUserIsActive;
@@ -19,14 +20,13 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withSchedule(function (Schedule $schedule): void {
         $schedule->command('horizon:snapshot')->everyFiveMinutes()->withoutOverlapping();
-        $schedule->command('photos:cleanup-abandoned')->dailyAt('03:00')->withoutOverlapping();
-        $schedule->command('inspection-maps:cleanup-deleted')->dailyAt('03:30')->withoutOverlapping();
     })
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
             'user.active' => EnsureUserIsActive::class,
             'organization.active' => EnsureOrganizationIsActive::class,
             'password.changed' => EnsurePasswordChanged::class,
+            'global.super-admin' => EnsureGlobalSuperAdmin::class,
             'tenant' => ResolveTenant::class,
         ]);
 

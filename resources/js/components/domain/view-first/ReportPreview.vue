@@ -668,6 +668,7 @@ function visualClass(photo) {
 .report-cover-history th:nth-child(3), .report-cover-history td:nth-child(3) { width: 8%; }
 .report-cover-history th:nth-child(4), .report-cover-history td:nth-child(4) { width: 15%; }
 .report-cover-history th:nth-child(n+5), .report-cover-history td:nth-child(n+5) { width: 10.75%; }
+.report-cover-history td:nth-child(n+5) { overflow-wrap: anywhere; white-space: normal; }
 .report-cover-history th:last-child, .report-cover-history td:last-child { border-right: 0; }
 .report-cover-history tr:last-child td { border-bottom: 0; }
 .report-cover-history-compact table { font-size: 6.7pt; }

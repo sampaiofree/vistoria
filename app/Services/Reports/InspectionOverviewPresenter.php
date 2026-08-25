@@ -99,12 +99,6 @@ final class InspectionOverviewPresenter
             'optimized_url' => $photo->isReady()
                 ? route('inspection-overview-photos.show', $photo)
                 : null,
-            'original_url' => $photo->isReady()
-                ? route('inspection-overview-photos.show', [$photo, 'variant' => 'original'])
-                : null,
-            'retry_url' => $editable && $status === PhotoProcessingStatus::Failed
-                ? route('inspection-overview-photos.retry', $photo)
-                : null,
             'delete_url' => $editable
                 ? route('inspection-overview-photos.destroy', $photo)
                 : null,

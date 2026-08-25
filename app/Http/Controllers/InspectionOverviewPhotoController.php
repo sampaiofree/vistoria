@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Actions\InspectionOverview\DeleteInspectionOverviewPhoto;
-use App\Actions\InspectionOverview\RetryInspectionOverviewPhoto;
 use App\Actions\InspectionOverview\StoreInspectionOverviewPhoto;
 use App\Http\Requests\InspectionOverview\StoreInspectionOverviewPhotoRequest;
 use App\Models\Inspection;
@@ -43,7 +42,6 @@ final class InspectionOverviewPhotoController extends Controller
         $this->authorize('view', $photo);
         $path = match ($variant) {
             'thumbnail' => $photo->thumbnail_path,
-            'original' => $photo->original_path,
             default => $photo->optimized_path,
         };
 
@@ -55,22 +53,9 @@ final class InspectionOverviewPhotoController extends Controller
             fpassthru($stream);
             fclose($stream);
         }, 200, [
-            'Content-Type' => $variant === 'original' ? $photo->original_mime_type : 'image/webp',
+            'Content-Type' => 'image/webp',
             'Cache-Control' => 'private, max-age=3600',
         ]);
-    }
-
-    public function retry(
-        TenantContext $tenant,
-        Request $request,
-        InspectionOverviewPhoto $overviewPhoto,
-        RetryInspectionOverviewPhoto $action,
-    ): RedirectResponse {
-        $photo = $this->tenantPhoto($tenant, $overviewPhoto);
-        $this->authorize('update', $photo);
-        $action->handle($request->user(), $photo);
-
-        return back()->with('success', 'Fotografia reenviada para processamento.');
     }
 
     public function destroy(

@@ -160,4 +160,41 @@ final class OrganizationSettingsTest extends TestCase
         $this->assertFalse($user->refresh()->must_change_password);
         $this->assertTrue(Hash::check('New-secure-password-123', $user->password));
     }
+
+    public function test_new_password_requires_a_special_character(): void
+    {
+        $organization = Organization::factory()->create();
+        $user = User::factory()->for($organization)->create([
+            'password' => 'temporary-password',
+        ]);
+
+        $this->actingAs($user)
+            ->put(route('account.password.update'), [
+                'current_password' => 'temporary-password',
+                'password' => 'NewSecurePassword123',
+                'password_confirmation' => 'NewSecurePassword123',
+            ])
+            ->assertSessionHasErrors('password');
+
+        $this->assertTrue(Hash::check('temporary-password', $user->refresh()->password));
+    }
+
+    public function test_new_password_with_six_characters_is_accepted(): void
+    {
+        $organization = Organization::factory()->create();
+        $user = User::factory()->for($organization)->create([
+            'password' => 'temporary-password',
+        ]);
+
+        $this->actingAs($user)
+            ->put(route('account.password.update'), [
+                'current_password' => 'temporary-password',
+                'password' => 'Aa1@bb',
+                'password_confirmation' => 'Aa1@bb',
+            ])
+            ->assertRedirect(route('dashboard'));
+
+        $this->assertFalse($user->refresh()->must_change_password);
+        $this->assertTrue(Hash::check('Aa1@bb', $user->password));
+    }
 }

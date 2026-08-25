@@ -200,17 +200,6 @@ function submit() {
                 </label>
 
                 <label class="space-y-1.5 text-sm font-medium text-slate-700">
-                    <span>Classificação atmosférica</span>
-                    <input
-                        v-model="form.atmospheric_classification"
-                        type="text"
-                        maxlength="50"
-                        class="w-full rounded-lg border border-slate-300 px-3 py-2"
-                    >
-                    <span v-if="form.errors.atmospheric_classification" class="block text-xs text-rose-600">{{ form.errors.atmospheric_classification }}</span>
-                </label>
-
-                <label class="space-y-1.5 text-sm font-medium text-slate-700">
                     <span>Data planejada</span>
                     <input
                         v-model="form.scheduled_for"

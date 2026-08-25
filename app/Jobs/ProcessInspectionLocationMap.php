@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace App\Jobs;
 
 use App\Enums\InspectionLocationMapProcessingStatus;
+use App\Enums\InspectionLocationMapSourceKind;
 use App\Models\InspectionLocationMap;
 use App\Services\InspectionLocations\InspectionLocationAssetGuard;
+use App\Services\Notifications\NotifyInspectionImageFailure;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -22,7 +24,7 @@ final class ProcessInspectionLocationMap implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 1;
+    public int $tries = 3;
 
     public int $timeout = 180;
 
@@ -31,6 +33,11 @@ final class ProcessInspectionLocationMap implements ShouldQueue
         public readonly ?string $expectedSourceChecksum = null,
     ) {
         $this->onQueue('images');
+    }
+
+    public function backoff(): array
+    {
+        return [10, 60, 300];
     }
 
     public function handle(InspectionLocationAssetGuard $assetGuard): void
@@ -144,14 +151,18 @@ final class ProcessInspectionLocationMap implements ShouldQueue
                 $this->removeGeneratedOutputs($outputDisk, $outputPaths, $map->public_id);
                 $outputDisk = null;
                 $outputPaths = [];
+            } else {
+                $this->removeUploadedSource($map->refresh(), $assetGuard);
             }
         } catch (Throwable $exception) {
             $this->removeGeneratedOutputs($outputDisk, $outputPaths, $map->public_id);
-            $this->markFailed($map);
+            $this->markPendingForRetry($map);
             Log::warning('Falha ao processar mapa de localização.', [
                 'map_public_id' => $map->public_id,
                 'exception' => $exception::class,
             ]);
+
+            throw $exception;
         } finally {
             $thumbnail?->clear();
             $thumbnail?->destroy();
@@ -162,10 +173,21 @@ final class ProcessInspectionLocationMap implements ShouldQueue
 
     public function failed(Throwable $exception): void
     {
-        $map = InspectionLocationMap::query()->find($this->mapId);
-        if ($map !== null && $this->matchesExpectedSource($map)) {
-            $this->markFailed($map);
+        $map = InspectionLocationMap::query()->with(['inspection', 'equipmentDocument'])->find($this->mapId);
+        if ($map === null || ! $this->matchesExpectedSource($map) || $map->processing_status === InspectionLocationMapProcessingStatus::Ready || $map->processing_status === InspectionLocationMapProcessingStatus::Failed) {
+            return;
         }
+
+        $this->removeFailedUploadedSource($map, app(InspectionLocationAssetGuard::class));
+        $this->markFailed($map);
+
+        app(NotifyInspectionImageFailure::class)->handle(
+            $map->inspection,
+            $map->source_uploaded_by ?? $map->updated_by,
+            'Falha no processamento do mapa',
+            sprintf('A imagem do mapa “%s” não pôde ser processada. Escolha outra imagem.', $map->title),
+            route('inspection-location-maps.edit', $map),
+        );
     }
 
     private function configureResources(Imagick $image): void
@@ -212,6 +234,59 @@ final class ProcessInspectionLocationMap implements ShouldQueue
                 'processed_at' => null,
                 'updated_at' => now(),
             ]);
+    }
+
+    private function markPendingForRetry(InspectionLocationMap $map): void
+    {
+        InspectionLocationMap::query()
+            ->whereKey($map->id)
+            ->where('source_checksum', $map->source_checksum)
+            ->where('processing_status', InspectionLocationMapProcessingStatus::Processing->value)
+            ->update([
+                'processing_status' => InspectionLocationMapProcessingStatus::Pending,
+                'processing_error' => (string) config('inspection_locations.processing.error_message'),
+                'updated_at' => now(),
+            ]);
+    }
+
+    private function removeUploadedSource(InspectionLocationMap $map, InspectionLocationAssetGuard $assetGuard): void
+    {
+        if ($map->source_kind !== InspectionLocationMapSourceKind::Upload || $map->source_path === null) {
+            return;
+        }
+
+        try {
+            $source = $assetGuard->source($map);
+            if (! $source['disk']->exists($source['path']) || $source['disk']->delete($source['path'])) {
+                $map->update(['source_path' => null]);
+            } else {
+                Log::warning('Não foi possível remover o upload temporário de um mapa processado.', ['map_public_id' => $map->public_id]);
+            }
+        } catch (Throwable $exception) {
+            Log::warning('Não foi possível remover o upload temporário de um mapa processado.', [
+                'map_public_id' => $map->public_id,
+                'exception' => $exception::class,
+            ]);
+        }
+    }
+
+    private function removeFailedUploadedSource(InspectionLocationMap $map, InspectionLocationAssetGuard $assetGuard): void
+    {
+        if ($map->source_kind !== InspectionLocationMapSourceKind::Upload || $map->source_path === null) {
+            return;
+        }
+
+        try {
+            $source = $assetGuard->source($map);
+            if (! $source['disk']->exists($source['path']) || $source['disk']->delete($source['path'])) {
+                $map->update(['source_path' => null]);
+            }
+        } catch (Throwable $exception) {
+            Log::warning('Não foi possível remover o upload temporário de um mapa após falha definitiva.', [
+                'map_public_id' => $map->public_id,
+                'exception' => $exception::class,
+            ]);
+        }
     }
 
     /** @param array<int, string> $paths */

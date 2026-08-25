@@ -9,7 +9,6 @@ use App\Enums\DefectAssessmentCondition;
 use App\Enums\DefectAssessmentStatus;
 use App\Enums\DefectRelationType;
 use App\Enums\DefectStatus;
-use App\Enums\GutCriterion;
 use App\Enums\InspectionLocationMapProcessingStatus;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
@@ -20,7 +19,6 @@ use App\Models\AssessmentPhoto;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
 use App\Models\DefectCategory;
-use App\Models\DefectCategoryGutOption;
 use App\Models\Equipment;
 use App\Models\Inspection;
 use App\Models\InspectionLocationMap;
@@ -204,11 +202,10 @@ final class DefectRoutesTest extends TestCase
     public function test_sequence_is_scoped_by_the_selected_taxonomy_category(): void
     {
         [$organization, $admin, , $inspection] = $this->createInspectionReadyForDefects();
-        $tac = DefectCategory::factory()->for($organization)->create([
-            'name' => 'TAC',
-            'code' => 'TAC',
-            'position' => 2,
-        ]);
+        $tac = DefectCategory::query()
+            ->where('organization_id', $organization->id)
+            ->where('code', 'TAC')
+            ->firstOrFail();
 
         $this->actingAs($admin)->post(route('inspections.defects.store', $inspection), [
             'title' => 'Avaria civil',
@@ -677,7 +674,7 @@ final class DefectRoutesTest extends TestCase
             && $job->queue === 'images');
     }
 
-    public function test_user_can_reorder_retry_and_remove_assessment_photos(): void
+    public function test_user_can_reorder_and_remove_assessment_photos(): void
     {
         [, $admin, , $inspection] = $this->createInspectionReadyForDefects();
         Queue::fake();
@@ -712,9 +709,6 @@ final class DefectRoutesTest extends TestCase
 
         $failed = $first->refresh();
         $failed->update(['processing_status' => PhotoProcessingStatus::Failed]);
-        $this->actingAs($admin)->post(route('assessment-photos.retry', $failed))->assertRedirect();
-        $this->assertSame(PhotoProcessingStatus::Pending, $failed->refresh()->processing_status);
-        Queue::assertPushed(ProcessAssessmentPhoto::class);
 
         $this->actingAs($admin)->delete(route('assessment-photos.destroy', $failed))->assertRedirect();
         $this->assertSoftDeleted('assessment_photos', ['id' => $failed->id]);
@@ -810,14 +804,6 @@ final class DefectRoutesTest extends TestCase
             ]);
         $category = app(ProvisionDefaultDefectTaxonomy::class)->handle($organization->id);
 
-        foreach ([GutCriterion::Gravity, GutCriterion::Urgency, GutCriterion::Trend] as $criterion) {
-            DefectCategoryGutOption::factory()->create([
-                'organization_id' => $organization->id,
-                'defect_category_id' => $category->id,
-                'criterion' => $criterion,
-                'score' => 1,
-            ]);
-        }
         $category->classifications()->orderBy('position')->get()->each(
             fn ($classification, int $index) => $classification->update([
                 'lower_limit' => $index + 1,

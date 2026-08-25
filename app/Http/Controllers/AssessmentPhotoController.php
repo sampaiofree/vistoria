@@ -22,15 +22,10 @@ final class AssessmentPhotoController extends Controller
 
         $path = match ($variant) {
             'thumbnail' => $photo->thumbnail_path,
-            'original' => $photo->original_path,
             default => $photo->optimized_path,
         };
 
         abort_unless($photo->isReady() && $path !== null && Storage::disk($photo->disk)->exists($path), 404);
-
-        $contentType = $variant === 'original'
-            ? $photo->original_mime_type
-            : 'image/webp';
 
         $stream = Storage::disk($photo->disk)->readStream($path);
 
@@ -40,7 +35,7 @@ final class AssessmentPhotoController extends Controller
             fpassthru($stream);
             fclose($stream);
         }, 200, [
-            'Content-Type' => $contentType,
+            'Content-Type' => 'image/webp',
             'Cache-Control' => 'private, max-age=3600',
         ]);
     }

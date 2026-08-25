@@ -84,7 +84,7 @@ final class UpdateEquipmentRequest extends FormRequest
                     ->ignore($equipment?->getKey()),
             ],
             'defect_code_prefix' => [
-                'nullable',
+                'required',
                 'string',
                 'max:80',
                 Rule::unique('equipments', 'defect_code_prefix')

@@ -228,7 +228,7 @@ final class DefectTaxonomyRoutesTest extends TestCase
         $this->actingAs($admin)
             ->post(route('defect-categories.store'), [
                 'name' => 'Revestimento',
-                'code' => 'REC',
+                'code' => 'MAP',
                 'requires_location_map' => true,
             ])
             ->assertSessionHasErrors('confirm_location_map_requirement');
@@ -236,7 +236,7 @@ final class DefectTaxonomyRoutesTest extends TestCase
         $this->actingAs($admin)
             ->post(route('defect-categories.store'), [
                 'name' => 'Revestimento',
-                'code' => 'REC',
+                'code' => 'MAP',
                 'requires_location_map' => true,
                 'confirm_location_map_requirement' => true,
             ])
@@ -244,7 +244,7 @@ final class DefectTaxonomyRoutesTest extends TestCase
 
         $this->assertDatabaseHas('defect_categories', [
             'organization_id' => $organization->id,
-            'code' => 'REC',
+            'code' => 'MAP',
             'requires_location_map' => true,
         ]);
     }

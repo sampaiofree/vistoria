@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Classification;
 
+use App\Actions\Classification\ProvisionDefaultDefectTaxonomy;
 use App\Actions\Classification\SaveDefectAssessmentGut;
 use App\Actions\Defects\CompleteDefectAssessment;
 use App\Enums\DefectAssessmentCondition;
@@ -212,6 +213,40 @@ final class DefectCategoryGutRoutesTest extends TestCase
 
         $this->expectException(ValidationException::class);
         app(CompleteDefectAssessment::class)->handle($admin, $assessment);
+    }
+
+    public function test_assessment_with_saved_gut_without_a_matching_range_can_be_published(): void
+    {
+        [$organization, $admin] = $this->tenant();
+        app(TenantContext::class)->set($organization);
+        app(ProvisionDefaultDefectTaxonomy::class)->handle($organization->id);
+        $category = DefectCategory::query()
+            ->where('organization_id', $organization->id)
+            ->where('code', 'TAC')
+            ->firstOrFail();
+        $equipment = Equipment::factory()->for($organization)->create();
+        $inspection = Inspection::factory()->forEquipment($equipment)->create(['status' => InspectionStatus::InProgress]);
+        InspectionResponsible::factory()->forInspection($inspection, $admin)->create([
+            'responsibility' => InspectionResponsibility::Preparer,
+            'is_primary' => true,
+        ]);
+        $defect = Defect::factory()->forEquipment($equipment, $inspection)->create(['defect_category_id' => $category->id]);
+        $assessment = DefectAssessment::factory()->forDefect($defect, $inspection)->create([
+            'condition' => DefectAssessmentCondition::Worsened,
+            'comment' => 'Registro suficiente para publicação.',
+        ]);
+
+        $saved = app(SaveDefectAssessmentGut::class)->handle($admin, $assessment, [
+            'condition' => DefectAssessmentCondition::Worsened->value,
+            'gravity' => 1,
+            'urgency' => 1,
+            'trend' => 5,
+        ]);
+        $published = app(CompleteDefectAssessment::class)->handle($admin, $saved);
+
+        $this->assertSame(5, $published->gut_score);
+        $this->assertNull($published->defect_classification_id);
+        $this->assertSame('complete', $published->status->value);
     }
 
     /** @return array{0:Organization,1:User,2:User} */

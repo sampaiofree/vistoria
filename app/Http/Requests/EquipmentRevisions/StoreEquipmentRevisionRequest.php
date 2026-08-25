@@ -29,32 +29,23 @@ final class StoreEquipmentRevisionRequest extends FormRequest
             'revision_date' => blank($this->input('revision_date'))
                 ? null
                 : $this->input('revision_date'),
+            ...collect(['preparer_name', 'reviewer_name', 'approver_name', 'releaser_name'])
+                ->mapWithKeys(fn (string $field): array => [
+                    $field => is_string($this->input($field)) ? trim($this->input($field)) : $this->input($field),
+                ])
+                ->all(),
         ]);
     }
 
     public function rules(): array
     {
-        $organizationId = $this->user()?->organization_id;
-
         return [
             'emission_type' => ['required', Rule::enum(EquipmentRevisionEmissionType::class)],
             'revision_date' => ['required', 'date'],
-            'preparer_id' => $this->activeUserRule($organizationId),
-            'reviewer_id' => $this->activeUserRule($organizationId),
-            'approver_id' => $this->activeUserRule($organizationId),
-            'releaser_id' => $this->activeUserRule($organizationId),
-        ];
-    }
-
-    /** @return array<int, mixed> */
-    private function activeUserRule(?int $organizationId): array
-    {
-        return [
-            'required',
-            'integer',
-            Rule::exists('users', 'id')->where(fn ($query) => $query
-                ->where('organization_id', $organizationId)
-                ->where('status', 'active')),
+            'preparer_name' => ['required', 'string', 'max:180'],
+            'reviewer_name' => ['required', 'string', 'max:180'],
+            'approver_name' => ['required', 'string', 'max:180'],
+            'releaser_name' => ['required', 'string', 'max:180'],
         ];
     }
 }

@@ -28,7 +28,7 @@ final class DefectFactory extends Factory
             'first_inspection_id' => null,
             'code' => fake()->unique()->numerify('VT009-CV-###'),
             'category' => DefectCategory::Civil,
-            'sequence_number' => fake()->numberBetween(1, 999),
+            'sequence_number' => fake()->unique()->numberBetween(1, 999_999),
             'title' => fake()->sentence(4),
             'origin_description' => null,
             'status' => DefectStatus::Active,

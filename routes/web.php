@@ -14,6 +14,7 @@ use App\Http\Controllers\DefectController;
 use App\Http\Controllers\EquipmentController;
 use App\Http\Controllers\EquipmentDocumentController;
 use App\Http\Controllers\EquipmentRevisionController;
+use App\Http\Controllers\GlobalOrganizationController;
 use App\Http\Controllers\InspectionController;
 use App\Http\Controllers\InspectionLocationMapAssetController;
 use App\Http\Controllers\InspectionLocationMapController;
@@ -23,6 +24,7 @@ use App\Http\Controllers\InspectionOverviewPhotoController;
 use App\Http\Controllers\InspectionReferenceDocumentController;
 use App\Http\Controllers\InspectionResponsibleController;
 use App\Http\Controllers\InspectionTransitionController;
+use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\OrganizationSettingsController;
 use App\Http\Controllers\ReinspectionChecklistController;
 use App\Http\Controllers\SubareaController;
@@ -51,6 +53,15 @@ Route::middleware([
 
     Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
 
+    Route::middleware(['password.changed', 'global.super-admin'])->prefix('admin')->name('admin.')->group(function (): void {
+        Route::get('/organizations', [GlobalOrganizationController::class, 'index'])->name('organizations.index');
+        Route::get('/organizations/create', [GlobalOrganizationController::class, 'create'])->name('organizations.create');
+        Route::post('/organizations', [GlobalOrganizationController::class, 'store'])->name('organizations.store');
+        Route::get('/organizations/{organization}/edit', [GlobalOrganizationController::class, 'edit'])->name('organizations.edit');
+        Route::put('/organizations/{organization}', [GlobalOrganizationController::class, 'update'])->name('organizations.update');
+        Route::patch('/organizations/{organization}/status', [GlobalOrganizationController::class, 'updateStatus'])->name('organizations.status');
+    });
+
     Route::middleware('organization.active')->group(function (): void {
         Route::get('/account/password', [AccountPasswordController::class, 'edit'])->name('account.password.edit');
         Route::put('/account/password', [AccountPasswordController::class, 'update'])->name('account.password.update');
@@ -63,6 +74,10 @@ Route::middleware([
         'tenant',
         'password.changed',
     ])->group(function (): void {
+        Route::get('notifications', [NotificationController::class, 'index'])->name('notifications.index');
+        Route::patch('notifications/read-all', [NotificationController::class, 'readAll'])->name('notifications.read-all');
+        Route::patch('notifications/{notification}/read', [NotificationController::class, 'read'])->name('notifications.read');
+
         Route::get('/settings/company', [OrganizationSettingsController::class, 'edit'])->name('settings.company.edit');
         Route::put('/settings/company', [OrganizationSettingsController::class, 'update'])->name('settings.company.update');
         Route::delete('/settings/company/logo', [OrganizationSettingsController::class, 'destroyLogo'])->name('settings.company.logo.destroy');
@@ -152,12 +167,7 @@ Route::middleware([
         Route::get(
             'inspection-overview-photos/{overviewPhoto}/{variant?}',
             [InspectionOverviewPhotoController::class, 'show'],
-        )->whereIn('variant', ['optimized', 'thumbnail', 'original'])->name('inspection-overview-photos.show');
-
-        Route::post(
-            'inspection-overview-photos/{overviewPhoto}/retry',
-            [InspectionOverviewPhotoController::class, 'retry'],
-        )->name('inspection-overview-photos.retry');
+        )->whereIn('variant', ['optimized', 'thumbnail'])->name('inspection-overview-photos.show');
 
         Route::delete(
             'inspection-overview-photos/{overviewPhoto}',
@@ -201,8 +211,6 @@ Route::middleware([
             ->name('inspection-location-maps.destroy');
         Route::post('inspection-location-maps/{map}/source', [InspectionLocationMapController::class, 'source'])
             ->name('inspection-location-maps.source');
-        Route::post('inspection-location-maps/{map}/retry', [InspectionLocationMapController::class, 'retry'])
-            ->name('inspection-location-maps.retry');
         Route::get('inspection-location-maps/{map}/background/{variant?}', [InspectionLocationMapAssetController::class, 'background'])
             ->where('variant', 'thumbnail')
             ->name('inspection-location-maps.background');
@@ -257,12 +265,7 @@ Route::middleware([
         Route::get(
             'assessment-photos/{assessmentPhoto}/{variant?}',
             [AssessmentPhotoController::class, 'show'],
-        )->name('assessment-photos.show');
-
-        Route::post(
-            'assessment-photos/{assessmentPhoto}/retry',
-            [DefectAssessmentController::class, 'retryPhoto'],
-        )->name('assessment-photos.retry');
+        )->whereIn('variant', ['optimized', 'thumbnail'])->name('assessment-photos.show');
 
         Route::delete(
             'assessment-photos/{assessmentPhoto}',

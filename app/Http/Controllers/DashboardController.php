@@ -34,6 +34,7 @@ final class DashboardController extends Controller
                 ],
                 'links' => [
                     'dashboard' => route('dashboard'),
+                    'organizations_index' => route('admin.organizations.index'),
                     'inspections_index' => null,
                     'inspections_create' => null,
                     'equipments_index' => null,
@@ -74,6 +75,7 @@ final class DashboardController extends Controller
             ],
             'links' => [
                 'dashboard' => route('dashboard'),
+                'organizations_index' => null,
                 'inspections_index' => route('inspections.index', $personalFilters),
                 'inspections_create' => $request->user()->can('create', Inspection::class) ? route('inspections.create') : null,
                 'equipments_index' => route('equipments.index'),

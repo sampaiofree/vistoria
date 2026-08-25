@@ -20,10 +20,6 @@ final class EquipmentRevision extends Model
         'equipment_id',
         'emission_type',
         'revision_date',
-        'preparer_id',
-        'reviewer_id',
-        'approver_id',
-        'releaser_id',
         'preparer_name',
         'reviewer_name',
         'approver_name',
@@ -43,26 +39,6 @@ final class EquipmentRevision extends Model
     public function equipment(): BelongsTo
     {
         return $this->belongsTo(Equipment::class);
-    }
-
-    public function preparer(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'preparer_id');
-    }
-
-    public function reviewer(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'reviewer_id');
-    }
-
-    public function approver(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'approver_id');
-    }
-
-    public function releaser(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'releaser_id');
     }
 
     public function creator(): BelongsTo

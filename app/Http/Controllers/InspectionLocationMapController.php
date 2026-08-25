@@ -8,7 +8,6 @@ use App\Actions\InspectionLocations\CopyInspectionLocationMapsFromPreviousInspec
 use App\Actions\InspectionLocations\CreateInspectionLocationMap;
 use App\Actions\InspectionLocations\DeleteInspectionLocationMap;
 use App\Actions\InspectionLocations\ReorderInspectionLocationMaps;
-use App\Actions\InspectionLocations\RetryInspectionLocationMapProcessing;
 use App\Actions\InspectionLocations\StoreInspectionLocationMapSource;
 use App\Actions\InspectionLocations\UpdateInspectionLocationMap;
 use App\Enums\DefectAssessmentCondition;
@@ -84,7 +83,6 @@ final class InspectionLocationMapController extends Controller
             'inspection' => ['number' => $map->inspection->number, 'equipment' => ['tag' => $map->inspection->equipment->tag]],
             'update_url' => route('inspection-location-maps.update', $map),
             'source_url' => route('inspection-location-maps.source', $map),
-            'retry_url' => route('inspection-location-maps.retry', $map),
             'delete_url' => route('inspection-location-maps.destroy', $map),
             'cancel_url' => route('inspections.locations', $map->inspection),
         ]);
@@ -238,15 +236,6 @@ final class InspectionLocationMapController extends Controller
         }
 
         return back()->with('success', 'Imagem do mapa enviada para processamento.');
-    }
-
-    public function retry(TenantContext $tenant, InspectionLocationMap $map, RetryInspectionLocationMapProcessing $action): RedirectResponse
-    {
-        $map = $this->tenantInspectionLocationMap($tenant, $map);
-        $this->authorize('update', $map);
-        $action->handle(request()->user(), $map);
-
-        return back()->with('success', 'Processamento reenviado.');
     }
 
     public function copyPrevious(Request $request, TenantContext $tenant, Inspection $inspection, CopyInspectionLocationMapsFromPreviousInspection $action): RedirectResponse

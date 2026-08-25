@@ -172,12 +172,10 @@ final class InspectionLocationPresenter
             'capabilities' => [
                 'update' => $canUpdate,
                 'delete' => $user->can('delete', $map),
-                'retry' => $canUpdate && $map->processing_status === InspectionLocationMapProcessingStatus::Failed,
                 'open_editor' => $canUpdate && $map->processing_status === InspectionLocationMapProcessingStatus::Ready,
             ],
             'edit_url' => $canUpdate ? route('inspection-location-maps.edit', $map) : null,
             'editor_url' => $canUpdate && $map->processing_status === InspectionLocationMapProcessingStatus::Ready ? route('inspection-location-maps.editor', $map) : null,
-            'retry_url' => $canUpdate ? route('inspection-location-maps.retry', $map) : null,
             'delete_url' => $user->can('delete', $map) ? route('inspection-location-maps.destroy', $map) : null,
         ];
     }
