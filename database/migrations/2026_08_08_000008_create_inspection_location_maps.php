@@ -65,7 +65,7 @@ return new class extends Migration
             $table->foreign(['organization_id', 'defect_category_id'], 'location_maps_org_category_foreign')
                 ->references(['organization_id', 'id'])->on('defect_categories')->restrictOnDelete();
             $table->foreign(['organization_id', 'equipment_document_id'], 'location_maps_org_document_foreign')
-                ->references(['organization_id', 'id'])->on('equipment_documents')->nullOnDelete();
+                ->references(['organization_id', 'id'])->on('equipment_documents')->restrictOnDelete();
 
             $table->unique(['organization_id', 'equipment_id', 'inspection_id', 'id'], 'location_maps_scope_id_unique');
             $table->index(['organization_id', 'inspection_id', 'defect_category_id', 'position'], 'location_maps_scope_position_index');
