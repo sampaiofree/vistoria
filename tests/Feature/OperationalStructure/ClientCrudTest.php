@@ -73,16 +73,22 @@ final class ClientCrudTest extends TestCase
 
     public function test_member_can_view_clients_index_as_inertia_page(): void
     {
+        Storage::fake('public');
+
         $organization = Organization::factory()->create();
 
         $member = User::factory()
             ->for($organization)
             ->create();
 
-        Client::factory()
-            ->count(2)
+        $clientWithLogo = Client::factory()
             ->for($organization)
-            ->create();
+            ->create([
+                'name' => 'Cliente com logo',
+                'logo_path' => 'organizations/'.$organization->id.'/clients/logo.png',
+            ]);
+
+        Client::factory()->for($organization)->create(['name' => 'Z cliente sem logo']);
 
         $response = $this
             ->actingAs($member)
@@ -93,7 +99,26 @@ final class ClientCrudTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Clients/Index')
                 ->where('can.create', false)
+                ->where('clients.data.0.logo_url', Storage::disk('public')->url($clientWithLogo->logo_path))
                 ->where('clients.data.0.can_update', false));
+    }
+
+    public function test_client_show_page_includes_client_logo_url(): void
+    {
+        Storage::fake('public');
+
+        $organization = Organization::factory()->create();
+        $member = User::factory()->for($organization)->create();
+        $client = Client::factory()->for($organization)->create([
+            'logo_path' => 'organizations/'.$organization->id.'/clients/logo.png',
+        ]);
+
+        $this
+            ->actingAs($member)
+            ->get(route('clients.show', $client))
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Clients/Show')
+                ->where('client.logo_url', Storage::disk('public')->url($client->logo_path)));
     }
 
     public function test_users_cannot_view_client_from_another_organization(): void

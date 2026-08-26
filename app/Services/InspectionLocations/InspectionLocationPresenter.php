@@ -163,7 +163,11 @@ final class InspectionLocationPresenter
                 ],
             ],
             'background_url' => $map->processing_status === InspectionLocationMapProcessingStatus::Ready
-                ? route('inspection-location-maps.background', [$map, 'thumbnail'])
+                ? route('inspection-location-maps.background', [
+                    'map' => $map,
+                    'variant' => 'thumbnail',
+                    'v' => $map->background_checksum,
+                ])
                 : null,
             'processing_status' => $map->processing_status->value,
             'processing_status_label' => $this->statusLabel($map->processing_status),

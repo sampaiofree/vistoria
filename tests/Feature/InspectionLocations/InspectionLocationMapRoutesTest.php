@@ -50,6 +50,14 @@ final class InspectionLocationMapRoutesTest extends TestCase
         Storage::disk('inspection_maps')->assertExists(dirname($map->background_path).'/thumbnail.webp');
 
         $this->actingAs($user)
+            ->get(route('inspection-location-maps.edit', $map))
+            ->assertInertia(fn ($page) => $page
+                ->where('map.background_url', route('inspection-location-maps.background', [
+                    'map' => $map,
+                    'v' => $map->background_checksum,
+                ])));
+
+        $this->actingAs($user)
             ->get(route('inspection-location-maps.background', $map))
             ->assertOk()
             ->assertHeader('Content-Type', 'image/webp');

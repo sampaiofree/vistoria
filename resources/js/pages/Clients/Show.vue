@@ -29,14 +29,22 @@ defineProps({
     >
         <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <div>
-                    <div class="flex flex-wrap items-center gap-3">
-                        <h2 class="text-2xl font-semibold text-slate-900">{{ client.name }}</h2>
-                        <StatusBadge :status="client.status" />
+                <div class="flex items-start gap-4">
+                    <img
+                        v-if="client.logo_url"
+                        :src="client.logo_url"
+                        :alt="`Logotipo de ${client.name}`"
+                        class="h-20 w-28 rounded-lg border border-slate-200 bg-slate-50 object-contain p-2"
+                    >
+                    <div>
+                        <div class="flex flex-wrap items-center gap-3">
+                            <h2 class="text-2xl font-semibold text-slate-900">{{ client.name }}</h2>
+                            <StatusBadge :status="client.status" />
+                        </div>
+                        <p v-if="client.legal_name" class="mt-2 text-sm text-slate-500">
+                            {{ client.legal_name }}
+                        </p>
                     </div>
-                    <p v-if="client.legal_name" class="mt-2 text-sm text-slate-500">
-                        {{ client.legal_name }}
-                    </p>
                 </div>
 
                 <div class="flex flex-wrap gap-2">

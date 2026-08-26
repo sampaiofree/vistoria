@@ -86,6 +86,7 @@ function submit() {
                 <table class="min-w-full divide-y divide-slate-200">
                     <thead class="bg-slate-50">
                         <tr class="text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            <th class="px-5 py-3">Logo</th>
                             <th class="px-5 py-3">Cliente</th>
                             <th class="px-5 py-3">Documento</th>
                             <th class="px-5 py-3">Unidades</th>
@@ -95,6 +96,15 @@ function submit() {
                     </thead>
                     <tbody class="divide-y divide-slate-200 bg-white">
                         <tr v-for="client in clients.data" :key="client.public_id">
+                            <td class="px-5 py-4">
+                                <img
+                                    v-if="client.logo_url"
+                                    :src="client.logo_url"
+                                    :alt="`Logotipo de ${client.name}`"
+                                    class="h-10 w-16 rounded border border-slate-200 bg-slate-50 object-contain p-1"
+                                >
+                                <span v-else class="text-sm text-slate-400">-</span>
+                            </td>
                             <td class="px-5 py-4">
                                 <div class="font-semibold text-slate-900">{{ client.name }}</div>
                                 <div v-if="client.legal_name" class="text-sm text-slate-500">
@@ -135,7 +145,7 @@ function submit() {
                             </td>
                         </tr>
                         <tr v-if="clients.data.length === 0">
-                            <td colspan="5" class="px-5 py-10 text-center text-sm text-slate-500">
+                            <td colspan="6" class="px-5 py-10 text-center text-sm text-slate-500">
                                 Nenhum cliente encontrado.
                             </td>
                         </tr>

@@ -77,7 +77,12 @@ final class InspectionLocationMapController extends Controller
                 'document' => $map->equipmentDocument?->only(['title', 'revision']),
                 'processing_status' => $map->processing_status->value,
                 'processing_error' => $map->processing_error,
-                'background_url' => $map->processing_status->value === 'ready' && $map->background_path ? route('inspection-location-maps.background', $map) : null,
+                'background_url' => $map->processing_status->value === 'ready' && $map->background_path
+                    ? route('inspection-location-maps.background', [
+                        'map' => $map,
+                        'v' => $map->background_checksum,
+                    ])
+                    : null,
                 'editor_url' => $map->processing_status->value === 'ready' ? route('inspection-location-maps.editor', $map) : null,
             ],
             'inspection' => ['number' => $map->inspection->number, 'equipment' => ['tag' => $map->inspection->equipment->tag]],
@@ -132,7 +137,10 @@ final class InspectionLocationMapController extends Controller
                 'public_id' => $map->public_id,
                 'title' => $map->title,
                 'lock_version' => $map->lock_version,
-                'background_url' => route('inspection-location-maps.background', $map),
+                'background_url' => route('inspection-location-maps.background', [
+                    'map' => $map,
+                    'v' => $map->background_checksum,
+                ]),
                 'background_width' => $map->background_width,
                 'background_height' => $map->background_height,
                 'category' => ['name' => $map->category->name, 'code' => $map->category->code],

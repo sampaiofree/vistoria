@@ -142,7 +142,10 @@ final class InspectionLocationReportComposer
                 'height' => $map->background_height,
                 'checksum' => $map->background_checksum,
                 'url' => $map->processing_status === InspectionLocationMapProcessingStatus::Ready
-                    ? route('inspection-location-maps.background', $map)
+                    ? route('inspection-location-maps.background', [
+                        'map' => $map,
+                        'v' => $map->background_checksum,
+                    ])
                     : null,
             ],
             'marker_count' => $markers->count(),

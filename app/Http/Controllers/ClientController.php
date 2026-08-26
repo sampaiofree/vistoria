@@ -49,6 +49,9 @@ final class ClientController extends Controller
                 'document' => $client->document,
                 'email' => $client->email,
                 'phone' => $client->phone,
+                'logo_url' => $client->logo_path !== null
+                    ? Storage::disk('public')->url($client->logo_path)
+                    : null,
                 'status' => $client->status->value,
                 'units_count' => $client->units_count,
                 'show_url' => route('clients.show', $client),
