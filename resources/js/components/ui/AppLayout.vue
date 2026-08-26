@@ -137,12 +137,14 @@ const contentWidthClass = computed(() => (props.wide ? 'w-full' : 'mx-auto w-ful
 
 <template>
     <div class="app-ui min-h-screen bg-slate-100 text-slate-900" :style="shellStyle">
+        <!--
         <a
             href="#main-content"
             class="fixed left-4 top-4 z-50 -translate-y-24 rounded-md border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-950 shadow-md transition focus:translate-y-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500"
         >
             Pular para o conteúdo
         </a>
+        -->
 
         <AppSidebar
             :items="sidebarNavigation"
