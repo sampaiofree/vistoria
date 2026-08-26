@@ -33,6 +33,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
+use PHPUnit\Framework\Attributes\PreserveGlobalState;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use Tests\TestCase;
 
 final class InspectionLocationHardeningTest extends TestCase
@@ -146,8 +148,42 @@ final class InspectionLocationHardeningTest extends TestCase
         $job = new ProcessInspectionLocationMap(123, 'checksum');
 
         $this->assertSame(3, $job->tries);
+        $this->assertSame(180, $job->timeout);
         $this->assertSame([10, 60, 300], $job->backoff());
+        $this->assertSame(210, config('horizon.defaults.supervisor-images.timeout'));
         $this->assertSame(3000, config('inspection_locations.processing.max_output_dimension'));
+        $this->assertNull(config('inspection_locations.processing.time_seconds'));
+    }
+
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function test_map_processing_does_not_change_the_imagick_time_resource_limit(): void
+    {
+        Storage::fake('inspection_maps');
+        [, $user, , , $map] = $this->context();
+        $upload = UploadedFile::fake()->image('mapa.jpg', 400, 300);
+        $sourcePath = $this->mapDirectory($map).'/source.jpg';
+        Storage::disk('inspection_maps')->put($sourcePath, $upload->getContent());
+        $checksum = hash('sha256', $upload->getContent());
+        $map->update([
+            'source_kind' => InspectionLocationMapSourceKind::Upload,
+            'source_disk' => 'inspection_maps',
+            'source_path' => $sourcePath,
+            'source_mime_type' => 'image/jpeg',
+            'source_size' => $upload->getSize(),
+            'source_checksum' => $checksum,
+            'source_uploaded_by' => $user->id,
+            'processing_status' => InspectionLocationMapProcessingStatus::Pending,
+        ]);
+
+        $image = new \Imagick;
+        $initialLimit = $image->getResourceLimit(\Imagick::RESOURCETYPE_TIME);
+
+        (new ProcessInspectionLocationMap($map->id, $checksum))->handle(app(InspectionLocationAssetGuard::class));
+
+        $this->assertSame($initialLimit, $image->getResourceLimit(\Imagick::RESOURCETYPE_TIME));
+        $image->clear();
+        $image->destroy();
     }
 
     public function test_successful_map_processing_removes_uploaded_source_and_keeps_derivatives(): void

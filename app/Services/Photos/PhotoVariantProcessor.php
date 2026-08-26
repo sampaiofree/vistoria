@@ -90,10 +90,6 @@ final class PhotoVariantProcessor
         $image->setResourceLimit(Imagick::RESOURCETYPE_MAP, (int) config('photos.processing.map_megabytes') * 1024 * 1024);
         $image->setResourceLimit(Imagick::RESOURCETYPE_DISK, (int) config('photos.processing.disk_megabytes') * 1024 * 1024);
         $image->setResourceLimit(Imagick::RESOURCETYPE_THREAD, (int) config('photos.processing.threads'));
-
-        if (defined('Imagick::RESOURCETYPE_TIME')) {
-            $image->setResourceLimit(Imagick::RESOURCETYPE_TIME, (int) config('photos.processing.time_seconds'));
-        }
     }
 
     private function assertSafeDimensions(Imagick $image): void

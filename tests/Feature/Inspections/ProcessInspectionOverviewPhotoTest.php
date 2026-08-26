@@ -39,9 +39,11 @@ final class ProcessInspectionOverviewPhotoTest extends TestCase
             'original_size' => $upload->getSize(),
         ]);
 
-        (new ProcessInspectionOverviewPhoto($photo->id))->handle();
+        $job = new ProcessInspectionOverviewPhoto($photo->id);
+        $job->handle();
 
         $photo->refresh();
+        $this->assertSame(180, $job->timeout);
         $this->assertSame(PhotoProcessingStatus::Ready, $photo->processing_status);
         $this->assertNull($photo->original_path);
         Storage::disk('inspection_photos')->assertMissing($path);

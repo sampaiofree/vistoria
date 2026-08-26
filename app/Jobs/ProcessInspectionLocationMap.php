@@ -196,9 +196,6 @@ final class ProcessInspectionLocationMap implements ShouldQueue
         $image->setResourceLimit(Imagick::RESOURCETYPE_MAP, (int) config('inspection_locations.processing.map_megabytes') * 1024 * 1024);
         $image->setResourceLimit(Imagick::RESOURCETYPE_DISK, (int) config('inspection_locations.processing.disk_megabytes') * 1024 * 1024);
         $image->setResourceLimit(Imagick::RESOURCETYPE_THREAD, 1);
-        if (defined('Imagick::RESOURCETYPE_TIME')) {
-            $image->setResourceLimit(Imagick::RESOURCETYPE_TIME, (int) config('inspection_locations.processing.time_seconds'));
-        }
     }
 
     private function assertSafeDimensions(Imagick $image): void

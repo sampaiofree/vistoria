@@ -19,7 +19,6 @@ return [
         'memory_megabytes' => 256,
         'map_megabytes' => 512,
         'disk_megabytes' => 1024,
-        'time_seconds' => 120,
         'error_message' => 'Não foi possível processar a imagem-base. Verifique o arquivo e tente novamente.',
     ],
 ];

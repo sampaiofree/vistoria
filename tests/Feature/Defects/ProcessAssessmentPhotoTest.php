@@ -17,6 +17,8 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\PreserveGlobalState;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -80,6 +82,25 @@ final class ProcessAssessmentPhotoTest extends TestCase
         $this->assertSame(288, $photo->thumbnail_height);
         $this->assertImageDimensions($photo->optimized_path, 500, 300);
         $this->assertImageDimensions($photo->thumbnail_path, 480, 288);
+    }
+
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function test_processing_does_not_change_the_imagick_time_resource_limit(): void
+    {
+        Storage::fake('inspection_photos');
+        $photo = $this->photoWithImage(320, 240);
+        $job = new ProcessAssessmentPhoto($photo->id);
+        $image = new \Imagick;
+        $initialLimit = $image->getResourceLimit(\Imagick::RESOURCETYPE_TIME);
+
+        $job->handle();
+
+        $this->assertSame(180, $job->timeout);
+        $this->assertSame($initialLimit, $image->getResourceLimit(\Imagick::RESOURCETYPE_TIME));
+        $this->assertNull(config('photos.processing.time_seconds'));
+        $image->clear();
+        $image->destroy();
     }
 
     public function test_final_processing_failure_deletes_the_temporary_original(): void
