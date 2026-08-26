@@ -68,4 +68,35 @@ class AuthenticationTest extends TestCase
     {
         $this->get('/dashboard')->assertRedirectToRoute('login');
     }
+
+    public function test_logout_from_an_inertia_request_performs_a_full_redirect_to_login(): void
+    {
+        $user = User::factory()->create();
+
+        $response = $this
+            ->actingAs($user)
+            ->withHeaders([
+                'X-Inertia' => 'true',
+                'X-Requested-With' => 'XMLHttpRequest',
+            ])
+            ->post(route('logout'));
+
+        $response
+            ->assertStatus(409)
+            ->assertHeader('X-Inertia-Location', route('login'));
+
+        $this->assertGuest();
+    }
+
+    public function test_logout_from_a_regular_form_redirects_to_login(): void
+    {
+        $user = User::factory()->create();
+
+        $this
+            ->actingAs($user)
+            ->post(route('logout'))
+            ->assertRedirectToRoute('login');
+
+        $this->assertGuest();
+    }
 }

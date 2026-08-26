@@ -9,6 +9,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
+use Inertia\Inertia;
+use Symfony\Component\HttpFoundation\Response;
 
 class AuthenticatedSessionController extends Controller
 {
@@ -52,13 +54,16 @@ class AuthenticatedSessionController extends Controller
         return redirect()->intended(route('dashboard'));
     }
 
-    public function destroy(Request $request): RedirectResponse
+    public function destroy(Request $request): Response
     {
         Auth::guard('web')->logout();
 
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
-        return redirect()->route('login');
+        // A página de login não é uma página Inertia. Retornar uma location
+        // response força o navegador a carregá-la fora do diálogo de erro do
+        // Inertia, que é exibido para respostas HTML não-Inertia.
+        return Inertia::location(route('login'));
     }
 }
