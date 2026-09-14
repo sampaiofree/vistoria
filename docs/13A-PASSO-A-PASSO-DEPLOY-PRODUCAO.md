@@ -1,69 +1,47 @@
 # Passo a passo do deploy em produção
 
-Este documento é o roteiro operacional para entregar a aplicação Vistoria em
-produção. Ele considera inicialmente um único VPS Ubuntu/Debian com 1 CPU e
-2 GB de RAM, usando:
+Este roteiro descreve uma instalação em VPS Ubuntu/Debian com Nginx, PHP-FPM,
+MySQL, Redis, Laravel Horizon e Supervisor. Ajuste nomes de pacotes, serviços e
+caminhos à distribuição utilizada. Substitua os valores `<...>` antes de
+executar os exemplos.
 
-- Nginx;
-- PHP 8.3 ou superior com PHP-FPM;
-- MySQL 8;
-- Redis;
-- Laravel Horizon;
-- Supervisor;
-- arquivos privados no próprio servidor.
+O checklist resumido está em [`13-DEPLOY-HETZNER.md`](13-DEPLOY-HETZNER.md).
 
-Substitua todos os valores entre `<...>` antes de executar os comandos. Não
-copie o `.env` local: o ambiente de desenvolvimento atual pode usar SQLite,
-enquanto produção deve usar MySQL.
+## 1. Dados e segredos necessários
 
-## Bloqueio funcional conhecido antes do go-live
-
-O bootstrap cria o superadministrador global, mas o projeto ainda não possui uma
-interface global para esse usuário cadastrar empresas e seus primeiros
-administradores. Em um banco novo, o deploy técnico poderá ser concluído, porém o
-aceite funcional ficará bloqueado até existir um fluxo aprovado de onboarding de
-empresa — preferencialmente pela própria aplicação ou por um comando Artisan
-auditável e idempotente. Não crie a primeira empresa com SQL manual ou Tinker em
-produção. O mesmo fluxo deverá provisionar as categorias e classificações
-iniciais exigidas pela empresa.
-
-## 1. Informações que precisam estar definidas
-
-Antes de iniciar, confirme:
+Defina antes do início:
 
 ```text
 Domínio:                 <app.exemplo.com.br>
 Caminho da aplicação:    /var/www/vistoria
 Usuário de deploy:       <deploy>
-Usuário do PHP/Nginx:    www-data
-Banco MySQL:             vistoria
-Usuário MySQL:           vistoria
-E-mail do administrador: sampaio.free@gmail.com
+Usuário PHP/Horizon:     www-data
+Banco e usuário MySQL:   vistoria
+E-mail do superadmin:    <admin@exemplo.com>
 ```
 
-Também separe previamente:
+Separe senhas fortes para MySQL e Redis, credencial de leitura do repositório,
+certificado HTTPS e um destino externo de backup. O ambiente de produção deve
+ser próprio; não copie `.env` de desenvolvimento.
 
-- senha forte do MySQL;
-- senha forte do Redis;
-- acesso ao repositório Git;
-- certificado HTTPS;
-- destino externo para os backups.
+## 2. Instalar dependências
 
-## 2. Preparar o servidor
-
-Atualize o sistema e instale Nginx, MySQL, Redis, Supervisor, Composer, Node e
-as extensões exigidas pelo projeto. Os nomes dos pacotes PHP podem variar
-conforme o repositório da distribuição:
+A aplicação requer PHP 8.3 ou superior. Um conjunto típico de pacotes é:
 
 ```bash
 sudo apt update
-sudo apt upgrade
 sudo apt install nginx mysql-server redis-server supervisor git unzip curl composer
 sudo apt install php8.3-fpm php8.3-cli php8.3-mysql php8.3-mbstring php8.3-xml php8.3-curl php8.3-zip php8.3-bcmath php8.3-intl php8.3-redis php8.3-imagick
-sudo apt install imagemagick ghostscript
 ```
 
-Confirme as dependências:
+`pcntl` e `posix` também precisam estar disponíveis para Horizon. Instale a
+versão de Node indicada em `.nvmrc` — atualmente 22 — no servidor de build. Se
+o CI entregar `public/build`, Node não precisa ficar na VPS.
+
+ImageMagick é necessário. Ghostscript é opcional e serve somente para fontes
+PDF históricas: a interface atual de mapas aceita PNG, JPEG e WebP.
+
+Confirme o ambiente:
 
 ```bash
 php -v
@@ -75,115 +53,54 @@ nginx -v
 supervisord --version
 ```
 
-Instale a versão de Node indicada em `.nvmrc`, preferencialmente pelo gerenciador
-adotado pela equipe de infraestrutura.
+Em uma VPS pequena, disponibilize swap e acompanhe seu uso. O Horizon atual usa
+um único worker de até 512 MB, além de PHP-FPM, banco e Redis.
 
-Como o VPS possui apenas 2 GB de RAM, confira `swapon --show`. Se não existir
-swap, crie 2 GB antes do build e do processamento de imagens:
+## 3. Preparar MySQL e Redis
 
-```bash
-sudo fallocate -l 2G /swapfile
-sudo chmod 600 /swapfile
-sudo mkswap /swapfile
-sudo swapon /swapfile
-echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
-```
-
-Não repita esse procedimento quando `/swapfile` já estiver ativo ou registrado
-em `/etc/fstab`.
-
-## 3. Configurar o MySQL
-
-Entre no MySQL como administrador:
-
-```bash
-sudo mysql
-```
-
-Crie banco e usuário exclusivos. Troque a senha antes de executar:
+Crie banco e usuário exclusivos:
 
 ```sql
-CREATE DATABASE vistoria
-    CHARACTER SET utf8mb4
-    COLLATE utf8mb4_unicode_ci;
-
-CREATE USER 'vistoria'@'127.0.0.1'
-    IDENTIFIED BY '<SENHA_FORTE_MYSQL>';
-
+CREATE DATABASE vistoria CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'vistoria'@'127.0.0.1' IDENTIFIED BY '<SENHA_MYSQL>';
 GRANT ALL PRIVILEGES ON vistoria.* TO 'vistoria'@'127.0.0.1';
 FLUSH PRIVILEGES;
-EXIT;
 ```
 
-Teste a conexão usando o novo usuário:
-
-```bash
-mysql -h 127.0.0.1 -u vistoria -p vistoria
-```
-
-## 4. Configurar o Redis
-
-Edite `/etc/redis/redis.conf` e garanta estas opções:
+No Redis, restrinja a escuta à máquina, use autenticação e persistência e não
+expulse silenciosamente jobs:
 
 ```conf
 bind 127.0.0.1 ::1
 protected-mode yes
-requirepass <SENHA_FORTE_REDIS>
+requirepass <SENHA_REDIS>
 appendonly yes
 appendfsync everysec
 maxmemory-policy noeviction
 ```
 
-Reinicie e habilite o serviço:
+Depois de reiniciar o serviço, `redis-cli --askpass ping` deve retornar `PONG`.
 
-```bash
-sudo systemctl restart redis-server
-sudo systemctl enable redis-server
-sudo systemctl status redis-server
-```
-
-Teste com `redis-cli --askpass ping`. A resposta esperada é `PONG`.
-
-## 5. Obter a aplicação
-
-Crie o diretório e entregue sua propriedade ao usuário de deploy:
+## 4. Obter e compilar a aplicação
 
 ```bash
 sudo mkdir -p /var/www/vistoria
 sudo chown <deploy>:www-data /var/www/vistoria
 sudo chmod 2775 /var/www/vistoria
-```
-
-Clone o repositório no diretório definido:
-
-```bash
-git clone <URL_DO_REPOSITORIO> /var/www/vistoria
+git clone <URL_REPOSITORIO> /var/www/vistoria
 cd /var/www/vistoria
-git checkout <BRANCH_OU_TAG_DE_PRODUCAO>
-```
-
-Instale as dependências:
-
-```bash
+git checkout <TAG_OU_BRANCH_APROVADA>
 composer install --no-dev --optimize-autoloader --no-interaction
 npm ci
 npm run build
 ```
 
-Em um pipeline futuro, o build frontend poderá ser gerado pelo CI e entregue
-como artefato, retirando a necessidade de Node no servidor.
+Prefira releases imutáveis ou tags aprovadas. Não use `composer update` no
+servidor: produção deve respeitar o lockfile.
 
-## 6. Criar o ambiente de produção
+## 5. Configurar o ambiente
 
-Crie o `.env` a partir do exemplo:
-
-```bash
-cp .env.example .env
-sudo chown <deploy>:www-data .env
-chmod 640 .env
-```
-
-Preencha pelo menos as configurações abaixo:
+Crie `.env`, restrinja sua leitura e preencha ao menos:
 
 ```dotenv
 APP_NAME="Vistoria"
@@ -193,6 +110,7 @@ APP_DEBUG=false
 APP_URL=https://<DOMINIO>
 APP_TIMEZONE=America/Sao_Paulo
 APP_LOCALE=pt_BR
+APP_FALLBACK_LOCALE=pt_BR
 
 LOG_CHANNEL=stack
 LOG_LEVEL=warning
@@ -202,42 +120,39 @@ DB_HOST=127.0.0.1
 DB_PORT=3306
 DB_DATABASE=vistoria
 DB_USERNAME=vistoria
-DB_PASSWORD=<SENHA_FORTE_MYSQL>
+DB_PASSWORD=<SENHA_MYSQL>
 
 SESSION_DRIVER=database
 CACHE_STORE=database
 QUEUE_CONNECTION=redis
+REDIS_QUEUE_RETRY_AFTER=240
 
 REDIS_CLIENT=phpredis
 REDIS_HOST=127.0.0.1
-REDIS_PASSWORD=<SENHA_FORTE_REDIS>
+REDIS_PASSWORD=<SENHA_REDIS>
 REDIS_PORT=6379
-REDIS_DB=0
-REDIS_CACHE_DB=1
-REDIS_QUEUE_RETRY_AFTER=240
 
 EQUIPMENT_DOCUMENTS_ROOT=/var/lib/vistoria/equipment-documents
 INSPECTION_PHOTOS_ROOT=/var/lib/vistoria/inspection-photos
 INSPECTION_MAPS_ROOT=/var/lib/vistoria/inspection-maps
 ```
 
-Configure também o serviço de e-mail real quando ele for utilizado. Nunca deixe
-segredos no repositório, em mensagens ou em arquivos públicos.
-Coloque entre aspas os valores do `.env` que contenham espaços, `#` ou outros
-caracteres interpretados pelo formato dotenv.
+Adicione a configuração real de e-mail para que notificações possam ser
+entregues. Valores dotenv com espaços ou caracteres especiais devem ficar entre
+aspas. Nunca envie o arquivo ou seus segredos ao repositório.
 
-Gere a chave uma única vez e mantenha-a nos backups de segredos:
+Na primeira instalação, gere a chave uma vez:
 
 ```bash
 php artisan key:generate
 ```
 
-Não gere outra `APP_KEY` em deploys posteriores, pois isso invalidaria dados
-criptografados, sessões e tokens existentes.
+Preserve `APP_KEY` nos deploys e backups. Alterá-la invalida dados criptografados,
+sessões e tokens existentes.
 
-## 7. Preparar storage e permissões
+## 6. Preparar armazenamento persistente
 
-Crie os diretórios privados persistentes:
+Crie os discos privados fora de um diretório de release descartável:
 
 ```bash
 sudo install -d -o www-data -g www-data -m 2770 /var/lib/vistoria
@@ -246,7 +161,12 @@ sudo install -d -o www-data -g www-data -m 2770 /var/lib/vistoria/inspection-pho
 sudo install -d -o www-data -g www-data -m 2770 /var/lib/vistoria/inspection-maps
 ```
 
-Ajuste os diretórios graváveis do Laravel:
+Documentos, fotos e mapas são privados. O Nginx não deve expor esses caminhos;
+as respostas autorizadas passam pela aplicação.
+
+Também preserve `storage/app/public`, onde ficam logos e ícones. Em um deploy
+por releases, compartilhe todo o diretório `storage/` entre releases. Em um
+deploy no mesmo checkout, não o apague e inclua-o no backup.
 
 ```bash
 sudo chown -R <deploy>:www-data storage bootstrap/cache
@@ -254,55 +174,35 @@ sudo chmod -R ug+rwX storage bootstrap/cache
 php artisan storage:link
 ```
 
-Os diretórios de documentos, fotos e mapas são privados e não devem ser
-publicados diretamente pelo Nginx.
+O link publica somente `storage/app/public` em `public/storage`.
 
-## 8. Configurar PHP-FPM
+## 7. Ajustar PHP-FPM e Nginx
 
-No `php.ini` do FPM, configure:
+No `php.ini` do FPM:
 
 ```ini
-upload_max_filesize=25M
-post_max_size=30M
+upload_max_filesize=50M
+post_max_size=60M
 memory_limit=512M
 max_execution_time=120
 ```
 
-Confirme qual arquivo está ativo com `php --ini` para CLI e pela configuração do
-pool para FPM. Reinicie o serviço depois da alteração:
-
-```bash
-sudo systemctl restart php8.3-fpm
-```
-
-O processamento de imagens usa Imagick e limita cada worker. Em um servidor de
-2 GB deve existir somente um worker do Horizon.
-
-Se mapas PDF forem usados, valide em arquivo controlado que a política de
-segurança do ImageMagick permite a leitura necessária. Não desabilite globalmente
-as demais proteções da política.
-
-## 9. Configurar o Nginx
-
-Crie `/etc/nginx/sites-available/vistoria`:
+Reinicie o FPM. A aplicação aceita fontes de mapa de até 50 MB; fotografias e
+documentos têm limite de 25 MB. O limite HTTP deve comportar o maior arquivo e os
+campos multipart. No bloco Nginx:
 
 ```nginx
 server {
     listen 80;
     server_name <DOMINIO>;
-
     root /var/www/vistoria/public;
     index index.php;
     charset utf-8;
-
-    client_max_body_size 30M;
+    client_max_body_size 60M;
 
     location / {
         try_files $uri $uri/ /index.php?$query_string;
     }
-
-    location = /favicon.ico { access_log off; log_not_found off; }
-    location = /robots.txt  { access_log off; log_not_found off; }
 
     location ~ \.php$ {
         include snippets/fastcgi-php.conf;
@@ -315,91 +215,77 @@ server {
 }
 ```
 
-Ative e valide:
+Valide com `nginx -t`, recarregue o serviço e configure HTTPS antes de liberar
+o acesso. Mantenha `APP_URL` coerente com a URL pública.
 
-```bash
-sudo ln -s /etc/nginx/sites-available/vistoria /etc/nginx/sites-enabled/vistoria
-sudo nginx -t
-sudo systemctl reload nginx
-```
-
-Depois configure HTTPS com a solução adotada pela infraestrutura e redirecione
-HTTP para HTTPS. Só prossiga com `APP_URL=https://...` quando o certificado e o
-domínio estiverem funcionais.
-
-## 10. Executar migrations e criar o administrador
-
-No diretório da aplicação:
+## 8. Banco, caches e superadministrador
 
 ```bash
 php artisan migrate --force
+php artisan storage:link
 php artisan optimize
-php artisan app:bootstrap-super-admin
+php artisan app:bootstrap-super-admin --email=<ADMIN_EMAIL> --name="Administrador Master"
 ```
 
-O último comando cria `sampaio.free@gmail.com`, mostra uma senha temporária forte
-uma única vez e exige a troca no primeiro acesso. Entregue essa senha por canal
-seguro; ela não deve aparecer em ticket, chat ou log de pipeline.
+O comando de bootstrap:
 
-Confirme as migrations:
+- cria uma conta global ativa, sem organização;
+- gera uma senha temporária de 24 caracteres e a exibe somente na criação;
+- exige troca de senha no primeiro acesso;
+- não altera uma conta global compatível já existente;
+- falha sem alterar dados se o e-mail pertencer a uma conta incompatível.
 
-```bash
-php artisan migrate:status
-```
+Entregue a senha por canal seguro; não a registre em pipeline, ticket ou chat.
+Após o primeiro login e a troca, o superadministrador deve criar empresas em
+`/admin/organizations`. Cada criação gera o administrador inicial da empresa e
+provisiona automaticamente CV, TAC e REC. Não execute seeders de demonstração.
 
-## 11. Configurar o Horizon no Supervisor
+## 9. Instalar Horizon no Supervisor
 
-Use como base `deploy/supervisor/vistoria-horizon.conf.example`. Copie e revise:
+O Horizon consome `images` e `default`. A configuração atual mantém um único
+processo, três tentativas, 512 MB e timeout de 210 segundos. Os jobs de imagem
+têm timeout de 180 segundos e backoff de 10, 60 e 300 segundos; por isso o
+ambiente usa `REDIS_QUEUE_RETRY_AFTER=240`.
+
+Use o arquivo versionado como base:
 
 ```bash
 sudo cp deploy/supervisor/vistoria-horizon.conf.example /etc/supervisor/conf.d/vistoria-horizon.conf
 sudo supervisorctl reread
 sudo supervisorctl update
 sudo supervisorctl start vistoria-horizon
-```
-
-Confira:
-
-```bash
 sudo supervisorctl status vistoria-horizon
 php artisan horizon:status
 ```
 
-Ambos devem indicar execução ativa. O painel `/horizon` só pode ser aberto por
-um superadministrador ativo que já tenha trocado a senha temporária.
+Revise primeiro `command`, `directory`, `user` e `stdout_logfile`. O usuário do
+worker precisa das mesmas permissões de escrita nos storages. O exemplo usa
+`stopwaitsecs=300`, maior que o timeout do worker, para encerramento gracioso.
 
-## 12. Configurar o cron
+O painel `/horizon` exige autenticação, usuário ativo, senha já trocada e acesso
+de superadministrador global.
 
-Edite o crontab do usuário responsável pela aplicação:
+## 10. Instalar o scheduler
 
-```bash
-crontab -e
-```
-
-Adicione exatamente uma entrada:
+No crontab do usuário da aplicação, adicione somente:
 
 ```cron
 * * * * * cd /var/www/vistoria && /usr/bin/php artisan schedule:run >> /dev/null 2>&1
 ```
 
-Confira o scheduler:
+Confira com:
 
 ```bash
 php artisan schedule:list
 ```
 
-Devem aparecer:
+O código agenda apenas `horizon:snapshot` a cada cinco minutos, com prevenção
+de sobreposição. Não há comandos próprios de limpeza ou de retry manual. O cron
+registra métricas; os jobs são consumidos pelo Horizon.
 
-- `horizon:snapshot` a cada cinco minutos;
-- `photos:cleanup-abandoned` às 03:00;
-- `inspection-maps:cleanup-deleted` às 03:30.
+## 11. Aceite do primeiro deploy
 
-O cron não processa as imagens. Os jobs da fila `images` são executados pelo
-Horizon mantido pelo Supervisor.
-
-## 13. Teste de aceite do primeiro deploy
-
-Execute os diagnósticos:
+Execute:
 
 ```bash
 php artisan about
@@ -410,34 +296,31 @@ php artisan config:show queue
 curl -fsS https://<DOMINIO>/up
 ```
 
-Valide manualmente:
+Valide no navegador:
 
-1. entrar com `sampaio.free@gmail.com` e trocar a senha;
-2. confirmar que `/horizon` abre apenas para o superadministrador;
-3. cadastrar a primeira empresa e seu administrador pelo fluxo de onboarding
-   aprovado; se ele ainda não existir, registrar o bloqueio e não liberar o
-   sistema para operação;
-4. criar uma inspeção e uma avaliação de avaria;
-5. enviar fotografia JPEG, PNG ou WebP pelo celular;
-6. confirmar no Horizon a passagem por `pending`, `processing` e `ready`;
-7. abrir a miniatura e a versão otimizada;
-8. testar uma fotografia próxima de 25 MB;
-9. verificar logs do Laravel, Nginx, PHP-FPM, Redis e Supervisor;
-10. reiniciar o VPS e confirmar que todos os serviços voltaram automaticamente.
+1. entrar como superadministrador e trocar a senha temporária;
+2. confirmar que `/horizon` não é acessível a contas comuns;
+3. criar uma empresa e guardar com segurança a credencial temporária de seu
+   administrador;
+4. entrar como administrador da empresa e confirmar a taxonomia CV/TAC/REC;
+5. criar a estrutura operacional, um equipamento e uma inspeção;
+6. enviar foto JPEG, PNG ou WebP, inclusive uma próxima de 25 MB;
+7. confirmar no Horizon a execução na fila `images` e a disponibilidade das
+   variantes otimizada e miniatura;
+8. enviar uma imagem de mapa e validar fundo, editor e miniatura;
+9. conferir `/up` e logs de Laravel, Nginx, PHP-FPM, Redis e Supervisor;
+10. reiniciar a VPS e confirmar que todos os serviços retornam.
 
-O deploy só deve ser considerado aprovado depois desse teste.
+## 12. Releases posteriores
 
-## 14. Deploys seguintes
-
-Antes de cada deploy, tenha backup recente e confirme que o repositório está na
-branch correta. No servidor:
+O mecanismo de atualização do código depende da estratégia da equipe. Em um
+checkout simples, a sequência de aplicação é:
 
 ```bash
 cd /var/www/vistoria
 php artisan down --retry=60
 git fetch --all --tags --prune
-git checkout <BRANCH_DE_PRODUCAO>
-git pull --ff-only origin <BRANCH_DE_PRODUCAO>
+git checkout <TAG_OU_BRANCH_APROVADA>
 composer install --no-dev --optimize-autoloader --no-interaction
 npm ci
 npm run build
@@ -448,7 +331,7 @@ php artisan horizon:terminate
 php artisan up
 ```
 
-O Supervisor deve reiniciar o Horizon com o código novo. Valide imediatamente:
+O Supervisor reinicia Horizon com o código novo. Confirme imediatamente:
 
 ```bash
 sudo supervisorctl status vistoria-horizon
@@ -456,46 +339,34 @@ php artisan horizon:status
 curl -fsS https://<DOMINIO>/up
 ```
 
-Quando a equipe publicar releases por tags imutáveis, substitua os três comandos
-de checkout/pull por `git checkout --detach <TAG_DE_PRODUCAO>` após o `git fetch`.
+Evite concorrência de dois deploys. Preserve o storage compartilhado, `.env` e
+`APP_KEY` em toda troca de release.
 
-Antes da primeira troca de `QUEUE_CONNECTION=database` para Redis, não deixe jobs
-na tabela `jobs`. Drene-os ainda no release antigo:
+## 13. Backup e rollback
 
-```bash
-php artisan queue:work database --queue=images,default --stop-when-empty --timeout=210
-```
+O backup precisa incluir:
 
-Nunca apague jobs pendentes para concluir um deploy.
+- dump consistente do MySQL;
+- `.env` ou os segredos equivalentes;
+- os três diretórios privados em `/var/lib/vistoria`;
+- `storage/app/public`, com as identidades visuais.
 
-## 15. Backup e rollback
+Armazene uma cópia fora da VPS e teste periodicamente a restauração conjunta de
+banco e arquivos.
 
-O backup deve incluir:
+Para rollback de código, volte ao último release aprovado, reinstale exatamente
+as dependências e assets daquele release, execute `php artisan optimize` e
+`php artisan horizon:terminate`. Não automatize `migrate:rollback`: cada
+migration deve ser avaliada, e perda de dados deve ser tratada por restauração.
 
-- banco MySQL;
-- `.env` ou cofre de segredos equivalente;
-- `/var/lib/vistoria/equipment-documents`;
-- `/var/lib/vistoria/inspection-photos`;
-- `/var/lib/vistoria/inspection-maps`.
+## 14. Evidências operacionais
 
-Armazene cópias fora do VPS e teste periodicamente a restauração.
+Registre sem segredos:
 
-Para rollback de código, retorne ao último tag/release aprovado, execute
-`composer install`, restaure os assets correspondentes, rode `php artisan optimize`
-e `php artisan horizon:terminate`. Não execute `migrate:rollback` automaticamente:
-migrations de produção devem ser avaliadas individualmente. Se uma migration
-destrutiva já tiver sido aplicada, use o procedimento de restauração do backup.
-
-## 16. Evidências para encerrar a entrega
-
-O responsável pelo deploy deve registrar, sem incluir segredos:
-
-- tag ou commit implantado;
-- horário do deploy;
-- resultado de `migrate:status`;
-- status do Supervisor e Horizon;
-- resultado de `/up`;
-- confirmação do cron;
-- resultado do upload e processamento de uma fotografia;
-- localização e data do último backup;
-- incidentes ou ajustes realizados.
+- commit ou tag implantado e horário;
+- resultado das migrations;
+- status de Supervisor e Horizon;
+- resposta de `/up`;
+- saída do scheduler;
+- resultado de um upload e processamento reais;
+- localização e data do último backup.

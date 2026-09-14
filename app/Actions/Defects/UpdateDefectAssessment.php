@@ -78,7 +78,6 @@ final class UpdateDefectAssessment
                 $defect,
                 $assessment->inspection,
                 $assessment->condition,
-                $assessment->inspection_id === $defect->first_inspection_id,
             );
 
             if ($wasComplete) {

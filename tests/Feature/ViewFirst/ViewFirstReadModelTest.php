@@ -10,6 +10,7 @@ use App\Enums\EquipmentRevisionEmissionType;
 use App\Enums\GutCriterion;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
+use App\Enums\InspectionType;
 use App\Enums\RegistrationStatus;
 use App\Enums\UserAccountType;
 use App\Models\AssessmentPhoto;
@@ -141,7 +142,8 @@ final class ViewFirstReadModelTest extends TestCase
                 ->has('content.items.0.quantities', 0)
                 ->has('content.items.0.evidence', 0)
                 ->has('content.items.1.evidence', 0)
-                ->has('content.filters', 5));
+                ->has('content.filters', 6)
+                ->where('content.filters.0.key', 'active'));
 
         $this->actingAs($admin)
             ->get(route('inspections.photos', $inspection))
@@ -161,7 +163,7 @@ final class ViewFirstReadModelTest extends TestCase
                 ->where('content.report_designer', 'PROJETISTA II')
                 ->where('content.designer_i_report_number', 'SM-IIE-1717')
                 ->where('content.revision', 'Prévia')
-                ->where('content.print_enabled', true)
+                ->where('content.print_enabled', false)
                 ->where('content.validation.blocked', true)
                 ->where('content.cover.provider', $organization->name)
                 ->where('content.cover.client_logo_url', null)
@@ -252,7 +254,7 @@ final class ViewFirstReadModelTest extends TestCase
                 ->where('content.cover.external_report_number', null)
                 ->where(
                     'content.export_disabled_reason',
-                    'Informe o Número do relatório externo para exportar o relatório.',
+                    'Informe o Número do relatório externo para exportar o relatório. 1 registro(s) ainda não foram consolidados.',
                 )
                 ->where('content.validation.issues', fn ($issues): bool => collect($issues)->contains(
                     'Informe o Número do relatório externo para exportar o relatório.',
@@ -274,7 +276,7 @@ final class ViewFirstReadModelTest extends TestCase
                 ->where('content.cover.designer_i_report_number', null)
                 ->where(
                     'content.export_disabled_reason',
-                    'Informe o Nº Projetista I para exportar o relatório.',
+                    'Informe o Nº Projetista I para exportar o relatório. 1 registro(s) ainda não foram consolidados.',
                 )
                 ->where('content.validation.issues', fn ($issues): bool => collect($issues)->contains(
                     'Informe o Nº Projetista I para exportar o relatório.',
@@ -296,7 +298,7 @@ final class ViewFirstReadModelTest extends TestCase
                 ->where('content.print_enabled', false)
                 ->where(
                     'content.export_disabled_reason',
-                    'Informe o Número do relatório externo para exportar o relatório. Informe o Nº Projetista I para exportar o relatório.',
+                    'Informe o Número do relatório externo para exportar o relatório. Informe o Nº Projetista I para exportar o relatório. 1 registro(s) ainda não foram consolidados.',
                 )
                 ->where('content.validation.issues', fn ($issues): bool => collect($issues)->contains(
                     'Informe o Número do relatório externo para exportar o relatório.',
@@ -732,6 +734,22 @@ final class ViewFirstReadModelTest extends TestCase
     public function test_assessment_writes_persist_only_real_fields_and_return_to_dedicated_page(): void
     {
         [$organization, $admin, , , $assessment] = $this->viewFirstScenario();
+        $previousInspection = Inspection::factory()
+            ->forEquipment($assessment->inspection->equipment)
+            ->create([
+                'number' => 'INS-2026-000001',
+                'status' => InspectionStatus::Released,
+            ]);
+        $assessment->inspection->update([
+            'previous_inspection_id' => $previousInspection->id,
+            'inspection_type' => InspectionType::Reinspection,
+        ]);
+        $assessment->defect->update(['first_inspection_id' => $previousInspection->id]);
+        $previousAssessment = DefectAssessment::factory()
+            ->forDefect($assessment->defect, $previousInspection)
+            ->complete()
+            ->create(['condition' => DefectAssessmentCondition::New]);
+        $assessment->update(['previous_assessment_id' => $previousAssessment->id]);
         $category = DefectCategory::factory()->create(['organization_id' => $organization->id]);
         $assessment->defect->update(['defect_category_id' => $category->id]);
 
@@ -770,6 +788,8 @@ final class ViewFirstReadModelTest extends TestCase
         $this->assertSame('Executar reparo estrutural prioritário.', $assessment->recommendation);
         $this->assertSame('Confirmar tratamento com a engenharia.', $assessment->internal_notes);
         $this->assertNull($assessment->defect_snapshot);
+
+        $this->satisfyAssessmentPublicationRequirements($assessment);
 
         $this->actingAs($admin)
             ->post(route('defect-assessments.complete', $assessment), [

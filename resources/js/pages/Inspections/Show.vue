@@ -39,7 +39,7 @@ const props = defineProps({
     index_url: { type: String, required: true },
 });
 
-const activeFilter = ref('all');
+const activeFilter = ref('active');
 const activeView = ref('blocks');
 const reportLayoutReady = ref(true);
 const reportPreview = ref(null);
@@ -70,6 +70,8 @@ const filters = computed(() => props.content?.filters ?? []);
 
 const filteredDefects = computed(() => defects.value.filter((defect) => {
     switch (activeFilter.value) {
+        case 'active':
+            return defect.is_repaired !== true && defect.assessment?.condition !== 'repaired';
         case 'critical':
             return defect.classification?.is_critical === true;
         case 'pending':
@@ -162,13 +164,6 @@ async function exportReport(format) {
                 class="rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400"
             >
                 Equipamento
-            </Link>
-            <Link
-                v-if="inspection.previous_inspection && inspection.reinspection_checklist_url"
-                :href="inspection.reinspection_checklist_url"
-                class="hidden rounded-xl border border-teal-200 bg-teal-50 px-3.5 py-2 text-sm font-semibold text-teal-800 transition hover:border-teal-300 md:inline-flex"
-            >
-                Checklist
             </Link>
             <details class="relative" v-if="capabilities.update_planned">
                 <summary class="cursor-pointer list-none rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400">

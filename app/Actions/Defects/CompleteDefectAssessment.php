@@ -36,7 +36,13 @@ final class CompleteDefectAssessment
         return DB::transaction(function () use ($actor, $assessment, $data): DefectAssessment {
             $assessment = DefectAssessment::query()
                 ->forOrganization($this->tenant->id())
-                ->with(['defect.categoryDefinition.gutOptions', 'defect.categoryDefinition.classifications', 'inspection'])
+                ->with([
+                    'defect.categoryDefinition.gutOptions',
+                    'defect.categoryDefinition.classifications',
+                    'inspection',
+                    'photos',
+                    'quantity',
+                ])
                 ->lockForUpdate()
                 ->findOrFail($assessment->getKey());
 
@@ -106,7 +112,6 @@ final class CompleteDefectAssessment
                 $assessment->defect,
                 $assessment->inspection,
                 $assessment->condition,
-                $assessment->inspection_id === $assessment->defect->first_inspection_id,
             );
 
             $this->validator->ensureCanComplete($assessment);

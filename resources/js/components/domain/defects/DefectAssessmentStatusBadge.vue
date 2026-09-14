@@ -20,6 +20,11 @@ const meta = computed(() => {
                 label: 'Publicada',
                 className: 'border-emerald-200 bg-emerald-50 text-emerald-700',
             };
+        case 'not_assessed':
+            return {
+                label: 'Pendente',
+                className: 'border-slate-200 bg-slate-100 text-slate-700',
+            };
         default:
             return {
                 label: props.status,

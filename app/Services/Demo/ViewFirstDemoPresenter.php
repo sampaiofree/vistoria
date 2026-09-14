@@ -6,8 +6,8 @@ namespace App\Services\Demo;
 
 use App\Enums\DefectAssessmentCondition;
 use App\Enums\DefectAssessmentStatus;
-use App\Enums\DefectStatus;
 use App\Enums\InspectionResponsibility;
+use App\Enums\InspectionStatus;
 use App\Enums\MeasurementUnit;
 use App\Models\AssessmentPhoto;
 use App\Models\Defect;
@@ -17,6 +17,8 @@ use App\Models\DefectClassification;
 use App\Models\Equipment;
 use App\Models\Inspection;
 use App\Models\User;
+use App\Services\Defects\InspectionDefectScope;
+use App\Services\Defects\ResolvePreviousDefectAssessment;
 use App\Services\InspectionLocations\InspectionLocationPhotoNumbering;
 use App\Services\Reports\EquipmentRevisionChronology;
 use App\Services\Reports\GeneralAspectsDocument;
@@ -40,6 +42,8 @@ class ViewFirstDemoPresenter
         private readonly EquipmentRevisionChronology $revisionChronology,
         private readonly GeneralAspectsDocument $generalAspectsDocuments,
         private readonly InspectionOverviewPresenter $inspectionOverview,
+        private readonly InspectionDefectScope $inspectionDefectScope,
+        private readonly ResolvePreviousDefectAssessment $previousAssessmentResolver,
     ) {}
 
     /**
@@ -196,12 +200,19 @@ class ViewFirstDemoPresenter
         $quantity = $technical['quantities'][0] ?? null;
         $reportNumbering = $this->photoNumbering->buildForReport($assessment->inspection);
         $reportCategory = $assessment->defect->categoryCode();
+        $assessmentHistory = $this->assessmentHistory($assessment);
 
         return [
             'assessment' => $this->assessmentPayload($assessment, true),
+            'origin_type' => $assessment->inspection_id === $assessment->defect->first_inspection_id
+                ? 'new'
+                : 'inherited',
             'previous_assessment' => $assessment->previousAssessment === null
                 ? null
                 : $this->assessmentPayload($assessment->previousAssessment),
+            'previous_assessment_summary' => $assessmentHistory[0] ?? null,
+            'assessment_history' => $assessmentHistory,
+            'reinspection_action' => $this->reinspectionAction($assessment, $user),
             'classification' => $classification,
             'gut' => $technical['gut'],
             'gut_options' => $this->gutOptionsPayload($category),
@@ -383,11 +394,12 @@ class ViewFirstDemoPresenter
             'defects' => [
                 'items' => $items,
                 'filters' => [
+                    ['key' => 'active', 'label' => 'Ativas', 'count' => collect($items)->where('is_repaired', false)->count()],
                     ['key' => 'all', 'label' => 'Todas', 'count' => $summary['total']],
-                    ['key' => 'critical', 'label' => 'Críticas', 'count' => $summary['critical']],
                     ['key' => 'pending', 'label' => 'Pendentes', 'count' => $summary['pending']],
                     ['key' => 'repaired', 'label' => 'Reparadas', 'count' => $summary['repaired']],
                     ['key' => 'not_inspected', 'label' => 'Não inspecionadas', 'count' => $summary['not_inspected']],
+                    ['key' => 'critical', 'label' => 'Críticas', 'count' => $summary['critical']],
                 ],
             ],
             'photos' => [
@@ -488,7 +500,7 @@ class ViewFirstDemoPresenter
             ->all();
 
         $exportableCollection = $collection
-            ->reject(fn (array $item): bool => ($item['assessment']['status'] ?? null) === DefectAssessmentStatus::Draft->value)
+            ->filter(fn (array $item): bool => ($item['assessment']['status'] ?? null) === DefectAssessmentStatus::Complete->value)
             ->values();
         $quantityTotals = $this->quantityTotals($collection);
         $exportableQuantityTotals = $this->quantityTotals($exportableCollection);
@@ -599,6 +611,9 @@ class ViewFirstDemoPresenter
     {
         $assessment = $defect->assessments
             ->firstWhere('inspection_id', $inspection->getKey());
+        $previousAssessment = $this->previousAssessmentResolver->handle($defect, $inspection);
+
+        $previousAssessment?->loadMissing(['inspection', 'classification', 'quantity', 'photos']);
         $technical = $this->technicalData($defect, $assessment);
         $classification = $assessment?->classification === null
             ? $technical['classification']
@@ -619,6 +634,10 @@ class ViewFirstDemoPresenter
             'status' => $defect->status->value,
             'status_label' => $defect->status->label(),
             'sequence_number' => (int) $defect->sequence_number,
+            'origin_type' => $defect->first_inspection_id === $inspection->getKey() ? 'new' : 'inherited',
+            'previous_assessment_summary' => $previousAssessment === null
+                ? null
+                : $this->historicalAssessmentPayload($previousAssessment),
             'assessment' => $assessment === null ? null : $this->assessmentPayload($assessment),
             'condition' => $assessment?->condition->value,
             'condition_label' => $assessment?->condition->label() ?? 'Pendente',
@@ -1358,7 +1377,7 @@ class ViewFirstDemoPresenter
             ->unique()
             ->all();
         $exportableItems = collect($items)
-            ->reject(fn (array $item): bool => ($item['assessment']['status'] ?? null) === DefectAssessmentStatus::Draft->value)
+            ->filter(fn (array $item): bool => ($item['assessment']['status'] ?? null) === DefectAssessmentStatus::Complete->value)
             ->values();
         $mappedItems = $exportableItems
             ->filter(fn (array $item): bool => in_array(
@@ -1490,7 +1509,9 @@ class ViewFirstDemoPresenter
         }
 
         if ($summary['pending'] > 0) {
-            $blockedIssues[] = sprintf('%d registro(s) ainda não foram consolidados.', $summary['pending']);
+            $pendingIssue = sprintf('%d registro(s) ainda não foram consolidados.', $summary['pending']);
+            $blockedIssues[] = $pendingIssue;
+            $exportBlockingIssues[] = $pendingIssue;
         }
 
         if (($summary['quantity_totals_by_unit'] ?? []) !== ($summary['exportable_quantity_totals_by_unit'] ?? [])) {
@@ -1589,12 +1610,18 @@ class ViewFirstDemoPresenter
                 ->map(function (array $item): array {
                     $assessment = $item['assessment'] ?? [];
                     $occurrence = $item['occurrence'] ?? [];
+                    $previousClassification = data_get($item, 'previous_assessment_summary.classification');
 
                     return [
                         'id' => $item['id'],
                         'code' => $item['code'],
                         'title' => $item['title'],
                         'assessment' => $assessment,
+                        'origin_type' => $item['origin_type'] ?? 'new',
+                        'condition' => $assessment['condition'] ?? null,
+                        'condition_label' => $assessment['condition_label'] ?? '—',
+                        'previous_classification' => $previousClassification,
+                        'current_classification' => $item['classification'],
                         'classification' => $item['classification'],
                         'gut' => $item['gut'],
                         'location' => $assessment['location_description'] ?? $occurrence['location'] ?? '—',
@@ -1610,6 +1637,25 @@ class ViewFirstDemoPresenter
                         'quantities' => $item['quantities'] ?? [],
                         'comment' => $assessment['comment'] ?? null,
                         'recommendation' => $assessment['recommendation'] ?? null,
+                        'reason' => $assessment['reason'] ?? null,
+                    ];
+                })
+                ->values()
+                ->all(),
+            'evolution_rows' => $exportableItems
+                ->map(function (array $item): array {
+                    $assessment = $item['assessment'] ?? [];
+
+                    return [
+                        'id' => $item['id'],
+                        'code' => $item['code'],
+                        'title' => $item['title'],
+                        'origin_type' => $item['origin_type'] ?? 'new',
+                        'condition' => $assessment['condition'] ?? null,
+                        'condition_label' => $assessment['condition_label'] ?? '—',
+                        'previous_classification' => data_get($item, 'previous_assessment_summary.classification'),
+                        'current_classification' => $item['classification'],
+                        'quantity' => $item['quantity_summary']['total_label'] ?? '—',
                     ];
                 })
                 ->values()
@@ -1714,39 +1760,158 @@ class ViewFirstDemoPresenter
             'equipment.defects.assessments.classification',
         ]);
 
-        $inspectionKey = $this->inspectionOrderKey($inspection);
-
-        return $inspection->equipment->defects
-            ->filter(function (Defect $defect) use ($inspection, $inspectionKey): bool {
-                if ($defect->assessments->contains('inspection_id', $inspection->getKey())) {
-                    return true;
-                }
-
-                if ($defect->firstInspection === null) {
-                    return false;
-                }
-
-                if ($defect->status !== DefectStatus::Active) {
-                    return false;
-                }
-
-                return $this->inspectionOrderKey($defect->firstInspection) <= $inspectionKey;
-            })
-            ->sortBy('sequence_number')
-            ->values();
+        return $this->inspectionDefectScope->handle($inspection);
     }
 
-    /**
-     * @return array{int, int}
-     */
-    private function inspectionOrderKey(Inspection $inspection): array
+    /** @return array<int, array<string, mixed>> */
+    private function assessmentHistory(DefectAssessment $assessment): array
     {
+        $history = [];
+        $seen = [];
+        $previousId = $assessment->previous_assessment_id;
+        $validInspectionIds = array_flip(
+            $this->inspectionDefectScope->ancestorInspectionIds($assessment->inspection),
+        );
+
+        while ($previousId !== null && ! isset($seen[$previousId])) {
+            $seen[$previousId] = true;
+            $previous = DefectAssessment::query()
+                ->forOrganization($assessment->organization_id)
+                ->with(['inspection', 'classification', 'quantity', 'photos'])
+                ->where('defect_id', $assessment->defect_id)
+                ->whereKey($previousId)
+                ->first();
+
+            if ($previous === null) {
+                break;
+            }
+
+            if ($previous->status === DefectAssessmentStatus::Complete
+                && $previous->inspection?->status !== InspectionStatus::Canceled
+                && isset($validInspectionIds[$previous->inspection_id])) {
+                $history[] = $this->historicalAssessmentPayload($previous);
+            }
+
+            $previousId = $previous->previous_assessment_id;
+        }
+
+        return $history;
+    }
+
+    /** @return array<string, mixed>|null */
+    private function reinspectionAction(DefectAssessment $assessment, User $user): ?array
+    {
+        $inspection = Inspection::query()
+            ->forOrganization($assessment->organization_id)
+            ->where('equipment_id', $assessment->equipment_id)
+            ->whereIn('status', [
+                InspectionStatus::InProgress->value,
+                InspectionStatus::InCorrection->value,
+            ])
+            ->whereKeyNot($assessment->inspection_id)
+            ->with(['previousInspection', 'responsibles'])
+            ->orderByDesc('id')
+            ->get()
+            ->first(fn (Inspection $candidate): bool => in_array(
+                $assessment->inspection_id,
+                $this->inspectionDefectScope->ancestorInspectionIds($candidate),
+                true,
+            ));
+
+        if ($inspection === null) {
+            return null;
+        }
+
+        $currentAssessment = DefectAssessment::query()
+            ->forOrganization($assessment->organization_id)
+            ->where('defect_id', $assessment->defect_id)
+            ->where('inspection_id', $inspection->getKey())
+            ->first();
+        $canCreate = $currentAssessment === null
+            && $user->can('create', [DefectAssessment::class, $inspection, $assessment->defect]);
+        $canViewCurrent = $currentAssessment !== null && $user->can('view', $currentAssessment);
+
         return [
-            $inspection->inspected_on?->getTimestamp()
-                ?? $inspection->scheduled_for?->getTimestamp()
-                ?? $inspection->created_at?->getTimestamp()
-                ?? 0,
-            (int) $inspection->getKey(),
+            'inspection' => [
+                'id' => $inspection->id,
+                'public_id' => $inspection->public_id,
+                'number' => $inspection->number,
+                'status' => $inspection->status->value,
+                'status_label' => $inspection->status->label(),
+            ],
+            'defects_url' => route('inspections.defects', $inspection),
+            'assessment_url' => $canViewCurrent
+                ? route('defect-assessments.show', $currentAssessment)
+                : null,
+            'assessment_store_url' => $canCreate
+                ? route('inspections.defects.assessments.store', [$inspection, $assessment->defect])
+                : null,
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function historicalAssessmentPayload(DefectAssessment $assessment): array
+    {
+        $classification = $this->snapshotClassification($assessment);
+        $quantity = $assessment->quantity;
+
+        return [
+            'id' => $assessment->id,
+            'public_id' => $assessment->public_id,
+            'inspection' => [
+                'id' => $assessment->inspection->id,
+                'public_id' => $assessment->inspection->public_id,
+                'number' => $assessment->inspection->number,
+                'show_url' => route('inspections.show', $assessment->inspection),
+            ],
+            'condition' => $assessment->condition->value,
+            'condition_label' => $assessment->condition->label(),
+            'assessed_at' => $assessment->assessed_at?->format('d/m/Y H:i'),
+            'classification' => $classification,
+            'gut' => [
+                'gravity' => $assessment->gravity,
+                'urgency' => $assessment->urgency,
+                'trend' => $assessment->trend,
+                'score' => $assessment->gut_score,
+            ],
+            'quantity' => $quantity === null ? null : [
+                'value' => $quantity->value(),
+                'unit' => $quantity->measurement_unit->value,
+                'unit_label' => $quantity->measurement_unit->label(),
+                'unit_symbol' => $quantity->measurement_unit->symbol(),
+            ],
+            'location_description' => $assessment->location_description,
+            'comment' => $assessment->comment,
+            'recommendation' => $assessment->recommendation,
+            'reason' => $assessment->reason,
+            'photos' => $assessment->photos
+                ->map(fn (AssessmentPhoto $photo): array => [
+                    'id' => $photo->public_id,
+                    'title' => $photo->original_name,
+                    'caption' => $photo->caption,
+                    'status' => $photo->processing_status->value,
+                    'url' => $photo->isReady() ? route('assessment-photos.show', [$photo, 'optimized']) : null,
+                    'thumbnail_url' => $photo->isReady() ? route('assessment-photos.show', [$photo, 'thumbnail']) : null,
+                ])
+                ->values()
+                ->all(),
+        ];
+    }
+
+    /** @return array{code:?string,label:string,color:?string} */
+    private function snapshotClassification(?DefectAssessment $assessment): array
+    {
+        if ($assessment === null) {
+            return ['code' => null, 'label' => 'Não classificada', 'color' => null];
+        }
+
+        $snapshot = $assessment->classification_snapshot ?? [];
+        $code = $snapshot['code'] ?? $assessment->classification_code ?? $assessment->classification?->code;
+
+        return [
+            'code' => $code,
+            'label' => $snapshot['name'] ?? $snapshot['label'] ?? $assessment->classification?->name ?? $code ?? 'Não classificada',
+            'color' => $snapshot['color'] ?? $assessment->classification?->color,
         ];
     }
 

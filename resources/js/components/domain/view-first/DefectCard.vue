@@ -1,6 +1,6 @@
 <script setup>
-import { computed } from 'vue';
-import { Link } from '@inertiajs/vue3';
+import { computed, ref } from 'vue';
+import { Link, router } from '@inertiajs/vue3';
 import DefectConditionBadge from '@/components/domain/defects/DefectConditionBadge.vue';
 import DefectAssessmentStatusBadge from '@/components/domain/defects/DefectAssessmentStatusBadge.vue';
 import CivilClassificationBadge from './CivilClassificationBadge.vue';
@@ -16,9 +16,11 @@ const props = defineProps({
     },
 });
 
+const startingAssessment = ref(false);
+
 const assessment = computed(() => props.defect.current_assessment ?? props.defect.assessment ?? {});
-const condition = computed(() => assessment.value.condition ?? props.defect.condition ?? 'unchanged');
-const status = computed(() => assessment.value.status ?? props.defect.assessment_status ?? 'draft');
+const condition = computed(() => assessment.value.condition ?? props.defect.condition ?? null);
+const status = computed(() => assessment.value.status ?? props.defect.assessment_status ?? 'not_assessed');
 const classification = computed(() => props.defect.classification ?? {});
 const gut = computed(() => props.defect.gut ?? {});
 const gutSummary = computed(() => [['G', gut.value.severity], ['U', gut.value.urgency], ['T', gut.value.tendency]]
@@ -50,6 +52,19 @@ const conditionLabel = computed(() => assessment.value.condition_label ?? props.
 const publicationLabel = computed(() => assessment.value.status_label
     ?? (status.value === 'draft' ? 'Rascunho' : status.value === 'complete' ? 'Publicada' : null));
 const actionUrl = computed(() => props.defect.assessment_url ?? props.defect.show_url ?? null);
+const canStartAssessment = computed(() => !props.defect.assessment && Boolean(props.defect.assessment_store_url));
+
+function startAssessment() {
+    if (!canStartAssessment.value || startingAssessment.value) return;
+
+    startingAssessment.value = true;
+    router.post(props.defect.assessment_store_url, {
+        condition: props.defect.origin_type === 'inherited' ? 'unchanged' : 'new',
+        assessment_action: 'draft',
+    }, {
+        onFinish: () => { startingAssessment.value = false; },
+    });
+}
 const element = computed(() => {
     if (props.defect.element) {
         return props.defect.element;
@@ -82,7 +97,7 @@ const element = computed(() => {
                 <h3 class="mt-1 truncate text-base font-semibold text-slate-950">{{ defect.title }}</h3>
                 <p class="mt-1 truncate text-sm text-slate-500">{{ location }}</p>
                 <p class="mt-2 truncate text-xs text-slate-500">
-                    {{ discipline }} · {{ conditionLabel }} ·
+                    {{ discipline }} · {{ defect.origin_type === 'inherited' ? 'Herdada' : 'Nova nesta inspeção' }} · {{ conditionLabel }} ·
                     <span v-if="gutSummary">{{ gutSummary }} · </span>
                     {{ evidenceCount }} {{ evidenceCount === 1 ? 'foto' : 'fotos' }}
                     <span v-if="classification.code"> · {{ classification.code }}</span>
@@ -92,12 +107,22 @@ const element = computed(() => {
 
             <div class="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
                 <span v-if="publicationLabel" class="text-xs font-medium text-slate-500">{{ publicationLabel }}</span>
+                <button
+                    v-if="canStartAssessment"
+                    type="button"
+                    :disabled="startingAssessment"
+                    class="inline-flex min-h-10 items-center justify-center rounded-xl bg-teal-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-800 disabled:cursor-wait disabled:opacity-60"
+                    @click="startAssessment"
+                >
+                    {{ startingAssessment ? 'Abrindo…' : 'Avaliar' }}
+                    <span class="ml-2" aria-hidden="true">→</span>
+                </button>
                 <Link
-                    v-if="actionUrl"
+                    v-else-if="actionUrl"
                     :href="actionUrl"
                     class="inline-flex min-h-10 items-center justify-center rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
                 >
-                    {{ status === 'draft' ? 'Continuar' : 'Abrir' }}
+                    {{ status === 'draft' ? 'Continuar avaliação' : 'Abrir' }}
                     <span class="ml-2" aria-hidden="true">→</span>
                 </Link>
             </div>
@@ -109,7 +134,10 @@ const element = computed(() => {
             <div class="min-w-0">
                 <div class="flex flex-wrap items-center gap-2">
                     <span class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">{{ defect.code }}</span>
-                    <DefectConditionBadge :condition="condition" />
+                    <span class="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600">
+                        {{ defect.origin_type === 'inherited' ? 'Herdada' : 'Nova nesta inspeção' }}
+                    </span>
+                    <DefectConditionBadge v-if="condition" :condition="condition" />
                     <DefectAssessmentStatusBadge :status="status" />
                 </div>
                 <h3 class="mt-3 text-lg font-semibold leading-snug text-slate-950">{{ defect.title }}</h3>
@@ -150,8 +178,18 @@ const element = computed(() => {
         <div class="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
             <p v-if="defect.pending_label || defect.is_pending" class="text-sm font-medium text-amber-700">{{ defect.pending_label || 'Avaliação pendente' }}</p>
             <span v-else class="text-sm text-slate-500">Dados técnicos consolidados</span>
+            <button
+                v-if="canStartAssessment"
+                type="button"
+                :disabled="startingAssessment"
+                class="inline-flex min-h-10 items-center justify-center rounded-xl bg-teal-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-800 disabled:cursor-wait disabled:opacity-60"
+                @click="startAssessment"
+            >
+                {{ startingAssessment ? 'Abrindo…' : 'Avaliar' }}
+                <span class="ml-2" aria-hidden="true">→</span>
+            </button>
             <Link
-                v-if="actionUrl"
+                v-else-if="actionUrl"
                 :href="actionUrl"
                 class="inline-flex min-h-10 items-center justify-center rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
             >

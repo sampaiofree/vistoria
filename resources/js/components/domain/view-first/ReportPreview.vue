@@ -20,6 +20,11 @@ const props = defineProps({
 const cover = computed(() => props.content.cover ?? {});
 const locations = computed(() => props.content.locations ?? []);
 const photographicBlocks = computed(() => props.content.photographic_documentation?.blocks ?? []);
+const evolutionRows = computed(() => props.content.evolution_rows ?? []);
+const reportFindings = computed(() => props.content.findings ?? []);
+const textualFindings = computed(() => reportFindings.value.filter((finding) =>
+    ['not_located', 'not_inspected'].includes(finding.condition),
+));
 const generalAspects = computed(() => props.content.general_aspects?.document ?? null);
 const reportOverview = computed(() => props.content.overview ?? { blocks: [] });
 const locationSequence = computed(() => props.content.location_sequence ?? []);
@@ -216,8 +221,20 @@ const reportContentPages = computed(() => {
             document,
             continuation: index > 0,
         })),
+        ...chunks(evolutionRows.value, 14).map((items, index) => ({
+            type: 'defect-evolution',
+            key: `defect-evolution-${index}`,
+            items,
+            continuation: index > 0,
+        })),
         { type: 'overview', key: 'report-overview' },
         ...(locationSequence.value.length ? sequencedLocationPages() : legacyLocationPages()),
+        ...chunks(textualFindings.value, 2).map((items, index) => ({
+            type: 'textual-findings',
+            key: `textual-findings-${index}`,
+            items,
+            continuation: index > 0,
+        })),
     ];
 });
 
@@ -502,6 +519,36 @@ function visualClass(photo) {
                 </div>
             </template>
 
+            <template v-else-if="page.type === 'defect-evolution'">
+                <div class="report-evolution-page">
+                    <h2 class="report-general-aspects-title">
+                        3. QUADRO DE EVOLUÇÃO DAS AVARIAS<span v-if="page.continuation"> — CONTINUAÇÃO</span>
+                    </h2>
+                    <table class="report-evolution-table">
+                        <thead>
+                            <tr>
+                                <th>Código</th>
+                                <th>Avaria</th>
+                                <th>Situação atual</th>
+                                <th>Classe anterior</th>
+                                <th>Classe atual</th>
+                                <th>Quantidade</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="item in page.items" :key="item.id">
+                                <td><strong>{{ item.code }}</strong></td>
+                                <td>{{ item.title }}</td>
+                                <td>{{ item.condition_label }}</td>
+                                <td>{{ item.previous_classification?.code || '—' }}</td>
+                                <td>{{ item.current_classification?.code || '—' }}</td>
+                                <td>{{ item.quantity || '—' }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </template>
+
             <template v-else-if="page.type === 'location-map'">
                 <div class="report-map-page-layout">
                     <h2 v-if="page.annexTitle" class="report-general-aspects-title report-map-annex-title">
@@ -616,7 +663,9 @@ function visualClass(photo) {
                         </article>
                     </div>
                     <div class="report-photo-classification">
-                        {{ block.defect_code || '—' }} | {{ block.classification_code || '—' }}
+                        {{ block.defect_code || '—' }} | {{ block.condition_label || '—' }} |
+                        Anterior: {{ block.previous_classification?.code || '—' }} |
+                        Atual: {{ block.current_classification?.code || block.classification_code || '—' }}
                     </div>
                     <div class="report-photo-text-section">
                         <div class="report-photo-blue-bar">Comentário:</div>
@@ -625,6 +674,34 @@ function visualClass(photo) {
                     <div class="report-photo-text-section">
                         <div class="report-photo-blue-bar">Recomendações:</div>
                         <p>{{ block.recommendation || '—' }}</p>
+                    </div>
+                </article>
+            </template>
+
+            <template v-else-if="page.type === 'textual-findings'">
+                <h2 class="report-page-title report-blue-title report-location-title">
+                    REGISTROS SEM EVIDÊNCIA FOTOGRÁFICA<span v-if="page.continuation"> — CONTINUAÇÃO</span>
+                </h2>
+                <article v-for="finding in page.items" :key="finding.id" class="report-textual-finding">
+                    <div class="report-textual-finding-title">
+                        <strong>{{ finding.code }} — {{ finding.title }}</strong>
+                        <span>{{ finding.condition_label }}</span>
+                    </div>
+                    <div class="report-textual-finding-classes">
+                        Classe anterior: <strong>{{ finding.previous_classification?.code || '—' }}</strong>
+                        · Classe atual: <strong>{{ finding.current_classification?.code || '—' }}</strong>
+                    </div>
+                    <div class="report-photo-text-section">
+                        <div class="report-photo-blue-bar">Justificativa:</div>
+                        <p>{{ finding.reason || '—' }}</p>
+                    </div>
+                    <div class="report-photo-text-section">
+                        <div class="report-photo-blue-bar">Comentário:</div>
+                        <p>{{ finding.comment || '—' }}</p>
+                    </div>
+                    <div class="report-photo-text-section">
+                        <div class="report-photo-blue-bar">Recomendações:</div>
+                        <p>{{ finding.recommendation || '—' }}</p>
                     </div>
                 </article>
             </template>
@@ -641,6 +718,18 @@ function visualClass(photo) {
 .report-general-aspects-page { display: flex; width: 100%; height: 252mm; min-height: 0; flex-direction: column; overflow: hidden; }
 .report-general-aspects-title { flex: none; margin: 0 0 8mm; padding: 0; border: 0; background: transparent; color: #111827; font-family: Georgia, 'Times New Roman', serif; font-size: 10pt; font-weight: 800; line-height: 1.1; text-align: left; }
 .report-general-aspects-body { min-height: 0; flex: 1; overflow: hidden; font-family: Georgia, 'Times New Roman', serif; font-size: 10pt; }
+.report-evolution-page { height: 252mm; overflow: hidden; }
+.report-evolution-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-family: Georgia, 'Times New Roman', serif; font-size: 8pt; }
+.report-evolution-table th, .report-evolution-table td { border: 1px solid #94a3b8; padding: 2.5mm 2mm; vertical-align: top; }
+.report-evolution-table th { background: #062b68; color: #fff; font-size: 7pt; text-transform: uppercase; }
+.report-evolution-table th:nth-child(1) { width: 17%; }
+.report-evolution-table th:nth-child(2) { width: 27%; }
+.report-evolution-table th:nth-child(3) { width: 17%; }
+.report-evolution-table th:nth-child(4), .report-evolution-table th:nth-child(5) { width: 13%; }
+.report-evolution-table th:nth-child(6) { width: 13%; }
+.report-textual-finding { margin-bottom: 6mm; border: 1px solid #94a3b8; font-family: Georgia, 'Times New Roman', serif; }
+.report-textual-finding-title { display: flex; justify-content: space-between; gap: 4mm; padding: 3mm; background: #e2e8f0; font-size: 9pt; }
+.report-textual-finding-classes { padding: 2.5mm 3mm; border-top: 1px solid #94a3b8; font-size: 8pt; }
 .report-overview-page { display: flex; width: 100%; height: 252mm; min-height: 0; flex-direction: column; overflow: hidden; }
 .report-overview-heading { margin-bottom: 4mm; }
 .report-map-annex-title { margin-bottom: 4mm; }

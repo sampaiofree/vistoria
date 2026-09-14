@@ -137,7 +137,7 @@ final class DefectCategoryGutRoutesTest extends TestCase
             'defect_category_id' => $category->id,
         ]);
         $assessment = DefectAssessment::factory()->forDefect($defect, $inspection)->create([
-            'condition' => DefectAssessmentCondition::Worsened,
+            'condition' => DefectAssessmentCondition::New,
         ]);
 
         $updated = app(SaveDefectAssessmentGut::class)->handle($admin, $assessment, [
@@ -207,9 +207,10 @@ final class DefectCategoryGutRoutesTest extends TestCase
         ]);
         $defect = Defect::factory()->forEquipment($equipment, $inspection)->create(['defect_category_id' => $category->id]);
         $assessment = DefectAssessment::factory()->forDefect($defect, $inspection)->create([
-            'condition' => DefectAssessmentCondition::Worsened,
+            'condition' => DefectAssessmentCondition::New,
             'comment' => 'Registro suficiente.',
         ]);
+        $this->satisfyAssessmentPublicationRequirements($assessment);
 
         $this->expectException(ValidationException::class);
         app(CompleteDefectAssessment::class)->handle($admin, $assessment);
@@ -232,16 +233,17 @@ final class DefectCategoryGutRoutesTest extends TestCase
         ]);
         $defect = Defect::factory()->forEquipment($equipment, $inspection)->create(['defect_category_id' => $category->id]);
         $assessment = DefectAssessment::factory()->forDefect($defect, $inspection)->create([
-            'condition' => DefectAssessmentCondition::Worsened,
+            'condition' => DefectAssessmentCondition::New,
             'comment' => 'Registro suficiente para publicação.',
         ]);
 
         $saved = app(SaveDefectAssessmentGut::class)->handle($admin, $assessment, [
-            'condition' => DefectAssessmentCondition::Worsened->value,
+            'condition' => DefectAssessmentCondition::New->value,
             'gravity' => 1,
             'urgency' => 1,
             'trend' => 5,
         ]);
+        $this->satisfyAssessmentPublicationRequirements($saved);
         $published = app(CompleteDefectAssessment::class)->handle($admin, $saved);
 
         $this->assertSame(5, $published->gut_score);

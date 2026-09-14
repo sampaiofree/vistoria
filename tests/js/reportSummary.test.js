@@ -58,3 +58,31 @@ test('shifts every destination when the summary gains another page', () => {
     assert.deepEqual(twoPages.map((entry) => entry.page), [4, 5]);
     assert.notEqual(reportSummarySignature(onePage), reportSummarySignature(twoPages));
 });
+
+test('includes defect evolution and textual findings only on their first pages', () => {
+    const entries = buildReportSummaryEntries([
+        { type: 'defect-evolution', continuation: false },
+        { type: 'defect-evolution', continuation: true },
+        { type: 'overview' },
+        { type: 'textual-findings', continuation: false },
+        { type: 'textual-findings', continuation: true },
+    ], 1);
+
+    assert.deepEqual(entries.map(({ key, title, page }) => ({ key, title, page })), [
+        {
+            key: 'defect-evolution',
+            title: '3 QUADRO DE EVOLUÇÃO DAS AVARIAS',
+            page: 3,
+        },
+        {
+            key: 'annex-a',
+            title: 'ANEXO A – LOCALIZAÇÃO E DOCUMENTAÇÃO FOTOGRÁFICA - TAC',
+            page: 5,
+        },
+        {
+            key: 'textual-findings',
+            title: 'REGISTROS SEM EVIDÊNCIA FOTOGRÁFICA',
+            page: 6,
+        },
+    ]);
+});

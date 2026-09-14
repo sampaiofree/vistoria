@@ -37,6 +37,11 @@ enum DefectAssessmentCondition: string
         return $this !== self::Repaired;
     }
 
+    public function requiresEvidence(): bool
+    {
+        return ! in_array($this, [self::NotLocated, self::NotInspected], true);
+    }
+
     /**
      * @return array<int, array{value:string, label:string}>
      */

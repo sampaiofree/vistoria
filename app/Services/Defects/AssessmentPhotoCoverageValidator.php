@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Services\Defects;
 
-use App\Enums\DefectAssessmentCondition;
 use App\Enums\PhotoProcessingStatus;
 use App\Models\Inspection;
 use Illuminate\Validation\ValidationException;
@@ -16,13 +15,7 @@ final class AssessmentPhotoCoverageValidator
         $assessments = $inspection->defectAssessments()->with(['photos', 'defect'])->get();
         $pending = $assessments->flatMap(function ($assessment): array {
             $photos = $assessment->photos;
-            $requiresEvidence = in_array($assessment->condition, [
-                DefectAssessmentCondition::New,
-                DefectAssessmentCondition::Unchanged,
-                DefectAssessmentCondition::Worsened,
-                DefectAssessmentCondition::Improved,
-                DefectAssessmentCondition::Repaired,
-            ], true);
+            $requiresEvidence = $assessment->condition->requiresEvidence();
 
             $hasMinimumPhotos = $photos->count() >= 2;
             $hasReadyAllPhotos = $photos->every(fn ($photo): bool => $photo->processing_status === PhotoProcessingStatus::Ready);

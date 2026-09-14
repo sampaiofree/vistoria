@@ -92,6 +92,24 @@ export function buildReportSummaryEntries(contentPages, summaryPageCount, overvi
             });
         }
 
+        if (page.type === 'defect-evolution' && !page.continuation) {
+            entries.push({
+                key: 'defect-evolution',
+                title: '3 QUADRO DE EVOLUÇÃO DAS AVARIAS',
+                page: pageNumber,
+                kind: 'section',
+            });
+        }
+
+        if (page.type === 'textual-findings' && !page.continuation) {
+            entries.push({
+                key: 'textual-findings',
+                title: 'REGISTROS SEM EVIDÊNCIA FOTOGRÁFICA',
+                page: pageNumber,
+                kind: 'section',
+            });
+        }
+
         if (page.type === 'location-map' && page.annexTitle) {
             entries.push({
                 key: `annex-${page.key}`,

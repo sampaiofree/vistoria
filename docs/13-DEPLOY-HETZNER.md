@@ -1,133 +1,125 @@
-# Deploy em produção — Horizon, Redis e checklist
+# Deploy em produção — referência rápida
 
-O roteiro completo, pronto para repasse ao responsável pela infraestrutura,
-está em [`13A-PASSO-A-PASSO-DEPLOY-PRODUCAO.md`](13A-PASSO-A-PASSO-DEPLOY-PRODUCAO.md).
+Este documento resume os requisitos de produção observados no código atual. O
+procedimento completo está em
+[`13A-PASSO-A-PASSO-DEPLOY-PRODUCAO.md`](13A-PASSO-A-PASSO-DEPLOY-PRODUCAO.md).
 
-Este checklist considera uma instalação inicial na Hetzner ou VPS equivalente,
-com 1 CPU e
-2 GB de RAM. Aplicação, MySQL, Redis e Horizon executam no mesmo servidor, e os
-arquivos privados permanecem em disco local.
+O cenário de referência é uma VPS Hetzner ou equivalente com Nginx, PHP-FPM,
+MySQL, Redis, Horizon e Supervisor. Os mesmos contratos valem para outra
+infraestrutura.
 
-## 1. Dependências do servidor
+## Dependências
 
-- PHP 8.3 ou superior com `imagick`, `pcntl`, `posix`, `redis` e `pdo_mysql`;
-- MySQL 8;
-- Redis;
-- ImageMagick e Ghostscript para mapas originados de PDF;
-- Nginx, Supervisor, Composer 2 e HTTPS válido;
-- Node somente no build, caso os assets não sejam gerados no CI.
+- PHP 8.3 ou superior, com `pdo_mysql`, `mbstring`, `xml`, `curl`, `zip`,
+  `bcmath`, `intl`, `redis`, `imagick`, `pcntl` e `posix`;
+- MySQL 8, Redis, Nginx, Supervisor e Composer 2;
+- Node 22, conforme `.nvmrc`, apenas onde o frontend for compilado;
+- ImageMagick para o processamento de imagens.
 
-O Redis deve aceitar conexões apenas locais. Use autenticação, persistência AOF
-e impeça a expulsão silenciosa de jobs:
+O fluxo atual aceita apenas imagens PNG, JPEG e WebP como fonte de mapas.
+Ghostscript só é necessário para processar fontes PDF históricas já presentes
+em uma instalação antiga; não faz parte do upload atual.
 
-```conf
-bind 127.0.0.1 ::1
-protected-mode yes
-requirepass TROQUE_POR_UM_SEGREDO_FORTE
-appendonly yes
-appendfsync everysec
-maxmemory-policy noeviction
-```
-
-## 2. Ambiente
-
-Configuração mínima relevante no `.env` de produção:
+## Ambiente essencial
 
 ```dotenv
+APP_NAME="Vistoria"
 APP_ENV=production
 APP_DEBUG=false
-APP_URL=https://seu-dominio.com
+APP_URL=https://app.exemplo.com.br
+APP_TIMEZONE=America/Sao_Paulo
+APP_LOCALE=pt_BR
 
 DB_CONNECTION=mysql
 DB_HOST=127.0.0.1
 DB_PORT=3306
 DB_DATABASE=vistoria
 DB_USERNAME=vistoria
-DB_PASSWORD=SEGREDO_DO_MYSQL
+DB_PASSWORD=SEGREDO_MYSQL
 
+SESSION_DRIVER=database
+CACHE_STORE=database
 QUEUE_CONNECTION=redis
 REDIS_CLIENT=phpredis
 REDIS_HOST=127.0.0.1
-REDIS_PASSWORD=SEGREDO_DO_REDIS
+REDIS_PASSWORD=SEGREDO_REDIS
 REDIS_PORT=6379
-REDIS_DB=0
-REDIS_CACHE_DB=1
 REDIS_QUEUE_RETRY_AFTER=240
-```
 
-Defina caminhos privados persistentes, fora do diretório substituído a cada
-deploy, e conceda acesso ao usuário do PHP e do Horizon:
-
-```dotenv
 EQUIPMENT_DOCUMENTS_ROOT=/var/lib/vistoria/equipment-documents
 INSPECTION_PHOTOS_ROOT=/var/lib/vistoria/inspection-photos
 INSPECTION_MAPS_ROOT=/var/lib/vistoria/inspection-maps
 ```
 
-Configure PHP-FPM com `upload_max_filesize=25M` e `post_max_size=30M`, e Nginx
-com `client_max_body_size 30M`.
+Gere `APP_KEY` apenas na primeira instalação. O valor deve ser preservado como
+segredo entre releases e restaurações.
 
-## 3. Primeiro deploy
+## Arquivos persistentes
 
-Antes de trocar uma instalação existente de fila `database` para Redis, confira
-a tabela `jobs`. Se houver registros, mantenha o release anterior e drene a fila:
+Os três caminhos privados acima devem existir fora de diretórios descartáveis
+de release e ser graváveis por PHP-FPM e Horizon. Eles nunca devem ser servidos
+diretamente pelo Nginx.
+
+`storage/app/public` também contém identidade visual persistente de empresas e
+clientes. Em deploys por releases, mantenha `storage/` em área compartilhada e
+ligue cada release a ela. Em deploy no mesmo diretório, inclua essa pasta no
+backup. Execute `php artisan storage:link` para publicar somente o disco
+`public`.
+
+## Uploads e filas
+
+- Nginx: `client_max_body_size 60M`;
+- PHP-FPM: `upload_max_filesize=50M` e `post_max_size=60M`;
+- conexão de fila: Redis;
+- filas consumidas pelo Horizon: `images` e `default`;
+- um processo, 512 MB, timeout de 210 segundos e três tentativas;
+- jobs de imagem: timeout de 180 segundos e backoff de 10, 60 e 300 segundos;
+- `REDIS_QUEUE_RETRY_AFTER=240` mantém o retry posterior ao timeout do worker.
+
+Os 50 MB acomodam a origem de mapa, que é o maior upload atual. Fotografias e
+documentos continuam validados pela aplicação em 25 MB.
+
+O arquivo de referência do Supervisor é
+`deploy/supervisor/vistoria-horizon.conf.example`. Ajuste diretório, usuário e
+log antes de instalá-lo.
+
+## Primeiro release
 
 ```bash
-php artisan queue:work database --queue=images,default --stop-when-empty --timeout=210
-```
-
-Não apague jobs pendentes. Depois que a tabela estiver vazia, faça o deploy:
-
-```bash
-composer install --no-dev --optimize-autoloader
+composer install --no-dev --optimize-autoloader --no-interaction
 npm ci
 npm run build
 php artisan migrate --force
 php artisan storage:link
 php artisan optimize
-php artisan app:bootstrap-super-admin
+php artisan app:bootstrap-super-admin --email=admin@exemplo.com --name="Administrador Master"
 ```
 
-O último comando é idempotente, mas a senha temporária só é exibida quando a
-conta mestre é criada.
+O bootstrap é idempotente para uma conta global compatível. Na criação, exibe
+uma senha temporária uma única vez e obriga sua troca no primeiro acesso. Não
+grave essa senha em logs de automação.
 
-## 4. Horizon e Supervisor
+Depois da troca de senha, o superadministrador usa `/admin/organizations` para
+criar a primeira empresa e seu administrador. A taxonomia inicial CV, TAC e REC
+é provisionada automaticamente com a organização; não há seed de demonstração.
 
-Copie `deploy/supervisor/vistoria-horizon.conf.example` para
-`/etc/supervisor/conf.d/vistoria-horizon.conf` e ajuste caminho, usuário e log.
-Depois ative o processo:
+## Horizon, scheduler e saúde
 
-```bash
-sudo supervisorctl reread
-sudo supervisorctl update
-sudo supervisorctl start vistoria-horizon
-php artisan horizon:status
-```
+Mantenha `php artisan horizon` sob o Supervisor. Em cada release posterior,
+execute `php artisan horizon:terminate` depois de instalar o novo código e
+recriar os caches; o Supervisor inicia o processo novamente.
 
-Em cada deploy posterior, recarregue os caches e encerre o processo mestre de
-forma graciosa. O Supervisor iniciará a nova versão:
-
-```bash
-php artisan optimize
-php artisan horizon:terminate
-```
-
-O painel fica em `/horizon` e exige um superadministrador global ativo que já
-tenha trocado a senha temporária.
-
-## 5. Scheduler
-
-Adicione uma única entrada no crontab do usuário da aplicação:
+O crontab possui uma única entrada:
 
 ```cron
 * * * * * cd /var/www/vistoria && /usr/bin/php artisan schedule:run >> /dev/null 2>&1
 ```
 
-Confira com `php artisan schedule:list`. O scheduler registra métricas do Horizon
-a cada cinco minutos, limpa uploads abandonados às 03:00 e remove mapas elegíveis
-às 03:30. O cron não executa os jobs de imagem; essa responsabilidade é do Horizon.
+O único evento agendado pela aplicação é `horizon:snapshot`, a cada cinco
+minutos e sem sobreposição. Não existem comandos agendados de limpeza ou retry
+manual. O cron coleta métricas; Horizon é quem processa as filas.
 
-## 6. Aceite e operação
+Verificações mínimas:
 
 ```bash
 php artisan about
@@ -135,12 +127,9 @@ php artisan migrate:status
 php artisan horizon:status
 php artisan schedule:list
 php artisan config:show queue
+curl -fsS https://app.exemplo.com.br/up
 ```
 
-- enviar uma fotografia real e confirmar `pending`, `processing` e `ready`;
-- conferir original, WebP otimizado e miniatura;
-- abrir `/horizon` como superadmin e confirmar métricas e jobs recentes;
-- verificar `/up`, logs do Laravel, Redis e Supervisor;
-- reiniciar o VPS e confirmar Redis, PHP-FPM, Nginx e Horizon ativos;
-- automatizar backup do MySQL e de `/var/lib/vistoria` e testar restauração;
-- monitorar memória, disco, jobs com falha e tempo de espera da fila.
+Faça backup consistente do MySQL, dos três diretórios privados, de
+`storage/app/public` e dos segredos. Teste a restauração e monitore espaço em
+disco, memória, filas com falha e latência das filas.
