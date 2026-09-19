@@ -5,14 +5,16 @@ declare(strict_types=1);
 namespace App\Actions\Classification;
 
 use App\Enums\DefectAssessmentStatus;
-use App\Enums\InspectionResponsibility;
-use App\Enums\InspectionStatus;
+use App\Enums\DefectCategory;
 use App\Enums\MeasurementUnit;
 use App\Models\DefectAssessment;
 use App\Models\DefectAssessmentQuantity;
 use App\Models\User;
+use App\Services\Defects\CivilQuantityCalculator;
 use App\Services\Defects\DefectStatusSynchronizer;
 use App\Services\Tenancy\TenantContext;
+use Brick\Math\BigDecimal;
+use Brick\Math\RoundingMode;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -21,9 +23,10 @@ final class UpdateDefectAssessmentQuantity
     public function __construct(
         private readonly TenantContext $tenant,
         private readonly DefectStatusSynchronizer $statusSynchronizer,
+        private readonly CivilQuantityCalculator $civilQuantityCalculator,
     ) {}
 
-    /** @param array{measurement_value:mixed,measurement_unit:mixed}|null $data */
+    /** @param array<string, mixed>|null $data */
     public function handle(User $actor, DefectAssessment $assessment, ?array $data): DefectAssessment
     {
         return DB::transaction(function () use ($actor, $assessment, $data): DefectAssessment {
@@ -36,11 +39,7 @@ final class UpdateDefectAssessmentQuantity
             if (! $actor->isActive()
                 || $actor->isSuperAdmin()
                 || ! $actor->belongsToOrganization($this->tenant->id())
-                || ! in_array($assessment->inspection->status, [InspectionStatus::InProgress, InspectionStatus::InCorrection], true)
-                || ! $assessment->inspection->hasAnyResponsibilityForUser(
-                    $actor,
-                    InspectionResponsibility::Preparer,
-                )) {
+                || ! $actor->can('manageFieldContent', $assessment->inspection)) {
                 throw ValidationException::withMessages([
                     'quantity' => 'A avaliação não está disponível para editar o quantitativo.',
                 ]);
@@ -60,11 +59,21 @@ final class UpdateDefectAssessmentQuantity
                     ->where('defect_assessment_id', $assessment->id)
                     ->first();
 
+                $measurement = $assessment->defect->category === DefectCategory::Civil
+                    ? $this->civilQuantityCalculator->calculate($data)
+                    : [
+                        'measurement_value' => (string) BigDecimal::of((string) $data['measurement_value'])->toScale(4, RoundingMode::HalfUp),
+                        'measurement_unit' => MeasurementUnit::from((string) $data['measurement_unit']),
+                        'quantity' => 1,
+                        'length' => null,
+                        'height' => null,
+                        'width' => null,
+                        'unit_volume' => null,
+                    ];
+
                 $values = [
+                    ...$measurement,
                     'inspection_id' => $assessment->inspection_id,
-                    'measurement_value' => (float) $data['measurement_value'],
-                    'measurement_unit' => MeasurementUnit::from((string) $data['measurement_unit']),
-                    'quantity' => 1,
                     'position' => 1,
                 ];
 

@@ -4,6 +4,7 @@ namespace App\Policies;
 
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
+use App\Enums\OperationalRole;
 use App\Models\Inspection;
 use App\Models\User;
 
@@ -17,38 +18,65 @@ final class InspectionPolicy
     public function view(User $user, Inspection $inspection): bool
     {
         return $this->activeInOrganization($user)
-            && $this->sameOrganization($user, $inspection);
+            && $this->sameOrganization($user, $inspection)
+            && (
+                $user->isCompanyAdmin()
+                || $inspection->hasAnyResponsibilityForUser($user, ...InspectionResponsibility::cases())
+            );
     }
 
     public function create(User $user): bool
     {
         return $user->isActive()
-            && $user->isCompanyAdmin()
             && ! $user->isSuperAdmin()
-            && $user->organization_id !== null;
+            && $user->organization_id !== null
+            && $user->operational_role === OperationalRole::Planner;
     }
 
     public function updatePlanned(User $user, Inspection $inspection): bool
     {
-        return $this->create($user)
-            && $this->sameOrganization($user, $inspection)
-            && $inspection->status === InspectionStatus::Planned;
+        return $inspection->status === InspectionStatus::Planned
+            && $this->activeWithRoleAndAssignment($user, $inspection, OperationalRole::Planner);
     }
 
     public function manageReportMetadata(User $user, Inspection $inspection): bool
     {
-        return $this->create($user)
+        if ($inspection->status === InspectionStatus::Planned) {
+            return false;
+        }
+
+        if ($inspection->status === InspectionStatus::InProgress) {
+            return $this->manageInProgress($user, $inspection);
+        }
+
+        return $this->activeCompanyAdmin($user)
             && $this->sameOrganization($user, $inspection);
     }
 
     public function manageGeneralAspects(User $user, Inspection $inspection): bool
     {
-        return $this->create($user)
+        if ($inspection->status === InspectionStatus::Planned) {
+            return false;
+        }
+
+        if ($inspection->status === InspectionStatus::InProgress) {
+            return $this->manageInProgress($user, $inspection);
+        }
+
+        return $this->activeCompanyAdmin($user)
             && $this->sameOrganization($user, $inspection);
     }
 
     public function manageReportOverview(User $user, Inspection $inspection): bool
     {
+        if ($inspection->status === InspectionStatus::Planned) {
+            return false;
+        }
+
+        if (in_array($inspection->status, [InspectionStatus::InProgress, InspectionStatus::InCorrection], true)) {
+            return $this->manageFieldContent($user, $inspection);
+        }
+
         return $this->activeInOrganization($user)
             && $this->sameOrganization($user, $inspection)
             && ! $inspection->status->isFinal()
@@ -58,23 +86,32 @@ final class InspectionPolicy
             );
     }
 
-    public function generateReport(User $user, Inspection $inspection): bool
-    {
-        return $this->create($user)
-            && $this->sameOrganization($user, $inspection)
-            && $inspection->status === InspectionStatus::Approved;
-    }
-
     public function assignResponsibles(User $user, Inspection $inspection): bool
     {
-        return $this->create($user)
+        if ($inspection->status === InspectionStatus::Planned) {
+            return false;
+        }
+
+        if ($inspection->status === InspectionStatus::InProgress) {
+            return $this->manageInProgress($user, $inspection);
+        }
+
+        return $this->activeCompanyAdmin($user)
             && $this->sameOrganization($user, $inspection)
             && ! $inspection->status->isFinal();
     }
 
     public function manageReferences(User $user, Inspection $inspection): bool
     {
-        return $this->create($user)
+        if ($inspection->status === InspectionStatus::Planned) {
+            return false;
+        }
+
+        if ($inspection->status === InspectionStatus::InProgress) {
+            return $this->manageInProgress($user, $inspection);
+        }
+
+        return $this->activeCompanyAdmin($user)
             && $this->sameOrganization($user, $inspection)
             && ! $inspection->status->isFinal();
     }
@@ -85,20 +122,16 @@ final class InspectionPolicy
             && $this->sameOrganization($user, $inspection)
             && $inspection->status === InspectionStatus::Planned
             && $inspection->equipment->canReceiveInspection()
-            && $inspection->hasAnyResponsibilityForUser($user, InspectionResponsibility::Preparer);
+            && $user->operational_role === OperationalRole::Inspector
+            && $inspection->hasAnyResponsibilityForUser($user, ...InspectionResponsibility::cases());
     }
 
     public function submitForReview(User $user, Inspection $inspection): bool
     {
-        return $this->activeInOrganization($user)
-            && $this->sameOrganization($user, $inspection)
-            && in_array($inspection->status, [
-                InspectionStatus::InProgress,
-                InspectionStatus::InCorrection,
-            ], true)
-            && $inspection->hasResponsibility(InspectionResponsibility::Preparer)
-            && $inspection->hasResponsibility(InspectionResponsibility::Reviewer)
-            && $inspection->hasAnyResponsibilityForUser($user, InspectionResponsibility::Preparer);
+        return match ($inspection->status) {
+            InspectionStatus::InProgress, InspectionStatus::InCorrection => $this->manageFieldContent($user, $inspection),
+            default => false,
+        };
     }
 
     public function returnForCorrection(User $user, Inspection $inspection): bool
@@ -108,44 +141,45 @@ final class InspectionPolicy
         }
 
         return match ($inspection->status) {
-            InspectionStatus::AwaitingReview => $inspection->hasResponsibility(InspectionResponsibility::Reviewer)
-                && $inspection->hasAnyResponsibilityForUser($user, InspectionResponsibility::Reviewer),
-            InspectionStatus::AwaitingApproval => $inspection->hasResponsibility(InspectionResponsibility::Approver)
-                && $inspection->hasAnyResponsibilityForUser($user, InspectionResponsibility::Approver),
+            InspectionStatus::InReview => $this->activeWithRoleAndAssignment($user, $inspection, OperationalRole::Reviewer),
             default => false,
         };
     }
 
-    public function completeReview(User $user, Inspection $inspection): bool
+    public function startReview(User $user, Inspection $inspection): bool
     {
-        return $this->activeInOrganization($user)
-            && $this->sameOrganization($user, $inspection)
-            && $inspection->status === InspectionStatus::AwaitingReview
-            && $inspection->hasResponsibility(InspectionResponsibility::Reviewer)
-            && $inspection->hasResponsibility(InspectionResponsibility::Approver)
-            && $inspection->hasAnyResponsibilityForUser($user, InspectionResponsibility::Reviewer);
+        return $inspection->status === InspectionStatus::AwaitingReview
+            && $this->activeWithRoleAndAssignment($user, $inspection, OperationalRole::Reviewer);
     }
 
     public function approve(User $user, Inspection $inspection): bool
     {
         return $this->activeInOrganization($user)
             && $this->sameOrganization($user, $inspection)
-            && $inspection->status === InspectionStatus::AwaitingApproval
-            && $inspection->hasResponsibility(InspectionResponsibility::Approver)
-            && $inspection->hasAnyResponsibilityForUser($user, InspectionResponsibility::Approver);
+            && $inspection->status === InspectionStatus::InReview
+            && $this->activeWithRoleAndAssignment($user, $inspection, OperationalRole::Reviewer);
     }
 
     public function release(User $user, Inspection $inspection): bool
     {
         return $this->activeInOrganization($user)
             && $this->sameOrganization($user, $inspection)
-            && $inspection->status === InspectionStatus::ReportGenerated
-            && $inspection->hasResponsibility(InspectionResponsibility::Releaser)
-            && $inspection->hasAnyResponsibilityForUser($user, InspectionResponsibility::Releaser);
+            && $inspection->status === InspectionStatus::AwaitingRelease
+            && $this->activeWithRoleAndAssignment($user, $inspection, OperationalRole::Releaser);
+    }
+
+    public function returnForReview(User $user, Inspection $inspection): bool
+    {
+        return $inspection->status === InspectionStatus::AwaitingRelease
+            && $this->activeWithRoleAndAssignment($user, $inspection, OperationalRole::Releaser);
     }
 
     public function cancel(User $user, Inspection $inspection): bool
     {
+        if ($inspection->status === InspectionStatus::InProgress) {
+            return $this->manageInProgress($user, $inspection);
+        }
+
         return $this->activeInOrganization($user)
             && $this->sameOrganization($user, $inspection)
             && ! $inspection->status->isFinal()
@@ -153,6 +187,35 @@ final class InspectionPolicy
                 $user->isCompanyAdmin()
                 || $inspection->hasAnyResponsibilityForUser($user, ...InspectionResponsibility::cases())
             );
+    }
+
+    /**
+     * Allows changes while the inspection is being performed only to the assigned inspector.
+     */
+    public function manageInProgress(User $user, Inspection $inspection): bool
+    {
+        return $this->activeInOrganization($user)
+            && $this->sameOrganization($user, $inspection)
+            && $inspection->status === InspectionStatus::InProgress
+            && $user->operational_role === OperationalRole::Inspector
+            && $inspection->hasAnyResponsibilityForUser($user, ...InspectionResponsibility::cases());
+    }
+
+    public function manageFieldContent(User $user, Inspection $inspection): bool
+    {
+        return $this->activeInOrganization($user)
+            && $this->sameOrganization($user, $inspection)
+            && in_array($inspection->status, [InspectionStatus::InProgress, InspectionStatus::InCorrection], true)
+            && $user->operational_role === OperationalRole::Inspector
+            && $inspection->hasAnyResponsibilityForUser($user, ...InspectionResponsibility::cases());
+    }
+
+    private function activeWithRoleAndAssignment(User $user, Inspection $inspection, OperationalRole $role): bool
+    {
+        return $this->activeInOrganization($user)
+            && $this->sameOrganization($user, $inspection)
+            && $user->operational_role === $role
+            && $inspection->hasAnyResponsibilityForUser($user, ...InspectionResponsibility::cases());
     }
 
     private function activeInOrganization(User $user): bool
@@ -166,5 +229,13 @@ final class InspectionPolicy
     {
         return $user->organization_id !== null
             && $inspection->belongsToOrganization($user->organization_id);
+    }
+
+    private function activeCompanyAdmin(User $user): bool
+    {
+        return $user->isActive()
+            && $user->isCompanyAdmin()
+            && ! $user->isSuperAdmin()
+            && $user->organization_id !== null;
     }
 }

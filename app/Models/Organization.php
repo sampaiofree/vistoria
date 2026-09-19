@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use App\Actions\Classification\ProvisionDefaultDefectTaxonomy;
 use App\Enums\OrganizationStatus;
 use App\Models\Concerns\HasPublicId;
 use Database\Factories\OrganizationFactory;
@@ -15,13 +14,6 @@ class Organization extends Model
 {
     /** @use HasFactory<OrganizationFactory> */
     use HasFactory, HasPublicId, SoftDeletes;
-
-    protected static function booted(): void
-    {
-        static::created(function (self $organization): void {
-            app(ProvisionDefaultDefectTaxonomy::class)->handle($organization->getKey());
-        });
-    }
 
     protected $fillable = [
         'name',
@@ -46,11 +38,6 @@ class Organization extends Model
         return $this->hasMany(User::class);
     }
 
-    public function defectCategories(): HasMany
-    {
-        return $this->hasMany(DefectCategory::class);
-    }
-
     public function inspectionLocationMaps(): HasMany
     {
         return $this->hasMany(InspectionLocationMap::class);
@@ -59,21 +46,6 @@ class Organization extends Model
     public function clients(): HasMany
     {
         return $this->hasMany(Client::class);
-    }
-
-    public function clientUnits(): HasMany
-    {
-        return $this->hasMany(ClientUnit::class);
-    }
-
-    public function areas(): HasMany
-    {
-        return $this->hasMany(Area::class);
-    }
-
-    public function subareas(): HasMany
-    {
-        return $this->hasMany(Subarea::class);
     }
 
     public function isActive(): bool

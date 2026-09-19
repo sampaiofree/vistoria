@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Inspections;
 
 use App\Enums\InspectionResponsibility;
+use App\Enums\InspectionStatus;
 use App\Enums\UserAccountType;
 use App\Models\Inspection;
 use App\Models\InspectionResponsible;
@@ -18,7 +19,7 @@ final class InspectionResponsibleRoutesTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_company_admin_can_create_mark_primary_and_remove_responsibles_through_real_routes(): void
+    public function test_company_admin_replaces_the_responsible_for_a_role_through_real_routes(): void
     {
         $organization = Organization::factory()->create();
         $admin = User::factory()
@@ -27,7 +28,7 @@ final class InspectionResponsibleRoutesTest extends TestCase
                 'account_type' => UserAccountType::CompanyAdmin->value,
             ]);
         $inspection = Inspection::factory()
-            ->create(['organization_id' => $organization->id]);
+            ->create(['organization_id' => $organization->id, 'status' => InspectionStatus::AwaitingReview]);
         $firstUser = User::factory()->for($organization)->create();
         $secondUser = User::factory()->for($organization)->create();
 
@@ -35,7 +36,6 @@ final class InspectionResponsibleRoutesTest extends TestCase
             ->post(route('inspections.responsibles.store', $inspection), [
                 'user_id' => $firstUser->id,
                 'responsibility' => InspectionResponsibility::Preparer->value,
-                'is_primary' => true,
             ])
             ->assertRedirect();
 
@@ -54,17 +54,7 @@ final class InspectionResponsibleRoutesTest extends TestCase
             ->where('user_id', $secondUser->id)
             ->firstOrFail();
 
-        $this->actingAs($admin)
-            ->patch(route('inspections.responsibles.update', [$inspection, $secondResponsible]))
-            ->assertRedirect();
-
-        $this->assertFalse($firstResponsible->refresh()->is_primary);
         $this->assertTrue($secondResponsible->refresh()->is_primary);
-
-        $this->actingAs($admin)
-            ->delete(route('inspections.responsibles.destroy', [$inspection, $firstResponsible]))
-            ->assertRedirect();
-
         $this->assertDatabaseMissing('inspection_responsibles', ['id' => $firstResponsible->id]);
         $this->assertDatabaseHas('inspection_responsibles', ['id' => $secondResponsible->id]);
     }
@@ -110,7 +100,7 @@ final class InspectionResponsibleRoutesTest extends TestCase
         $admin = User::factory()->for($organization)->create([
             'account_type' => UserAccountType::CompanyAdmin->value,
         ]);
-        $inspection = Inspection::factory()->create(['organization_id' => $organization->id]);
+        $inspection = Inspection::factory()->create(['organization_id' => $organization->id, 'status' => InspectionStatus::AwaitingReview]);
         $user = User::factory()->for($organization)->create();
 
         $this->actingAs($admin)

@@ -27,6 +27,7 @@ final class UpdateOrganizationUser
                 'name' => $data['name'],
                 'email' => strtolower($data['email']),
                 'account_type' => $data['account_type'],
+                'operational_role' => $data['operational_role'],
             ]);
 
             return $user->refresh();

@@ -11,7 +11,6 @@ use App\Enums\InspectionLocationMapProcessingStatus;
 use App\Models\AssessmentPhoto;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
-use App\Models\DefectCategory;
 use App\Models\Inspection;
 use App\Models\InspectionLocationMap;
 use App\Models\InspectionLocationMarker;
@@ -114,16 +113,11 @@ final class InspectionContextNavigation
         $maps = InspectionLocationMap::query()
             ->forOrganization($inspection->organization_id)
             ->where('inspection_id', $inspection->getKey())
-            ->with('category')
             ->withCount('markers')
             ->orderBy('position')
             ->orderBy('id')
             ->get();
-        $canCreateMap = DefectCategory::query()
-            ->forOrganization($inspection->organization_id)
-            ->active()
-            ->get()
-            ->contains(fn (DefectCategory $category): bool => $user->can('create', [InspectionLocationMap::class, $inspection, $category]));
+        $canCreateMap = $user->can('create', [InspectionLocationMap::class, $inspection]);
 
         $currentDefectId = $this->currentDefectId($request);
         $currentMapId = $this->currentMapId($request);
@@ -247,7 +241,6 @@ final class InspectionContextNavigation
             ->forOrganization($inspection->organization_id)
             ->where('equipment_id', $inspection->equipment_id)
             ->with([
-                'categoryDefinition',
                 'firstInspection',
                 'assessments' => fn ($query) => $query
                     ->where('inspection_id', $inspection->getKey())
@@ -286,7 +279,7 @@ final class InspectionContextNavigation
         $groups = $defects
             ->groupBy(fn (Defect $defect): string => $defect->categoryCode())
             ->sortBy(fn (Collection $group): array => [
-                $group->first()?->categoryDefinition?->position ?? PHP_INT_MAX,
+                $group->first()?->category->position() ?? PHP_INT_MAX,
                 $group->first()?->categoryCode() ?? '',
             ]);
 
@@ -360,11 +353,11 @@ final class InspectionContextNavigation
 
             return [
                 'key' => 'map-'.$map->public_id,
-                'label' => ($map->category?->code ? $map->category->code.' · ' : '').$map->title,
+                'label' => $map->category->value.' · '.$map->title,
                 'href' => $canUpdate
                     ? route($ready ? 'inspection-location-maps.editor' : 'inspection-location-maps.edit', $map)
                     : route('inspections.locations', $inspection).'#map-'.$map->public_id,
-                'meta' => ($map->category?->name ? $map->category->name.' · ' : '').$this->mapMeta($map),
+                'meta' => $map->category->label().' · '.$this->mapMeta($map),
                 'tone' => $ready ? 'success' : ($map->processing_status === InspectionLocationMapProcessingStatus::Failed ? 'danger' : 'warning'),
                 'active' => $active,
             ];
@@ -454,7 +447,7 @@ final class InspectionContextNavigation
     {
         return [
             $inspection->inspected_on?->getTimestamp()
-                ?? $inspection->scheduled_for?->getTimestamp()
+                ?? $inspection->planned_start_on?->getTimestamp()
                 ?? $inspection->created_at?->getTimestamp()
                 ?? 0,
             (int) $inspection->getKey(),

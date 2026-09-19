@@ -18,11 +18,11 @@ defineEmits(['submit']);
             </label>
             <label v-if="!editing" class="block">
                 <span class="text-sm font-semibold text-slate-700">Categoria</span>
-                <select v-model="form.defect_category_id" required class="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm">
+                <select v-model="form.category" required class="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm">
                     <option value="" disabled>Selecione</option>
-                    <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.code }} · {{ category.name }}</option>
+                    <option v-for="category in categories" :key="category.code" :value="category.code">{{ category.code }} · {{ category.name }}</option>
                 </select>
-                <p v-if="form.errors.defect_category_id" class="mt-1 text-xs text-rose-600">{{ form.errors.defect_category_id }}</p>
+                <p v-if="form.errors.category" class="mt-1 text-xs text-rose-600">{{ form.errors.category }}</p>
             </label>
             <label v-if="editing" class="block" :class="{ 'md:col-span-2': !editing }">
                 <span class="text-sm font-semibold text-slate-700">Ordem</span>

@@ -47,18 +47,6 @@ final class GlobalOrganizationManagementTest extends TestCase
         $this->assertIsArray($credentials);
         $this->assertTrue(Hash::check($credentials['password'], $administrator->password));
         $this->assertNotSame($credentials['password'], $administrator->password);
-        $categories = $organization->defectCategories()
-            ->with('gutOptions')
-            ->get()
-            ->keyBy('code');
-
-        $this->assertSame(['CV', 'REC', 'TAC'], $categories->keys()->sort()->values()->all());
-        $this->assertSame(5, $categories['CV']->classifications()->count());
-        $this->assertSame(3, $categories['TAC']->classifications()->count());
-        $this->assertSame(5, $categories['REC']->classifications()->count());
-        $this->assertSame(15, $categories['CV']->gutOptions->count());
-        $this->assertSame(15, $categories['TAC']->gutOptions->count());
-        $this->assertSame(15, $categories['REC']->gutOptions->count());
     }
 
     public function test_conflicting_administrator_email_or_cnpj_does_not_create_a_partial_organization(): void

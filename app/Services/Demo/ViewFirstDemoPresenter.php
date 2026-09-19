@@ -6,17 +6,17 @@ namespace App\Services\Demo;
 
 use App\Enums\DefectAssessmentCondition;
 use App\Enums\DefectAssessmentStatus;
+use App\Enums\DefectCategory;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
 use App\Enums\MeasurementUnit;
 use App\Models\AssessmentPhoto;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
-use App\Models\DefectCategory;
-use App\Models\DefectClassification;
 use App\Models\Equipment;
 use App\Models\Inspection;
 use App\Models\User;
+use App\Services\Classification\NativeDefectCatalog;
 use App\Services\Defects\InspectionDefectScope;
 use App\Services\Defects\ResolvePreviousDefectAssessment;
 use App\Services\InspectionLocations\InspectionLocationPhotoNumbering;
@@ -24,6 +24,7 @@ use App\Services\Reports\EquipmentRevisionChronology;
 use App\Services\Reports\GeneralAspectsDocument;
 use App\Services\Reports\InspectionOverviewPresenter;
 use App\Services\Reports\InspectionPhotographicDocumentationComposer;
+use Brick\Math\BigDecimal;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -51,7 +52,7 @@ class ViewFirstDemoPresenter
      */
     public function equipment(Equipment $equipment): array
     {
-        $equipment->loadMissing(['organization', 'defects.assessments.classification', 'defects.assessments.quantities']);
+        $equipment->loadMissing(['organization', 'defects.assessments.quantities']);
 
         if ($equipment->defects->isEmpty()) {
             return ['criticality' => null];
@@ -64,9 +65,7 @@ class ViewFirstDemoPresenter
                     ->sortByDesc('created_at')
                     ->first();
 
-                return $assessment?->classification === null
-                    ? $this->technicalData($defect, $assessment)['classification']
-                    : $this->classificationFromDefinition($assessment->classification);
+                return $this->technicalData($defect, $assessment)['classification'];
             })
             ->sortBy(fn (array $item): int => $this->criticalityRank($item))
             ->first() ?? $this->classification(null);
@@ -152,15 +151,10 @@ class ViewFirstDemoPresenter
     {
         $assessment->loadMissing([
             'defect.equipment.client',
-            'defect.equipment.unit',
-            'defect.categoryDefinition.classifications',
-            'defect.categoryDefinition.gutOptions',
-            'classification',
             'inspection.equipment.defects.assessments.inspection',
             'inspection.equipment.defects.assessments.creator',
             'inspection.equipment.defects.assessments.photos',
             'inspection.equipment.defects.assessments.quantities',
-            'inspection.equipment.defects.assessments.classification',
             'inspection.equipment.defects.firstInspection',
             'photos',
             'quantities',
@@ -183,20 +177,8 @@ class ViewFirstDemoPresenter
         $keepPublished = $assessment->isComplete() && $locationMarkerCount > 0;
         $canEdit = $canUpdate && ($assessment->isDraft() || $keepPublished);
         $canChangeStatus = $canUpdate;
-        $category = $assessment->defect->categoryDefinition;
-        $classification = $assessment->classification === null
-            ? $technical['classification']
-            : [
-                'code' => $assessment->classification->code,
-                'label' => $assessment->classification->name,
-                'score_band' => null,
-                'profile_version' => null,
-                'severity_rank' => $assessment->classification->severity_rank,
-                'color' => $assessment->classification->color,
-                'is_critical' => $assessment->classification->severity_rank !== null
-                    && $assessment->classification->severity_rank <= 2,
-                'historical' => ! $assessment->classification->isActive(),
-            ];
+        $category = $assessment->defect->category;
+        $classification = $technical['classification'];
         $quantity = $technical['quantities'][0] ?? null;
         $reportNumbering = $this->photoNumbering->buildForReport($assessment->inspection);
         $reportCategory = $assessment->defect->categoryCode();
@@ -215,30 +197,25 @@ class ViewFirstDemoPresenter
             'reinspection_action' => $this->reinspectionAction($assessment, $user),
             'classification' => $classification,
             'gut' => $technical['gut'],
-            'gut_options' => $this->gutOptionsPayload($category),
+            'gut_options' => NativeDefectCatalog::gutOptions(),
             'gut_snapshot' => $assessment->gut_snapshot,
-            'gut_classification_ranges' => $category?->classifications
-                ?->filter(fn ($classification): bool => $classification->isActive())
-                ->filter(fn ($classification): bool => $classification->lower_limit !== null && $classification->upper_limit !== null)
-                ->map(fn ($classification): array => [
-                    'id' => $classification->id,
-                    'public_id' => $classification->public_id,
-                    'code' => $classification->code,
-                    'name' => $classification->name,
-                    'color' => $classification->color,
-                    'lower_limit' => $classification->lower_limit,
-                    'upper_limit' => $classification->upper_limit,
-                ])
-                ->values()
-                ->all() ?? [],
+            'gut_classification_ranges' => NativeDefectCatalog::classifications($category)
+                ->map(fn ($classification): array => $classification->toArray())->all(),
             'characterization' => $technical['characterization'],
             'quantity' => $quantity === null ? null : [
                 'measurement_value' => $quantity['measurement_value'],
                 'measurement_unit' => $quantity['measurement_unit'],
+                ...($category === DefectCategory::Civil ? [
+                    'length' => $quantity['length'],
+                    'height' => $quantity['height'],
+                    'width' => $quantity['width'],
+                    'quantity' => $quantity['quantity'],
+                    'unit_volume' => $quantity['unit_volume'],
+                ] : []),
             ],
             'discipline' => $technical['discipline'] ?? Str::lower($assessment->defect->categoryCode()),
             'discipline_label' => $technical['discipline_label'] ?? $assessment->defect->categoryLabel(),
-            'classification_family' => $category?->code ?? ($technical['classification_family'] ?? $assessment->defect->categoryCode()),
+            'classification_family' => $category->value,
             'unit' => $technical['unit'] ?? null,
             'project' => $technical['project'] ?? null,
             'drawing' => $technical['drawing'] ?? null,
@@ -301,7 +278,7 @@ class ViewFirstDemoPresenter
                 'photo_upload_url' => $canEdit
                     ? route('defect-assessments.photos.store', $assessment)
                     : null,
-                'gut_url' => $canEdit && $category !== null && $this->hasGutOptions($category)
+                'gut_url' => $canEdit
                     ? route('defect-assessments.gut.update', $assessment)
                     : null,
                 'quantity_url' => $canEdit
@@ -327,34 +304,6 @@ class ViewFirstDemoPresenter
             'report_url' => route('inspections.report-preview', $inspection),
             'reinspection_checklist_url' => route('inspections.reinspection-checklist', $inspection),
         ];
-    }
-
-    /** @return array<string, mixed>|null */
-    private function gutOptionsPayload(?DefectCategory $category): array
-    {
-        $payload = ['gravity' => [], 'urgency' => [], 'trend' => []];
-
-        if ($category === null) {
-            return $payload;
-        }
-
-        foreach ($category->gutOptions as $option) {
-            $payload[$option->criterion->value][] = [
-                'id' => $option->id,
-                'score' => $option->score,
-                'color' => $option->color,
-            ];
-        }
-
-        return $payload;
-    }
-
-    private function hasGutOptions(?DefectCategory $category): bool
-    {
-        return $category !== null
-            && collect(['gravity', 'urgency', 'trend'])
-                ->every(fn (string $criterion): bool => $category->gutOptions
-                    ->contains(fn ($option): bool => $option->criterion->value === $criterion));
     }
 
     /**
@@ -586,19 +535,21 @@ class ViewFirstDemoPresenter
                         'unit_value' => $unitValue,
                         'unit' => $unit,
                         'total' => (float) ($quantity['total'] ?? $quantity['total_volume'] ?? 0),
+                        'civil' => ($quantity['length'] ?? null) !== null,
                     ];
                 })
                 ->all())
             ->groupBy('unit_value')
             ->map(function (Collection $rows): array {
                 $first = $rows->first();
-                $total = round($rows->sum('total'), 4);
+                $precise = $rows->contains('civil', true);
+                $total = $precise ? (float) $rows->sum('total') : round($rows->sum('total'), 4);
 
                 return [
                     'unit_value' => $first['unit_value'],
                     'unit' => $first['unit'],
                     'total' => $total,
-                    'total_label' => $this->formatQuantity($total).' '.$first['unit'],
+                    'total_label' => $this->formatQuantity($total, $precise).' '.$first['unit'],
                 ];
             })
             ->values();
@@ -613,11 +564,9 @@ class ViewFirstDemoPresenter
             ->firstWhere('inspection_id', $inspection->getKey());
         $previousAssessment = $this->previousAssessmentResolver->handle($defect, $inspection);
 
-        $previousAssessment?->loadMissing(['inspection', 'classification', 'quantity', 'photos']);
+        $previousAssessment?->loadMissing(['inspection', 'quantity', 'photos']);
         $technical = $this->technicalData($defect, $assessment);
-        $classification = $assessment?->classification === null
-            ? $technical['classification']
-            : $this->classificationFromDefinition($assessment->classification);
+        $classification = $technical['classification'];
         $evidence = $this->evidenceForDefect($defect, $technical, $assessment);
         $isPending = $assessment === null || $assessment->status === DefectAssessmentStatus::Draft;
         $canCreate = $assessment === null
@@ -701,7 +650,6 @@ class ViewFirstDemoPresenter
             'gut_score' => $assessment->gut_score,
             'gut_snapshot' => $assessment->gut_snapshot,
             'gut_classified_at' => $assessment->gut_classified_at?->format('d/m/Y H:i'),
-            'defect_classification_id' => $assessment->defect_classification_id,
             'classification_code' => $assessment->classification_code,
             'classification_snapshot' => $assessment->classification_snapshot,
             'classification_priority' => $assessment->classification_priority,
@@ -888,7 +836,7 @@ class ViewFirstDemoPresenter
     private function technicalData(Defect $defect, ?DefectAssessment $assessment = null): array
     {
         $defect->loadMissing('organization');
-        $assessment?->loadMissing(['classification', 'quantities', 'photos']);
+        $assessment?->loadMissing(['quantities', 'photos']);
 
         return $this->persistedTechnicalData($defect, $assessment);
 
@@ -977,8 +925,7 @@ class ViewFirstDemoPresenter
 
     private function hasPersistedTechnicalData(DefectAssessment $assessment): bool
     {
-        return $assessment->classification !== null
-            || $assessment->classification_code !== null
+        return $assessment->classification_code !== null
             || $assessment->item_description !== null
             || $assessment->project_reference !== null
             || $assessment->impacts_activity !== null
@@ -1002,22 +949,28 @@ class ViewFirstDemoPresenter
                     'public_id' => $quantity->public_id,
                     'measurement_value' => $value,
                     'measurement_unit' => $unit->value,
+                    'length' => $quantity->length === null ? null : (float) $quantity->length,
+                    'height' => $quantity->height === null ? null : (float) $quantity->height,
+                    'width' => $quantity->width === null ? null : (float) $quantity->width,
+                    'quantity' => (float) $quantity->quantity,
+                    'unit_volume' => $quantity->unit_volume === null ? null : (float) $quantity->unit_volume,
                     'unit' => $unit->symbol(),
                     'total' => $total,
-                    'total_label' => $this->formatQuantity($total).' '.$unit->symbol(),
+                    'total_label' => $this->formatQuantity($total, $quantity->length !== null).' '.$unit->symbol(),
                 ];
             });
         $totalsByUnit = $quantities
             ->groupBy('measurement_unit')
             ->map(function (Collection $rows): array {
                 $first = $rows->first();
-                $total = round($rows->sum('total'), 4);
+                $precise = $rows->contains(fn (array $row): bool => $row['length'] !== null);
+                $total = $precise ? (float) $rows->sum('total') : round($rows->sum('total'), 4);
 
                 return [
                     'unit' => $first['unit'],
                     'unit_value' => $first['measurement_unit'],
                     'total' => $total,
-                    'total_label' => $this->formatQuantity($total).' '.$first['unit'],
+                    'total_label' => $this->formatQuantity($total, $precise).' '.$first['unit'],
                 ];
             })
             ->values();
@@ -1111,10 +1064,6 @@ class ViewFirstDemoPresenter
     /** @return array<string, mixed> */
     private function persistedClassification(?DefectAssessment $assessment): array
     {
-        if ($assessment?->classification !== null) {
-            return $this->classificationFromDefinition($assessment->classification);
-        }
-
         if ($assessment?->classification_code === null) {
             return [
                 'code' => '—',
@@ -1130,16 +1079,18 @@ class ViewFirstDemoPresenter
         }
 
         $snapshot = $assessment->classification_snapshot ?? [];
-        $priority = $assessment->classification_priority;
+        $priority = $snapshot['severity_rank'] ?? $assessment->classification_priority;
 
         return [
             'code' => $assessment->classification_code,
-            'label' => $snapshot['label'] ?? $snapshot['name'] ?? $assessment->classification_code,
+            'label' => $snapshot['name'] ?? $snapshot['label'] ?? $assessment->classification_code,
+            'color' => $snapshot['color'] ?? null,
             'tone' => 'neutral',
-            'score_band' => isset($snapshot['min_score'], $snapshot['max_score'])
-                ? $snapshot['min_score'].'-'.$snapshot['max_score']
+            'score_band' => isset($snapshot['lower_limit'], $snapshot['upper_limit'])
+                ? $snapshot['lower_limit'].'-'.$snapshot['upper_limit']
                 : null,
-            'profile_version' => $snapshot['profile_version'] ?? $snapshot['profile']['version'] ?? null,
+            'profile_version' => null,
+            'catalog_version' => $snapshot['catalog_version'] ?? null,
             'severity_rank' => $priority,
             'is_critical' => $priority !== null && $priority <= 2,
             'provisional' => false,
@@ -1343,9 +1294,11 @@ class ViewFirstDemoPresenter
             ->all();
     }
 
-    private function formatQuantity(float $value): string
+    private function formatQuantity(float $value, bool $precise = false): string
     {
-        return number_format($value, 2, ',', '.');
+        $scale = $precise ? BigDecimal::of((string) $value)->strippedOfTrailingZeros()->getScale() : 2;
+
+        return number_format($value, max(2, min(16, $scale)), ',', '.');
     }
 
     private function withoutNameSuffix(?string $name): ?string
@@ -1367,7 +1320,7 @@ class ViewFirstDemoPresenter
         array $summary,
         array $inspectionPayload,
     ): array {
-        $inspection->loadMissing(['organization', 'equipment.client', 'equipment.unit']);
+        $inspection->loadMissing(['organization', 'equipment.client']);
         $overview = $this->inspectionOverview->present($inspection);
         $mappedAssessmentIds = $inspection->locationMarkers()
             ->whereHas('map')
@@ -1423,7 +1376,6 @@ class ViewFirstDemoPresenter
             ?? collect($items)->pluck('project')->filter()->first()
             ?? '—';
         $issuedAt = $inspection->report_date?->format('d/m/Y')
-            ?? $inspection->report_generated_at?->format('d/m/Y')
             ?? $inspection->released_at?->format('d/m/Y')
             ?? 'Não emitido';
         $quantityUnit = $summary['quantity_total_unit'] ?? '—';
@@ -1545,7 +1497,6 @@ class ViewFirstDemoPresenter
                 'eyebrow' => 'Relatório técnico de inspeção',
                 'title' => $reportNumber,
                 'client' => $inspection->equipment->client?->name,
-                'unit_name' => $inspection->equipment->unit?->name,
                 'client_logo_url' => $inspection->equipment->client?->logo_path !== null
                     ? Storage::disk('public')->url($inspection->equipment->client->logo_path)
                     : null,
@@ -1563,7 +1514,7 @@ class ViewFirstDemoPresenter
                 'service_order' => $inspection->service_order,
                 'procedure' => $procedure,
                 'drawing' => $drawing,
-                'inspected_on' => $inspection->inspected_on?->format('d/m/Y') ?? $inspection->scheduled_for?->format('d/m/Y'),
+                'inspected_on' => $inspection->inspected_on?->format('d/m/Y') ?? $inspection->planned_start_on?->format('d/m/Y'),
                 'revision' => $coverRevision,
                 'current_revision' => $coverRevision,
                 'issued_at' => $issuedAt,
@@ -1757,7 +1708,6 @@ class ViewFirstDemoPresenter
             'equipment.defects.assessments.creator',
             'equipment.defects.assessments.photos',
             'equipment.defects.assessments.quantities',
-            'equipment.defects.assessments.classification',
         ]);
 
         return $this->inspectionDefectScope->handle($inspection);
@@ -1777,7 +1727,7 @@ class ViewFirstDemoPresenter
             $seen[$previousId] = true;
             $previous = DefectAssessment::query()
                 ->forOrganization($assessment->organization_id)
-                ->with(['inspection', 'classification', 'quantity', 'photos'])
+                ->with(['inspection', 'quantity', 'photos'])
                 ->where('defect_id', $assessment->defect_id)
                 ->whereKey($previousId)
                 ->first();
@@ -1906,28 +1856,12 @@ class ViewFirstDemoPresenter
         }
 
         $snapshot = $assessment->classification_snapshot ?? [];
-        $code = $snapshot['code'] ?? $assessment->classification_code ?? $assessment->classification?->code;
+        $code = $snapshot['code'] ?? $assessment->classification_code;
 
         return [
             'code' => $code,
-            'label' => $snapshot['name'] ?? $snapshot['label'] ?? $assessment->classification?->name ?? $code ?? 'Não classificada',
-            'color' => $snapshot['color'] ?? $assessment->classification?->color,
-        ];
-    }
-
-    private function classificationFromDefinition(DefectClassification $classification): array
-    {
-        return [
-            'code' => $classification->code,
-            'label' => $classification->name,
-            'tone' => 'neutral',
-            'score_band' => null,
-            'profile_version' => null,
-            'severity_rank' => $classification->severity_rank,
-            'color' => $classification->color,
-            'is_critical' => $classification->severity_rank !== null && $classification->severity_rank <= 2,
-            'provisional' => false,
-            'historical' => ! $classification->isActive(),
+            'label' => $snapshot['name'] ?? $snapshot['label'] ?? $code ?? 'Não classificada',
+            'color' => $snapshot['color'] ?? null,
         ];
     }
 

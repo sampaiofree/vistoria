@@ -13,7 +13,7 @@ const props = defineProps({
 });
 
 const form = useForm({
-    defect_category_id: props.categories[0]?.id ?? '',
+    category: props.categories[0]?.code ?? '',
     title: '',
     assessment_action: 'draft',
 });
@@ -42,10 +42,10 @@ function submit() {
         <div class="grid gap-4 lg:grid-cols-2">
             <label v-if="categories.length" class="block lg:col-span-2">
                 <span :class="labelClass">Categoria da avaria</span>
-                <select v-model="form.defect_category_id" :class="inputClass">
-                    <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.name }} ({{ category.code }})</option>
+                <select v-model="form.category" :class="inputClass">
+                    <option v-for="category in categories" :key="category.code" :value="category.code">{{ category.name }} ({{ category.code }})</option>
                 </select>
-                <p v-if="form.errors.defect_category_id" :class="helpClass">{{ form.errors.defect_category_id }}</p>
+                <p v-if="form.errors.category" :class="helpClass">{{ form.errors.category }}</p>
             </label>
             <label class="block lg:col-span-2">
                 <span class="flex flex-wrap items-center gap-2" :class="labelClass">

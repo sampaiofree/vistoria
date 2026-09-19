@@ -6,7 +6,6 @@ namespace App\Actions\InspectionLocations;
 
 use App\Enums\InspectionLocationMapProcessingStatus;
 use App\Enums\InspectionLocationMapSourceKind;
-use App\Enums\InspectionStatus;
 use App\Jobs\ProcessInspectionLocationMap;
 use App\Models\DefectAssessment;
 use App\Models\Inspection;
@@ -34,7 +33,7 @@ final class CopyInspectionLocationMapsFromPreviousInspection
             || $actor->organization_id !== $inspection->organization_id
             || $inspection->previousInspection->organization_id !== $inspection->organization_id
             || $inspection->previousInspection->equipment_id !== $inspection->equipment_id
-            || ! in_array($inspection->status, [InspectionStatus::InProgress, InspectionStatus::InCorrection], true)) {
+            || ! $actor->can('manageFieldContent', $inspection)) {
             throw ValidationException::withMessages(['inspection' => 'A inspeção não está disponível para copiar mapas anteriores.']);
         }
         $previousMaps = $inspection->previousInspection->locationMaps()->with(['markers.assessment', 'equipmentDocument'])->get();
@@ -54,7 +53,7 @@ final class CopyInspectionLocationMapsFromPreviousInspection
                 }
 
                 foreach ($previousMaps as $previousMap) {
-                    $this->capacity->assertCanCreateMap($inspection, $previousMap->defect_category_id);
+                    $this->capacity->assertCanCreateMap($inspection, $previousMap->category);
                     if ($previousMap->markers->count() > (int) config('inspection_locations.limits.markers_per_map')) {
                         throw ValidationException::withMessages(['markers' => 'Um mapa anterior excede o limite de marcações.']);
                     }
@@ -62,7 +61,7 @@ final class CopyInspectionLocationMapsFromPreviousInspection
                         'organization_id' => $inspection->organization_id,
                         'equipment_id' => $inspection->equipment_id,
                         'inspection_id' => $inspection->id,
-                        'defect_category_id' => $previousMap->defect_category_id,
+                        'category' => $previousMap->category,
                         'equipment_document_id' => null,
                         'title' => $previousMap->title,
                         'description' => $previousMap->description,

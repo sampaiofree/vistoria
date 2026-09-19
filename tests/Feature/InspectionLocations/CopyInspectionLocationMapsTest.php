@@ -4,15 +4,16 @@ declare(strict_types=1);
 
 namespace Tests\Feature\InspectionLocations;
 
+use App\Enums\DefectCategory;
 use App\Enums\InspectionLocationMapProcessingStatus;
 use App\Enums\InspectionLocationMapSourceKind;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
+use App\Enums\OperationalRole;
 use App\Enums\UserAccountType;
 use App\Models\AssessmentPhoto;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
-use App\Models\DefectCategory;
 use App\Models\Equipment;
 use App\Models\Inspection;
 use App\Models\InspectionLocationMap;
@@ -34,15 +35,18 @@ final class CopyInspectionLocationMapsTest extends TestCase
         Storage::fake('inspection_maps');
         Queue::fake();
         $organization = Organization::factory()->create();
-        $user = User::factory()->for($organization)->create(['account_type' => UserAccountType::CompanyAdmin]);
+        $user = User::factory()->for($organization)->create([
+            'account_type' => UserAccountType::CompanyAdmin,
+            'operational_role' => OperationalRole::Inspector,
+        ]);
         $equipment = Equipment::factory()->for($organization)->create();
         $previous = Inspection::factory()->forEquipment($equipment)->create(['status' => InspectionStatus::Released]);
         $current = Inspection::factory()->reinspection($previous)->create(['status' => InspectionStatus::InProgress]);
         InspectionResponsible::factory()->forInspection($current, $user)->create(['responsibility' => InspectionResponsibility::Preparer]);
-        $category = DefectCategory::factory()->create(['organization_id' => $organization->id, 'code' => 'TA']);
+        $category = DefectCategory::AnticorrosiveTreatment;
 
-        $resolvedDefect = Defect::factory()->forEquipment($equipment, $previous)->create(['defect_category_id' => $category->id]);
-        $pendingDefect = Defect::factory()->forEquipment($equipment, $previous)->create(['defect_category_id' => $category->id]);
+        $resolvedDefect = Defect::factory()->forEquipment($equipment, $previous)->create(['category' => $category->value]);
+        $pendingDefect = Defect::factory()->forEquipment($equipment, $previous)->create(['category' => $category->value]);
         $previousResolved = DefectAssessment::factory()->forDefect($resolvedDefect, $previous)->create();
         $previousPending = DefectAssessment::factory()->forDefect($pendingDefect, $previous)->create();
         $currentAssessment = DefectAssessment::factory()->forDefect($resolvedDefect, $current)->create();

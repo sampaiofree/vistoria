@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Enums\DefectCategory;
 use App\Models\Concerns\BelongsToOrganization;
 use Database\Factories\DefectCodeSequenceFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -18,7 +19,6 @@ final class DefectCodeSequence extends Model
     protected $fillable = [
         'organization_id',
         'equipment_id',
-        'defect_category_id',
         'category',
         'last_number',
     ];
@@ -26,6 +26,7 @@ final class DefectCodeSequence extends Model
     protected function casts(): array
     {
         return [
+            'category' => DefectCategory::class,
             'last_number' => 'integer',
         ];
     }
@@ -33,10 +34,5 @@ final class DefectCodeSequence extends Model
     public function equipment(): BelongsTo
     {
         return $this->belongsTo(Equipment::class);
-    }
-
-    public function categoryDefinition(): BelongsTo
-    {
-        return $this->belongsTo(DefectCategory::class, 'defect_category_id');
     }
 }

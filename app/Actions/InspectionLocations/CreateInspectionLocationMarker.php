@@ -85,10 +85,10 @@ final class CreateInspectionLocationMarker
             && $assessment->organization_id === $map->organization_id
             && $assessment->inspection_id === $map->inspection_id
             && $assessment->equipment_id === $map->equipment_id;
-        if (! $editable || ! $sameScope || $map->processing_status !== InspectionLocationMapProcessingStatus::Ready) {
+        if (! $editable || ! $sameScope || ! $actor->can('manageFieldContent', $map->inspection) || $map->processing_status !== InspectionLocationMapProcessingStatus::Ready) {
             throw ValidationException::withMessages(['map' => 'O mapa não está disponível para marcação.']);
         }
-        if ((int) $assessment->defect->defect_category_id !== (int) $map->defect_category_id) {
+        if ($assessment->defect->category !== $map->category) {
             throw ValidationException::withMessages(['defect_assessment_id' => 'A avaliação deve pertencer à mesma categoria do mapa.']);
         }
         if ($assessment->status !== DefectAssessmentStatus::Complete) {

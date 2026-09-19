@@ -3,12 +3,9 @@
 namespace Database\Factories;
 
 use App\Enums\EquipmentStatus;
-use App\Models\Area;
 use App\Models\Client;
-use App\Models\ClientUnit;
 use App\Models\Equipment;
 use App\Models\Organization;
-use App\Models\Subarea;
 use App\Support\TextNormalizer;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
@@ -26,12 +23,17 @@ class EquipmentFactory extends Factory
         return [
             'organization_id' => Organization::factory(),
             'client_id' => fn (array $attributes): int => $this->createClient($attributes)->getKey(),
-            'client_unit_id' => fn (array $attributes): int => $this->createUnit($attributes)->getKey(),
-            'area_id' => fn (array $attributes): int => $this->createArea($attributes)->getKey(),
-            'subarea_id' => fn (array $attributes): int => $this->createSubarea($attributes)->getKey(),
+            'maintenance_plan_code' => null,
+            'maintenance_item_code' => fake()->unique()->numerify('##########'),
+            'area_code' => null,
+            'subarea_code' => null,
+            'task_list_group' => null,
+            'task_list_group_counter' => null,
+            'area_name' => null,
+            'subarea_name' => null,
             'tag' => TextNormalizer::equipmentTag($tag),
             'normalized_tag' => TextNormalizer::equipmentTag($tag),
-            'defect_code_prefix' => TextNormalizer::technicalCode($tag),
+            'defect_code_prefix' => fake()->unique()->bothify('PF-########'),
             'name' => fake()->randomElement([
                 'Ventilador',
                 'Bomba',
@@ -56,16 +58,10 @@ class EquipmentFactory extends Factory
 
     public function inStructure(
         Client $client,
-        ClientUnit $unit,
-        Area $area,
-        ?Subarea $subarea = null,
     ): static {
         return $this->state(fn (): array => [
             'organization_id' => $client->organization_id,
             'client_id' => $client->getKey(),
-            'client_unit_id' => $unit->getKey(),
-            'area_id' => $area->getKey(),
-            'subarea_id' => $subarea?->getKey(),
         ]);
     }
 
@@ -100,39 +96,12 @@ class EquipmentFactory extends Factory
 
     private function createClient(array $attributes): Client
     {
-        return Client::factory()->create([
-            'organization_id' => $this->organizationId($attributes),
-        ]);
-    }
+        $organizationId = $this->organizationId($attributes);
 
-    private function createUnit(array $attributes): ClientUnit
-    {
-        $clientId = $this->clientId($attributes);
-
-        return ClientUnit::factory()->create([
-            'organization_id' => Client::query()->findOrFail($clientId)->organization_id,
-            'client_id' => $clientId,
-        ]);
-    }
-
-    private function createArea(array $attributes): Area
-    {
-        $unitId = $this->clientUnitId($attributes);
-
-        return Area::factory()->create([
-            'organization_id' => ClientUnit::query()->findOrFail($unitId)->organization_id,
-            'client_unit_id' => $unitId,
-        ]);
-    }
-
-    private function createSubarea(array $attributes): Subarea
-    {
-        $areaId = $this->areaId($attributes);
-
-        return Subarea::factory()->create([
-            'organization_id' => Area::query()->findOrFail($areaId)->organization_id,
-            'area_id' => $areaId,
-        ]);
+        return Client::query()
+            ->where('organization_id', $organizationId)
+            ->first()
+            ?? Client::factory()->create(['organization_id' => $organizationId]);
     }
 
     private function clientId(array $attributes): int
@@ -150,49 +119,5 @@ class EquipmentFactory extends Factory
         }
 
         return (int) $client;
-    }
-
-    private function clientUnitId(array $attributes): int
-    {
-        $unit = $attributes['client_unit_id'];
-
-        if ($unit instanceof ClientUnit) {
-            return (int) $unit->getKey();
-        }
-
-        if ($unit instanceof Factory) {
-            $clientId = $this->clientId($attributes);
-
-            return (int) $unit->create([
-                'organization_id' => Client::query()->findOrFail($clientId)->organization_id,
-                'client_id' => $clientId,
-            ])->getKey();
-        }
-
-        return $unit instanceof ClientUnit
-            ? (int) $unit->getKey()
-            : (int) $unit;
-    }
-
-    private function areaId(array $attributes): int
-    {
-        $area = $attributes['area_id'];
-
-        if ($area instanceof Area) {
-            return (int) $area->getKey();
-        }
-
-        if ($area instanceof Factory) {
-            $unitId = $this->clientUnitId($attributes);
-
-            return (int) $area->create([
-                'organization_id' => ClientUnit::query()->findOrFail($unitId)->organization_id,
-                'client_unit_id' => $unitId,
-            ])->getKey();
-        }
-
-        return $area instanceof Area
-            ? (int) $area->getKey()
-            : (int) $area;
     }
 }

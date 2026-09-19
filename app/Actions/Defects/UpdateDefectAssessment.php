@@ -6,7 +6,6 @@ namespace App\Actions\Defects;
 
 use App\Enums\DefectAssessmentCondition;
 use App\Enums\DefectAssessmentStatus;
-use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
@@ -101,7 +100,6 @@ final class UpdateDefectAssessment
                     'gut_snapshot' => null,
                     'gut_classified_at' => null,
                     'gut_classified_by' => null,
-                    'defect_classification_id' => null,
                     'classification_code' => null,
                     'classification_priority' => null,
                     'deadline_months' => null,
@@ -130,10 +128,7 @@ final class UpdateDefectAssessment
             ]);
         }
 
-        if (! $inspection->hasAnyResponsibilityForUser(
-            $actor,
-            InspectionResponsibility::Preparer,
-        )) {
+        if (! $actor->can('manageFieldContent', $inspection)) {
             throw ValidationException::withMessages([
                 'actor' => 'O usuário não está autorizado a editar avaliações nesta inspeção.',
             ]);

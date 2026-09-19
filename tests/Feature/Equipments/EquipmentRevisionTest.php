@@ -111,7 +111,7 @@ final class EquipmentRevisionTest extends TestCase
         ]);
         $pending = Inspection::factory()->forEquipment($equipment)->create([
             'number' => 'INS-2026-000001',
-            'status' => InspectionStatus::ReportGenerated,
+            'status' => InspectionStatus::AwaitingRelease,
             'report_generated_at' => '2026-01-02 10:00:00',
             'report_date' => '2026-01-02',
             'created_at' => '2026-01-02 10:00:00',
@@ -119,7 +119,8 @@ final class EquipmentRevisionTest extends TestCase
         $canceled = Inspection::factory()->forEquipment($equipment)->create([
             'number' => 'INS-2026-000002',
             'status' => InspectionStatus::Canceled,
-            'scheduled_for' => '2026-02-02',
+            'planned_start_on' => '2026-02-02',
+            'planned_end_on' => '2026-02-02',
             'canceled_at' => '2026-02-02 10:00:00',
             'created_at' => '2026-02-02 10:00:00',
         ]);

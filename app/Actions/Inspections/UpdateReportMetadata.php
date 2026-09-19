@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Actions\Inspections;
 
 use App\Enums\InspectionStatus;
+use App\Enums\OperationalRole;
 use App\Models\Inspection;
 use App\Models\User;
 use App\Services\Tenancy\TenantContext;
@@ -37,17 +38,24 @@ final class UpdateReportMetadata
                 ? CarbonImmutable::parse((string) $data['report_date'])->toDateString()
                 : null;
 
-            if ($inspection->report_generated_at !== null) {
-                if ($reportDate === null) {
-                    throw ValidationException::withMessages([
-                        'report_date' => 'A data do relatório não pode ser apagada depois da geração.',
-                    ]);
-                }
+            if ($actor->operational_role === OperationalRole::Inspector) {
+                $restrictedChanges = [
+                    'emission_type' => $inspection->emission_type?->value !== ($data['emission_type'] ?? null),
+                    'report_date' => $inspection->report_date?->toDateString() !== $reportDate,
+                    'service_order' => $inspection->service_order !== TextNormalizer::nullableText($data['service_order'] ?? null),
+                    'external_report_number' => array_key_exists('external_report_number', $data)
+                        && $inspection->external_report_number !== TextNormalizer::nullableText($data['external_report_number']),
+                ];
 
-                if (($data['emission_type'] ?? null) === null) {
-                    throw ValidationException::withMessages([
-                        'emission_type' => 'O tipo de emissão não pode ser apagado depois da geração.',
-                    ]);
+                $errors = collect($restrictedChanges)
+                    ->filter()
+                    ->mapWithKeys(fn (bool $_, string $field): array => [
+                        $field => 'Este campo é somente leitura para usuários com papel Inspetor.',
+                    ])
+                    ->all();
+
+                if ($errors !== []) {
+                    throw ValidationException::withMessages($errors);
                 }
             }
 

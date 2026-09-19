@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Requests\Defects;
 
 use App\Enums\DefectAssessmentStatus;
+use App\Enums\DefectCategory;
 use App\Models\Defect;
 use App\Models\Inspection;
 use App\Support\TextNormalizer;
@@ -25,7 +26,7 @@ final class StoreDefectRequest extends FormRequest
     {
         $this->merge([
             'title' => TextNormalizer::text((string) $this->input('title')),
-            'defect_category_id' => $this->input('defect_category_id'),
+            'category' => $this->input('category', DefectCategory::Civil->value),
             'origin_description' => TextNormalizer::nullableText($this->input('origin_description')),
             'location_description' => TextNormalizer::nullableText($this->input('location_description')),
             'comment' => TextNormalizer::nullableText($this->input('comment')),
@@ -38,7 +39,7 @@ final class StoreDefectRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'defect_category_id' => ['nullable', 'integer', Rule::exists('defect_categories', 'id')->where('organization_id', $this->user()?->organization_id)],
+            'category' => ['nullable', Rule::enum(DefectCategory::class)],
             'title' => ['required', 'string', 'max:200'],
             'origin_description' => ['nullable', 'string', 'max:10000'],
             'location_description' => ['nullable', 'string', 'max:500'],
@@ -50,9 +51,9 @@ final class StoreDefectRequest extends FormRequest
             ],
             'recommendation' => ['nullable', 'string', 'max:10000'],
             'internal_notes' => ['nullable', 'string', 'max:10000'],
-            'gravity' => ['nullable', 'integer', 'min:0', 'max:65535'],
-            'urgency' => ['nullable', 'integer', 'min:0', 'max:65535'],
-            'trend' => ['nullable', 'integer', 'min:0', 'max:65535'],
+            'gravity' => ['nullable', 'integer', 'min:1', 'max:5'],
+            'urgency' => ['nullable', 'integer', 'min:1', 'max:5'],
+            'trend' => ['nullable', 'integer', 'min:1', 'max:5'],
             'assessment_action' => ['nullable', Rule::in([
                 DefectAssessmentStatus::Draft->value,
                 DefectAssessmentStatus::Complete->value,

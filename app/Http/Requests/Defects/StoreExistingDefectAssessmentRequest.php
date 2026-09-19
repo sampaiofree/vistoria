@@ -67,9 +67,9 @@ final class StoreExistingDefectAssessmentRequest extends FormRequest
                 'max:10000',
             ],
             'internal_notes' => ['nullable', 'string', 'max:10000'],
-            'gravity' => ['nullable', 'integer', 'min:0', 'max:65535'],
-            'urgency' => ['nullable', 'integer', 'min:0', 'max:65535'],
-            'trend' => ['nullable', 'integer', 'min:0', 'max:65535'],
+            'gravity' => ['nullable', 'integer', 'min:1', 'max:5'],
+            'urgency' => ['nullable', 'integer', 'min:1', 'max:5'],
+            'trend' => ['nullable', 'integer', 'min:1', 'max:5'],
             'assessment_action' => ['nullable', Rule::in([
                 DefectAssessmentStatus::Draft->value,
                 DefectAssessmentStatus::Complete->value,

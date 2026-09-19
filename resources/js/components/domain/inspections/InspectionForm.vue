@@ -1,230 +1,77 @@
 <script setup>
-import { computed, watch } from 'vue';
 import { Link, useForm } from '@inertiajs/vue3';
 
 const props = defineProps({
-    action: {
-        type: String,
-        required: true,
-    },
-    cancelUrl: {
-        type: String,
-        required: true,
-    },
-    equipment: {
-        type: Array,
-        default: () => [],
-    },
-    releasedInspections: {
-        type: Array,
-        default: () => [],
-    },
-    inspection: {
-        type: Object,
-        default: null,
-    },
-    mode: {
-        type: String,
-        default: 'create',
-    },
-    submitLabel: {
-        type: String,
-        default: '',
-    },
+    action: { type: String, required: true },
+    cancelUrl: { type: String, required: true },
+    inspection: { type: Object, required: true },
+    equipmentOptions: { type: Array, default: () => [] },
+    inspectors: { type: Array, default: () => [] },
+    selectedInspectorId: { type: [Number, String], default: null },
+    submitLabel: { type: String, default: 'Salvar alterações' },
 });
-
-const isEditing = computed(() => props.mode === 'edit' || props.inspection !== null);
 
 const form = useForm({
-    equipment_id: props.inspection?.equipment_id ?? '',
-    inspection_type: props.inspection?.inspection_type ?? 'initial',
-    previous_inspection_id: props.inspection?.previous_inspection_id ?? '',
-    service_order: props.inspection?.service_order ?? '',
-    external_report_number: props.inspection?.external_report_number ?? '',
-    procedure_number: props.inspection?.procedure_number ?? '',
-    atmospheric_classification: props.inspection?.atmospheric_classification ?? '',
-    scheduled_for: props.inspection?.scheduled_for_input ?? '',
+    equipment_id: props.inspection.equipment_id ?? '',
+    inspector_id: props.selectedInspectorId ?? '',
+    service_order: props.inspection.service_order ?? '',
+    planned_start_on: props.inspection.planned_start_on_input ?? '',
+    planned_end_on: props.inspection.planned_end_on_input ?? '',
 });
-
-const previousOptions = computed(() => props.releasedInspections.filter((inspection) =>
-    inspection.status === 'released' && String(inspection.equipment_id) === String(form.equipment_id),
-));
-
-const latestReleasedInspection = computed(() => previousOptions.value[0] ?? null);
-const automaticInspectionType = computed(() => latestReleasedInspection.value === null ? 'initial' : 'reinspection');
-const automaticInspectionTypeLabel = computed(() => automaticInspectionType.value === 'reinspection' ? 'Reinspeção' : 'Inspeção inicial');
-
-const previousInspection = computed(() => {
-    if (! isEditing.value) {
-        return latestReleasedInspection.value;
-    }
-
-    return props.inspection?.previous_inspection ?? null;
-});
-
-watch(
-    () => form.equipment_id,
-    () => {
-        if (! isEditing.value) {
-            form.inspection_type = automaticInspectionType.value;
-            form.previous_inspection_id = latestReleasedInspection.value?.id ?? '';
-        }
-    },
-    { immediate: true },
-);
 
 function submit() {
-    form[isEditing.value ? 'put' : 'post'](props.action, {
-        preserveScroll: true,
-    });
+    form.put(props.action, { preserveScroll: true });
 }
 </script>
 
 <template>
     <form class="space-y-6" @submit.prevent="submit">
-        <section v-if="isEditing" class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                <div>
-                    <p class="text-xs uppercase tracking-wide text-slate-500">Número</p>
-                    <p class="mt-1 font-semibold text-slate-900">{{ inspection.number }}</p>
-                </div>
-                <div>
-                    <p class="text-xs uppercase tracking-wide text-slate-500">Equipamento</p>
-                    <p class="mt-1 font-semibold text-slate-900">{{ inspection.equipment.tag }} — {{ inspection.equipment.name }}</p>
-                    <p v-if="inspection.equipment.client" class="text-sm text-slate-500">{{ inspection.equipment.client.name }}</p>
-                    <p v-if="inspection.equipment.unit" class="text-sm text-slate-500">{{ inspection.equipment.unit.name }}</p>
-                </div>
-                <div>
-                    <p class="text-xs uppercase tracking-wide text-slate-500">Tipo</p>
-                    <p class="mt-1 font-semibold text-slate-900">{{ inspection.inspection_type_label }}</p>
-                </div>
-                <div>
-                    <p class="text-xs uppercase tracking-wide text-slate-500">Status</p>
-                    <p class="mt-1 font-semibold text-slate-900">{{ inspection.status_label }}</p>
-                </div>
+        <section class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div class="grid gap-3 md:grid-cols-3">
+                <div><p class="text-xs uppercase tracking-wide text-slate-500">Número</p><p class="mt-1 font-semibold text-slate-900">{{ inspection.number }}</p></div>
+                <div><p class="text-xs uppercase tracking-wide text-slate-500">Tipo atual</p><p class="mt-1 font-semibold text-slate-900">{{ inspection.inspection_type_label }}</p></div>
+                <div><p class="text-xs uppercase tracking-wide text-slate-500">Status</p><p class="mt-1 font-semibold text-slate-900">{{ inspection.status_label }}</p></div>
             </div>
-
-            <div class="mt-4 grid gap-3 md:grid-cols-2">
-                <div>
-                    <p class="text-xs uppercase tracking-wide text-slate-500">Inspeção anterior</p>
-                    <Link
-                        v-if="previousInspection"
-                        :href="previousInspection.show_url"
-                        class="mt-1 inline-flex font-semibold text-teal-700 hover:text-teal-800"
-                    >
-                        {{ previousInspection.number }}
-                    </Link>
-                    <p v-else class="mt-1 font-semibold text-slate-900">—</p>
-                </div>
-                <div>
-                    <p class="text-xs uppercase tracking-wide text-slate-500">Planejada para</p>
-                    <p class="mt-1 font-semibold text-slate-900">{{ inspection.scheduled_at || '—' }}</p>
-                </div>
-            </div>
-
-            <p class="mt-4 text-sm text-slate-500">
-                Somente os campos de planejamento podem ser alterados nesta etapa.
-            </p>
-        </section>
-
-        <section v-else class="grid gap-5 md:grid-cols-2">
-            <label class="space-y-1.5 text-sm font-medium text-slate-700">
-                <span>Equipamento</span>
-                <select
-                    v-model="form.equipment_id"
-                    required
-                    class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2"
-                >
-                    <option value="" disabled>Selecione o equipamento</option>
-                    <option v-for="item in equipment" :key="item.id" :value="item.id">
-                        {{ item.tag }} — {{ item.name }}
-                    </option>
-                </select>
-                <span v-if="form.errors.equipment_id" class="block text-xs text-rose-600">{{ form.errors.equipment_id }}</span>
-            </label>
-
-            <div class="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
-                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Tipo definido automaticamente</p>
-                <p class="mt-1 font-semibold text-slate-900">
-                    {{ form.equipment_id ? automaticInspectionTypeLabel : 'Selecione o equipamento' }}
-                </p>
-            </div>
-
-            <div v-if="form.equipment_id" class="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm md:col-span-2">
-                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Inspeção anterior</p>
-                <p v-if="latestReleasedInspection" class="mt-1 font-semibold text-slate-900">
-                    {{ latestReleasedInspection.number }} · liberada em {{ latestReleasedInspection.released_at }}
-                </p>
-                <p v-else class="mt-1 text-slate-600">Nenhuma inspeção liberada anterior.</p>
-            </div>
+            <p class="mt-4 text-sm text-slate-500">Alterar o equipamento recalcula automaticamente o tipo, a inspeção anterior e o snapshot técnico.</p>
         </section>
 
         <section class="space-y-4 rounded-2xl border border-slate-200 bg-white p-5">
             <div>
                 <h3 class="text-base font-semibold text-slate-900">Dados de planejamento</h3>
-                <p class="text-sm text-slate-500">Esses campos continuam editáveis enquanto a inspeção estiver planejada.</p>
+                <p class="text-sm text-slate-500">Somente o Planejador vinculado pode editar estes dados enquanto a inspeção estiver planejada.</p>
             </div>
-
             <div class="grid gap-5 md:grid-cols-2">
-                <label v-if="!isEditing" class="space-y-1.5 text-sm font-medium text-slate-700">
+                <label class="space-y-1.5 text-sm font-medium text-slate-700">
+                    <span>Equipamento</span>
+                    <select v-model="form.equipment_id" required class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2"><option value="" disabled>Selecione o equipamento</option><option v-for="equipment in equipmentOptions" :key="equipment.value" :value="equipment.value">{{ equipment.label }}</option></select>
+                    <span v-if="form.errors.equipment_id" class="block text-xs text-rose-600">{{ form.errors.equipment_id }}</span>
+                </label>
+                <label class="space-y-1.5 text-sm font-medium text-slate-700">
+                    <span>Inspetor</span>
+                    <select v-model="form.inspector_id" required class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2"><option value="" disabled>Selecione o Inspetor</option><option v-for="inspector in inspectors" :key="inspector.id" :value="inspector.id">{{ inspector.name }}</option></select>
+                    <span v-if="form.errors.inspector_id" class="block text-xs text-rose-600">{{ form.errors.inspector_id }}</span>
+                </label>
+                <label class="space-y-1.5 text-sm font-medium text-slate-700 md:col-span-2">
                     <span>Ordem de serviço</span>
-                    <input
-                        v-model="form.service_order"
-                        type="text"
-                        maxlength="100"
-                        class="w-full rounded-lg border border-slate-300 px-3 py-2"
-                    >
+                    <input v-model="form.service_order" type="text" maxlength="100" class="w-full rounded-lg border border-slate-300 px-3 py-2">
                     <span v-if="form.errors.service_order" class="block text-xs text-rose-600">{{ form.errors.service_order }}</span>
                 </label>
-
                 <label class="space-y-1.5 text-sm font-medium text-slate-700">
-                    <span>Número do relatório externo</span>
-                    <input
-                        v-model="form.external_report_number"
-                        type="text"
-                        maxlength="150"
-                        class="w-full rounded-lg border border-slate-300 px-3 py-2"
-                    >
-                    <span v-if="form.errors.external_report_number" class="block text-xs text-rose-600">{{ form.errors.external_report_number }}</span>
+                    <span>Data inicial planejada</span>
+                    <input v-model="form.planned_start_on" type="date" required class="w-full rounded-lg border border-slate-300 px-3 py-2">
+                    <span v-if="form.errors.planned_start_on" class="block text-xs text-rose-600">{{ form.errors.planned_start_on }}</span>
                 </label>
-
                 <label class="space-y-1.5 text-sm font-medium text-slate-700">
-                    <span>Número do procedimento</span>
-                    <input
-                        v-model="form.procedure_number"
-                        type="text"
-                        maxlength="150"
-                        class="w-full rounded-lg border border-slate-300 px-3 py-2"
-                    >
-                    <span v-if="form.errors.procedure_number" class="block text-xs text-rose-600">{{ form.errors.procedure_number }}</span>
+                    <span>Prazo final planejado</span>
+                    <input v-model="form.planned_end_on" type="date" required class="w-full rounded-lg border border-slate-300 px-3 py-2">
+                    <span v-if="form.errors.planned_end_on" class="block text-xs text-rose-600">{{ form.errors.planned_end_on }}</span>
                 </label>
-
-                <label class="space-y-1.5 text-sm font-medium text-slate-700">
-                    <span>Data planejada</span>
-                    <input
-                        v-model="form.scheduled_for"
-                        type="date"
-                        class="w-full rounded-lg border border-slate-300 px-3 py-2"
-                    >
-                    <span v-if="form.errors.scheduled_for" class="block text-xs text-rose-600">{{ form.errors.scheduled_for }}</span>
-                </label>
-
             </div>
         </section>
 
         <div class="flex justify-end gap-3 border-t border-slate-200 pt-5">
-            <Link
-                :href="cancelUrl"
-                class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700"
-            >
-                Cancelar
-            </Link>
-            <button
-                :disabled="form.processing"
-                class="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-            >
-                {{ submitLabel || (isEditing ? 'Salvar alterações' : 'Criar inspeção') }}
-            </button>
+            <Link :href="cancelUrl" class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700">Cancelar</Link>
+            <button :disabled="form.processing" class="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{{ submitLabel }}</button>
         </div>
     </form>
 </template>

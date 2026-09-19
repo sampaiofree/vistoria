@@ -3,25 +3,27 @@
 namespace App\Http\Controllers;
 
 use App\Actions\InspectionLocations\BuildInspectionLocationSnapshot;
-use App\Actions\Inspections\CreateInspection;
+use App\Actions\Inspections\CreateInspectionBatch;
 use App\Actions\Inspections\UpdateGeneralAspects;
 use App\Actions\Inspections\UpdatePlannedInspection;
 use App\Actions\Inspections\UpdateReportMetadata;
+use App\Enums\DefectCategory;
 use App\Enums\EquipmentRevisionEmissionType;
+use App\Enums\EquipmentStatus;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
 use App\Enums\InspectionType;
+use App\Enums\OperationalRole;
+use App\Enums\RegistrationStatus;
 use App\Enums\UserStatus;
 use App\Http\Controllers\Concerns\ResolvesTenantStructure;
-use App\Http\Requests\Inspections\StoreInspectionRequest;
+use App\Http\Requests\Inspections\ConfirmInspectionBatchRequest;
+use App\Http\Requests\Inspections\PreviewInspectionBatchRequest;
 use App\Http\Requests\Inspections\UpdateGeneralAspectsRequest;
 use App\Http\Requests\Inspections\UpdatePlannedInspectionRequest;
 use App\Http\Requests\Inspections\UpdateReportMetadataRequest;
-use App\Models\Client;
-use App\Models\ClientUnit;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
-use App\Models\DefectCategory;
 use App\Models\Equipment;
 use App\Models\EquipmentDocument;
 use App\Models\Inspection;
@@ -36,8 +38,13 @@ use App\Services\Inspections\InspectionReadModelPresenter;
 use App\Services\Reports\GeneralAspectsDocument;
 use App\Services\Tenancy\TenantContext;
 use App\Support\TextNormalizer;
+use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 
@@ -52,8 +59,6 @@ final class InspectionController extends Controller
         $filters = [
             'search' => $this->filterValue($request, 'search', 'number'),
             'number' => $this->filterValue($request, 'number', 'search'),
-            'client' => trim((string) $request->string('client')),
-            'unit' => trim((string) $request->string('unit')),
             'equipment' => trim((string) $request->string('equipment')),
             'status' => trim((string) $request->string('status')),
             'type' => $this->filterValue($request, 'type', 'inspection_type'),
@@ -71,10 +76,12 @@ final class InspectionController extends Controller
         $inspections = Inspection::query()
             ->forOrganization($tenant->id())
             ->with([
-                'equipment.client:id,public_id,name',
-                'equipment.unit:id,public_id,name',
                 'responsibles.user:id,public_id,name',
+                'statusHistories:id,inspection_id,to_status,created_at',
             ])
+            ->when(! $request->user()->isCompanyAdmin(), fn ($query) => $query
+                ->whereHas('responsibles', fn ($responsibles) => $responsibles
+                    ->where('user_id', $request->user()->getKey())))
             ->when($filters['search'] !== '', function ($query) use ($filters): void {
                 $search = $filters['search'];
                 $tagSearch = TextNormalizer::equipmentTag($search);
@@ -89,16 +96,14 @@ final class InspectionController extends Controller
                         ->orWhereHas('equipment', function ($equipment) use ($search, $tagSearch): void {
                             $equipment
                                 ->where('normalized_tag', 'like', '%'.$tagSearch.'%')
+                                ->orWhere('maintenance_item_code', 'like', '%'.$tagSearch.'%')
                                 ->orWhere('tag', 'like', '%'.$search.'%')
                                 ->orWhere('name', 'like', '%'.$search.'%')
-                                ->orWhereHas('client', fn ($client) => $client->where('name', 'like', '%'.$search.'%'))
-                                ->orWhereHas('unit', fn ($unit) => $unit->where('name', 'like', '%'.$search.'%'));
+                                ->orWhereHas('client', fn ($client) => $client->where('name', 'like', '%'.$search.'%'));
                         })
                         ->orWhereHas('responsibles.user', fn ($responsibles) => $responsibles->where('name', 'like', '%'.$search.'%'));
                 });
             })
-            ->when($filters['client'] !== '', fn ($query) => $query->whereHas('equipment', fn ($equipment) => $equipment->where('client_id', (int) $filters['client'])))
-            ->when($filters['unit'] !== '', fn ($query) => $query->whereHas('equipment', fn ($equipment) => $equipment->where('client_unit_id', (int) $filters['unit'])))
             ->when($filters['equipment'] !== '', fn ($query) => $query->where('equipment_id', (int) $filters['equipment']))
             ->when(InspectionStatus::tryFrom($filters['status']) !== null, fn ($query) => $query->where('status', $filters['status']))
             ->when(InspectionType::tryFrom($filters['type']) !== null, fn ($query) => $query->where('inspection_type', $filters['type']))
@@ -111,10 +116,12 @@ final class InspectionController extends Controller
                     }
                 });
             })
-            ->when($filters['scheduled_from'] !== '', fn ($query) => $query->whereDate('scheduled_for', '>=', $filters['scheduled_from']))
-            ->when($filters['scheduled_to'] !== '', fn ($query) => $query->whereDate('scheduled_for', '<=', $filters['scheduled_to']))
+            ->when($filters['scheduled_from'] !== '', fn ($query) => $query->whereDate('planned_start_on', '>=', $filters['scheduled_from']))
+            ->when($filters['scheduled_to'] !== '', fn ($query) => $query->whereDate('planned_start_on', '<=', $filters['scheduled_to']))
             ->when($filters['inspected_from'] !== '', fn ($query) => $query->whereDate('inspected_on', '>=', $filters['inspected_from']))
             ->when($filters['inspected_to'] !== '', fn ($query) => $query->whereDate('inspected_on', '<=', $filters['inspected_to']))
+            ->orderByRaw('CASE WHEN planned_start_on IS NULL THEN 1 ELSE 0 END')
+            ->orderBy('planned_start_on')
             ->orderByDesc('created_at')
             ->paginate(20)
             ->withQueryString()
@@ -124,8 +131,6 @@ final class InspectionController extends Controller
             'inspections' => $inspections,
             'filters' => $filters,
             'options' => [
-                'clients' => $this->clientFilterOptions($tenant),
-                'units' => $this->unitFilterOptions($tenant),
                 'equipment' => $this->equipmentFilterOptions($tenant),
                 'statuses' => InspectionStatus::options(),
                 'types' => InspectionType::options(),
@@ -138,39 +143,108 @@ final class InspectionController extends Controller
         ]);
     }
 
-    public function create(TenantContext $tenant): InertiaResponse
+    public function create(Request $request, TenantContext $tenant): InertiaResponse|RedirectResponse
     {
-        $this->authorize('create', Inspection::class);
+        $this->authorizePlanningCreation($request->user());
+
+        $preview = null;
+        $token = trim((string) $request->string('preview'));
+
+        if ($token !== '') {
+            $cachedPreview = Cache::get($this->batchPreviewCacheKey($token));
+
+            if (! is_array($cachedPreview)
+                || ($cachedPreview['user_id'] ?? null) !== $request->user()->getKey()
+                || ($cachedPreview['organization_id'] ?? null) !== $tenant->id()) {
+                return redirect()
+                    ->route('inspections.create')
+                    ->with('error', 'A prévia expirou ou não está disponível. Revise e envie o planejamento novamente.');
+            }
+
+            $preview = [
+                'token' => $token,
+                'inspections' => $cachedPreview['inspections'],
+            ];
+        }
 
         return Inertia::render('Inspections/Create', [
-            'action' => route('inspections.store'),
+            'preview_action' => route('inspections.store'),
+            'confirm_action' => route('inspections.confirm'),
             'cancel_url' => route('inspections.index'),
-            'equipment' => $this->availableEquipmentOptions($tenant),
-            'released_inspections' => $this->releasedInspectionOptions($tenant),
+            'equipment_search_url' => route('inspections.equipment-options'),
+            'selected_equipment' => $this->availableEquipmentOptions(
+                $tenant,
+                equipmentIds: collect($preview['inspections'] ?? [])
+                    ->pluck('equipment_id')
+                    ->filter()
+                    ->map(fn (mixed $id): int => (int) $id)
+                    ->all(),
+            ),
+            'inspectors' => $this->inspectorOptions($tenant),
+            'preview' => $preview,
+        ]);
+    }
+
+    public function equipmentOptions(Request $request, TenantContext $tenant): JsonResponse
+    {
+        $this->authorizePlanningCreation($request->user());
+
+        $search = trim((string) $request->string('search'));
+
+        if (Str::length($search) < 2) {
+            return response()->json(['equipment' => []]);
+        }
+
+        return response()->json([
+            'equipment' => $this->availableEquipmentOptions($tenant, $search),
         ]);
     }
 
     public function store(
-        StoreInspectionRequest $request,
+        PreviewInspectionBatchRequest $request,
         TenantContext $tenant,
-        CreateInspection $action,
+        CreateInspectionBatch $action,
     ): RedirectResponse {
-        $this->authorize('create', Inspection::class);
+        $this->authorizePlanningCreation($request->user());
 
-        $equipment = Equipment::query()
-            ->forOrganization($tenant->id())
-            ->whereKey((int) $request->validated('equipment_id'))
-            ->firstOrFail();
+        $inspections = array_values($request->validated('inspections'));
+        $action->preview($request->user(), $inspections);
+        $token = (string) Str::uuid();
 
-        $inspection = $action->handle(
-            $request->user(),
-            $equipment,
-            $request->validated(),
-        );
+        Cache::put($this->batchPreviewCacheKey($token), [
+            'user_id' => $request->user()->getKey(),
+            'organization_id' => $tenant->id(),
+            'inspections' => $inspections,
+        ], now()->addMinutes(30));
 
         return redirect()
-            ->route('inspections.show', $inspection)
-            ->with('success', 'Inspeção criada.');
+            ->route('inspections.create', ['preview' => $token]);
+    }
+
+    public function confirm(
+        ConfirmInspectionBatchRequest $request,
+        TenantContext $tenant,
+        CreateInspectionBatch $action,
+    ): RedirectResponse {
+        $this->authorizePlanningCreation($request->user());
+
+        $token = $request->validated('token');
+        $cachedPreview = Cache::get($this->batchPreviewCacheKey($token));
+
+        if (! is_array($cachedPreview)
+            || ($cachedPreview['user_id'] ?? null) !== $request->user()->getKey()
+            || ($cachedPreview['organization_id'] ?? null) !== $tenant->id()) {
+            throw ValidationException::withMessages([
+                'token' => 'A prévia expirou ou não está disponível. Revise e envie o planejamento novamente.',
+            ]);
+        }
+
+        $inspections = $action->handle($request->user(), $cachedPreview['inspections']);
+        Cache::forget($this->batchPreviewCacheKey($token));
+
+        return redirect()
+            ->route('inspections.index')
+            ->with('success', sprintf('%d inspeç%s criada%s.', $inspections->count(), $inspections->count() === 1 ? 'ão' : 'ões', $inspections->count() === 1 ? '' : 's'));
     }
 
     public function show(
@@ -183,7 +257,6 @@ final class InspectionController extends Controller
         $this->authorize('view', $inspection);
         $inspection->loadMissing([
             'equipment.client',
-            'equipment.unit',
             'previousInspection',
             'responsibles.user',
             'referenceDocuments.document.uploader',
@@ -205,7 +278,6 @@ final class InspectionController extends Controller
                 'inspection_type_label' => $inspection->inspection_type->label(),
                 'status' => $inspection->status->value,
                 'status_label' => $inspection->status->label(),
-                'report_generated_at' => $inspection->report_generated_at?->toISOString(),
                 'released_at' => $inspection->released_at?->toISOString(),
                 'previous_inspection' => $inspection->previousInspection === null ? null : [
                     'number' => $inspection->previousInspection->number,
@@ -259,7 +331,11 @@ final class InspectionController extends Controller
                     : false,
                 'transition' => $this->availableTransitions($request, $inspection) !== [],
             ],
-            'report_metadata' => $this->reportMetadataPayload($inspection, $canManageReportMetadata),
+            'report_metadata' => $this->reportMetadataPayload(
+                $inspection,
+                $canManageReportMetadata,
+                $request->user()->operational_role !== OperationalRole::Inspector,
+            ),
             'general_aspects' => $this->generalAspectsPayload($inspection, $canManageGeneralAspects),
             'emission_options' => EquipmentRevisionEmissionType::options(),
             'transitions' => $this->availableTransitions($request, $inspection),
@@ -300,7 +376,7 @@ final class InspectionController extends Controller
             ],
             'assignment_options' => [
                 'users' => $canAssign ? $this->responsibleAssignmentOptions($tenant) : [],
-                'roles' => $canAssign ? InspectionResponsibility::options() : [],
+                'roles' => InspectionResponsibility::options(),
             ],
             'tabs' => [
                 ['key' => 'overview', 'label' => 'Visão geral', 'url' => route('inspections.show', $inspection)],
@@ -403,7 +479,6 @@ final class InspectionController extends Controller
 
         $inspection->loadMissing([
             'equipment.client',
-            'equipment.unit',
             'equipment.defects.assessments.inspection',
             'equipment.defects.assessments.creator',
             'equipment.defects.assessments.previousAssessment.inspection',
@@ -475,20 +550,7 @@ final class InspectionController extends Controller
                     ? [
                         'create' => [
                             'action' => route('inspections.defects.store', $inspection),
-                            'categories' => DefectCategory::query()
-                                ->forOrganization($tenant->id())
-                                ->active()
-                                ->orderBy('position')
-                                ->orderBy('name')
-                                ->get(['id', 'public_id', 'name', 'code'])
-                                ->map(fn (DefectCategory $category): array => [
-                                    'id' => $category->id,
-                                    'public_id' => $category->public_id,
-                                    'name' => $category->name,
-                                    'code' => $category->code,
-                                ])
-                                ->values()
-                                ->all(),
+                            'categories' => DefectCategory::options(),
                         ],
                     ]
                     : false,
@@ -502,7 +564,11 @@ final class InspectionController extends Controller
                 ? $this->availableReferenceDocumentOptions($tenant, $inspection)
                 : [],
             'transitions' => $transitions,
-            'report_metadata' => $this->reportMetadataPayload($inspection, $canManageReportMetadata),
+            'report_metadata' => $this->reportMetadataPayload(
+                $inspection,
+                $canManageReportMetadata,
+                $request->user()->operational_role !== OperationalRole::Inspector,
+            ),
             'general_aspects' => $this->generalAspectsPayload($inspection, $canManageGeneralAspects),
             'emission_options' => EquipmentRevisionEmissionType::options(),
             'index_url' => route('inspections.index'),
@@ -520,12 +586,20 @@ final class InspectionController extends Controller
 
         $inspection->loadMissing([
             'equipment.client',
-            'equipment.unit',
             'previousInspection.equipment',
+            'responsibles.user',
         ]);
+
+        $inspector = $inspection->responsibles
+            ->where('responsibility', InspectionResponsibility::Reviewer)
+            ->firstWhere('is_primary', true)
+            ?? $inspection->responsibles->firstWhere('responsibility', InspectionResponsibility::Reviewer);
 
         return Inertia::render('Inspections/Edit', [
             'inspection' => $this->inspectionDetailPayload($request, $inspection),
+            'equipment_options' => $this->planningEquipmentOptions($tenant),
+            'inspectors' => $this->inspectorOptions($tenant),
+            'selected_inspector_id' => $inspector?->user_id,
             'action' => route('inspections.update', $inspection),
             'cancel_url' => route('inspections.show', $inspection),
         ]);
@@ -604,6 +678,25 @@ final class InspectionController extends Controller
     /**
      * @return array<int, array{value:int, label:string}>
      */
+    private function planningEquipmentOptions(TenantContext $tenant): array
+    {
+        return Equipment::query()
+            ->forOrganization($tenant->id())
+            ->where('status', EquipmentStatus::Active->value)
+            ->whereHas('client', fn ($client) => $client->where('status', RegistrationStatus::Active->value))
+            ->orderBy('tag')
+            ->get(['id', 'tag', 'name'])
+            ->map(fn (Equipment $equipment): array => [
+                'value' => $equipment->id,
+                'label' => sprintf('%s — %s', $equipment->tag, $equipment->name),
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return array<int, array{value:int, label:string}>
+     */
     private function responsibleFilterOptions(TenantContext $tenant): array
     {
         return User::query()
@@ -620,83 +713,79 @@ final class InspectionController extends Controller
     }
 
     /**
-     * @return array<int, array{value:int, label:string}>
+     * @return array<int, array{id:int, public_id:string, maintenance_item_code:string, tag:string, description:?string, name:string}>
      */
-    private function clientFilterOptions(TenantContext $tenant): array
+    private function availableEquipmentOptions(TenantContext $tenant, ?string $search = null, array $equipmentIds = []): array
     {
-        return Client::query()
-            ->forOrganization($tenant->id())
-            ->orderBy('name')
-            ->get(['id', 'public_id', 'name'])
-            ->map(fn (Client $client): array => [
-                'value' => $client->id,
-                'label' => $client->name,
-            ])
-            ->values()
-            ->all();
-    }
+        if ($search === null && $equipmentIds === []) {
+            return [];
+        }
 
-    /**
-     * @return array<int, array{value:int, label:string}>
-     */
-    private function unitFilterOptions(TenantContext $tenant): array
-    {
-        return ClientUnit::query()
+        $query = Equipment::query()
             ->forOrganization($tenant->id())
-            ->with('client:id,public_id,name')
-            ->orderBy('name')
-            ->get(['id', 'public_id', 'name', 'client_id'])
-            ->map(fn (ClientUnit $unit): array => [
-                'value' => $unit->id,
-                'label' => sprintf('%s — %s', $unit->client?->name ?? '', $unit->name),
-            ])
-            ->values()
-            ->all();
-    }
+            ->where('status', EquipmentStatus::Active->value)
+            ->whereHas('client', fn ($client) => $client->where('status', RegistrationStatus::Active->value));
 
-    /**
-     * @return array<int, array{id:int, public_id:string, tag:string, name:string}>
-     */
-    private function availableEquipmentOptions(TenantContext $tenant): array
-    {
-        return Equipment::query()
-            ->forOrganization($tenant->id())
-            ->with(['client', 'unit', 'area', 'subarea'])
-            ->orderBy('tag')
-            ->get()
-            ->filter(fn (Equipment $equipment): bool => $equipment->canReceiveInspection())
+        if ($equipmentIds !== []) {
+            $query->whereKey($equipmentIds);
+        }
+
+        if ($search !== null) {
+            $normalizedTagSearch = TextNormalizer::equipmentTag($search);
+
+            $query->where(function ($equipment) use ($search, $normalizedTagSearch): void {
+                $equipment
+                    ->where('maintenance_item_code', 'like', '%'.$search.'%')
+                    ->orWhere('tag', 'like', '%'.$search.'%')
+                    ->orWhere('normalized_tag', 'like', '%'.$normalizedTagSearch.'%')
+                    ->orWhere('description', 'like', '%'.$search.'%')
+                    ->orWhere('name', 'like', '%'.$search.'%');
+            });
+        }
+
+        return $query
+            ->orderBy('maintenance_item_code')
+            ->limit($search === null ? count($equipmentIds) : 20)
+            ->get(['id', 'public_id', 'maintenance_item_code', 'tag', 'description', 'name'])
             ->values()
             ->map(fn (Equipment $equipment): array => [
                 'id' => $equipment->id,
                 'public_id' => $equipment->public_id,
+                'maintenance_item_code' => $equipment->maintenance_item_code,
                 'tag' => $equipment->tag,
+                'description' => $equipment->description,
                 'name' => $equipment->name,
             ])
             ->all();
     }
 
-    /**
-     * @return array<int, array{id:int, equipment_id:int, number:?string, status:string, released_at:?string}>
-     */
-    private function releasedInspectionOptions(TenantContext $tenant): array
+    /** @return array<int, array{id:int, public_id:string, name:string}> */
+    private function inspectorOptions(TenantContext $tenant): array
     {
-        return Inspection::query()
-            ->forOrganization($tenant->id())
-            ->with(['equipment:id,public_id,tag,name'])
-            ->where('status', InspectionStatus::Released->value)
-            ->orderByDesc('released_at')
-            ->orderByDesc('id')
-            ->get()
-            ->map(fn (Inspection $inspection): array => [
-                'id' => $inspection->id,
-                'equipment_id' => $inspection->equipment_id,
-                'number' => $inspection->number,
-                'status' => $inspection->status->value,
-                'released_at' => $inspection->released_at?->format('d/m/Y'),
+        return User::query()
+            ->where('organization_id', $tenant->id())
+            ->where('status', UserStatus::Active->value)
+            ->where('operational_role', OperationalRole::Inspector->value)
+            ->orderBy('name')
+            ->get(['id', 'public_id', 'name'])
+            ->map(fn (User $user): array => [
+                'id' => $user->id,
+                'public_id' => $user->public_id,
+                'name' => $user->name,
             ])
-            ->unique('equipment_id')
-            ->values()
             ->all();
+    }
+
+    private function batchPreviewCacheKey(string $token): string
+    {
+        return 'inspection-batch-preview:'.$token;
+    }
+
+    private function authorizePlanningCreation(User $user): void
+    {
+        if (! $user->can('create', Inspection::class)) {
+            throw new AuthorizationException('Somente usuários ativos com papel Planejador podem criar inspeções.');
+        }
     }
 
     /**
@@ -736,7 +825,7 @@ final class InspectionController extends Controller
     }
 
     /**
-     * @return array{id:int, public_id:string, number:?string, inspection_type:string, type:string, inspection_type_label:string, status:string, status_label:string, scheduled_for:?string, scheduled_at:?string, equipment:array{id:int, public_id:string, tag:string, defect_code_prefix:?string, name:string, show_url:string}, defects:array<int, array{id:int, public_id:string, code:string, title:string, origin_description:?string, category:string, category_label:string, status:string, status_label:string, sequence_number:int, latest_assessment:?array{id:int, public_id:string, condition:string, condition_label:string, status:string, status_label:string, assessed_at:?string}, show_url:string}>, previous_inspection:?array{id:int, public_id:string, number:?string, inspection_type:string, type:string, status:string, show_url:string}, responsibles:array<int, array{id:int, public_id:string, name:string, responsibility:string, responsibility_label:string, is_primary:bool, assigned_at:?string, completed_at:?string, user:array{id:int, public_id:string, name:string}, set_primary_url:string, destroy_url:string}>, reference_documents:array<int, array{id:int, created_at:string, document:array{id:int, public_id:string, document_group:string, document_type:string, document_type_label:string, title:string, document_number:?string, revision:?string, description:?string, original_name:string, mime_type:string, extension:?string, size:int, checksum:string, is_current:bool, status:string, status_label:string, issued_at:?string, created_at:?string, updated_at:?string, download_url:string, show_url:string, uploaded_by:?array{id:int, public_id:string, name:string}}, added_by:?array{id:int, public_id:string, name:string}, delete_url:string}>, reference_document_ids:array<int, int>, history:array<int, array{id:int, from_status:?string, to_status:string, reason:?string, justification:?string, created_at:string, user:?array{id:int, public_id:string, name:string}}>, context_snapshot:array<string, mixed>, snapshot_version:int}
+     * @return array<string, mixed>
      */
     private function inspectionDetailPayload(Request $request, Inspection $inspection): array
     {
@@ -751,7 +840,6 @@ final class InspectionController extends Controller
             'inspection_type_label' => $inspection->inspection_type->label(),
             'status' => $inspection->status->value,
             'status_label' => $inspection->status->label(),
-            'report_generated_at' => $inspection->report_generated_at?->toISOString(),
             'released_at' => $inspection->released_at?->toISOString(),
             'service_order' => $inspection->service_order,
             'report_date' => $inspection->report_date?->toDateString(),
@@ -763,9 +851,10 @@ final class InspectionController extends Controller
             'designer_i_report_number' => $inspection->designer_i_report_number,
             'procedure_number' => $inspection->procedure_number,
             'atmospheric_classification' => $inspection->atmospheric_classification,
-            'scheduled_for' => $inspection->scheduled_for?->format('d/m/Y'),
-            'scheduled_at' => $inspection->scheduled_for?->format('d/m/Y'),
-            'scheduled_for_input' => $inspection->scheduled_for?->toDateString(),
+            'planned_start_on' => $inspection->planned_start_on?->format('d/m/Y'),
+            'planned_end_on' => $inspection->planned_end_on?->format('d/m/Y'),
+            'planned_start_on_input' => $inspection->planned_start_on?->toDateString(),
+            'planned_end_on_input' => $inspection->planned_end_on?->toDateString(),
             'inspected_on' => $inspection->inspected_on?->format('d/m/Y'),
             'inspected_on_input' => $inspection->inspected_on?->toDateString(),
             'equipment' => $this->inspectionEquipmentPayload($inspection->equipment),
@@ -827,8 +916,11 @@ final class InspectionController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private function reportMetadataPayload(Inspection $inspection, bool $canEdit): array
-    {
+    private function reportMetadataPayload(
+        Inspection $inspection,
+        bool $canEdit,
+        bool $canEditRestrictedFields,
+    ): array {
         return [
             'emission_type' => $inspection->emission_type?->value,
             'emission_type_label' => $inspection->emission_type?->label(),
@@ -844,6 +936,7 @@ final class InspectionController extends Controller
                 'name' => $inspection->updatedBy->name,
             ],
             'can_edit' => $canEdit,
+            'can_edit_restricted_fields' => $canEdit && $canEditRestrictedFields,
             'update_url' => $canEdit ? route('inspections.report-metadata.update', $inspection) : null,
         ];
     }
@@ -864,12 +957,22 @@ final class InspectionController extends Controller
     }
 
     /**
-     * @return array{id:int, public_id:string, number:?string, inspection_type:string, type:string, inspection_type_label:string, status:string, status_label:string, scheduled_for:?string, scheduled_at:?string, equipment:array{id:int, public_id:string, tag:string, name:string, show_url:string}, responsibles:array<int, array{id:int, public_id:string, name:string, responsibility:string, responsibility_label:string, is_primary:bool}> , show_url:string}
+     * @return array<string, mixed>
      */
     private function inspectionListPayload(Request $request, Inspection $inspection): array
     {
-        $primaryResponsible = $inspection->responsibles->firstWhere('is_primary', true)
-            ?? $inspection->responsibles->first();
+        $stageResponsibles = collect([
+            'planner' => InspectionResponsibility::Preparer,
+            'inspector' => InspectionResponsibility::Reviewer,
+            'reviewer' => InspectionResponsibility::Approver,
+            'releaser' => InspectionResponsibility::Releaser,
+        ])->mapWithKeys(function (InspectionResponsibility $responsibility, string $stage) use ($inspection): array {
+            $assignments = $inspection->responsibles
+                ->filter(fn (InspectionResponsible $assignment): bool => $assignment->responsibility === $responsibility);
+            $responsible = $assignments->firstWhere('is_primary', true) ?? $assignments->first();
+
+            return [$stage => $responsible?->user?->name];
+        })->all();
 
         return [
             'id' => $inspection->id,
@@ -880,32 +983,19 @@ final class InspectionController extends Controller
             'inspection_type_label' => $inspection->inspection_type->label(),
             'status' => $inspection->status->value,
             'status_label' => $inspection->status->label(),
-            'scheduled_for' => $inspection->scheduled_for?->format('d/m/Y'),
-            'scheduled_at' => $inspection->scheduled_for?->format('d/m/Y'),
+            'status_milestone' => $this->inspectionStatusMilestonePayload($inspection),
+            'planned_start_on' => $inspection->planned_start_on?->format('d/m/Y'),
+            'planned_end_on' => $inspection->planned_end_on?->format('d/m/Y'),
             'inspected_on' => $inspection->inspected_on?->format('d/m/Y'),
             'inspected_at' => $inspection->inspected_on?->format('d/m/Y'),
-            'equipment' => $this->inspectionEquipmentPayload($inspection->equipment),
-            'primary_responsible' => $primaryResponsible === null
-                ? null
-                : [
-                    'id' => $primaryResponsible->user->id,
-                    'public_id' => $primaryResponsible->user->public_id,
-                    'name' => $primaryResponsible->user->name,
-                    'responsibility' => $primaryResponsible->responsibility->value,
-                    'responsibility_label' => $primaryResponsible->responsibility->label(),
-                    'is_primary' => (bool) $primaryResponsible->is_primary,
-                ],
-            'responsibles' => $inspection->responsibles
-                ->map(fn (InspectionResponsible $responsible): array => [
-                    'id' => $responsible->user->id,
-                    'public_id' => $responsible->user->public_id,
-                    'name' => $responsible->user->name,
-                    'responsibility' => $responsible->responsibility->value,
-                    'responsibility_label' => $responsible->responsibility->label(),
-                    'is_primary' => (bool) $responsible->is_primary,
-                ])
-                ->values()
-                ->all(),
+            'equipment' => [
+                'id' => $inspection->equipment->id,
+                'public_id' => $inspection->equipment->public_id,
+                'tag' => $inspection->equipment->tag,
+                'name' => $inspection->equipment->name,
+                'show_url' => route('equipments.show', $inspection->equipment),
+            ],
+            'stage_responsibles' => $stageResponsibles,
             'edit_url' => $inspection->status === InspectionStatus::Planned
                 && $request->user()->can('updatePlanned', $inspection)
                 ? route('inspections.edit', $inspection)
@@ -915,7 +1005,45 @@ final class InspectionController extends Controller
     }
 
     /**
-     * @return array{id:int, public_id:string, tag:string, defect_code_prefix:?string, name:string, client:?array{id:int, public_id:string, name:string, show_url:string}, unit:?array{id:int, public_id:string, name:string, show_url:string}, show_url:string}
+     * @return array{label:string,value:?string}
+     */
+    private function inspectionStatusMilestonePayload(Inspection $inspection): array
+    {
+        $historyDate = function (InspectionStatus $status) use ($inspection): ?string {
+            $history = $inspection->statusHistories
+                ->filter(fn (InspectionStatusHistory $history): bool => $history->to_status === $status)
+                ->last();
+
+            return $history?->created_at?->format('d/m/Y');
+        };
+
+        return match ($inspection->status) {
+            InspectionStatus::Planned => [
+                'label' => 'Planejamento',
+                'value' => match (true) {
+                    $inspection->planned_start_on !== null && $inspection->planned_end_on !== null
+                        && ! $inspection->planned_start_on->isSameDay($inspection->planned_end_on) => sprintf(
+                            '%s a %s',
+                            $inspection->planned_start_on->format('d/m/Y'),
+                            $inspection->planned_end_on->format('d/m/Y'),
+                        ),
+                    $inspection->planned_start_on !== null => $inspection->planned_start_on->format('d/m/Y'),
+                    $inspection->planned_end_on !== null => $inspection->planned_end_on->format('d/m/Y'),
+                    default => null,
+                },
+            ],
+            InspectionStatus::InProgress => ['label' => 'Iniciada em', 'value' => $inspection->started_at?->format('d/m/Y') ?? $inspection->inspected_on?->format('d/m/Y')],
+            InspectionStatus::AwaitingReview => ['label' => 'Concluída em', 'value' => $inspection->field_completed_at?->format('d/m/Y')],
+            InspectionStatus::InReview => ['label' => 'Revisão iniciada em', 'value' => $historyDate(InspectionStatus::InReview)],
+            InspectionStatus::InCorrection => ['label' => 'Devolvida em', 'value' => $historyDate(InspectionStatus::InCorrection)],
+            InspectionStatus::AwaitingRelease => ['label' => 'Aprovada em', 'value' => $inspection->approved_at?->format('d/m/Y')],
+            InspectionStatus::Released => ['label' => 'Liberada em', 'value' => $inspection->released_at?->format('d/m/Y')],
+            InspectionStatus::Canceled => ['label' => 'Cancelada em', 'value' => $inspection->canceled_at?->format('d/m/Y')],
+        };
+    }
+
+    /**
+     * @return array{id:int, public_id:string, tag:string, defect_code_prefix:?string, name:string, client:?array{id:int, public_id:string, name:string, show_url:string}, show_url:string}
      */
     private function inspectionEquipmentPayload(Equipment $equipment): array
     {
@@ -932,14 +1060,6 @@ final class InspectionController extends Controller
                     'public_id' => $equipment->client->public_id,
                     'name' => $equipment->client->name,
                     'show_url' => route('clients.show', $equipment->client),
-                ],
-            'unit' => $equipment->unit === null
-                ? null
-                : [
-                    'id' => $equipment->unit->id,
-                    'public_id' => $equipment->unit->public_id,
-                    'name' => $equipment->unit->name,
-                    'show_url' => route('units.show', $equipment->unit),
                 ],
             'show_url' => route('equipments.show', $equipment),
         ];
@@ -1018,14 +1138,8 @@ final class InspectionController extends Controller
             'condition_label' => $assessment->condition->label(),
             'status' => $assessment->status->value,
             'status_label' => $assessment->status->label(),
-            'defect_classification_id' => $assessment->defect_classification_id,
             'classification_code' => $assessment->classification_code,
-            'classification' => $assessment->classification === null ? null : [
-                'code' => $assessment->classification->code,
-                'name' => $assessment->classification->name,
-                'status' => $assessment->classification->status->value,
-                'severity_rank' => $assessment->classification->severity_rank,
-            ],
+            'classification' => $assessment->classification_snapshot,
             'location_description' => $assessment->location_description,
             'comment' => $assessment->comment,
             'recommendation' => $assessment->recommendation,
@@ -1170,11 +1284,11 @@ final class InspectionController extends Controller
             $transitions[] = [
                 'key' => 'submit_for_review',
                 'label' => $inspection->status === InspectionStatus::InCorrection
-                    ? 'Reenviar para verificação'
-                    : 'Enviar para verificação',
+                    ? 'Reenviar para revisão'
+                    : 'Enviar para revisão',
                 'description' => $inspection->status === InspectionStatus::InCorrection
                     ? 'Retoma o fluxo após a correção.'
-                    : 'Envia a inspeção concluída para a verificação.',
+                    : 'Envia a inspeção concluída para a revisão.',
                 'action' => route('inspections.submit-for-review', $inspection),
                 'requires_justification' => false,
             ];
@@ -1183,23 +1297,19 @@ final class InspectionController extends Controller
         if ($request->user()->can('returnForCorrection', $inspection)) {
             $transitions[] = [
                 'key' => 'return_for_correction',
-                'label' => $inspection->status === InspectionStatus::AwaitingApproval
-                    ? 'Devolver para correção'
-                    : 'Solicitar correção',
-                'description' => $inspection->status === InspectionStatus::AwaitingApproval
-                    ? 'Retorna a inspeção para ajustes antes da aprovação.'
-                    : 'Retorna a inspeção para ajustes após a verificação.',
+                'label' => 'Enviar para correção',
+                'description' => 'Retorna a inspeção ao Inspetor para ajustes.',
                 'action' => route('inspections.return-for-correction', $inspection),
                 'requires_justification' => true,
             ];
         }
 
-        if ($request->user()->can('completeReview', $inspection)) {
+        if ($request->user()->can('startReview', $inspection)) {
             $transitions[] = [
-                'key' => 'complete_review',
-                'label' => 'Concluir verificação',
-                'description' => 'Avança a inspeção para aguardando aprovação.',
-                'action' => route('inspections.complete-review', $inspection),
+                'key' => 'start_review',
+                'label' => 'Iniciar revisão',
+                'description' => 'Inicia a análise técnica pelo Revisor.',
+                'action' => route('inspections.start-review', $inspection),
                 'requires_justification' => false,
             ];
         }
@@ -1214,23 +1324,23 @@ final class InspectionController extends Controller
             ];
         }
 
-        if ($request->user()->can('generateReport', $inspection)) {
-            $transitions[] = [
-                'key' => 'generate_report',
-                'label' => 'Gerar relatório',
-                'description' => 'Registra a geração do relatório e prepara a inspeção para liberação.',
-                'action' => route('inspections.generate-report', $inspection),
-                'requires_justification' => false,
-            ];
-        }
-
         if ($request->user()->can('release', $inspection)) {
             $transitions[] = [
                 'key' => 'release',
                 'label' => 'Liberar inspeção',
-                'description' => 'Finaliza a liberação depois do relatório gerado.',
+                'description' => 'Finaliza a liberação da inspeção.',
                 'action' => route('inspections.release', $inspection),
                 'requires_justification' => false,
+            ];
+        }
+
+        if ($request->user()->can('returnForReview', $inspection)) {
+            $transitions[] = [
+                'key' => 'return_for_review',
+                'label' => 'Devolver para revisão',
+                'description' => 'Retorna a inspeção para uma nova revisão.',
+                'action' => route('inspections.return-for-review', $inspection),
+                'requires_justification' => true,
             ];
         }
 

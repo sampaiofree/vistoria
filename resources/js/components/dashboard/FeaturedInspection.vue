@@ -39,7 +39,6 @@ const actionLabel = computed(() => (
 
                 <p class="mt-4 text-sm text-slate-600">
                     {{ inspection.client?.name ?? 'Cliente' }}
-                    <span v-if="inspection.unit?.name"> · {{ inspection.unit.name }}</span>
                 </p>
                 <h2 id="featured-inspection-title" class="mt-1 text-xl font-semibold text-slate-900 sm:text-2xl">
                     {{ inspection.equipment?.name ?? inspection.number }}

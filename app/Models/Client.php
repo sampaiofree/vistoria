@@ -33,11 +33,6 @@ class Client extends Model
         'notes',
     ];
 
-    public function units(): HasMany
-    {
-        return $this->hasMany(ClientUnit::class);
-    }
-
     public function equipments(): HasMany
     {
         return $this->hasMany(Equipment::class);

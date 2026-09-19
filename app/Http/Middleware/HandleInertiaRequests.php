@@ -118,26 +118,20 @@ final class HandleInertiaRequests extends Middleware
                 'icon' => 'inspections',
                 'active' => $request->routeIs('inspections.*'),
             ],
-            [
-                'label' => 'Equipamentos',
-                'href' => route('equipments.index'),
-                'icon' => 'equipments',
-                'active' => $request->routeIs('equipments.*', 'equipment-documents.*'),
-            ],
-            [
-                'label' => 'Clientes',
-                'href' => route('clients.index'),
-                'icon' => 'clients',
-                'active' => $request->routeIs('clients.*', 'units.*', 'areas.*', 'subareas.*'),
-            ],
         ];
 
         if ($user->isCompanyAdmin()) {
             $navigation[] = [
+                'label' => 'Itens de Manutenção',
+                'href' => route('equipments.index'),
+                'icon' => 'equipments',
+                'active' => $request->routeIs('equipments.*', 'equipment-documents.*'),
+            ];
+            $navigation[] = [
                 'label' => 'Configurações',
                 'href' => route('settings.company.edit'),
                 'icon' => 'settings',
-                'active' => $request->routeIs('settings.*'),
+                'active' => $request->routeIs('settings.*', 'clients.*'),
                 'children' => [
                     [
                         'label' => 'Empresa',
@@ -149,13 +143,12 @@ final class HandleInertiaRequests extends Middleware
                         'href' => route('settings.users.index'),
                         'active' => $request->routeIs('settings.users.*'),
                     ],
+                    [
+                        'label' => 'Cliente',
+                        'href' => route('clients.index'),
+                        'active' => $request->routeIs('clients.*'),
+                    ],
                 ],
-            ];
-            $navigation[] = [
-                'label' => 'Categorias de avarias',
-                'href' => route('defect-categories.index'),
-                'icon' => 'classification',
-                'active' => $request->routeIs('defect-categories.*', 'defect-classifications.*'),
             ];
         }
 

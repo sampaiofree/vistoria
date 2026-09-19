@@ -10,7 +10,7 @@ const props = defineProps({
     cancel_url: { type: String, required: true },
 });
 const selectedCategory = new URLSearchParams(window.location.search).get('category') || '';
-const form = useForm({ title: '', description: '', position: 1, defect_category_id: selectedCategory });
+const form = useForm({ title: '', description: '', position: 1, category: selectedCategory });
 function submit() { form.post(props.action); }
 </script>
 

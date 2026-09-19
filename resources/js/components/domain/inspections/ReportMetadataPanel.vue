@@ -24,7 +24,7 @@ const form = useForm({
 });
 
 const canEdit = computed(() => props.metadata.can_edit === true && Boolean(props.metadata.update_url));
-const generated = computed(() => Boolean(props.inspection.report_generated_at));
+const canEditRestrictedFields = computed(() => props.metadata.can_edit_restricted_fields === true);
 const displayedEmission = computed(() => props.metadata.emission_type
     ? `${props.metadata.emission_type} — ${props.metadata.emission_type_label || ''}`
     : 'Não definido');
@@ -110,7 +110,7 @@ async function insertPlaceholder() {
             <div class="grid gap-5 md:grid-cols-2">
                 <label class="space-y-1.5 text-sm font-medium text-slate-700">
                     <span>Tipo de emissão</span>
-                    <select v-model="form.emission_type" :required="generated" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5">
+                    <select v-model="form.emission_type" :disabled="!canEditRestrictedFields" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 disabled:cursor-not-allowed disabled:bg-slate-100">
                         <option value="">Não definido</option>
                         <option v-for="option in emissionOptions" :key="option.value" :value="option.value">
                             {{ option.value }} — {{ option.label }}
@@ -120,18 +120,18 @@ async function insertPlaceholder() {
                 </label>
                 <label class="space-y-1.5 text-sm font-medium text-slate-700">
                     <span>Data do relatório</span>
-                    <input v-model="form.report_date" :required="generated" type="date" class="w-full rounded-xl border border-slate-300 px-3 py-2.5">
-                    <span class="block text-xs font-normal text-slate-500">Se estiver vazia, será preenchida na geração.</span>
+                    <input v-model="form.report_date" :disabled="!canEditRestrictedFields" type="date" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 disabled:cursor-not-allowed disabled:bg-slate-100">
+                    <span class="block text-xs font-normal text-slate-500">Preencha a data oficial do relatório quando aplicável.</span>
                     <span v-if="form.errors.report_date" class="block text-xs text-rose-600">{{ form.errors.report_date }}</span>
                 </label>
                 <label class="space-y-1.5 text-sm font-medium text-slate-700 md:col-span-2">
                     <span>O.S.</span>
-                    <input v-model="form.service_order" type="text" maxlength="100" class="w-full rounded-xl border border-slate-300 px-3 py-2.5">
+                    <input v-model="form.service_order" :disabled="!canEditRestrictedFields" type="text" maxlength="100" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 disabled:cursor-not-allowed disabled:bg-slate-100">
                     <span v-if="form.errors.service_order" class="block text-xs text-rose-600">{{ form.errors.service_order }}</span>
                 </label>
                 <label class="space-y-1.5 text-sm font-medium text-slate-700">
                     <span>Número do relatório externo</span>
-                    <input v-model="form.external_report_number" type="text" maxlength="150" class="w-full rounded-xl border border-slate-300 px-3 py-2.5">
+                    <input v-model="form.external_report_number" :disabled="!canEditRestrictedFields" type="text" maxlength="150" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 disabled:cursor-not-allowed disabled:bg-slate-100">
                     <span v-if="form.errors.external_report_number" class="block text-xs text-rose-600">{{ form.errors.external_report_number }}</span>
                 </label>
                 <label class="space-y-1.5 text-sm font-medium text-slate-700">
@@ -165,7 +165,7 @@ async function insertPlaceholder() {
 
         <dl v-else class="mt-6 grid gap-4 border-t border-slate-100 pt-5 sm:grid-cols-2 lg:grid-cols-4">
             <div><dt class="text-xs font-bold uppercase tracking-wider text-slate-400">T.E.</dt><dd class="mt-1 text-sm font-semibold text-slate-900">{{ displayedEmission }}</dd></div>
-            <div><dt class="text-xs font-bold uppercase tracking-wider text-slate-400">Data do relatório</dt><dd class="mt-1 text-sm font-semibold text-slate-900">{{ metadata.report_date ? new Date(`${metadata.report_date}T00:00:00`).toLocaleDateString('pt-BR') : 'Será definida na geração' }}</dd></div>
+            <div><dt class="text-xs font-bold uppercase tracking-wider text-slate-400">Data do relatório</dt><dd class="mt-1 text-sm font-semibold text-slate-900">{{ metadata.report_date ? new Date(`${metadata.report_date}T00:00:00`).toLocaleDateString('pt-BR') : 'Não definida' }}</dd></div>
             <div><dt class="text-xs font-bold uppercase tracking-wider text-slate-400">O.S.</dt><dd class="mt-1 text-sm font-semibold text-slate-900">{{ metadata.service_order || 'Não informada' }}</dd></div>
             <div><dt class="text-xs font-bold uppercase tracking-wider text-slate-400">Relatório externo</dt><dd class="mt-1 text-sm font-semibold text-slate-900">{{ metadata.external_report_number || 'Não informado' }}</dd></div>
             <div><dt class="text-xs font-bold uppercase tracking-wider text-slate-400">Projetista</dt><dd class="mt-1 text-sm font-semibold text-slate-900">{{ metadata.report_designer || 'PROJETISTA II' }}</dd></div>

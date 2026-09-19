@@ -5,14 +5,15 @@ declare(strict_types=1);
 namespace Tests\Feature\InspectionLocations;
 
 use App\Enums\DefectAssessmentCondition;
+use App\Enums\DefectCategory;
 use App\Enums\InspectionLocationMapProcessingStatus;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
+use App\Enums\OperationalRole;
 use App\Enums\UserAccountType;
 use App\Models\AssessmentPhoto;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
-use App\Models\DefectCategory;
 use App\Models\Equipment;
 use App\Models\Inspection;
 use App\Models\InspectionLocationMap;
@@ -53,7 +54,7 @@ final class InspectionLocationMarkerRoutesTest extends TestCase
         $this->assertCount(1, $assessment->fresh()->locationMarkers);
         $this->assertSame($geometry, InspectionLocationMarker::query()->oldest('id')->firstOrFail()->geometry);
         $this->assertSame(2, $map->fresh()->lock_version);
-        $this->assertSame($category->id, $assessment->defect->defect_category_id);
+        $this->assertSame($category, $assessment->defect->category);
         $this->assertSame($inspection->id, $map->inspection_id);
 
         $otherMap = InspectionLocationMap::factory()->forInspection($inspection, $category)->create([
@@ -72,11 +73,8 @@ final class InspectionLocationMarkerRoutesTest extends TestCase
     public function test_marker_rejects_incompatible_category_and_stale_updates(): void
     {
         [, $user, $inspection, , $assessment, $map] = $this->context();
-        $otherCategory = DefectCategory::query()
-            ->where('organization_id', $inspection->organization_id)
-            ->where('code', 'REC')
-            ->firstOrFail();
-        $otherDefect = Defect::factory()->forEquipment($inspection->equipment, $inspection)->create(['defect_category_id' => $otherCategory->id]);
+        $otherCategory = DefectCategory::StructuralRecovery;
+        $otherDefect = Defect::factory()->forEquipment($inspection->equipment, $inspection)->create(['category' => $otherCategory->value]);
         $otherAssessment = DefectAssessment::factory()->forDefect($otherDefect, $inspection)->create();
 
         $this->actingAs($user)->post(route('inspection-location-maps.markers.store', $map), [
@@ -103,7 +101,7 @@ final class InspectionLocationMarkerRoutesTest extends TestCase
     {
         [, $user, $inspection, $category, $assessment, $map] = $this->context();
         $otherDefect = Defect::factory()->forEquipment($inspection->equipment, $inspection)->create([
-            'defect_category_id' => $category->id,
+            'category' => $category->value,
         ]);
         $otherAssessment = DefectAssessment::factory()->forDefect($otherDefect, $inspection)->complete()->create();
         $otherMap = InspectionLocationMap::factory()->forInspection($inspection, $category)->create([
@@ -224,9 +222,9 @@ final class InspectionLocationMarkerRoutesTest extends TestCase
     public function test_marker_rejects_draft_and_non_locatable_assessments(): void
     {
         [, $user, $inspection, $category, $published, $map] = $this->context();
-        $draftDefect = Defect::factory()->forEquipment($inspection->equipment, $inspection)->create(['defect_category_id' => $category->id]);
+        $draftDefect = Defect::factory()->forEquipment($inspection->equipment, $inspection)->create(['category' => $category->value]);
         $draft = DefectAssessment::factory()->forDefect($draftDefect, $inspection)->draft()->create();
-        $notLocatedDefect = Defect::factory()->forEquipment($inspection->equipment, $inspection)->create(['defect_category_id' => $category->id]);
+        $notLocatedDefect = Defect::factory()->forEquipment($inspection->equipment, $inspection)->create(['category' => $category->value]);
         $notLocated = DefectAssessment::factory()->forDefect($notLocatedDefect, $inspection)->complete()->create([
             'condition' => DefectAssessmentCondition::NotLocated,
         ]);
@@ -330,12 +328,15 @@ final class InspectionLocationMarkerRoutesTest extends TestCase
     private function context(): array
     {
         $organization = Organization::factory()->create();
-        $user = User::factory()->for($organization)->create(['account_type' => UserAccountType::CompanyAdmin]);
+        $user = User::factory()->for($organization)->create([
+            'account_type' => UserAccountType::CompanyAdmin,
+            'operational_role' => OperationalRole::Inspector,
+        ]);
         $equipment = Equipment::factory()->for($organization)->create();
         $inspection = Inspection::factory()->forEquipment($equipment)->create(['status' => InspectionStatus::InProgress]);
         InspectionResponsible::factory()->forInspection($inspection, $user)->create(['responsibility' => InspectionResponsibility::Preparer]);
-        $category = DefectCategory::factory()->create(['organization_id' => $organization->id, 'code' => 'TA']);
-        $defect = Defect::factory()->forEquipment($equipment, $inspection)->create(['defect_category_id' => $category->id]);
+        $category = DefectCategory::AnticorrosiveTreatment;
+        $defect = Defect::factory()->forEquipment($equipment, $inspection)->create(['category' => $category->value]);
         $assessment = DefectAssessment::factory()->forDefect($defect, $inspection)->complete()->create(['comment' => 'Avaliação publicada.']);
         $map = InspectionLocationMap::factory()->forInspection($inspection, $category)->create([
             'processing_status' => InspectionLocationMapProcessingStatus::Ready,

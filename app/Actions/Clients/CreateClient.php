@@ -6,12 +6,19 @@ use App\Enums\RegistrationStatus;
 use App\Models\Client;
 use App\Support\TextNormalizer;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 final class CreateClient
 {
     public function handle(int $organizationId, array $data): Client
     {
         return DB::transaction(function () use ($organizationId, $data): Client {
+            if (Client::withTrashed()->where('organization_id', $organizationId)->lockForUpdate()->exists()) {
+                throw ValidationException::withMessages([
+                    'client' => 'Esta organização já possui um cliente cadastrado.',
+                ]);
+            }
+
             return Client::query()->create([
                 'organization_id' => $organizationId,
                 'name' => TextNormalizer::text((string) $data['name']),

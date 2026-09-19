@@ -31,29 +31,22 @@ final class AssignInspectionResponsible
             throw ValidationException::withMessages(['inspection' => 'Responsáveis não podem ser alterados em inspeções liberadas ou canceladas.']);
         }
 
-        return DB::transaction(function () use ($inspection, $user, $responsibility, $actor, $isPrimary, $completedAt, $organizationId): InspectionResponsible {
+        return DB::transaction(function () use ($inspection, $user, $responsibility, $actor, $completedAt, $organizationId): InspectionResponsible {
             Inspection::query()->whereKey($inspection->getKey())->lockForUpdate()->firstOrFail();
             $assignments = InspectionResponsible::query()
                 ->where('inspection_id', $inspection->getKey())
                 ->where('responsibility', $responsibility->value)
                 ->lockForUpdate();
 
-            if ((clone $assignments)->where('user_id', $user->getKey())->exists()) {
-                throw ValidationException::withMessages(['user' => 'O usuário já possui esta responsabilidade na inspeção.']);
-            }
-
-            $makePrimary = $isPrimary || ! (clone $assignments)->exists();
-
-            if ($makePrimary) {
-                (clone $assignments)->where('is_primary', true)->update(['is_primary' => false]);
-            }
+            (clone $assignments)->get();
+            (clone $assignments)->delete();
 
             return InspectionResponsible::query()->create([
                 'organization_id' => $organizationId,
                 'inspection_id' => $inspection->getKey(),
                 'user_id' => $user->getKey(),
                 'responsibility' => $responsibility,
-                'is_primary' => $makePrimary,
+                'is_primary' => true,
                 'assigned_by' => $actor->getKey(),
                 'assigned_at' => now(),
                 'completed_at' => $completedAt,

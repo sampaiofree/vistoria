@@ -22,8 +22,7 @@ final class ReorderInspectionLocationMaps
         DB::transaction(function () use ($actor, $inspection, $orderedMaps, $publicIds): void {
             $lockedInspection = Inspection::query()->whereKey($inspection->id)->lockForUpdate()->firstOrFail();
             if ($actor->organization_id !== $lockedInspection->organization_id
-                || ! in_array($lockedInspection->status, [InspectionStatus::InProgress, InspectionStatus::InCorrection], true)
-                || ! $lockedInspection->hasAnyResponsibilityForUser($actor, InspectionResponsibility::Preparer)) {
+                || ! $actor->can('manageFieldContent', $lockedInspection)) {
                 throw ValidationException::withMessages(['maps' => 'A inspeção não está disponível para reordenar mapas.']);
             }
 

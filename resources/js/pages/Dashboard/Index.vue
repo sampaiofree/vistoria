@@ -69,8 +69,8 @@ const priorityCards = [
     },
     {
         key: 'awaiting_review',
-        title: 'Aguardando verificação',
-        description: 'Inspeções prontas para validação',
+        title: 'Aguardando revisão',
+        description: 'Inspeções prontas para revisão',
         icon: 'review',
         variant: 'info',
     },
@@ -82,9 +82,9 @@ const priorityCards = [
         variant: 'warning',
     },
     {
-        key: 'awaiting_approval',
-        title: 'Aguardando aprovação',
-        description: 'Prontas para decisão final',
+        key: 'awaiting_release',
+        title: 'Aguardando liberação',
+        description: 'Prontas para liberação',
         icon: 'approval',
         variant: 'approval',
     },
@@ -177,7 +177,7 @@ function retry(prop) {
                 </Deferred>
             </section>
 
-            <div class="mt-6 grid gap-6 2xl:grid-cols-[minmax(0,2.25fr)_minmax(20rem,1fr)]">
+            <div class="mt-6 space-y-6">
                 <Deferred data="my_inspections">
                     <template #fallback>
                         <MyInspectionsTable loading :index-url="links.inspections_index" />
@@ -197,7 +197,7 @@ function retry(prop) {
                     />
                 </Deferred>
 
-                <div class="space-y-6">
+                <div class="grid gap-6 2xl:grid-cols-2">
                     <Deferred data="workflow_summary">
                         <template #fallback>
                             <WorkflowSummary

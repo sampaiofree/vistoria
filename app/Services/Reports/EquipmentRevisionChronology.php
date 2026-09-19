@@ -204,7 +204,7 @@ final class EquipmentRevisionChronology
 
         $date = $inspection->report_date
             ?? $inspection->inspected_on
-            ?? $inspection->scheduled_for
+            ?? $inspection->planned_start_on
             ?? $inspection->created_at;
 
         return [

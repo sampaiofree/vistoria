@@ -22,8 +22,8 @@ Somente um preparador atribuído pode criar ou editar mapas e marcações, e ape
 quando a inspeção está em `in_progress` ou `in_correction`. Leitura é permitida a
 usuários ativos do tenant. Superadministradores não acessam o módulo.
 
-A categoria do mapa precisa estar ativa e pertencer à organização. A avaliação da
-marcação precisa pertencer à mesma inspeção, equipamento e categoria.
+A categoria do mapa é um código nativo: `CV`, `TAC` ou `REC`. A avaliação da
+marcação precisa pertencer à mesma organização, inspeção, equipamento e categoria.
 
 ## Criação e origem
 
@@ -125,19 +125,13 @@ O sistema copia mapas, fundo processado, geometria, estilo e ordem. Cada marcaç
 vinculada à avaliação corrente da mesma avaria quando ela já existe; caso
 contrário, fica pendente. Fotografias antigas não são copiadas para o novo vínculo.
 
-## Cobertura antes da verificação
+## Mapas e conclusão
 
-`requires_location_map` é configurado por categoria. Para avaliações dessa
-categoria, exceto `not_located` e `not_inspected`, o validador exige:
-
-- mapas da categoria em estado `ready`;
-- ao menos uma marcação por avaliação;
-- vínculos consistentes de tenant, inspeção, equipamento e categoria;
-- geometria e estilo válidos;
-- ao menos uma fotografia pronta e compatível em cada marcação.
-
-Ativar a exigência na categoria requer confirmação explícita e a tela informa
-quantas inspeções abertas e avaliações sem localização serão afetadas.
+O catálogo nativo não configura obrigatoriedade de mapas. O campo
+`requires_location_map` e a validação de cobertura por categoria foram removidos.
+Mapas continuam agrupados pelo código da categoria; marcações continuam sujeitas
+às validações de contexto, geometria, fotografias e concorrência do editor.
+O redesenho desse agrupamento fica para uma mudança posterior.
 
 ## Relatório e numeração
 

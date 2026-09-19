@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Settings;
 
+use App\Enums\OperationalRole;
 use App\Enums\UserAccountType;
 use App\Enums\UserStatus;
 use App\Models\Organization;
@@ -11,6 +12,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -130,6 +132,7 @@ final class OrganizationSettingsTest extends TestCase
             'name' => 'Novo Membro',
             'email' => 'novo@empresa.test',
             'account_type' => UserAccountType::Member->value,
+            'operational_role' => OperationalRole::Inspector->value,
         ]);
 
         $response->assertRedirect(route('settings.users.index'))
@@ -139,6 +142,157 @@ final class OrganizationSettingsTest extends TestCase
         $user = User::query()->where('email', 'novo@empresa.test')->firstOrFail();
         $this->assertTrue($user->must_change_password);
         $this->assertSame(UserStatus::Active, $user->status);
+        $this->assertSame(OperationalRole::Inspector, $user->operational_role);
+    }
+
+    public function test_reset_password_returns_temporary_credentials_to_the_user_edit_page(): void
+    {
+        $organization = Organization::factory()->create();
+        $admin = User::factory()->for($organization)->create(['account_type' => UserAccountType::CompanyAdmin]);
+        $user = User::factory()->for($organization)->create([
+            'password' => 'SenhaAnterior!1',
+            'must_change_password' => false,
+        ]);
+
+        $response = $this->actingAs($admin)
+            ->from(route('settings.users.edit', $user))
+            ->post(route('settings.users.reset-password', $user));
+
+        $response->assertRedirect(route('settings.users.edit', $user))
+            ->assertSessionHas('temporary_credentials', fn (array $credentials): bool => $credentials['email'] === $user->email
+                && strlen($credentials['password']) === 16);
+
+        $temporaryPassword = $response->getSession()->get('temporary_credentials.password');
+        $user->refresh();
+
+        $this->assertTrue($user->must_change_password);
+        $this->assertTrue(Hash::check($temporaryPassword, $user->password));
+        $this->assertNotSame($temporaryPassword, $user->password);
+    }
+
+    public function test_company_admin_must_assign_a_valid_operational_role_when_creating_a_user(): void
+    {
+        $organization = Organization::factory()->create();
+        $admin = User::factory()->for($organization)->create(['account_type' => UserAccountType::CompanyAdmin]);
+        $data = [
+            'name' => 'Novo Membro',
+            'email' => 'novo@empresa.test',
+            'account_type' => UserAccountType::Member->value,
+        ];
+
+        $this->actingAs($admin)->post(route('settings.users.store'), $data)
+            ->assertSessionHasErrors('operational_role');
+
+        $this->post(route('settings.users.store'), [...$data, 'operational_role' => 'invalid'])
+            ->assertSessionHasErrors('operational_role');
+    }
+
+    public function test_company_admin_can_assign_their_own_operational_role_without_changing_access_type(): void
+    {
+        $organization = Organization::factory()->create();
+        $admin = User::factory()->for($organization)->create([
+            'account_type' => UserAccountType::CompanyAdmin,
+            'operational_role' => null,
+        ]);
+
+        $this->actingAs($admin)->put(route('settings.users.update', $admin), [
+            'name' => $admin->name,
+            'email' => $admin->email,
+            'account_type' => UserAccountType::CompanyAdmin->value,
+            'operational_role' => OperationalRole::Releaser->value,
+        ])->assertRedirect(route('settings.users.edit', $admin));
+
+        $admin->refresh();
+        $this->assertSame(UserAccountType::CompanyAdmin, $admin->account_type);
+        $this->assertSame(OperationalRole::Releaser, $admin->operational_role);
+    }
+
+    public function test_company_admin_can_change_another_users_operational_role_only_within_their_organization(): void
+    {
+        $organization = Organization::factory()->create();
+        $otherOrganization = Organization::factory()->create();
+        $admin = User::factory()->for($organization)->create(['account_type' => UserAccountType::CompanyAdmin]);
+        $member = User::factory()->for($organization)->create(['operational_role' => OperationalRole::Planner]);
+        $otherMember = User::factory()->for($otherOrganization)->create(['operational_role' => OperationalRole::Planner]);
+
+        $this->actingAs($admin)->put(route('settings.users.update', $member), [
+            'name' => $member->name,
+            'email' => $member->email,
+            'account_type' => UserAccountType::Member->value,
+            'operational_role' => OperationalRole::Reviewer->value,
+        ])->assertRedirect(route('settings.users.edit', $member));
+
+        $this->assertSame(OperationalRole::Reviewer, $member->refresh()->operational_role);
+
+        $this->put(route('settings.users.update', $otherMember), [
+            'name' => $otherMember->name,
+            'email' => $otherMember->email,
+            'account_type' => UserAccountType::Member->value,
+            'operational_role' => OperationalRole::Reviewer->value,
+        ])->assertNotFound();
+    }
+
+    public function test_legacy_user_without_an_operational_role_is_identified_in_user_pages(): void
+    {
+        $organization = Organization::factory()->create();
+        $admin = User::factory()->for($organization)->create([
+            'name' => 'Administrador',
+            'account_type' => UserAccountType::CompanyAdmin,
+        ]);
+        $legacyUser = User::factory()->for($organization)->create([
+            'name' => 'A Usuário legado',
+            'operational_role' => null,
+        ]);
+
+        $this->actingAs($admin)->get(route('settings.users.edit', $legacyUser))
+            ->assertInertia(fn ($page) => $page
+                ->where('user.operational_role', null)
+                ->where('user.operational_role_label', 'Papel não definido')
+                ->has('operational_role_options', 4));
+
+        $this->get(route('settings.users.index'))
+            ->assertInertia(fn ($page) => $page
+                ->where('users.data.0.operational_role_label', 'Papel não definido')
+                ->where('status_options', [
+                    ['value' => UserStatus::Active->value, 'label' => 'Ativo'],
+                    ['value' => UserStatus::Inactive->value, 'label' => 'Inativo'],
+                ])
+                ->has('operational_role_options', 4));
+    }
+
+    public function test_user_list_filters_by_operational_role(): void
+    {
+        $organization = Organization::factory()->create();
+        $admin = User::factory()->for($organization)->create([
+            'account_type' => UserAccountType::CompanyAdmin,
+            'operational_role' => OperationalRole::Releaser,
+        ]);
+        $inspector = User::factory()->for($organization)->create([
+            'name' => 'Inspetor',
+            'operational_role' => OperationalRole::Inspector,
+        ]);
+        User::factory()->for($organization)->create([
+            'name' => 'Revisor',
+            'operational_role' => OperationalRole::Reviewer,
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('settings.users.index', ['operational_role' => OperationalRole::Inspector->value]))
+            ->assertInertia(fn ($page) => $page
+                ->where('filters.operational_role', OperationalRole::Inspector->value)
+                ->has('users.data', 1)
+                ->where('users.data.0.public_id', $inspector->public_id)
+                ->where('users.data.0.operational_role_label', 'Inspetor'));
+    }
+
+    public function test_user_status_uses_only_active_and_inactive_states(): void
+    {
+        $this->assertSame([
+            UserStatus::Active,
+            UserStatus::Inactive,
+        ], UserStatus::cases());
+        $this->assertFalse(Schema::hasColumn('users', 'suspended_at'));
+        $this->assertFalse(Schema::hasColumn('users', 'suspension_reason'));
     }
 
     public function test_user_must_change_temporary_password_before_using_the_application(): void

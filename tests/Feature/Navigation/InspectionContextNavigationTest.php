@@ -8,10 +8,11 @@ use App\Enums\DefectAssessmentCondition;
 use App\Enums\InspectionLocationMapProcessingStatus;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
+use App\Enums\OperationalRole;
 use App\Enums\UserAccountType;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
-use App\Models\DefectCategory;
+use App\Enums\DefectCategory;
 use App\Models\Equipment;
 use App\Models\Inspection;
 use App\Models\InspectionLocationMap;
@@ -55,7 +56,7 @@ final class InspectionContextNavigationTest extends TestCase
                     ->where('inspection_navigation.items.3.children.1.href', route('inspection-location-maps.editor', $map))
                     ->where('inspection_navigation.items.4.label', 'Equipe e responsáveis')
                     ->where('inspection_navigation.items.4.href', route('inspections.team', $inspection))
-                    ->has('navigation', 6);
+                    ->has('navigation', 4);
             });
 
         $this->actingAs($user)
@@ -156,6 +157,7 @@ final class InspectionContextNavigationTest extends TestCase
         $organization = Organization::factory()->create();
         $user = User::factory()->for($organization)->create([
             'account_type' => UserAccountType::CompanyAdmin,
+            'operational_role' => OperationalRole::Inspector,
         ]);
         $equipment = Equipment::factory()->for($organization)->create([
             'tag' => 'U03-06VT002',
@@ -169,12 +171,9 @@ final class InspectionContextNavigationTest extends TestCase
         InspectionResponsible::factory()->forInspection($inspection, $user)->create([
             'responsibility' => InspectionResponsibility::Preparer,
         ]);
-        $category = DefectCategory::query()
-            ->where('organization_id', $organization->id)
-            ->where('code', 'CV')
-            ->firstOrFail();
+        $category = DefectCategory::Civil;
         $defect = Defect::factory()->forEquipment($equipment, $inspection)->create([
-            'defect_category_id' => $category->id,
+            'category' => $category->value,
             'code' => 'VT002-CV-001',
             'sequence_number' => 1,
         ]);

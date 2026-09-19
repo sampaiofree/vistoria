@@ -20,7 +20,7 @@ final class ActivateEquipment
         return DB::transaction(function () use ($actor, $equipment): Equipment {
             $equipment = Equipment::query()
                 ->forOrganization($this->tenant->id())
-                ->with(['client', 'unit', 'area', 'subarea'])
+                ->with('client')
                 ->lockForUpdate()
                 ->findOrFail($equipment->getKey());
 

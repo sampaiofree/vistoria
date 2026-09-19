@@ -6,13 +6,10 @@ namespace Tests\Feature\Equipments;
 
 use App\Enums\EquipmentDocumentType;
 use App\Enums\UserAccountType;
-use App\Models\Area;
 use App\Models\Client;
-use App\Models\ClientUnit;
 use App\Models\Equipment;
 use App\Models\EquipmentDocument;
 use App\Models\Organization;
-use App\Models\Subarea;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -36,10 +33,10 @@ final class EquipmentDocumentsTest extends TestCase
                 'account_type' => UserAccountType::CompanyAdmin->value,
             ]);
 
-        [$client, $unit, $area, $subarea] = $this->createActiveHierarchy($organization);
+        $client = $this->createClient($organization);
 
         $equipment = Equipment::factory()
-            ->inStructure($client, $unit, $area, $subarea)
+            ->inStructure($client)
             ->create();
 
         $firstUpload = $this->actingAs($admin)->post(route('equipments.documents.store', $equipment), [
@@ -132,10 +129,10 @@ final class EquipmentDocumentsTest extends TestCase
                 'account_type' => UserAccountType::CompanyAdmin->value,
             ]);
 
-        [$client, $unit, $area, $subarea] = $this->createActiveHierarchy($organization);
+        $client = $this->createClient($organization);
 
         $equipment = Equipment::factory()
-            ->inStructure($client, $unit, $area, $subarea)
+            ->inStructure($client)
             ->create();
 
         $this->actingAs($admin)->post(route('equipments.documents.store', $equipment), [
@@ -175,27 +172,12 @@ final class EquipmentDocumentsTest extends TestCase
             ->assertNotFound();
     }
 
-    /**
-     * @return array{0: Client, 1: ClientUnit, 2: Area, 3: Subarea}
-     */
-    private function createActiveHierarchy(Organization $organization): array
+    private function createClient(Organization $organization): Client
     {
         $client = Client::factory()
             ->for($organization)
             ->create();
 
-        $unit = ClientUnit::factory()
-            ->forClient($client)
-            ->create();
-
-        $area = Area::factory()
-            ->forUnit($unit)
-            ->create();
-
-        $subarea = Subarea::factory()
-            ->forArea($area)
-            ->create();
-
-        return [$client, $unit, $area, $subarea];
+        return $client;
     }
 }

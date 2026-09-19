@@ -118,10 +118,7 @@ final class AssessExistingDefect
             ]);
         }
 
-        if (! $inspection->hasAnyResponsibilityForUser(
-            $actor,
-            InspectionResponsibility::Preparer,
-        )) {
+        if (! $actor->can('manageFieldContent', $inspection)) {
             throw ValidationException::withMessages([
                 'actor' => 'O usuário não está autorizado a avaliar avarias nesta inspeção.',
             ]);

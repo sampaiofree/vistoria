@@ -3,15 +3,10 @@ import { Link } from '@inertiajs/vue3';
 import AppLayout from '@/components/ui/AppLayout.vue';
 import StatusBadge from '@/components/ui/StatusBadge.vue';
 import StatusToggleForm from '@/components/ui/StatusToggleForm.vue';
-import ClientUnitList from '@/components/domain/clients/ClientUnitList.vue';
 import { formatDocument, formatPhone } from '@/lib/formatters';
 
 defineProps({
     client: {
-        type: Object,
-        required: true,
-    },
-    units: {
         type: Object,
         required: true,
     },
@@ -67,13 +62,6 @@ defineProps({
                         :current-status="client.status"
                         entity-label="cliente"
                     />
-                    <Link
-                        v-if="can.create_unit"
-                        :href="client.create_unit_url"
-                        class="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-700"
-                    >
-                        Nova unidade
-                    </Link>
                 </div>
             </div>
 
@@ -105,7 +93,6 @@ defineProps({
         </section>
 
         <div class="mt-6">
-            <ClientUnitList :units="units" />
         </div>
     </AppLayout>
 </template>

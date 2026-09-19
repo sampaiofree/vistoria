@@ -1,8 +1,8 @@
 <script setup>
+import { onBeforeUnmount, watch } from 'vue';
 import { Link, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/components/ui/AppLayout.vue';
 import Pagination from '@/components/ui/Pagination.vue';
-import StatusBadge from '@/components/ui/StatusBadge.vue';
 import StatusToggleForm from '@/components/ui/StatusToggleForm.vue';
 
 const props = defineProps({
@@ -14,26 +14,6 @@ const props = defineProps({
         type: Object,
         required: true,
     },
-    clients: {
-        type: Array,
-        required: true,
-    },
-    units: {
-        type: Array,
-        required: true,
-    },
-    areas: {
-        type: Array,
-        required: true,
-    },
-    subareas: {
-        type: Array,
-        required: true,
-    },
-    status_options: {
-        type: Array,
-        required: true,
-    },
     can: {
         type: Object,
         required: true,
@@ -42,24 +22,42 @@ const props = defineProps({
         type: String,
         required: true,
     },
+    import_url: {
+        type: String,
+        required: true,
+    },
+    index_url: {
+        type: String,
+        required: true,
+    },
 });
 
 const form = useForm({
     search: props.filters.search ?? '',
-    client: props.filters.client ?? '',
-    unit: props.filters.unit ?? '',
-    area: props.filters.area ?? '',
-    subarea: props.filters.subarea ?? '',
-    status: props.filters.status ?? '',
 });
+let searchTimer = null;
 
-function submit() {
-    form.get('/equipments', {
+function search() {
+    form.get(props.index_url, {
         preserveState: true,
         preserveScroll: true,
         replace: true,
     });
 }
+
+watch(() => form.search, () => {
+    if (searchTimer !== null) {
+        window.clearTimeout(searchTimer);
+    }
+
+    searchTimer = window.setTimeout(search, 300);
+});
+
+onBeforeUnmount(() => {
+    if (searchTimer !== null) {
+        window.clearTimeout(searchTimer);
+    }
+});
 </script>
 
 <template>
@@ -69,66 +67,32 @@ function submit() {
     >
         <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                <form class="grid flex-1 gap-3 lg:grid-cols-6" @submit.prevent="submit">
-                    <label class="lg:col-span-2">
+                <div class="flex-1">
+                    <label class="block max-w-xl">
                         <span class="sr-only">Buscar equipamento</span>
                         <input
                             v-model="form.search"
                             type="search"
                             class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
-                            placeholder="Buscar por TAG, nome, fabricante, modelo, série ou código"
+                            placeholder="Buscar por item, TAG, prefixo, descrição, área ou subárea"
                         >
                     </label>
+                </div>
 
-                    <select v-model="form.status" class="rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100">
-                        <option v-for="option in status_options" :key="option.value || 'all'" :value="option.value">
-                            {{ option.label }}
-                        </option>
-                    </select>
-
-                    <select v-model="form.client" class="rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100">
-                        <option value="">Cliente</option>
-                        <option v-for="client in clients" :key="client.id" :value="client.id">
-                            {{ client.name }}
-                        </option>
-                    </select>
-
-                    <select v-model="form.unit" class="rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100">
-                        <option value="">Unidade</option>
-                        <option v-for="unit in units" :key="unit.id" :value="unit.id">
-                            {{ unit.name }}
-                        </option>
-                    </select>
-
-                    <select v-model="form.area" class="rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100">
-                        <option value="">Área</option>
-                        <option v-for="area in areas" :key="area.id" :value="area.id">
-                            {{ area.name }}
-                        </option>
-                    </select>
-
-                    <select v-model="form.subarea" class="rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100">
-                        <option value="">Subárea</option>
-                        <option v-for="subarea in subareas" :key="subarea.id" :value="subarea.id">
-                            {{ subarea.name }}
-                        </option>
-                    </select>
-
-                    <button
-                        type="submit"
-                        class="lg:col-span-6 inline-flex items-center justify-center rounded-lg border border-slate-300 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:text-slate-900"
+                <div v-if="can.create" class="flex flex-wrap gap-2">
+                    <Link
+                        :href="import_url"
+                        class="inline-flex items-center justify-center rounded-lg border border-teal-600 bg-white px-4 py-2 text-sm font-semibold text-teal-700 transition hover:bg-teal-50"
                     >
-                        Filtrar
-                    </button>
-                </form>
-
-                <Link
-                    v-if="can.create"
-                    :href="create_url"
-                    class="inline-flex items-center justify-center rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-700"
-                >
-                    Novo equipamento
-                </Link>
+                        Importar CSV
+                    </Link>
+                    <Link
+                        :href="create_url"
+                        class="inline-flex items-center justify-center rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-700"
+                    >
+                        Novo equipamento
+                    </Link>
+                </div>
             </div>
         </section>
 
@@ -146,39 +110,34 @@ function submit() {
                 <table class="min-w-full divide-y divide-slate-200">
                     <thead class="bg-slate-50">
                         <tr class="text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            <th class="px-5 py-3">Item manutenção</th>
                             <th class="px-5 py-3">TAG</th>
-                            <th class="px-5 py-3">Equipamento</th>
-                            <th class="px-5 py-3">Localização</th>
-                            <th class="px-5 py-3">Status</th>
+                            <th class="px-5 py-3">Prefixo de avaria</th>
+                            <th class="px-5 py-3">Descrição</th>
+                            <th class="px-5 py-3">Área</th>
+                            <th class="px-5 py-3">Subárea</th>
                             <th class="px-5 py-3 text-right">Ações</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-200 bg-white">
                         <tr v-for="equipment in equipments.data" :key="equipment.public_id">
                             <td class="px-5 py-4 font-semibold text-slate-900">
-                                {{ equipment.tag }}
+                                {{ equipment.maintenance_item_code || '—' }}
                             </td>
                             <td class="px-5 py-4">
-                                <div class="font-medium text-slate-900">{{ equipment.name }}</div>
-                                <div class="text-sm text-slate-500">
-                                    <span v-if="equipment.manufacturer">{{ equipment.manufacturer }}</span>
-                                    <span v-if="equipment.manufacturer && equipment.model"> · </span>
-                                    <span v-if="equipment.model">{{ equipment.model }}</span>
-                                </div>
-                                <div class="text-sm text-slate-500">
-                                    {{ equipment.serial_number ?? '—' }}
-                                </div>
-                            </td>
-                            <td class="px-5 py-4 text-sm text-slate-600">
-                                <div class="font-medium text-slate-900">{{ equipment.client.name }}</div>
-                                <div>{{ equipment.unit.name }}</div>
-                                <div>{{ equipment.area.name }}</div>
-                                <div v-if="equipment.subarea">
-                                    {{ equipment.subarea.name }}
-                                </div>
+                                {{ equipment.tag || '—' }}
                             </td>
                             <td class="px-5 py-4">
-                                <StatusBadge :status="equipment.status" />
+                                {{ equipment.defect_code_prefix || '—' }}
+                            </td>
+                            <td class="max-w-xs px-5 py-4">
+                                <span class="line-clamp-2">{{ equipment.description || '—' }}</span>
+                            </td>
+                            <td class="px-5 py-4">
+                                {{ equipment.area_name || '—' }}
+                            </td>
+                            <td class="px-5 py-4">
+                                {{ equipment.subarea_name || '—' }}
                             </td>
                             <td class="px-5 py-4">
                                 <div class="flex justify-end gap-2">
@@ -211,7 +170,7 @@ function submit() {
                             </td>
                         </tr>
                         <tr v-if="equipments.data.length === 0">
-                            <td colspan="5" class="px-5 py-10 text-center text-sm text-slate-500">
+                            <td colspan="7" class="px-5 py-10 text-center text-sm text-slate-500">
                                 Nenhum equipamento encontrado.
                             </td>
                         </tr>

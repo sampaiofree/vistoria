@@ -17,7 +17,9 @@ final class ReorderInspectionLocationMarkers
     /** @param array<int, string> $markerPublicIds */
     public function handle(User $actor, InspectionLocationMap $map, array $markerPublicIds, int $mapVersion): void
     {
-        if ($actor->organization_id !== $map->organization_id || $map->processing_status !== InspectionLocationMapProcessingStatus::Ready) {
+        if ($actor->organization_id !== $map->organization_id
+            || ! $actor->can('manageFieldContent', $map->inspection)
+            || $map->processing_status !== InspectionLocationMapProcessingStatus::Ready) {
             throw ValidationException::withMessages(['map' => 'O mapa não está disponível para marcação.']);
         }
 

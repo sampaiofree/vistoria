@@ -21,6 +21,7 @@ final class CreateOrganizationUser
             'password' => $temporaryPassword,
             'must_change_password' => true,
             'account_type' => $data['account_type'],
+            'operational_role' => $data['operational_role'],
             'status' => 'active',
         ]));
 

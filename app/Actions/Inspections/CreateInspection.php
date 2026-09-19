@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Actions\Inspections;
 
+use App\Enums\EquipmentRevisionEmissionType;
 use App\Enums\InspectionStatus;
 use App\Enums\InspectionType;
 use App\Models\Equipment;
@@ -73,11 +74,13 @@ final class CreateInspection
                 'previous_inspection_id' => $previousInspection?->getKey(),
                 'inspection_type' => $type,
                 'status' => InspectionStatus::Planned,
+                'emission_type' => EquipmentRevisionEmissionType::ForKnowledge,
                 'service_order' => TextNormalizer::nullableText($data['service_order'] ?? null),
                 'external_report_number' => TextNormalizer::nullableText($data['external_report_number'] ?? null),
                 'procedure_number' => TextNormalizer::nullableText($data['procedure_number'] ?? null),
                 'atmospheric_classification' => TextNormalizer::nullableText($data['atmospheric_classification'] ?? null),
-                'scheduled_for' => $data['scheduled_for'] ?? $data['scheduled_at'] ?? null,
+                'planned_start_on' => $data['planned_start_on'],
+                'planned_end_on' => $data['planned_end_on'],
                 'context_snapshot' => $this->snapshotBuilder->build($equipment),
                 'snapshot_version' => InspectionSnapshotBuilder::VERSION,
                 'created_by' => $actor->getKey(),

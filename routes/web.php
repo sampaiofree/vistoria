@@ -1,18 +1,15 @@
 <?php
 
 use App\Http\Controllers\AccountPasswordController;
-use App\Http\Controllers\AreaController;
 use App\Http\Controllers\AssessmentPhotoController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\ClientController;
-use App\Http\Controllers\ClientUnitController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DefectAssessmentController;
-use App\Http\Controllers\DefectCategoryController;
-use App\Http\Controllers\DefectClassificationController;
 use App\Http\Controllers\DefectController;
 use App\Http\Controllers\EquipmentController;
 use App\Http\Controllers\EquipmentDocumentController;
+use App\Http\Controllers\EquipmentImportController;
 use App\Http\Controllers\EquipmentRevisionController;
 use App\Http\Controllers\GlobalOrganizationController;
 use App\Http\Controllers\InspectionController;
@@ -27,7 +24,6 @@ use App\Http\Controllers\InspectionTransitionController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\OrganizationSettingsController;
 use App\Http\Controllers\ReinspectionChecklistController;
-use App\Http\Controllers\SubareaController;
 use App\Http\Controllers\UserSettingsController;
 use Illuminate\Support\Facades\Route;
 
@@ -91,6 +87,15 @@ Route::middleware([
         Route::patch('/settings/users/{user}/status', [UserSettingsController::class, 'updateStatus'])->name('settings.users.status');
         Route::post('/settings/users/{user}/temporary-password', [UserSettingsController::class, 'resetPassword'])->name('settings.users.reset-password');
 
+        Route::get('equipments/import', [EquipmentImportController::class, 'create'])
+            ->name('equipments.import.create');
+        Route::get('equipments/import/preview', [EquipmentImportController::class, 'legacyPreview'])
+            ->name('equipments.import.preview.legacy');
+        Route::post('equipments/import/preview', [EquipmentImportController::class, 'preview'])
+            ->name('equipments.import.preview');
+        Route::post('equipments/import/confirm', [EquipmentImportController::class, 'confirm'])
+            ->name('equipments.import.confirm');
+
         Route::resource('equipments', EquipmentController::class)
             ->except(['destroy']);
 
@@ -145,8 +150,14 @@ Route::middleware([
         Route::get('inspections/create', [InspectionController::class, 'create'])
             ->name('inspections.create');
 
+        Route::get('inspections/equipment-options', [InspectionController::class, 'equipmentOptions'])
+            ->name('inspections.equipment-options');
+
         Route::post('inspections', [InspectionController::class, 'store'])
             ->name('inspections.store');
+
+        Route::post('inspections/confirm', [InspectionController::class, 'confirm'])
+            ->name('inspections.confirm');
 
         Route::get('inspections/{inspection}', [InspectionController::class, 'show'])
             ->name('inspections.show');
@@ -338,9 +349,9 @@ Route::middleware([
         )->name('inspections.return-for-correction');
 
         Route::post(
-            'inspections/{inspection}/complete-review',
-            [InspectionTransitionController::class, 'completeReview'],
-        )->name('inspections.complete-review');
+            'inspections/{inspection}/start-review',
+            [InspectionTransitionController::class, 'startReview'],
+        )->name('inspections.start-review');
 
         Route::post(
             'inspections/{inspection}/approve',
@@ -348,9 +359,9 @@ Route::middleware([
         )->name('inspections.approve');
 
         Route::post(
-            'inspections/{inspection}/generate-report',
-            [InspectionTransitionController::class, 'generateReport'],
-        )->name('inspections.generate-report');
+            'inspections/{inspection}/return-for-review',
+            [InspectionTransitionController::class, 'returnForReview'],
+        )->name('inspections.return-for-review');
 
         Route::post(
             'inspections/{inspection}/release',
@@ -383,70 +394,11 @@ Route::middleware([
         Route::resource('clients', ClientController::class)
             ->except(['destroy']);
 
-        Route::resource('defect-categories', DefectCategoryController::class)
-            ->parameters(['defect-categories' => 'defectCategory'])
-            ->except(['destroy']);
-        Route::patch('defect-categories/{defectCategory}/status', [DefectCategoryController::class, 'updateStatus'])
-            ->name('defect-categories.status');
-        Route::get('defect-categories/{defectCategory}/gut/edit', [DefectCategoryController::class, 'editGut'])
-            ->name('defect-categories.gut.edit');
-        Route::put('defect-categories/{defectCategory}/gut', [DefectCategoryController::class, 'updateGut'])
-            ->name('defect-categories.gut.update');
-        Route::get('defect-categories/{defectCategory}/classifications/create', [DefectClassificationController::class, 'create'])
-            ->name('defect-categories.classifications.create');
-        Route::post('defect-categories/{defectCategory}/classifications', [DefectClassificationController::class, 'store'])
-            ->name('defect-categories.classifications.store');
-        Route::get('defect-classifications/{defectClassification}/edit', [DefectClassificationController::class, 'edit'])
-            ->name('defect-classifications.edit');
-        Route::patch('defect-classifications/{defectClassification}', [DefectClassificationController::class, 'update'])
-            ->name('defect-classifications.update');
-        Route::patch('defect-classifications/{defectClassification}/status', [DefectClassificationController::class, 'updateStatus'])
-            ->name('defect-classifications.status');
-
         Route::patch(
             'clients/{client}/status',
             [ClientController::class, 'updateStatus'],
         )->name('clients.status');
 
-        Route::scopeBindings()->group(function (): void {
-            Route::resource('clients.units', ClientUnitController::class)
-                ->parameters([
-                    'clients' => 'client',
-                    'units' => 'unit',
-                ])
-                ->shallow()
-                ->except(['destroy']);
-
-            Route::patch(
-                'units/{unit}/status',
-                [ClientUnitController::class, 'updateStatus'],
-            )->name('units.status');
-
-            Route::resource('units.areas', AreaController::class)
-                ->parameters([
-                    'units' => 'unit',
-                    'areas' => 'area',
-                ])
-                ->shallow()
-                ->except(['destroy']);
-
-            Route::patch(
-                'areas/{area}/status',
-                [AreaController::class, 'updateStatus'],
-            )->name('areas.status');
-
-            Route::resource('areas.subareas', SubareaController::class)
-                ->parameters([
-                    'areas' => 'area',
-                    'subareas' => 'subarea',
-                ])
-                ->shallow()
-                ->except(['destroy']);
-
-            Route::patch(
-                'subareas/{subarea}/status',
-                [SubareaController::class, 'updateStatus'],
-            )->name('subareas.status');
-        });
+        Route::scopeBindings()->group(function (): void {});
     });
 });

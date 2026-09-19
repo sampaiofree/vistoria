@@ -22,34 +22,19 @@ final class DefectAssessmentPolicy
 
     public function create(User $user, Inspection $inspection, Defect $defect): bool
     {
-        return $this->activeInOrganization($user)
-            && $this->sameOrganizationInspection($user, $inspection)
-            && $this->sameOrganizationDefect($user, $defect)
-            && $inspection->equipment_id === $defect->equipment_id
-            && $defect->status === DefectStatus::Active
-            && in_array($inspection->status, [
-                InspectionStatus::InProgress,
-                InspectionStatus::InCorrection,
-            ], true)
-            && $inspection->hasAnyResponsibilityForUser(
-                $user,
-                InspectionResponsibility::Preparer,
-            );
+        if (in_array($inspection->status, [InspectionStatus::InProgress, InspectionStatus::InCorrection], true)) {
+            return $user->can('manageFieldContent', $inspection)
+                && $this->sameOrganizationDefect($user, $defect)
+                && $inspection->equipment_id === $defect->equipment_id
+                && $defect->status === DefectStatus::Active;
+        }
+
+        return false;
     }
 
     public function update(User $user, DefectAssessment $assessment): bool
     {
-        return $this->activeInOrganization($user)
-            && $this->sameOrganizationAssessment($user, $assessment)
-            && $assessment->inspection->status !== InspectionStatus::Canceled
-            && in_array($assessment->inspection->status, [
-                InspectionStatus::InProgress,
-                InspectionStatus::InCorrection,
-            ], true)
-            && $assessment->inspection->hasAnyResponsibilityForUser(
-                $user,
-                InspectionResponsibility::Preparer,
-            );
+        return $user->can('manageFieldContent', $assessment->inspection);
     }
 
     public function complete(User $user, DefectAssessment $assessment): bool

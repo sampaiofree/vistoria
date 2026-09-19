@@ -2,12 +2,8 @@
 
 namespace App\Actions\Equipments;
 
-use App\Models\Area;
-use App\Models\Client;
-use App\Models\ClientUnit;
 use App\Models\Defect;
 use App\Models\Equipment;
-use App\Models\Subarea;
 use App\Models\User;
 use App\Services\Tenancy\TenantContext;
 use App\Support\TextNormalizer;
@@ -28,28 +24,37 @@ final class UpdateEquipment
                 ->lockForUpdate()
                 ->findOrFail($equipment->getKey());
 
-            $client = Client::query()
-                ->forOrganization($this->tenant->id())
-                ->findOrFail($data['client_id']);
+            if (! $equipment->isRegistrationEditable()) {
+                throw ValidationException::withMessages([
+                    'equipment' => 'Não é possível editar um equipamento que já possui inspeções ou avarias.',
+                ]);
+            }
 
-            $unit = ClientUnit::query()
-                ->forOrganization($this->tenant->id())
-                ->findOrFail($data['client_unit_id']);
+            $maintenanceItemCode = TextNormalizer::technicalCode($data['maintenance_item_code'] ?? null);
 
-            $area = Area::query()
-                ->forOrganization($this->tenant->id())
-                ->findOrFail($data['area_id']);
-
-            $subarea = isset($data['subarea_id'])
-                ? Subarea::query()
-                    ->forOrganization($this->tenant->id())
-                    ->findOrFail($data['subarea_id'])
-                : null;
-
-            $this->validateHierarchy($client, $unit, $area, $subarea);
+            if ($maintenanceItemCode === null) {
+                throw ValidationException::withMessages(['maintenance_item_code' => 'Informe o item de manutenção.']);
+            }
 
             $tag = TextNormalizer::equipmentTag($data['tag']);
             $defectCodePrefix = TextNormalizer::technicalCode($data['defect_code_prefix'] ?? null);
+
+            if ($defectCodePrefix === null) {
+                throw ValidationException::withMessages(['defect_code_prefix' => 'Informe o prefixo de avaria.']);
+            }
+
+            if (Equipment::withTrashed()->forOrganization($this->tenant->id())
+                ->where('maintenance_item_code', $maintenanceItemCode)
+                ->whereKeyNot($equipment->getKey())->exists()) {
+                throw ValidationException::withMessages(['maintenance_item_code' => 'Já existe um equipamento com este item de manutenção na organização.']);
+            }
+
+            if (Equipment::withTrashed()->forOrganization($this->tenant->id())
+                ->where('defect_code_prefix', $defectCodePrefix)
+                ->whereKeyNot($equipment->getKey())
+                ->exists()) {
+                throw ValidationException::withMessages(['defect_code_prefix' => 'Já existe um equipamento com este prefixo de avaria na organização.']);
+            }
 
             if (
                 $equipment->defect_code_prefix !== $defectCodePrefix
@@ -64,52 +69,25 @@ final class UpdateEquipment
             }
 
             $equipment->update([
-                'client_id' => $client->id,
-                'client_unit_id' => $unit->id,
-                'area_id' => $area->id,
-                'subarea_id' => $subarea?->id,
+                'maintenance_plan_code' => TextNormalizer::technicalCode($data['maintenance_plan_code'] ?? null),
+                'maintenance_item_code' => $maintenanceItemCode,
+                'area_code' => TextNormalizer::technicalCode($data['area_code'] ?? null),
+                'subarea_code' => TextNormalizer::technicalCode($data['subarea_code'] ?? null),
+                'task_list_group' => TextNormalizer::technicalCode($data['task_list_group'] ?? null),
+                'task_list_group_counter' => TextNormalizer::technicalCode($data['task_list_group_counter'] ?? null),
+                'area_name' => TextNormalizer::nullableText($data['area_name'] ?? null),
+                'subarea_name' => TextNormalizer::nullableText($data['subarea_name'] ?? null),
                 'tag' => $tag,
                 'normalized_tag' => $tag,
                 'defect_code_prefix' => $defectCodePrefix,
                 'name' => TextNormalizer::text((string) $data['name']),
                 'description' => TextNormalizer::nullableText($data['description'] ?? null),
-                'manufacturer' => TextNormalizer::nullableText($data['manufacturer'] ?? null),
-                'model' => TextNormalizer::nullableText($data['model'] ?? null),
-                'serial_number' => TextNormalizer::nullableText($data['serial_number'] ?? null),
-                'asset_code' => TextNormalizer::technicalCode($data['asset_code'] ?? null),
                 'abc_code' => TextNormalizer::technicalCode($data['abc_code'] ?? null),
                 'installation_location' => TextNormalizer::nullableText($data['installation_location'] ?? null),
-                'commissioned_at' => $data['commissioned_at'] ?? null,
-                'notes' => TextNormalizer::nullableText($data['notes'] ?? null),
                 'updated_by' => $actor->id,
             ]);
 
             return $equipment->refresh();
         });
-    }
-
-    private function validateHierarchy(
-        Client $client,
-        ClientUnit $unit,
-        Area $area,
-        ?Subarea $subarea,
-    ): void {
-        if ($unit->client_id !== $client->id) {
-            throw ValidationException::withMessages([
-                'client_unit_id' => 'A unidade não pertence ao cliente informado.',
-            ]);
-        }
-
-        if ($area->client_unit_id !== $unit->id) {
-            throw ValidationException::withMessages([
-                'area_id' => 'A área não pertence à unidade informada.',
-            ]);
-        }
-
-        if ($subarea !== null && $subarea->area_id !== $area->id) {
-            throw ValidationException::withMessages([
-                'subarea_id' => 'A subárea não pertence à área informada.',
-            ]);
-        }
     }
 }

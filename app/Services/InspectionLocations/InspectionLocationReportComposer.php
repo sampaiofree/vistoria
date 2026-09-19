@@ -5,15 +5,15 @@ declare(strict_types=1);
 namespace App\Services\InspectionLocations;
 
 use App\Enums\DefectAssessmentStatus;
+use App\Enums\DefectCategory;
 use App\Enums\InspectionLocationMapProcessingStatus;
 use App\Models\AssessmentPhoto;
 use App\Models\DefectAssessment;
-use App\Models\DefectCategory;
-use App\Models\DefectCategoryGutOption;
-use App\Models\DefectClassification;
 use App\Models\Inspection;
 use App\Models\InspectionLocationMap;
 use App\Models\InspectionLocationMarker;
+use App\Services\Classification\DefectClassificationDefinition;
+use App\Services\Classification\NativeDefectCatalog;
 use Illuminate\Support\Collection;
 
 final class InspectionLocationReportComposer
@@ -26,43 +26,29 @@ final class InspectionLocationReportComposer
     /** @return array<string, mixed> */
     public function compose(Inspection $inspection): array
     {
-        $categoryModels = $this->categoryOrder->sort(DefectCategory::query()
-            ->forOrganization($inspection->organization_id)
-            ->whereHas('locationMaps', fn ($query) => $query->where('inspection_id', $inspection->id))
+        $maps = $inspection->locationMaps()
+            ->where('organization_id', $inspection->organization_id)
             ->with([
-                'classifications',
-                'gutOptions',
-                'locationMaps' => fn ($query) => $query
-                    ->where('inspection_id', $inspection->id)
-                    ->with([
-                        'equipmentDocument',
-                        'markers.assessment.classification',
-                        'markers.assessment.defect',
-                        'markers.assessment.quantity',
-                        'markers.assessment.photos',
-                        'markers.photos',
-                    ])
-                    ->orderBy('position')
-                    ->orderBy('id'),
+                'equipmentDocument',
+                'markers.assessment.defect',
+                'markers.assessment.quantity',
+                'markers.assessment.photos',
+                'markers.photos',
             ])
-            ->get());
-        $numbering = $this->photoNumbering->buildForReport($inspection, $categoryModels);
-
-        $categories = $categoryModels
+            ->orderBy('position')
+            ->orderBy('id')
+            ->get();
+        $numbering = $this->photoNumbering->buildForReport($inspection, $maps);
+        $categories = $this->categoryOrder->sort(collect(DefectCategory::cases()))
+            ->filter(fn (DefectCategory $category): bool => $maps->contains(fn (InspectionLocationMap $map): bool => $map->category === $category))
             ->map(fn (DefectCategory $category): array => [
-                'category' => [
-                    'public_id' => $category->public_id,
-                    'code' => $category->code,
-                    'name' => $category->name,
-                    'position' => $category->position,
-                    'requires_location_map' => $category->requires_location_map,
-                ],
-                'maps' => $category->locationMaps
+                'category' => $category->toArray(),
+                'maps' => $maps
+                    ->filter(fn (InspectionLocationMap $map): bool => $map->category === $category)
                     ->map(fn (InspectionLocationMap $map): array => $this->mapPayload(
                         $map,
                         $numbering,
-                        $category->classifications,
-                        $category->gutOptions,
+                        NativeDefectCatalog::classifications($category),
                     ))
                     ->values()
                     ->all(),
@@ -73,7 +59,7 @@ final class InspectionLocationReportComposer
             return collect($category['maps'])
                 ->values()
                 ->map(fn (array $map, int $index): array => [
-                    'id' => $category['category']['public_id'].'-'.$map['public_id'],
+                    'id' => $category['category']['code'].'-'.$map['public_id'],
                     'number' => $index + 1,
                     'category' => $category['category'],
                     'maps' => [$map],
@@ -93,15 +79,13 @@ final class InspectionLocationReportComposer
 
     /**
      * @param  array<string, int>  $numbering
-     * @param  Collection<int, DefectClassification>  $classifications
-     * @param  Collection<int, DefectCategoryGutOption>  $gutOptions
+     * @param  Collection<int, DefectClassificationDefinition>  $classifications
      * @return array<string, mixed>
      */
     private function mapPayload(
         InspectionLocationMap $map,
         array $numbering,
         Collection $classifications,
-        Collection $gutOptions,
     ): array {
         $markers = $map->markers
             ->filter(fn (InspectionLocationMarker $marker): bool => $marker->assessment?->status === DefectAssessmentStatus::Complete)
@@ -149,8 +133,8 @@ final class InspectionLocationReportComposer
                     : null,
             ],
             'marker_count' => $markers->count(),
-            'damage_rows' => $this->damageRows($markers, $numbering, $gutOptions),
-            'classification_legend' => $this->classificationLegend($classifications),
+            'damage_rows' => $this->damageRows($markers, $numbering),
+            'classification_legend' => $this->classificationLegend($classifications, $markers),
             'markers' => $markers
                 ->map(fn (InspectionLocationMarker $marker): array => $this->markerPayload($marker, $numbering))
                 ->values()
@@ -161,21 +145,16 @@ final class InspectionLocationReportComposer
     /**
      * @param  Collection<int, InspectionLocationMarker>  $markers
      * @param  array<string, int>  $numbering
-     * @param  Collection<int, DefectCategoryGutOption>  $gutOptions
      * @return array<int, array<string, mixed>>
      */
-    private function damageRows(Collection $markers, array $numbering, Collection $gutOptions): array
+    private function damageRows(Collection $markers, array $numbering): array
     {
-        $gutOptionsByCriterion = $gutOptions
-            ->groupBy(fn (DefectCategoryGutOption $option): string => $option->criterion->value);
-
         return $markers
             ->groupBy(fn (InspectionLocationMarker $marker): string => (string) $marker->defect_assessment_id)
-            ->map(function (Collection $assessmentMarkers) use ($numbering, $gutOptionsByCriterion): array {
+            ->map(function (Collection $assessmentMarkers) use ($numbering): array {
                 /** @var InspectionLocationMarker $firstMarker */
                 $firstMarker = $assessmentMarkers->first();
                 $assessment = $firstMarker->assessment;
-                $classification = $assessment?->classification;
                 $quantity = $assessment?->quantity;
                 $numbers = $assessment === null
                     ? []
@@ -197,15 +176,13 @@ final class InspectionLocationReportComposer
                         'unit' => mb_strtoupper($quantity->measurement_unit->symbol()),
                     ],
                     'gut' => [
-                        'gravity' => $this->gutCriterionPayload($assessment, 'gravity', $gutOptionsByCriterion),
-                        'urgency' => $this->gutCriterionPayload($assessment, 'urgency', $gutOptionsByCriterion),
-                        'trend' => $this->gutCriterionPayload($assessment, 'trend', $gutOptionsByCriterion),
+                        'gravity' => $this->gutCriterionPayload($assessment, 'gravity'),
+                        'urgency' => $this->gutCriterionPayload($assessment, 'urgency'),
+                        'trend' => $this->gutCriterionPayload($assessment, 'trend'),
                     ],
                     'classification' => [
-                        'code' => $classification?->code
-                            ?? $assessment?->classification_code
-                            ?? data_get($assessment?->classification_snapshot, 'code'),
-                        'color' => $classification?->color,
+                        'code' => data_get($assessment?->classification_snapshot, 'code') ?? $assessment?->classification_code,
+                        'color' => data_get($assessment?->classification_snapshot, 'color'),
                     ],
                 ];
             })
@@ -213,42 +190,32 @@ final class InspectionLocationReportComposer
             ->all();
     }
 
-    /**
-     * @param  Collection<string, Collection<int, DefectCategoryGutOption>>  $optionsByCriterion
-     * @return array{score:?int,color:?string}
-     */
-    private function gutCriterionPayload(
-        ?DefectAssessment $assessment,
-        string $criterion,
-        Collection $optionsByCriterion,
-    ): array {
-        $score = $assessment?->{$criterion};
-        $option = $score === null
-            ? null
-            : $optionsByCriterion->get($criterion, collect())
-                ->first(fn (DefectCategoryGutOption $candidate): bool => $candidate->score === (int) $score);
-
+    /** @return array{score:?int,color:?string} */
+    private function gutCriterionPayload(?DefectAssessment $assessment, string $criterion): array
+    {
         return [
-            'score' => $score === null ? null : (int) $score,
-            'color' => $option?->color,
+            'score' => data_get($assessment?->gut_snapshot, "criteria.{$criterion}.score") ?? $assessment?->{$criterion},
+            'color' => data_get($assessment?->gut_snapshot, "criteria.{$criterion}.color"),
         ];
     }
 
     /**
-     * @param  Collection<int, DefectClassification>  $classifications
-     * @return array<int, array{public_id:string,code:string,color:string}>
+     * @param  Collection<int, DefectClassificationDefinition>  $classifications
+     * @param  Collection<int, InspectionLocationMarker>  $markers
+     * @return list<array{code:string,color:string}>
      */
-    private function classificationLegend(Collection $classifications): array
+    private function classificationLegend(Collection $classifications, Collection $markers): array
     {
-        return $classifications
-            ->filter(fn (DefectClassification $classification): bool => filled($classification->color))
-            ->map(fn (DefectClassification $classification): array => [
-                'public_id' => $classification->public_id,
+        $saved = $markers->map(fn (InspectionLocationMarker $marker): ?array => $marker->assessment?->classification_snapshot)
+            ->filter(fn (?array $snapshot): bool => isset($snapshot['code'], $snapshot['color']))
+            ->map(fn (array $snapshot): array => ['code' => $snapshot['code'], 'color' => $snapshot['color']]);
+
+        return $classifications->map(function (DefectClassificationDefinition $classification) use ($saved): array {
+            return $saved->firstWhere('code', $classification->code) ?? [
                 'code' => $classification->code,
-                'color' => (string) $classification->color,
-            ])
-            ->values()
-            ->all();
+                'color' => $classification->color,
+            ];
+        })->concat($saved)->unique('code')->values()->all();
     }
 
     /** @param array<string, int> $numbering @return array<string, mixed> */

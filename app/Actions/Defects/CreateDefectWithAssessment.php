@@ -4,17 +4,14 @@ declare(strict_types=1);
 
 namespace App\Actions\Defects;
 
-use App\Actions\Classification\ProvisionDefaultDefectTaxonomy;
 use App\Actions\Classification\SaveDefectAssessmentGut;
 use App\Enums\DefectAssessmentCondition;
 use App\Enums\DefectAssessmentStatus;
 use App\Enums\DefectCategory;
 use App\Enums\DefectStatus;
-use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
-use App\Models\DefectCategory as DefectCategoryModel;
 use App\Models\Equipment;
 use App\Models\Inspection;
 use App\Models\User;
@@ -31,7 +28,6 @@ final class CreateDefectWithAssessment
         private readonly DefectCodeGenerator $codeGenerator,
         private readonly CompleteDefectAssessment $completeAssessment,
         private readonly SaveDefectAssessmentGut $saveGut,
-        private readonly ProvisionDefaultDefectTaxonomy $taxonomy,
     ) {}
 
     public function handle(User $actor, Inspection $inspection, array $data): Defect
@@ -66,28 +62,19 @@ final class CreateDefectWithAssessment
                 ]);
             }
 
-            $category = isset($data['defect_category_id']) && $data['defect_category_id'] !== null
-                ? DefectCategoryModel::query()
-                    ->forOrganization($this->tenant->id())
-                    ->whereKey((int) $data['defect_category_id'])
-                    ->where('status', 'active')
-                    ->first()
-                : $this->taxonomy->handle($this->tenant->id());
-
+            $category = DefectCategory::tryFrom((string) ($data['category'] ?? DefectCategory::Civil->value));
             if ($category === null) {
-                throw ValidationException::withMessages(['defect_category_id' => 'A categoria selecionada não está ativa na organização atual.']);
+                throw ValidationException::withMessages(['category' => 'Escolha uma categoria nativa válida.']);
             }
 
-            $generated = $this->codeGenerator->nextForCategory($equipment, $category);
+            $generated = $this->codeGenerator->next($equipment, $category);
 
             $defect = Defect::query()->create([
                 'organization_id' => $this->tenant->id(),
                 'equipment_id' => $equipment->getKey(),
                 'first_inspection_id' => $inspection->getKey(),
-                'defect_category_id' => $category->getKey(),
                 'code' => $generated['code'],
-                // Legacy compatibility until the enum column is removed. The relation is canonical.
-                'category' => DefectCategory::Civil,
+                'category' => $category,
                 'sequence_number' => $generated['number'],
                 'title' => TextNormalizer::text((string) $data['title']),
                 'origin_description' => TextNormalizer::nullableText($data['origin_description'] ?? null),
@@ -139,10 +126,7 @@ final class CreateDefectWithAssessment
             ]);
         }
 
-        if (! $inspection->hasAnyResponsibilityForUser(
-            $actor,
-            InspectionResponsibility::Preparer,
-        )) {
+        if (! $actor->can('manageFieldContent', $inspection)) {
             throw ValidationException::withMessages([
                 'actor' => 'O usuário não está autorizado a criar avarias nesta inspeção.',
             ]);

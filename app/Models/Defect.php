@@ -10,7 +10,6 @@ use App\Enums\DefectStatus;
 use App\Enums\InspectionStatus;
 use App\Models\Concerns\BelongsToOrganization;
 use App\Models\Concerns\HasPublicId;
-use App\Models\DefectCategory as DefectCategoryModel;
 use Database\Factories\DefectFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -28,7 +27,6 @@ final class Defect extends Model
         'organization_id',
         'equipment_id',
         'first_inspection_id',
-        'defect_category_id',
         'code',
         'category',
         'sequence_number',
@@ -57,19 +55,14 @@ final class Defect extends Model
         return $this->belongsTo(Equipment::class);
     }
 
-    public function categoryDefinition(): BelongsTo
-    {
-        return $this->belongsTo(DefectCategoryModel::class, 'defect_category_id');
-    }
-
     public function categoryCode(): string
     {
-        return $this->categoryDefinition?->code ?? $this->category->code();
+        return $this->category->code();
     }
 
     public function categoryLabel(): string
     {
-        return $this->categoryDefinition?->name ?? $this->category->label();
+        return $this->category->label();
     }
 
     public function firstInspection(): BelongsTo

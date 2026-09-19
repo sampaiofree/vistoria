@@ -6,6 +6,7 @@ use App\Actions\Settings\ChangeOrganizationUserStatus;
 use App\Actions\Settings\CreateOrganizationUser;
 use App\Actions\Settings\ResetOrganizationUserPassword;
 use App\Actions\Settings\UpdateOrganizationUser;
+use App\Enums\OperationalRole;
 use App\Enums\UserAccountType;
 use App\Enums\UserStatus;
 use App\Http\Requests\Settings\StoreUserRequest;
@@ -26,6 +27,7 @@ final class UserSettingsController extends Controller
         $search = trim((string) $request->string('search'));
         $status = UserStatus::tryFrom(trim((string) $request->string('status')));
         $accountType = UserAccountType::tryFrom(trim((string) $request->string('account_type')));
+        $operationalRole = OperationalRole::tryFrom(trim((string) $request->string('operational_role')));
 
         $users = User::query()
             ->where('organization_id', $tenant->id())
@@ -36,6 +38,7 @@ final class UserSettingsController extends Controller
                 ->orWhere('email', 'like', "%{$search}%")))
             ->when($status !== null, fn ($query) => $query->where('status', $status->value))
             ->when($accountType !== null, fn ($query) => $query->where('account_type', $accountType->value))
+            ->when($operationalRole !== null, fn ($query) => $query->where('operational_role', $operationalRole->value))
             ->orderBy('name')
             ->paginate(20)
             ->withQueryString()
@@ -47,16 +50,17 @@ final class UserSettingsController extends Controller
                 'search' => $search,
                 'status' => $status?->value ?? '',
                 'account_type' => $accountType?->value ?? '',
+                'operational_role' => $operationalRole?->value ?? '',
             ],
             'status_options' => [
                 ['value' => UserStatus::Active->value, 'label' => 'Ativo'],
                 ['value' => UserStatus::Inactive->value, 'label' => 'Inativo'],
-                ['value' => UserStatus::Suspended->value, 'label' => 'Suspenso'],
             ],
             'account_type_options' => [
-                ['value' => UserAccountType::Member->value, 'label' => 'Membro'],
+                ['value' => UserAccountType::Member->value, 'label' => 'Usuário'],
                 ['value' => UserAccountType::CompanyAdmin->value, 'label' => 'Administrador da Empresa'],
             ],
+            'operational_role_options' => $this->operationalRoleOptions(),
             'create_url' => route('settings.users.create'),
         ]);
     }
@@ -69,9 +73,10 @@ final class UserSettingsController extends Controller
             'action' => route('settings.users.store'),
             'cancel_url' => route('settings.users.index'),
             'account_type_options' => [
-                ['value' => UserAccountType::Member->value, 'label' => 'Membro'],
+                ['value' => UserAccountType::Member->value, 'label' => 'Usuário'],
                 ['value' => UserAccountType::CompanyAdmin->value, 'label' => 'Administrador da Empresa'],
             ],
+            'operational_role_options' => $this->operationalRoleOptions(),
         ]);
     }
 
@@ -100,9 +105,10 @@ final class UserSettingsController extends Controller
                 : null,
             'cancel_url' => route('settings.users.index'),
             'account_type_options' => [
-                ['value' => UserAccountType::Member->value, 'label' => 'Membro'],
+                ['value' => UserAccountType::Member->value, 'label' => 'Usuário'],
                 ['value' => UserAccountType::CompanyAdmin->value, 'label' => 'Administrador da Empresa'],
             ],
+            'operational_role_options' => $this->operationalRoleOptions(),
         ]);
     }
 
@@ -146,12 +152,13 @@ final class UserSettingsController extends Controller
             'name' => $user->name,
             'email' => $user->email,
             'account_type' => $user->account_type->value,
-            'account_type_label' => $user->isCompanyAdmin() ? 'Administrador da Empresa' : 'Membro',
+            'account_type_label' => $user->isCompanyAdmin() ? 'Administrador da Empresa' : 'Usuário',
+            'operational_role' => $user->operational_role?->value,
+            'operational_role_label' => $user->operationalRoleLabel(),
             'status' => $user->status->value,
             'status_label' => match ($user->status) {
                 UserStatus::Active => 'Ativo',
                 UserStatus::Inactive => 'Inativo',
-                UserStatus::Suspended => 'Suspenso',
             },
             'open_inspections_count' => (int) ($user->open_inspections_count ?? 0),
             'is_current_user' => $request->user()?->getKey() === $user->getKey(),
@@ -163,5 +170,14 @@ final class UserSettingsController extends Controller
     private function tenantUser(TenantContext $tenant, User $user): User
     {
         return User::query()->where('organization_id', $tenant->id())->whereKey($user->getKey())->firstOrFail();
+    }
+
+    /** @return array<int, array{value: string, label: string}> */
+    private function operationalRoleOptions(): array
+    {
+        return array_map(
+            fn (OperationalRole $role): array => ['value' => $role->value, 'label' => $role->label()],
+            OperationalRole::cases(),
+        );
     }
 }

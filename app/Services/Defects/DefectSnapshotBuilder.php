@@ -5,16 +5,17 @@ declare(strict_types=1);
 namespace App\Services\Defects;
 
 use App\Models\Defect;
+use App\Services\Classification\NativeDefectCatalog;
 
 final class DefectSnapshotBuilder
 {
-    public const VERSION = 1;
+    public const VERSION = 2;
 
     public function build(Defect $defect): array
     {
-        $defect->loadMissing(['equipment', 'categoryDefinition']);
+        $defect->loadMissing(['equipment']);
 
-        $category = $defect->categoryDefinition;
+        $category = $defect->category;
 
         return [
             'defect' => [
@@ -23,12 +24,8 @@ final class DefectSnapshotBuilder
                 'title' => $defect->title,
                 'category' => $defect->categoryCode(),
                 'category_label' => $defect->categoryLabel(),
-                'category_definition' => $category === null ? null : [
-                    'public_id' => $category->public_id,
-                    'code' => $category->code,
-                    'name' => $category->name,
-                    'description' => $category->description,
-                ],
+                'category_definition' => $category->toArray(),
+                'catalog_version' => NativeDefectCatalog::VERSION,
                 'origin_description' => $defect->origin_description,
                 'status' => $defect->status->value,
                 'sequence_number' => $defect->sequence_number,

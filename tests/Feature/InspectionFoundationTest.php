@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Actions\Inspections\CreateInspection;
+use App\Enums\EquipmentRevisionEmissionType;
 use App\Enums\InspectionType;
 use App\Models\Equipment;
 use App\Models\Inspection;
@@ -12,7 +13,7 @@ use App\Models\Organization;
 use App\Models\User;
 use App\Services\Tenancy\TenantContext;
 use Illuminate\Database\Events\QueryExecuted;
-use Illuminate\Foundation\Testing\DatabaseMigrations;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Validation\ValidationException;
@@ -20,7 +21,7 @@ use Tests\TestCase;
 
 final class InspectionFoundationTest extends TestCase
 {
-    use DatabaseMigrations;
+    use RefreshDatabase;
 
     public function test_concurrent_creations_persist_only_one_open_inspection(): void
     {
@@ -103,7 +104,8 @@ final class InspectionFoundationTest extends TestCase
             $equipment,
             [
                 'inspection_type' => InspectionType::Initial->value,
-                'scheduled_at' => '2026-07-30',
+                'planned_start_on' => '2026-07-30',
+                'planned_end_on' => '2026-07-31',
                 'general_notes' => 'Notas de teste',
             ],
         );
@@ -111,7 +113,9 @@ final class InspectionFoundationTest extends TestCase
         $this->assertMatchesRegularExpression('/^INS-\d{4}-\d{6}$/', (string) $inspection->number);
         $this->assertSame('planned', $inspection->status->value);
         $this->assertSame('initial', $inspection->inspection_type->value);
-        $this->assertSame('2026-07-30', $inspection->scheduled_for?->toDateString());
+        $this->assertSame(EquipmentRevisionEmissionType::ForKnowledge, $inspection->emission_type);
+        $this->assertSame('2026-07-30', $inspection->planned_start_on?->toDateString());
+        $this->assertSame('2026-07-31', $inspection->planned_end_on?->toDateString());
         $this->assertSame($equipment->tag, $inspection->context_snapshot['equipment']['tag']);
         $this->assertSame(1, $inspection->statusHistories()->count());
         $this->assertSame('Inspeção criada.', $inspection->statusHistories()->first()->reason);

@@ -4,40 +4,41 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Inspections;
 
-use App\Actions\Inspections\MarkInspectionReportGenerated;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
+use App\Enums\OperationalRole;
 use App\Models\Equipment;
 use App\Models\Inspection;
 use App\Models\InspectionResponsible;
 use App\Models\Organization;
 use App\Models\User;
-use App\Services\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
 final class InspectionTransitionRoutesTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_member_assigned_to_every_role_can_run_the_full_transition_flow(): void
+    public function test_linked_operational_roles_can_run_the_approved_transition_flow(): void
     {
         $organization = Organization::factory()->create();
-        $actor = User::factory()->for($organization)->create();
+        $inspector = User::factory()->for($organization)->create([
+            'operational_role' => OperationalRole::Inspector,
+        ]);
+        $reviewer = User::factory()->for($organization)->create([
+            'operational_role' => OperationalRole::Reviewer,
+        ]);
+        $releaser = User::factory()->for($organization)->create([
+            'operational_role' => OperationalRole::Releaser,
+        ]);
         $equipment = Equipment::factory()->for($organization)->create();
         $inspection = Inspection::factory()->forEquipment($equipment)->create();
 
-        foreach ([
-            InspectionResponsibility::Preparer,
-            InspectionResponsibility::Reviewer,
-            InspectionResponsibility::Approver,
-            InspectionResponsibility::Releaser,
-        ] as $responsibility) {
-            $this->assignResponsibility($inspection, $actor, $responsibility);
-        }
+        $this->assignResponsibility($inspection, $inspector, InspectionResponsibility::Reviewer);
+        $this->assignResponsibility($inspection, $reviewer, InspectionResponsibility::Approver);
+        $this->assignResponsibility($inspection, $releaser, InspectionResponsibility::Releaser);
 
-        $this->actingAs($actor)
+        $this->actingAs($inspector)
             ->post(route('inspections.start', $inspection))
             ->assertRedirect();
 
@@ -46,7 +47,7 @@ final class InspectionTransitionRoutesTest extends TestCase
         $this->assertNotNull($inspection->started_at);
         $this->assertNotNull($inspection->inspected_on);
 
-        $this->actingAs($actor)
+        $this->actingAs($inspector)
             ->post(route('inspections.submit-for-review', $inspection))
             ->assertRedirect();
 
@@ -54,43 +55,37 @@ final class InspectionTransitionRoutesTest extends TestCase
         $this->assertSame(InspectionStatus::AwaitingReview, $inspection->status);
         $this->assertNotNull($inspection->field_completed_at);
 
-        $this->actingAs($actor)
-            ->post(route('inspections.complete-review', $inspection))
+        $this->actingAs($reviewer)
+            ->post(route('inspections.start-review', $inspection))
             ->assertRedirect();
 
         $inspection->refresh();
-        $this->assertSame(InspectionStatus::AwaitingApproval, $inspection->status);
-        $this->assertNotNull($inspection->reviewed_at);
+        $this->assertSame(InspectionStatus::InReview, $inspection->status);
 
-        $this->actingAs($actor)
+        $this->actingAs($reviewer)
             ->post(route('inspections.approve', $inspection))
             ->assertRedirect();
 
         $inspection->refresh();
-        $this->assertSame(InspectionStatus::Approved, $inspection->status);
+        $this->assertSame(InspectionStatus::AwaitingRelease, $inspection->status);
         $this->assertNotNull($inspection->approved_at);
 
-        app(TenantContext::class)->set($organization);
-        app(MarkInspectionReportGenerated::class)->handle($inspection->refresh(), $actor);
-
-        $inspection->refresh();
-        $this->assertSame(InspectionStatus::ReportGenerated, $inspection->status);
-        $this->assertNotNull($inspection->report_generated_at);
-
-        $this->actingAs($actor)
+        $this->actingAs($releaser)
             ->post(route('inspections.release', $inspection))
             ->assertRedirect();
 
         $inspection->refresh();
         $this->assertSame(InspectionStatus::Released, $inspection->status);
         $this->assertNotNull($inspection->released_at);
-        $this->assertSame(6, $inspection->statusHistories()->count());
+        $this->assertSame(5, $inspection->statusHistories()->count());
     }
 
-    public function test_start_is_blocked_without_preparer_role_or_with_inactive_equipment(): void
+    public function test_start_requires_an_assigned_inspector_and_an_active_equipment(): void
     {
         $organization = Organization::factory()->create();
-        $actor = User::factory()->for($organization)->create();
+        $actor = User::factory()->for($organization)->create([
+            'operational_role' => OperationalRole::Inspector,
+        ]);
 
         $inspectionWithoutPreparer = Inspection::factory()
             ->forEquipment(Equipment::factory()->for($organization)->create())
@@ -118,6 +113,42 @@ final class InspectionTransitionRoutesTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_assigned_inspector_can_start_regardless_of_technical_responsibility(): void
+    {
+        $organization = Organization::factory()->create();
+        $actor = User::factory()->for($organization)->create([
+            'operational_role' => OperationalRole::Inspector,
+        ]);
+        $inspection = Inspection::factory()
+            ->forEquipment(Equipment::factory()->for($organization)->create())
+            ->create();
+
+        $this->assignResponsibility($inspection, $actor, InspectionResponsibility::Reviewer);
+
+        $this->actingAs($actor)
+            ->post(route('inspections.start', $inspection))
+            ->assertRedirect();
+
+        $this->assertSame(InspectionStatus::InProgress, $inspection->fresh()->status);
+    }
+
+    public function test_assigned_non_inspector_cannot_start_an_inspection(): void
+    {
+        $organization = Organization::factory()->create();
+        $actor = User::factory()->for($organization)->create([
+            'operational_role' => OperationalRole::Planner,
+        ]);
+        $inspection = Inspection::factory()
+            ->forEquipment(Equipment::factory()->for($organization)->create())
+            ->create();
+
+        $this->assignResponsibility($inspection, $actor, InspectionResponsibility::Reviewer);
+
+        $this->actingAs($actor)
+            ->post(route('inspections.start', $inspection))
+            ->assertForbidden();
+    }
+
     public function test_submit_for_review_is_blocked_without_reviewer_assignment(): void
     {
         $organization = Organization::factory()->create();
@@ -133,16 +164,65 @@ final class InspectionTransitionRoutesTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_in_progress_transitions_require_an_assigned_inspector(): void
+    {
+        $organization = Organization::factory()->create();
+        $inspector = User::factory()->for($organization)->create([
+            'operational_role' => OperationalRole::Inspector,
+        ]);
+        $admin = User::factory()->for($organization)->create([
+            'account_type' => \App\Enums\UserAccountType::CompanyAdmin,
+            'operational_role' => OperationalRole::Planner,
+        ]);
+        $unassignedInspector = User::factory()->for($organization)->create([
+            'operational_role' => OperationalRole::Inspector,
+        ]);
+        $inspection = Inspection::factory()
+            ->forEquipment(Equipment::factory()->for($organization)->create())
+            ->create(['status' => InspectionStatus::InProgress]);
+
+        $this->assignResponsibility($inspection, $inspector, InspectionResponsibility::Reviewer);
+        $this->assignResponsibility($inspection, $admin, InspectionResponsibility::Preparer);
+
+        $this->assertFalse($admin->can('submitForReview', $inspection));
+        $this->assertFalse($unassignedInspector->can('submitForReview', $inspection));
+
+        foreach ([$admin, $unassignedInspector] as $user) {
+            $this->actingAs($user)
+                ->post(route('inspections.submit-for-review', $inspection))
+                ->assertForbidden();
+        }
+
+        $this->actingAs($inspector)
+            ->post(route('inspections.submit-for-review', $inspection))
+            ->assertRedirect();
+        $this->assertSame(InspectionStatus::AwaitingReview, $inspection->fresh()->status);
+
+        $inspection->refresh()->update(['status' => InspectionStatus::InProgress]);
+
+        $this->assertFalse($admin->can('cancel', $inspection));
+        $this->actingAs($admin)
+            ->post(route('inspections.cancel', $inspection), ['justification' => 'Não autorizado.'])
+            ->assertForbidden();
+
+        $this->actingAs($inspector)
+            ->post(route('inspections.cancel', $inspection), ['justification' => 'Cancelamento necessário.'])
+            ->assertRedirect();
+        $this->assertSame(InspectionStatus::Canceled, $inspection->fresh()->status);
+    }
+
     public function test_return_and_cancel_require_justification(): void
     {
         $organization = Organization::factory()->create();
-        $actor = User::factory()->for($organization)->create();
+        $actor = User::factory()->for($organization)->create([
+            'operational_role' => OperationalRole::Reviewer,
+        ]);
 
         $inspectionForCorrection = Inspection::factory()
             ->forEquipment(Equipment::factory()->for($organization)->create())
-            ->create(['status' => InspectionStatus::AwaitingReview]);
+            ->create(['status' => InspectionStatus::InReview]);
 
-        $this->assignResponsibility($inspectionForCorrection, $actor, InspectionResponsibility::Reviewer);
+        $this->assignResponsibility($inspectionForCorrection, $actor, InspectionResponsibility::Approver);
 
         $this->actingAs($actor)
             ->post(route('inspections.return-for-correction', $inspectionForCorrection), [])
@@ -161,7 +241,7 @@ final class InspectionTransitionRoutesTest extends TestCase
             ->forEquipment(Equipment::factory()->for($organization)->create())
             ->create();
 
-        $this->assignResponsibility($inspectionToCancel, $actor, InspectionResponsibility::Preparer);
+        $this->assignResponsibility($inspectionToCancel, $actor, InspectionResponsibility::Approver);
 
         $this->actingAs($actor)
             ->post(route('inspections.cancel', $inspectionToCancel), [])
@@ -177,69 +257,29 @@ final class InspectionTransitionRoutesTest extends TestCase
         $this->assertSame(InspectionStatus::Canceled, $inspectionToCancel->status);
     }
 
-    public function test_report_generation_requires_a_primary_responsible_for_all_four_roles(): void
+    public function test_releaser_can_return_an_inspection_for_a_new_review_with_justification(): void
     {
         $organization = Organization::factory()->create();
-        $actor = User::factory()->for($organization)->create();
+        $releaser = User::factory()->for($organization)->create([
+            'operational_role' => OperationalRole::Releaser,
+        ]);
         $inspection = Inspection::factory()
             ->forEquipment(Equipment::factory()->for($organization)->create())
-            ->create(['status' => InspectionStatus::Approved]);
+            ->create(['status' => InspectionStatus::AwaitingRelease]);
 
-        foreach ([
-            InspectionResponsibility::Preparer,
-            InspectionResponsibility::Reviewer,
-            InspectionResponsibility::Approver,
-        ] as $responsibility) {
-            $this->assignResponsibility($inspection, $actor, $responsibility, true);
-        }
+        $this->assignResponsibility($inspection, $releaser, InspectionResponsibility::Releaser);
 
-        $releaser = $this->assignResponsibility(
-            $inspection,
-            $actor,
-            InspectionResponsibility::Releaser,
-            false,
-        );
-        app(TenantContext::class)->set($organization);
+        $this->actingAs($releaser)
+            ->post(route('inspections.return-for-review', $inspection), [])
+            ->assertSessionHasErrors('justification');
 
-        try {
-            app(MarkInspectionReportGenerated::class)->handle($inspection, $actor);
-            $this->fail('A geração deveria exigir um Liberador principal.');
-        } catch (ValidationException $exception) {
-            $this->assertArrayHasKey('responsibles', $exception->errors());
-            $this->assertStringContainsString('Liberador', $exception->errors()['responsibles'][0]);
-        }
+        $this->actingAs($releaser)
+            ->post(route('inspections.return-for-review', $inspection), [
+                'justification' => 'A revisão precisa corrigir a consistência do relatório.',
+            ])
+            ->assertRedirect();
 
-        $this->assertSame(InspectionStatus::Approved, $inspection->refresh()->status);
-
-        $releaser->update(['is_primary' => true]);
-        app(MarkInspectionReportGenerated::class)->handle($inspection->refresh(), $actor);
-
-        $this->assertSame(InspectionStatus::ReportGenerated, $inspection->refresh()->status);
-        $this->assertSame(now()->toDateString(), $inspection->report_date?->toDateString());
-    }
-
-    public function test_report_generation_does_not_overwrite_an_existing_report_date(): void
-    {
-        $organization = Organization::factory()->create();
-        $actor = User::factory()->for($organization)->create();
-        $inspection = Inspection::factory()
-            ->forEquipment(Equipment::factory()->for($organization)->create())
-            ->create([
-                'status' => InspectionStatus::Approved,
-                'report_date' => '2024-12-31',
-            ]);
-
-        foreach (InspectionResponsibility::cases() as $responsibility) {
-            $this->assignResponsibility($inspection, $actor, $responsibility);
-        }
-
-        app(TenantContext::class)->set($organization);
-        app(MarkInspectionReportGenerated::class)->handle($inspection->refresh(), $actor);
-
-        $inspection->refresh();
-
-        $this->assertSame(InspectionStatus::ReportGenerated, $inspection->status);
-        $this->assertSame('2024-12-31', $inspection->report_date?->toDateString());
+        $this->assertSame(InspectionStatus::AwaitingReview, $inspection->fresh()->status);
     }
 
     private function assignResponsibility(

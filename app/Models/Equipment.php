@@ -26,30 +26,35 @@ class Equipment extends Model
     protected $table = 'equipments';
 
     protected $fillable = [
-        'organization_id',
-        'client_id',
-        'client_unit_id',
-        'area_id',
-        'subarea_id',
-        'tag',
-        'normalized_tag',
-        'defect_code_prefix',
-        'name',
-        'description',
-        'manufacturer',
-        'model',
-        'serial_number',
-        'asset_code',
-        'abc_code',
-        'installation_location',
-        'commissioned_at',
-        'status',
-        'notes',
-        'decommissioned_at',
-        'decommissioned_by',
-        'decommission_reason',
-        'created_by',
-        'updated_by',
+        'organization_id', // Organização proprietária; sem coluna correspondente na planilha
+        'client_id', // Cliente proprietário; sem coluna correspondente na planilha
+        'maintenance_plan_code', // Plano de manutenção
+        'maintenance_item_code', // Item manutenção
+        'tag', // Campo de ordenação (TAG)
+        'normalized_tag', // Derivado de Campo de ordenação (TAG), normalizado para busca; sem coluna correspondente na planilha
+        'defect_code_prefix', // Prefixo de avaria
+        'name', // Denominação do loc.instalação
+        'description', // Descrição item de manutenção
+        'manufacturer', // Fabricante; sem coluna correspondente na planilha
+        'model', // Modelo; sem coluna correspondente na planilha
+        'serial_number', // Número de série; sem coluna correspondente na planilha
+        'asset_code', // Código patrimonial; sem coluna correspondente na planilha
+        'abc_code', // Código ABC
+        'installation_location', // Local de instalação
+        'area_code', // Area(usina)
+        'area_name', // Area.nome
+        'subarea_code', // Sub-area
+        'subarea_name', // sub-area.nome
+        'task_list_group', // GrpLisTar.
+        'task_list_group_counter', // Numerador de grupos
+        'commissioned_at', // Data de entrada em operação; sem coluna correspondente na planilha
+        'status', // Estado do cadastro; sem coluna correspondente na planilha
+        'notes', // Observações; sem coluna correspondente na planilha
+        'decommissioned_at', // Data da baixa; sem coluna correspondente na planilha
+        'decommissioned_by', // Responsável pela baixa; sem coluna correspondente na planilha
+        'decommission_reason', // Motivo da baixa; sem coluna correspondente na planilha
+        'created_by', // Responsável pelo cadastro; sem coluna correspondente na planilha
+        'updated_by', // Responsável pela última edição; sem coluna correspondente na planilha
     ];
 
     protected function casts(): array
@@ -64,21 +69,6 @@ class Equipment extends Model
     public function client(): BelongsTo
     {
         return $this->belongsTo(Client::class);
-    }
-
-    public function unit(): BelongsTo
-    {
-        return $this->belongsTo(ClientUnit::class, 'client_unit_id');
-    }
-
-    public function area(): BelongsTo
-    {
-        return $this->belongsTo(Area::class);
-    }
-
-    public function subarea(): BelongsTo
-    {
-        return $this->belongsTo(Subarea::class);
     }
 
     public function creator(): BelongsTo
@@ -145,18 +135,20 @@ class Equipment extends Model
 
     public function hasOperationalStructure(): bool
     {
-        return $this->client?->isActive() === true
-            && $this->unit?->isOperationallyActive() === true
-            && $this->area?->isOperationallyActive() === true
-            && (
-                $this->subarea_id === null
-                || $this->subarea?->isOperationallyActive() === true
-            );
+        return $this->client?->isActive() === true;
     }
 
     public function canReceiveInspection(): bool
     {
         return $this->isActive()
             && $this->hasOperationalStructure();
+    }
+
+    public function isRegistrationEditable(): bool
+    {
+        $hasInspections = $this->getAttribute('inspections_exists') ?? $this->inspections()->exists();
+        $hasDefects = $this->getAttribute('defects_exists') ?? $this->defects()->exists();
+
+        return ! $hasInspections && ! $hasDefects;
     }
 }

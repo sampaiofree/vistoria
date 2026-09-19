@@ -39,10 +39,10 @@ function submit() {
 
 <template>
     <AppLayout
-        title="Clientes"
-        subtitle="Cadastro da base operacional vinculada a esta organizacao."
+        title="Cliente"
+        subtitle="Cadastro único da base operacional vinculada a esta organização."
     >
-        <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <!--<section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                 <form class="flex flex-1 flex-col gap-3 sm:flex-row" @submit.prevent="submit">
                     <label class="flex-1">
@@ -51,7 +51,7 @@ function submit() {
                             v-model="form.search"
                             type="search"
                             class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
-                            placeholder="Buscar por nome, razao social ou documento"
+                            placeholder="Buscar por nome, razão social ou documento"
                         >
                     </label>
                     <button
@@ -67,15 +67,15 @@ function submit() {
                     :href="create_url"
                     class="inline-flex items-center justify-center rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-700"
                 >
-                    Novo cliente
+                    Cadastrar cliente
                 </Link>
             </div>
-        </section>
+        </section>-->
 
         <section class="mt-6 rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div class="border-b border-slate-200 px-5 py-4">
                 <div class="text-sm font-semibold text-slate-900">
-                    Clientes
+                    Cliente
                 </div>
                 <div class="text-sm text-slate-500">
                     {{ clients.total }} registro(s)
@@ -89,7 +89,6 @@ function submit() {
                             <th class="px-5 py-3">Logo</th>
                             <th class="px-5 py-3">Cliente</th>
                             <th class="px-5 py-3">Documento</th>
-                            <th class="px-5 py-3">Unidades</th>
                             <th class="px-5 py-3">Status</th>
                             <th class="px-5 py-3 text-right">Acoes</th>
                         </tr>
@@ -120,9 +119,6 @@ function submit() {
                                     {{ formatPhone(client.phone) }}
                                 </div>
                             </td>
-                            <td class="px-5 py-4 text-sm text-slate-600">
-                                {{ client.units_count }}
-                            </td>
                             <td class="px-5 py-4">
                                 <StatusBadge :status="client.status" />
                             </td>
@@ -145,7 +141,7 @@ function submit() {
                             </td>
                         </tr>
                         <tr v-if="clients.data.length === 0">
-                            <td colspan="6" class="px-5 py-10 text-center text-sm text-slate-500">
+                            <td colspan="5" class="px-5 py-10 text-center text-sm text-slate-500">
                                 Nenhum cliente encontrado.
                             </td>
                         </tr>

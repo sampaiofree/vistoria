@@ -12,13 +12,13 @@ use App\Actions\InspectionLocations\StoreInspectionLocationMapSource;
 use App\Actions\InspectionLocations\UpdateInspectionLocationMap;
 use App\Enums\DefectAssessmentCondition;
 use App\Enums\DefectAssessmentStatus;
+use App\Enums\DefectCategory;
 use App\Exceptions\StaleInspectionLocationMapException;
 use App\Http\Controllers\Concerns\ResolvesTenantStructure;
 use App\Http\Requests\InspectionLocations\StoreInspectionLocationMapRequest;
 use App\Http\Requests\InspectionLocations\StoreInspectionLocationMapSourceRequest;
 use App\Http\Requests\InspectionLocations\UpdateInspectionLocationMapRequest;
 use App\Models\DefectAssessment;
-use App\Models\DefectCategory;
 use App\Models\Inspection;
 use App\Models\InspectionLocationMap;
 use App\Services\InspectionLocations\InspectionLocationPhotoNumbering;
@@ -38,15 +38,8 @@ final class InspectionLocationMapController extends Controller
         $inspection = $this->tenantInspection($tenant, $inspection);
         $this->authorize('view', $inspection);
 
-        $categories = DefectCategory::query()
-            ->forOrganization($tenant->id())
-            ->active()
-            ->orderBy('position')
-            ->orderBy('name')
-            ->get()
-            ->filter(fn (DefectCategory $category): bool => $request->user()->can('create', [InspectionLocationMap::class, $inspection, $category]))
-            ->map(fn (DefectCategory $category): array => ['id' => $category->id, 'name' => $category->name, 'code' => $category->code])
-            ->values();
+        $this->authorize('create', [InspectionLocationMap::class, $inspection]);
+        $categories = DefectCategory::options();
 
         return Inertia::render('InspectionLocationMaps/Create', [
             'inspection' => ['number' => $inspection->number, 'equipment' => ['tag' => $inspection->equipment->tag]],
@@ -60,7 +53,7 @@ final class InspectionLocationMapController extends Controller
     {
         $map = $this->tenantInspectionLocationMap($tenant, $map);
         $this->authorize('update', $map);
-        $map->loadMissing(['inspection.equipment', 'category', 'equipmentDocument']);
+        $map->loadMissing(['inspection.equipment', 'equipmentDocument']);
         $map->loadCount('markers');
 
         return Inertia::render('InspectionLocationMaps/Edit', [
@@ -71,7 +64,7 @@ final class InspectionLocationMapController extends Controller
                 'position' => $map->position,
                 'marker_count' => $map->markers_count,
                 'lock_version' => $map->lock_version,
-                'category' => ['name' => $map->category->name, 'code' => $map->category->code],
+                'category' => $map->category->toArray(),
                 'source_kind' => $map->source_kind->value,
                 'source_page' => $map->source_page,
                 'document' => $map->equipmentDocument?->only(['title', 'revision']),
@@ -103,7 +96,7 @@ final class InspectionLocationMapController extends Controller
             422,
             'O mapa excede o limite seguro de marcações.',
         );
-        $map->loadMissing(['inspection.equipment', 'category', 'markers.assessment.defect', 'markers.assessment.photos', 'markers.photos']);
+        $map->loadMissing(['inspection.equipment', 'markers.assessment.defect', 'markers.assessment.photos', 'markers.photos']);
 
         $assessmentQuery = DefectAssessment::query()
             ->forOrganization($tenant->id())
@@ -113,7 +106,7 @@ final class InspectionLocationMapController extends Controller
                 DefectAssessmentCondition::NotLocated->value,
                 DefectAssessmentCondition::NotInspected->value,
             ])
-            ->whereHas('defect', fn ($query) => $query->where('defect_category_id', $map->defect_category_id));
+            ->whereHas('defect', fn ($query) => $query->where('category', $map->category->value));
         abort_if(
             (clone $assessmentQuery)->count() > (int) config('inspection_locations.limits.assessments_per_editor'),
             422,
@@ -143,7 +136,7 @@ final class InspectionLocationMapController extends Controller
                 ]),
                 'background_width' => $map->background_width,
                 'background_height' => $map->background_height,
-                'category' => ['name' => $map->category->name, 'code' => $map->category->code],
+                'category' => $map->category->toArray(),
                 'store_marker_url' => route('inspection-location-maps.markers.store', $map),
                 'reorder_markers_url' => route('inspection-location-maps.markers.reorder', $map),
             ],
@@ -203,8 +196,7 @@ final class InspectionLocationMapController extends Controller
     public function store(StoreInspectionLocationMapRequest $request, TenantContext $tenant, Inspection $inspection, CreateInspectionLocationMap $action): RedirectResponse
     {
         $inspection = $this->tenantInspection($tenant, $inspection);
-        $category = DefectCategory::query()->forOrganization($tenant->id())->whereKey($request->validated('defect_category_id'))->firstOrFail();
-        $this->authorize('create', [InspectionLocationMap::class, $inspection, $category]);
+        $this->authorize('create', [InspectionLocationMap::class, $inspection]);
         $map = $action->handle($request->user(), $inspection, $request->validated());
 
         return redirect()->route('inspection-location-maps.edit', $map)->with('success', 'Mapa de localização criado.');

@@ -6,12 +6,12 @@ namespace App\Http\Controllers;
 
 use App\Actions\Defects\CreateDefectWithAssessment;
 use App\Actions\Defects\CreateRelatedDefect;
+use App\Enums\DefectCategory;
 use App\Http\Controllers\Concerns\ResolvesTenantStructure;
 use App\Http\Requests\Defects\StoreDefectRequest;
 use App\Http\Requests\Defects\StoreRelatedDefectRequest;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
-use App\Models\DefectCategory;
 use App\Models\Inspection;
 use App\Services\Tenancy\TenantContext;
 use Illuminate\Http\RedirectResponse;
@@ -33,20 +33,7 @@ final class DefectController extends Controller
 
         $this->authorize('create', [Defect::class, $inspection]);
 
-        $categories = DefectCategory::query()
-            ->forOrganization($tenant->id())
-            ->active()
-            ->orderBy('position')
-            ->orderBy('name')
-            ->get(['id', 'public_id', 'name', 'code'])
-            ->map(fn (DefectCategory $category): array => [
-                'id' => $category->id,
-                'public_id' => $category->public_id,
-                'name' => $category->name,
-                'code' => $category->code,
-            ])
-            ->values()
-            ->all();
+        $categories = DefectCategory::options();
 
         return Inertia::render('Defects/Create', [
             'inspection' => [
@@ -75,7 +62,6 @@ final class DefectController extends Controller
 
         $defect->loadMissing([
             'equipment.client',
-            'equipment.unit',
             'firstInspection.equipment',
             'draftAssessments.inspection',
             'draftAssessments.creator',
@@ -275,7 +261,7 @@ final class DefectController extends Controller
         $inspection = $assessment->inspection;
 
         $inspectionKey = $inspection?->inspected_on?->getTimestamp()
-            ?? $inspection?->scheduled_for?->getTimestamp()
+            ?? $inspection?->planned_start_on?->getTimestamp()
             ?? $inspection?->created_at?->getTimestamp()
             ?? $inspection?->getKey()
             ?? 0;
@@ -307,14 +293,8 @@ final class DefectController extends Controller
             'previous_condition_label' => $assessment->previousAssessment?->condition?->label(),
             'status' => $assessment->status->value,
             'status_label' => $assessment->status->label(),
-            'defect_classification_id' => $assessment->defect_classification_id,
             'classification_code' => $assessment->classification_code,
-            'classification' => $assessment->classification === null ? null : [
-                'code' => $assessment->classification->code,
-                'name' => $assessment->classification->name,
-                'status' => $assessment->classification->status->value,
-                'severity_rank' => $assessment->classification->severity_rank,
-            ],
+            'classification' => $assessment->classification_snapshot,
             'location_description' => $assessment->location_description,
             'comment' => $assessment->comment,
             'recommendation' => $assessment->recommendation,

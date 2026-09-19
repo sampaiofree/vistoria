@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Settings;
 
+use App\Enums\OperationalRole;
 use App\Enums\UserAccountType;
 use App\Models\User;
 use App\Support\TextNormalizer;
@@ -32,6 +33,7 @@ final class StoreUserRequest extends FormRequest
                 UserAccountType::Member->value,
                 UserAccountType::CompanyAdmin->value,
             ])],
+            'operational_role' => ['required', Rule::enum(OperationalRole::class)],
         ];
     }
 }

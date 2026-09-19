@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Inspections;
 
+use App\Enums\InspectionResponsibility;
+use App\Enums\OperationalRole;
 use App\Enums\InspectionStatus;
 use App\Enums\UserAccountType;
 use App\Models\Equipment;
 use App\Models\Inspection;
+use App\Models\InspectionResponsible;
 use App\Models\Organization;
 use App\Models\User;
 use App\Services\Reports\GeneralAspectsDocument;
@@ -25,13 +28,14 @@ final class InspectionGeneralAspectsTest extends TestCase
         $organization = Organization::factory()->create();
         $admin = User::factory()->for($organization)->create([
             'account_type' => UserAccountType::CompanyAdmin->value,
+            'operational_role' => OperationalRole::Planner,
         ]);
         $inspection = Inspection::factory()
             ->forEquipment(Equipment::factory()->for($organization)->create())
-            ->create();
+            ->create(['status' => InspectionStatus::AwaitingReview]);
 
         $document = $this->document();
-        foreach ([InspectionStatus::Planned, InspectionStatus::Released, InspectionStatus::Canceled] as $status) {
+        foreach ([InspectionStatus::Released, InspectionStatus::Canceled] as $status) {
             $inspection->update(['status' => $status]);
             $workflowTimestamps = $inspection->only(['report_generated_at', 'released_at', 'canceled_at']);
 
@@ -67,7 +71,7 @@ final class InspectionGeneralAspectsTest extends TestCase
         ]);
         $inspection = Inspection::factory()
             ->forEquipment(Equipment::factory()->for($organization)->create())
-            ->create();
+            ->create(['status' => InspectionStatus::AwaitingReview]);
 
         $this->actingAs($admin)
             ->put(route('inspections.general-aspects.update', $inspection), [
@@ -106,7 +110,7 @@ final class InspectionGeneralAspectsTest extends TestCase
         $superAdmin = User::factory()->superAdmin()->create();
         $inspection = Inspection::factory()
             ->forEquipment(Equipment::factory()->for($organization)->create())
-            ->create();
+            ->create(['status' => InspectionStatus::AwaitingReview]);
         $payload = ['schema_version' => 1, 'document' => $this->document()];
 
         foreach ([$member, $otherAdmin, $superAdmin] as $actor) {
@@ -126,7 +130,7 @@ final class InspectionGeneralAspectsTest extends TestCase
         ]);
         $inspection = Inspection::factory()
             ->forEquipment(Equipment::factory()->for($organization)->create())
-            ->create();
+            ->create(['status' => InspectionStatus::AwaitingReview]);
 
         $invalidDocuments = [
             ['schema_version' => 2, 'document' => $this->document()],
@@ -156,21 +160,25 @@ final class InspectionGeneralAspectsTest extends TestCase
         $inspection = Inspection::factory()
             ->forEquipment(Equipment::factory()->for($organization)->create())
             ->create([
+                'status' => InspectionStatus::Planned,
                 'general_notes' => json_encode([
                     'schema_version' => 1,
                     'document' => $this->document(),
                 ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
             ]);
+        InspectionResponsible::factory()->forInspection($inspection, $member)->create([
+            'responsibility' => InspectionResponsibility::Reviewer,
+        ]);
 
         $this->actingAs($admin)
             ->get(route('inspections.show', $inspection))
             ->assertInertia(fn (Assert $page) => $page
                 ->where('general_aspects.schema_version', 1)
                 ->where('general_aspects.has_content', true)
-                ->where('general_aspects.can_edit', true)
-                ->where('general_aspects.update_url', route('inspections.general-aspects.update', $inspection))
+                ->where('general_aspects.can_edit', false)
+                ->where('general_aspects.update_url', null)
                 ->where('general_aspects.document.content.0.content.0.text', 'Descrição técnica')
-                ->has('capabilities.manage_general_aspects.action'));
+                ->where('capabilities.manage_general_aspects', false));
 
         $this->actingAs($member)
             ->get(route('inspections.show', $inspection))
@@ -193,6 +201,7 @@ final class InspectionGeneralAspectsTest extends TestCase
         $organization = Organization::factory()->create();
         $admin = User::factory()->for($organization)->create([
             'account_type' => UserAccountType::CompanyAdmin->value,
+            'operational_role' => OperationalRole::Planner,
         ]);
         $stored = json_encode([
             'schema_version' => 1,
@@ -201,10 +210,17 @@ final class InspectionGeneralAspectsTest extends TestCase
         $inspection = Inspection::factory()
             ->forEquipment(Equipment::factory()->for($organization)->create())
             ->create(['general_notes' => $stored]);
+        InspectionResponsible::factory()
+            ->forInspection($inspection, $admin)
+            ->create(['responsibility' => InspectionResponsibility::Preparer, 'is_primary' => true]);
+        $inspector = User::factory()->for($organization)->create(['operational_role' => OperationalRole::Inspector]);
 
         $this->actingAs($admin)
             ->put(route('inspections.update', $inspection), [
-                'scheduled_for' => '2026-08-20',
+                'equipment_id' => $inspection->equipment_id,
+                'inspector_id' => $inspector->id,
+                'planned_start_on' => '2026-08-20',
+                'planned_end_on' => '2026-08-20',
                 'general_notes' => 'Tentativa de sobrescrita pelo formulário antigo',
             ])
             ->assertRedirect(route('inspections.show', $inspection));

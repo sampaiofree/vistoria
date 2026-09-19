@@ -17,18 +17,6 @@ const props = defineProps({
         type: Object,
         required: true,
     },
-    unit: {
-        type: Object,
-        required: true,
-    },
-    area: {
-        type: Object,
-        required: true,
-    },
-    subarea: {
-        type: Object,
-        default: null,
-    },
     can: {
         type: Object,
         required: true,
@@ -190,11 +178,6 @@ function setCurrent() {
                 </p>
                 <p class="mt-2 text-sm text-slate-500">
                     <Link :href="client.show_url" class="font-medium text-teal-700 hover:text-teal-800">{{ client.name }}</Link>
-                    /
-                    <Link :href="unit.show_url" class="font-medium text-teal-700 hover:text-teal-800">{{ unit.name }}</Link>
-                    /
-                    <Link :href="area.show_url" class="font-medium text-teal-700 hover:text-teal-800">{{ area.name }}</Link>
-                    <span v-if="subarea"> / <Link :href="subarea.show_url" class="font-medium text-teal-700 hover:text-teal-800">{{ subarea.name }}</Link></span>
                 </p>
             </div>
         </section>

@@ -24,7 +24,7 @@ final class InspectionOverviewController extends Controller
     ): InertiaResponse {
         $inspection = Inspection::query()
             ->forOrganization($tenant->id())
-            ->with(['equipment.client', 'equipment.unit', 'overviewBlocks.photos'])
+            ->with(['equipment.client', 'overviewBlocks.photos'])
             ->whereKey($inspection->getKey())
             ->firstOrFail();
         $this->authorize('view', $inspection);

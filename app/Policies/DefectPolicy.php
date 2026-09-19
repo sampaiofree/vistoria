@@ -26,16 +26,7 @@ final class DefectPolicy
 
     public function create(User $user, Inspection $inspection): bool
     {
-        return $this->activeInOrganization($user)
-            && $this->sameOrganizationInspection($user, $inspection)
-            && in_array($inspection->status, [
-                InspectionStatus::InProgress,
-                InspectionStatus::InCorrection,
-            ], true)
-            && $inspection->hasAnyResponsibilityForUser(
-                $user,
-                InspectionResponsibility::Preparer,
-            );
+        return $user->can('manageFieldContent', $inspection);
     }
 
     public function createRelated(User $user, Inspection $inspection, Defect $defect): bool

@@ -4,14 +4,15 @@ declare(strict_types=1);
 
 namespace Tests\Feature\InspectionLocations;
 
+use App\Enums\DefectCategory;
 use App\Enums\InspectionLocationMapProcessingStatus;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
+use App\Enums\OperationalRole;
 use App\Enums\UserAccountType;
 use App\Models\AssessmentPhoto;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
-use App\Models\DefectCategory;
 use App\Models\Equipment;
 use App\Models\Inspection;
 use App\Models\InspectionLocationMap;
@@ -31,10 +32,10 @@ final class InspectionLocationPagesTest extends TestCase
     public function test_location_index_uses_real_flat_read_model(): void
     {
         [$organization, $user, $inspection] = $this->context();
-        $civil = DefectCategory::query()->where('organization_id', $organization->id)->where('code', 'CV')->firstOrFail();
-        $category = DefectCategory::factory()->create(['organization_id' => $organization->id, 'code' => 'TA', 'position' => 2]);
-        $defect = Defect::factory()->forEquipment($inspection->equipment, $inspection)->create(['defect_category_id' => $category->id]);
-        $secondDefect = Defect::factory()->forEquipment($inspection->equipment, $inspection)->create(['defect_category_id' => $category->id]);
+        $civil = DefectCategory::Civil;
+        $category = DefectCategory::AnticorrosiveTreatment;
+        $defect = Defect::factory()->forEquipment($inspection->equipment, $inspection)->create(['category' => $category->value]);
+        $secondDefect = Defect::factory()->forEquipment($inspection->equipment, $inspection)->create(['category' => $category->value]);
         $located = DefectAssessment::factory()->forDefect($defect, $inspection)->create();
         $unlocated = DefectAssessment::factory()->forDefect($secondDefect, $inspection)->create();
         $firstMap = InspectionLocationMap::factory()->forInspection($inspection, $category)->create(['title' => 'Mapa 2', 'position' => 2]);
@@ -43,20 +44,20 @@ final class InspectionLocationPagesTest extends TestCase
 
         $otherOrganization = Organization::factory()->create();
         $otherInspection = Inspection::factory()->forEquipment(Equipment::factory()->for($otherOrganization)->create())->create();
-        $otherCategory = DefectCategory::query()->where('organization_id', $otherOrganization->id)->firstOrFail();
+        $otherCategory = DefectCategory::Civil;
         InspectionLocationMap::factory()->forInspection($otherInspection, $otherCategory)->create(['title' => 'Mapa estrangeiro']);
 
         $payload = app(InspectionLocationPresenter::class)->present($inspection, $user);
-        $group = collect($payload['categories'])->firstWhere('category.id', $category->id);
+        $group = collect($payload['categories'])->firstWhere('category.code', $category->value);
 
-        $this->assertSame($civil->id, $payload['categories'][0]['category']['id']);
+        $this->assertSame($civil->value, $payload['categories'][0]['category']['code']);
         $this->assertSame(['Mapa 1', 'Mapa 2'], collect($group['maps'])->pluck('title')->all());
         $this->assertSame([$unlocated->id], collect($group['unlocated_assessments'])->pluck('id')->all());
         $this->assertFalse(collect($payload['categories'])->flatMap(fn (array $item): array => $item['maps'])->contains('title', 'Mapa estrangeiro'));
         $this->assertTrue($group['capabilities']['create']);
         $this->assertSame(['Mapa 1', 'Mapa 2'], collect($payload['maps'])->pluck('title')->all());
         $this->assertSame([$unlocated->id], collect($payload['unlocated_assessments'])->pluck('id')->all());
-        $this->assertSame('TA', $payload['maps'][0]['category']['code']);
+        $this->assertSame('TAC', $payload['maps'][0]['category']['code']);
 
         $this->actingAs($user)
             ->get(route('inspections.locations', $inspection))
@@ -64,7 +65,7 @@ final class InspectionLocationPagesTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->component('InspectionLocationMaps/Index')
                 ->where('active_tab', 'locations')
-                ->has('categories', 4)
+                ->has('categories', 3)
                 ->has('maps', 2)
                 ->has('unlocated_assessments', 1));
     }
@@ -72,7 +73,7 @@ final class InspectionLocationPagesTest extends TestCase
     public function test_create_and_edit_pages_are_available_to_responsible_user(): void
     {
         [, $user, $inspection] = $this->context();
-        $category = DefectCategory::query()->where('organization_id', $inspection->organization_id)->firstOrFail();
+        $category = DefectCategory::Civil;
         $map = InspectionLocationMap::factory()->forInspection($inspection, $category)->create();
 
         $this->actingAs($user)
@@ -91,12 +92,9 @@ final class InspectionLocationPagesTest extends TestCase
     public function test_editor_exposes_the_same_canonical_numbers_used_by_the_report(): void
     {
         [$organization, $user, $inspection] = $this->context();
-        $category = DefectCategory::query()
-            ->where('organization_id', $organization->id)
-            ->where('code', 'TAC')
-            ->firstOrFail();
+        $category = DefectCategory::AnticorrosiveTreatment;
         $defect = Defect::factory()->forEquipment($inspection->equipment, $inspection)->create([
-            'defect_category_id' => $category->id,
+            'category' => $category->value,
         ]);
         $assessment = DefectAssessment::factory()->forDefect($defect, $inspection)->complete()->create();
         $map = InspectionLocationMap::factory()->forInspection($inspection, $category)->create([
@@ -129,7 +127,10 @@ final class InspectionLocationPagesTest extends TestCase
     private function context(): array
     {
         $organization = Organization::factory()->create();
-        $user = User::factory()->for($organization)->create(['account_type' => UserAccountType::CompanyAdmin]);
+        $user = User::factory()->for($organization)->create([
+            'account_type' => UserAccountType::CompanyAdmin,
+            'operational_role' => OperationalRole::Inspector,
+        ]);
         $equipment = Equipment::factory()->for($organization)->create();
         $inspection = Inspection::factory()->forEquipment($equipment)->create(['status' => InspectionStatus::InProgress]);
         InspectionResponsible::factory()->forInspection($inspection, $user)->create(['responsibility' => InspectionResponsibility::Preparer]);

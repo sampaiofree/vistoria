@@ -7,12 +7,11 @@ namespace App\Actions\Classification;
 use App\Enums\DefectAssessmentCondition;
 use App\Enums\GutCriterion;
 use App\Models\DefectAssessment;
-use App\Models\DefectCategory;
 use App\Models\User;
 use App\Services\Classification\GutClassificationResolver;
+use App\Services\Classification\NativeDefectCatalog;
 use App\Services\Tenancy\TenantContext;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\ValidationException;
 
 final class SaveDefectAssessmentGut
 {
@@ -41,19 +40,7 @@ final class SaveDefectAssessmentGut
                 return $this->clear($assessment, $actor);
             }
 
-            $categoryId = $assessment->defect->defect_category_id;
-
-            if ($categoryId === null) {
-                throw ValidationException::withMessages([
-                    'gut' => 'A avaria ainda não possui categoria configurável.',
-                ]);
-            }
-
-            $category = DefectCategory::query()
-                ->forOrganization($this->tenant->id())
-                ->with(['gutOptions', 'classifications'])
-                ->lockForUpdate()
-                ->findOrFail($categoryId);
+            $category = $assessment->defect->category;
             $values = [
                 GutCriterion::Gravity->value => $data['gravity'] ?? null,
                 GutCriterion::Urgency->value => $data['urgency'] ?? null,
@@ -64,7 +51,6 @@ final class SaveDefectAssessmentGut
 
             $classificationValues = $classification === null
                 ? [
-                    'defect_classification_id' => null,
                     'classification_code' => null,
                     'classification_priority' => null,
                     'deadline_months' => null,
@@ -74,24 +60,16 @@ final class SaveDefectAssessmentGut
                     'classified_by' => null,
                 ]
                 : [
-                    'defect_classification_id' => $classification->getKey(),
                     'classification_code' => $classification->code,
                     'classification_priority' => $classification->severity_rank,
                     'deadline_months' => null,
                     'recommended_due_date' => null,
                     'classification_snapshot' => [
-                        'source' => 'gut_range',
-                        'classification_id' => $classification->public_id,
-                        'category_id' => $category->public_id,
-                        'category_code' => $category->code,
-                        'category_name' => $category->name,
-                        'code' => $classification->code,
-                        'name' => $classification->name,
-                        'description' => $classification->description,
-                        'position' => $classification->position,
-                        'severity_rank' => $classification->severity_rank,
-                        'lower_limit' => $classification->lower_limit,
-                        'upper_limit' => $classification->upper_limit,
+                        'source' => 'native_catalog',
+                        'catalog_version' => NativeDefectCatalog::VERSION,
+                        'category_code' => $category->value,
+                        'category_name' => $category->label(),
+                        ...$classification->toArray(),
                         'gut_score' => $resolved['gut_score'],
                     ],
                     'classified_at' => now(),
@@ -104,10 +82,10 @@ final class SaveDefectAssessmentGut
                 'trend' => $resolved['criteria'][GutCriterion::Trend->value]['score'],
                 'gut_score' => $resolved['gut_score'],
                 'gut_snapshot' => [
-                    'source' => 'defect_category',
-                    'category_id' => $category->public_id,
-                    'category_code' => $category->code,
-                    'category_name' => $category->name,
+                    'source' => 'native_catalog',
+                    'catalog_version' => NativeDefectCatalog::VERSION,
+                    'category_code' => $category->value,
+                    'category_name' => $category->label(),
                     'criteria' => $resolved['criteria'],
                     'score' => $resolved['gut_score'],
                 ],
@@ -130,7 +108,6 @@ final class SaveDefectAssessmentGut
             'gut_snapshot' => null,
             'gut_classified_at' => null,
             'gut_classified_by' => null,
-            'defect_classification_id' => null,
             'classification_code' => null,
             'classification_priority' => null,
             'deadline_months' => null,

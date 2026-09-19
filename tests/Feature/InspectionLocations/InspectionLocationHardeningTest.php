@@ -7,15 +7,16 @@ namespace Tests\Feature\InspectionLocations;
 use App\Actions\InspectionLocations\CreateInspectionLocationMap;
 use App\Actions\InspectionLocations\DeleteInspectionLocationMap;
 use App\Actions\InspectionLocations\StoreInspectionLocationMapSource;
+use App\Enums\DefectCategory;
 use App\Enums\InspectionLocationMapProcessingStatus;
 use App\Enums\InspectionLocationMapSourceKind;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
+use App\Enums\OperationalRole;
 use App\Enums\UserAccountType;
 use App\Jobs\ProcessInspectionLocationMap;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
-use App\Models\DefectCategory;
 use App\Models\Equipment;
 use App\Models\EquipmentDocument;
 use App\Models\Inspection;
@@ -259,7 +260,7 @@ final class InspectionLocationHardeningTest extends TestCase
         try {
             app(CreateInspectionLocationMap::class)->handle($user, $inspection, [
                 'title' => 'Mapa excedente',
-                'defect_category_id' => $category->id,
+                'category' => $category->value,
             ]);
             $this->fail('O limite de mapas deveria ser aplicado.');
         } catch (ValidationException $exception) {
@@ -412,16 +413,16 @@ final class InspectionLocationHardeningTest extends TestCase
     private function context(): array
     {
         $organization = Organization::factory()->create();
-        $user = User::factory()->for($organization)->create(['account_type' => UserAccountType::CompanyAdmin]);
+        $user = User::factory()->for($organization)->create([
+            'account_type' => UserAccountType::CompanyAdmin,
+            'operational_role' => OperationalRole::Inspector,
+        ]);
         $equipment = Equipment::factory()->for($organization)->create();
         $inspection = Inspection::factory()->forEquipment($equipment)->create(['status' => InspectionStatus::InProgress]);
         InspectionResponsible::factory()->forInspection($inspection, $user)->create([
             'responsibility' => InspectionResponsibility::Preparer,
         ]);
-        $category = DefectCategory::factory()->create([
-            'organization_id' => $organization->id,
-            'code' => 'TA',
-        ]);
+        $category = DefectCategory::AnticorrosiveTreatment;
         $map = InspectionLocationMap::factory()->forInspection($inspection, $category)->create([
             'position' => 1,
             'processing_status' => InspectionLocationMapProcessingStatus::Ready,
@@ -433,7 +434,7 @@ final class InspectionLocationHardeningTest extends TestCase
     private function assessment(Inspection $inspection, DefectCategory $category): DefectAssessment
     {
         $defect = Defect::factory()->forEquipment($inspection->equipment, $inspection)->create([
-            'defect_category_id' => $category->id,
+            'category' => $category->value,
         ]);
 
         return DefectAssessment::factory()->forDefect($defect, $inspection)->create();

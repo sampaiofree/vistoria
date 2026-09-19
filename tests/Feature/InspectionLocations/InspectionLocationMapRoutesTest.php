@@ -4,13 +4,14 @@ declare(strict_types=1);
 
 namespace Tests\Feature\InspectionLocations;
 
+use App\Enums\DefectCategory;
 use App\Enums\InspectionLocationMapProcessingStatus;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
+use App\Enums\OperationalRole;
 use App\Enums\UserAccountType;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
-use App\Models\DefectCategory;
 use App\Models\Equipment;
 use App\Models\Inspection;
 use App\Models\InspectionLocationMap;
@@ -34,7 +35,7 @@ final class InspectionLocationMapRoutesTest extends TestCase
 
         $response = $this->actingAs($user)->post(route('inspections.location-maps.store', $inspection), [
             'title' => 'Mapa CIVIL',
-            'defect_category_id' => $category->id,
+            'category' => $category->value,
         ]);
         $response->assertRedirect();
         $map = InspectionLocationMap::query()->firstOrFail();
@@ -144,7 +145,7 @@ final class InspectionLocationMapRoutesTest extends TestCase
     {
         [, $user, $inspection, $category] = $this->context();
         $defect = Defect::factory()->forEquipment($inspection->equipment, $inspection)->create([
-            'defect_category_id' => $category->id,
+            'category' => $category->value,
         ]);
         $assessment = DefectAssessment::factory()->forDefect($defect, $inspection)->create();
         $map = InspectionLocationMap::factory()->forInspection($inspection, $category)->create();
@@ -167,11 +168,14 @@ final class InspectionLocationMapRoutesTest extends TestCase
     private function context(): array
     {
         $organization = Organization::factory()->create();
-        $user = User::factory()->for($organization)->create(['account_type' => UserAccountType::CompanyAdmin]);
+        $user = User::factory()->for($organization)->create([
+            'account_type' => UserAccountType::CompanyAdmin,
+            'operational_role' => OperationalRole::Inspector,
+        ]);
         $equipment = Equipment::factory()->for($organization)->create();
         $inspection = Inspection::factory()->forEquipment($equipment)->create(['status' => InspectionStatus::InProgress]);
         InspectionResponsible::factory()->forInspection($inspection, $user)->create(['responsibility' => InspectionResponsibility::Preparer]);
-        $category = DefectCategory::factory()->create(['organization_id' => $organization->id, 'code' => 'MAP']);
+        $category = DefectCategory::Civil;
 
         return [$organization, $user, $inspection, $category];
     }

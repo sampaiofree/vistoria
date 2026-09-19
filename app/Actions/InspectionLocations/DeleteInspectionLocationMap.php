@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\InspectionLocations\InspectionLocationAssetGuard;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 use RuntimeException;
 use Throwable;
 
@@ -19,6 +20,10 @@ final class DeleteInspectionLocationMap
 
     public function handle(User $actor, InspectionLocationMap $map): void
     {
+        if (! $actor->can('manageFieldContent', $map->inspection)) {
+            throw ValidationException::withMessages(['map' => 'O mapa não está disponível para edição.']);
+        }
+
         $paths = $this->ownedAssets($map);
 
         DB::transaction(function () use ($actor, $map): void {

@@ -31,12 +31,15 @@ final class EquipmentPolicy
     {
         return $user->isActive()
             && $user->isCompanyAdmin()
-            && $this->sameOrganization($user, $equipment);
+            && $this->sameOrganization($user, $equipment)
+            && $equipment->isRegistrationEditable();
     }
 
     public function changeStatus(User $user, Equipment $equipment): bool
     {
-        return $this->update($user, $equipment);
+        return $user->isActive()
+            && $user->isCompanyAdmin()
+            && $this->sameOrganization($user, $equipment);
     }
 
     private function sameOrganization(User $user, Equipment $equipment): bool

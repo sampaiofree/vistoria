@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Inspections;
 
 use App\Enums\UserAccountType;
+use App\Enums\InspectionStatus;
 use App\Models\Equipment;
 use App\Models\EquipmentDocument;
 use App\Models\Inspection;
@@ -27,7 +28,7 @@ final class InspectionReferenceDocumentRoutesTest extends TestCase
                 'account_type' => UserAccountType::CompanyAdmin->value,
             ]);
         $inspection = Inspection::factory()
-            ->create(['organization_id' => $organization->id]);
+            ->create(['organization_id' => $organization->id, 'status' => InspectionStatus::AwaitingReview]);
         $equipment = $inspection->equipment;
 
         $documentV1 = EquipmentDocument::factory()
@@ -89,7 +90,7 @@ final class InspectionReferenceDocumentRoutesTest extends TestCase
                 'account_type' => UserAccountType::CompanyAdmin->value,
             ]);
         $inspection = Inspection::factory()
-            ->create(['organization_id' => $organization->id]);
+            ->create(['organization_id' => $organization->id, 'status' => InspectionStatus::AwaitingReview]);
         $otherEquipment = Equipment::factory()
             ->for($organization)
             ->create();
@@ -113,7 +114,7 @@ final class InspectionReferenceDocumentRoutesTest extends TestCase
                 'account_type' => UserAccountType::CompanyAdmin->value,
             ]);
         $inspection = Inspection::factory()
-            ->create(['organization_id' => $organization->id]);
+            ->create(['organization_id' => $organization->id, 'status' => InspectionStatus::AwaitingReview]);
         $equipment = $inspection->equipment;
         $document = EquipmentDocument::factory()
             ->forEquipment($equipment)

@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace App\Services\InspectionLocations;
 
 use App\Enums\DefectAssessmentCondition;
+use App\Enums\DefectCategory;
 use App\Enums\InspectionLocationMapProcessingStatus;
 use App\Models\DefectAssessment;
-use App\Models\DefectCategory;
 use App\Models\Inspection;
 use App\Models\InspectionLocationMap;
 use App\Models\User;
@@ -18,12 +18,12 @@ final class InspectionLocationPresenter
     /** @return array<string, mixed> */
     public function present(Inspection $inspection, User $user): array
     {
-        $inspection->loadMissing(['equipment.client', 'equipment.unit', 'referenceDocuments.document', 'previousInspection']);
+        $inspection->loadMissing(['equipment.client', 'referenceDocuments.document', 'previousInspection']);
 
         $maps = InspectionLocationMap::query()
             ->forOrganization($inspection->organization_id)
             ->where('inspection_id', $inspection->id)
-            ->with(['markers', 'equipmentDocument', 'category'])
+            ->with(['markers', 'equipmentDocument'])
             ->orderBy('position')
             ->orderBy('id')
             ->get();
@@ -31,22 +31,11 @@ final class InspectionLocationPresenter
         $assessments = DefectAssessment::query()
             ->forOrganization($inspection->organization_id)
             ->where('inspection_id', $inspection->id)
-            ->with(['defect.categoryDefinition', 'locationMarkers'])
+            ->with(['defect', 'locationMarkers'])
             ->orderBy('id')
             ->get();
 
-        $categoryIds = $maps->pluck('defect_category_id')
-            ->merge($assessments->pluck('defect.defect_category_id'))
-            ->filter()
-            ->unique();
-
-        $categories = DefectCategory::query()
-            ->forOrganization($inspection->organization_id)
-            ->where(fn ($query) => $query->active()->orWhereIn('id', $categoryIds))
-            ->orderBy('position')
-            ->orderBy('name')
-            ->orderBy('id')
-            ->get();
+        $categories = collect(DefectCategory::cases());
 
         return [
             'inspection' => [
@@ -60,21 +49,19 @@ final class InspectionLocationPresenter
                     'tag' => $inspection->equipment->tag,
                     'name' => $inspection->equipment->name,
                     'client' => $inspection->equipment->client?->name,
-                    'unit' => $inspection->equipment->unit?->name,
                 ],
                 'show_url' => route('inspections.show', $inspection),
             ],
             'categories' => $categories->map(fn (DefectCategory $category): array => $this->categoryPayload(
                 $category,
-                $maps->where('defect_category_id', $category->id),
-                $assessments->filter(fn (DefectAssessment $assessment): bool => (int) $assessment->defect?->defect_category_id === (int) $category->id),
+                $maps->filter(fn (InspectionLocationMap $map): bool => $map->category === $category),
+                $assessments->filter(fn (DefectAssessment $assessment): bool => $assessment->defect?->category === $category),
                 $inspection,
                 $user,
             ))->values()->all(),
             'maps' => $maps->map(fn (InspectionLocationMap $map): array => $this->mapPayload($map, $user))->values()->all(),
             'unlocated_assessments' => $this->unlocatedAssessmentsPayload($assessments),
             'unresolved_markers' => $this->unresolvedMarkersPayload($maps),
-            'coverage' => $this->coveragePayload($categories, $maps, $assessments),
             'progress' => [
                 'completed' => $assessments->filter(fn (DefectAssessment $assessment): bool => $assessment->status->value === 'complete')->count(),
                 'total' => $assessments->count(),
@@ -83,7 +70,7 @@ final class InspectionLocationPresenter
                     : (int) round($assessments->filter(fn (DefectAssessment $assessment): bool => $assessment->status->value === 'complete')->count() / $assessments->count() * 100),
             ],
             'create_url' => route('inspections.location-maps.create', $inspection),
-            'can_create' => $categories->contains(fn (DefectCategory $category): bool => $user->can('create', [InspectionLocationMap::class, $inspection, $category])),
+            'can_create' => $user->can('create', [InspectionLocationMap::class, $inspection]),
             'copy_previous' => $user->can('copyPrevious', [InspectionLocationMap::class, $inspection]) && $maps->isEmpty()
                 ? [
                     'url' => route('inspections.location-maps.copy-previous', $inspection),
@@ -99,13 +86,7 @@ final class InspectionLocationPresenter
     private function categoryPayload(DefectCategory $category, Collection $maps, Collection $assessments, Inspection $inspection, User $user): array
     {
         return [
-            'category' => [
-                'id' => $category->id,
-                'public_id' => $category->public_id,
-                'name' => $category->name,
-                'code' => $category->code,
-                'requires_location_map' => (bool) $category->requires_location_map,
-            ],
+            'category' => $category->toArray(),
             'maps' => $maps->map(fn (InspectionLocationMap $map): array => $this->mapPayload($map, $user))->values()->all(),
             'unlocated_assessments' => $assessments
                 ->filter(fn (DefectAssessment $assessment): bool => ! in_array($assessment->condition, [
@@ -131,7 +112,7 @@ final class InspectionLocationPresenter
                 ->values()
                 ->all(),
             'capabilities' => [
-                'create' => $user->can('create', [InspectionLocationMap::class, $inspection, $category]),
+                'create' => $user->can('create', [InspectionLocationMap::class, $inspection]),
             ],
         ];
     }
@@ -144,12 +125,7 @@ final class InspectionLocationPresenter
             'id' => $map->id,
             'public_id' => $map->public_id,
             'title' => $map->title,
-            'category' => $map->category === null ? null : [
-                'id' => $map->category->id,
-                'public_id' => $map->category->public_id,
-                'name' => $map->category->name,
-                'code' => $map->category->code,
-            ],
+            'category' => $map->category->toArray(),
             'description' => $map->description,
             'position' => $map->position,
             'lock_version' => $map->lock_version,
@@ -199,10 +175,7 @@ final class InspectionLocationPresenter
                 'title' => $assessment->defect->title,
                 'location_description' => $assessment->location_description,
                 'status' => $assessment->status->value,
-                'category' => $assessment->defect->categoryDefinition === null ? null : [
-                    'code' => $assessment->defect->categoryDefinition->code,
-                    'name' => $assessment->defect->categoryDefinition->name,
-                ],
+                'category' => $assessment->defect->category->toArray(),
                 'show_url' => route('defect-assessments.show', $assessment),
             ])->values()->all();
     }
@@ -215,10 +188,7 @@ final class InspectionLocationPresenter
                 'public_id' => $marker->public_id,
                 'label' => $marker->label,
                 'map_title' => $map->title,
-                'category' => $map->category === null ? null : [
-                    'code' => $map->category->code,
-                    'name' => $map->category->name,
-                ],
+                'category' => $map->category->toArray(),
                 'edit_url' => route('inspection-location-maps.editor', $map),
             ]))
             ->values()
@@ -233,39 +203,6 @@ final class InspectionLocationPresenter
             InspectionLocationMapProcessingStatus::Ready => 'Disponível',
             InspectionLocationMapProcessingStatus::Failed => 'Falha',
         };
-    }
-
-    /** @param Collection<int, DefectCategory> $categories @param Collection<int, InspectionLocationMap> $maps @param Collection<int, DefectAssessment> $assessments */
-    private function coveragePayload(Collection $categories, Collection $maps, Collection $assessments): array
-    {
-        $requiredCategoryIds = $categories
-            ->where('requires_location_map', true)
-            ->pluck('id');
-        $requiredAssessments = $assessments
-            ->filter(fn (DefectAssessment $assessment): bool => $requiredCategoryIds->contains($assessment->defect?->defect_category_id))
-            ->reject(fn (DefectAssessment $assessment): bool => in_array($assessment->condition, [
-                DefectAssessmentCondition::NotLocated,
-                DefectAssessmentCondition::NotInspected,
-            ], true));
-        $requiredMaps = $maps->whereIn('defect_category_id', $requiredCategoryIds);
-        $missingMarkers = $requiredAssessments
-            ->filter(fn (DefectAssessment $assessment): bool => $assessment->locationMarkers->isEmpty())
-            ->count();
-        $unreadyMaps = $requiredMaps
-            ->reject(fn (InspectionLocationMap $map): bool => $map->processing_status === InspectionLocationMapProcessingStatus::Ready)
-            ->count();
-
-        return [
-            'enabled_categories' => $requiredCategoryIds->count(),
-            'required_assessments' => $requiredAssessments->count(),
-            'located_assessments' => $requiredAssessments->count() - $missingMarkers,
-            'missing_markers' => $missingMarkers,
-            'map_count' => $requiredMaps->count(),
-            'ready_maps' => $requiredMaps->count() - $unreadyMaps,
-            'unready_maps' => $unreadyMaps,
-            'is_complete' => $requiredAssessments->isEmpty()
-                || ($requiredMaps->isNotEmpty() && $missingMarkers === 0 && $unreadyMaps === 0),
-        ];
     }
 
     private function tabs(Inspection $inspection, int $assessmentCount, int $mapCount): array

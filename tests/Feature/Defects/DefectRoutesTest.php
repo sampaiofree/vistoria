@@ -4,21 +4,21 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Defects;
 
-use App\Actions\Classification\ProvisionDefaultDefectTaxonomy;
 use App\Enums\DefectAssessmentCondition;
 use App\Enums\DefectAssessmentStatus;
+use App\Enums\DefectCategory;
 use App\Enums\DefectRelationType;
 use App\Enums\DefectStatus;
 use App\Enums\InspectionLocationMapProcessingStatus;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
+use App\Enums\OperationalRole;
 use App\Enums\PhotoProcessingStatus;
 use App\Enums\UserAccountType;
 use App\Jobs\ProcessAssessmentPhoto;
 use App\Models\AssessmentPhoto;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
-use App\Models\DefectCategory;
 use App\Models\Equipment;
 use App\Models\Inspection;
 use App\Models\InspectionLocationMap;
@@ -66,7 +66,7 @@ final class DefectRoutesTest extends TestCase
         $this->assertSame($inspection->id, $defect->first_inspection_id);
         $this->assertSame('VT009-CV-001', $defect->code);
         $this->assertSame(DefectStatus::Active->value, $defect->status->value);
-        $this->assertSame('civil', $defect->category->value);
+        $this->assertSame('CV', $defect->category->value);
         $this->assertSame(1, $defect->sequence_number);
         $this->assertCount(1, $defect->draftAssessments);
         $this->assertNull($defect->latestAssessment);
@@ -114,7 +114,7 @@ final class DefectRoutesTest extends TestCase
         $this->assertSame($inspection->id, $defect->first_inspection_id);
         $this->assertSame('VT009-CV-001', $defect->code);
         $this->assertSame(DefectStatus::Active->value, $defect->status->value);
-        $this->assertSame('civil', $defect->category->value);
+        $this->assertSame('CV', $defect->category->value);
         $this->assertSame(1, $defect->sequence_number);
         $this->assertNotNull($defect->latestAssessment);
         $this->assertSame(DefectAssessmentCondition::New->value, $defect->latestAssessment->condition->value);
@@ -161,6 +161,7 @@ final class DefectRoutesTest extends TestCase
             ->for($otherOrganization)
             ->create([
                 'account_type' => UserAccountType::CompanyAdmin->value,
+                'operational_role' => OperationalRole::Inspector->value,
             ]);
         $otherEquipment = Equipment::factory()
             ->for($otherOrganization)
@@ -203,25 +204,32 @@ final class DefectRoutesTest extends TestCase
         );
     }
 
-    public function test_sequence_is_scoped_by_the_selected_taxonomy_category(): void
+    public function test_sequence_is_scoped_by_the_selected_native_category(): void
     {
         [$organization, $admin, , $inspection] = $this->createInspectionReadyForDefects();
-        $tac = DefectCategory::query()
-            ->where('organization_id', $organization->id)
-            ->where('code', 'TAC')
-            ->firstOrFail();
+        $tac = DefectCategory::AnticorrosiveTreatment;
 
         $this->actingAs($admin)->post(route('inspections.defects.store', $inspection), [
             'title' => 'Avaria civil',
         ])->assertRedirect();
 
         $this->actingAs($admin)->post(route('inspections.defects.store', $inspection), [
-            'defect_category_id' => $tac->id,
+            'category' => $tac->value,
             'title' => 'Novo tac',
         ])->assertRedirect();
 
+        $this->post(route('inspections.defects.store', $inspection), [
+            'category' => DefectCategory::StructuralRecovery->value,
+            'title' => 'Novo rec',
+        ])->assertRedirect()->assertSessionHasNoErrors();
+
+        $this->post(route('inspections.defects.store', $inspection), [
+            'category' => $tac->value,
+            'title' => 'Segundo tac',
+        ])->assertRedirect()->assertSessionHasNoErrors();
+
         $this->assertSame(
-            ['VT009-CV-001', 'VT009-TAC-001'],
+            ['VT009-CV-001', 'VT009-REC-001', 'VT009-TAC-001', 'VT009-TAC-002'],
             Defect::query()
                 ->where('organization_id', $organization->id)
                 ->orderBy('code')
@@ -230,7 +238,19 @@ final class DefectRoutesTest extends TestCase
         );
     }
 
-    public function test_equipment_prefix_cannot_change_after_a_defect_exists(): void
+    public function test_unknown_and_retired_category_values_are_rejected_without_allocating_numbers(): void
+    {
+        [, $admin, , $inspection] = $this->createInspectionReadyForDefects();
+        foreach (['civil', 'unknown'] as $category) {
+            $this->actingAs($admin)->post(route('inspections.defects.store', $inspection), [
+                'category' => $category, 'title' => 'Categoria inválida',
+            ])->assertSessionHasErrors('category');
+        }
+        $this->assertDatabaseCount('defects', 0);
+        $this->assertDatabaseCount('defect_code_sequences', 0);
+    }
+
+    public function test_equipment_cannot_be_edited_after_a_defect_exists(): void
     {
         [$organization, $admin, $equipment, $inspection] = $this->createInspectionReadyForDefects();
 
@@ -240,24 +260,12 @@ final class DefectRoutesTest extends TestCase
 
         $this->actingAs($admin)
             ->put(route('equipments.update', $equipment), [
-                'client_id' => $equipment->client_id,
-                'client_unit_id' => $equipment->client_unit_id,
-                'area_id' => $equipment->area_id,
-                'subarea_id' => $equipment->subarea_id,
+                'maintenance_item_code' => $equipment->maintenance_item_code,
                 'tag' => $equipment->tag,
                 'defect_code_prefix' => 'VT010',
                 'name' => $equipment->name,
-                'description' => $equipment->description,
-                'manufacturer' => $equipment->manufacturer,
-                'model' => $equipment->model,
-                'serial_number' => $equipment->serial_number,
-                'asset_code' => $equipment->asset_code,
-                'abc_code' => $equipment->abc_code,
-                'installation_location' => $equipment->installation_location,
-                'commissioned_at' => $equipment->commissioned_at?->toDateString(),
-                'notes' => $equipment->notes,
             ])
-            ->assertSessionHasErrors('defect_code_prefix');
+            ->assertForbidden();
     }
 
     public function test_defect_creation_is_blocked_without_prefix(): void
@@ -267,6 +275,7 @@ final class DefectRoutesTest extends TestCase
             ->for($organization)
             ->create([
                 'account_type' => UserAccountType::CompanyAdmin->value,
+                'operational_role' => OperationalRole::Inspector->value,
             ]);
         $equipment = Equipment::factory()
             ->for($organization)
@@ -528,14 +537,14 @@ final class DefectRoutesTest extends TestCase
             'recommendation' => 'Monitorar o ponto indicado.',
         ]);
 
-        $assessment = DefectAssessment::query()->with('defect.categoryDefinition')->firstOrFail();
+        $assessment = DefectAssessment::query()->with('defect')->firstOrFail();
         $assessment->update([
             'assessed_at' => now()->subDay(),
             'defect_snapshot' => ['legacy' => true],
         ]);
         $previousAssessedAt = $assessment->assessed_at;
         $map = InspectionLocationMap::factory()
-            ->forInspection($inspection, $assessment->defect->categoryDefinition)
+            ->forInspection($inspection, $assessment->defect->category)
             ->create(['processing_status' => InspectionLocationMapProcessingStatus::Ready]);
         $marker = InspectionLocationMarker::factory()->forMapAndAssessment($map, $assessment)->create();
         $payload = [
@@ -966,8 +975,10 @@ final class DefectRoutesTest extends TestCase
         $this->actingAs($admin)
             ->put(route('defect-assessments.quantity.update', $assessment), [
                 'quantity' => [
-                    'measurement_value' => 1.5,
-                    'measurement_unit' => 'm2',
+                    'length' => 1.5,
+                    'height' => 1,
+                    'width' => 1,
+                    'quantity' => 1,
                 ],
             ])
             ->assertRedirect();
@@ -1095,20 +1106,13 @@ final class DefectRoutesTest extends TestCase
             ->for($organization)
             ->create([
                 'account_type' => UserAccountType::CompanyAdmin->value,
+                'operational_role' => OperationalRole::Inspector->value,
             ]);
         $equipment = Equipment::factory()
             ->for($organization)
             ->create([
                 'defect_code_prefix' => 'VT009',
             ]);
-        $category = app(ProvisionDefaultDefectTaxonomy::class)->handle($organization->id);
-
-        $category->classifications()->orderBy('position')->get()->each(
-            fn ($classification, int $index) => $classification->update([
-                'lower_limit' => $index + 1,
-                'upper_limit' => $index + 1,
-            ]),
-        );
         $inspection = Inspection::factory()
             ->forEquipment($equipment)
             ->create([

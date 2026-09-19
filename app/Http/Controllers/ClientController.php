@@ -11,7 +11,6 @@ use App\Http\Requests\Clients\StoreClientRequest;
 use App\Http\Requests\Clients\UpdateClientRequest;
 use App\Http\Requests\UpdateRegistrationStatusRequest;
 use App\Models\Client;
-use App\Models\ClientUnit;
 use App\Services\Tenancy\TenantContext;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -38,7 +37,6 @@ final class ClientController extends Controller
                         ->orWhere('document', 'like', "%{$search}%");
                 });
             })
-            ->withCount('units')
             ->orderBy('name')
             ->paginate(20)
             ->withQueryString()
@@ -53,7 +51,6 @@ final class ClientController extends Controller
                     ? Storage::disk('public')->url($client->logo_path)
                     : null,
                 'status' => $client->status->value,
-                'units_count' => $client->units_count,
                 'show_url' => route('clients.show', $client),
                 'edit_url' => route('clients.edit', $client),
                 'status_url' => route('clients.status', $client),
@@ -105,24 +102,6 @@ final class ClientController extends Controller
 
         $this->authorize('view', $client);
 
-        $units = $client->units()
-            ->forOrganization($tenant->id())
-            ->withCount('areas')
-            ->orderBy('name')
-            ->paginate(10)
-            ->withQueryString()
-            ->through(fn ($unit): array => [
-                'public_id' => $unit->public_id,
-                'name' => $unit->name,
-                'code' => $unit->code,
-                'status' => $unit->status->value,
-                'areas_count' => $unit->areas_count,
-                'show_url' => route('units.show', $unit),
-                'edit_url' => route('units.edit', $unit),
-                'status_url' => route('units.status', $unit),
-                'can_update' => $request->user()->can('update', $unit),
-            ]);
-
         return Inertia::render('Clients/Show', [
             'client' => [
                 'public_id' => $client->public_id,
@@ -139,11 +118,8 @@ final class ClientController extends Controller
                 'show_url' => route('clients.show', $client),
                 'edit_url' => route('clients.edit', $client),
                 'status_url' => route('clients.status', $client),
-                'create_unit_url' => route('clients.units.create', $client),
             ],
-            'units' => $units,
             'can' => [
-                'create_unit' => $request->user()->can('create', ClientUnit::class),
                 'update' => $request->user()->can('update', $client),
             ],
         ]);

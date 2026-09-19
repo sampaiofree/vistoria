@@ -4,14 +4,15 @@ declare(strict_types=1);
 
 namespace Tests\Feature\InspectionLocations;
 
+use App\Enums\DefectCategory;
 use App\Enums\InspectionLocationMapProcessingStatus;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
+use App\Enums\OperationalRole;
 use App\Enums\UserAccountType;
 use App\Models\AssessmentPhoto;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
-use App\Models\DefectCategory;
 use App\Models\Equipment;
 use App\Models\Inspection;
 use App\Models\InspectionLocationMap;
@@ -42,7 +43,7 @@ final class InspectionLocationMarkerPhotoTest extends TestCase
         $this->assertSame([$second->public_id, $first->public_id], $marker->fresh()->photos->pluck('public_id')->all());
         $this->assertSame([1, 2], $marker->fresh()->photos->pluck('pivot.position')->all());
 
-        $otherDefect = Defect::factory()->forEquipment($inspection->equipment, $inspection)->create(['defect_category_id' => $map->defect_category_id]);
+        $otherDefect = Defect::factory()->forEquipment($inspection->equipment, $inspection)->create(['category' => $map->category]);
         $otherAssessment = DefectAssessment::factory()->forDefect($otherDefect, $inspection)->create();
         $foreignPhoto = AssessmentPhoto::factory()->create(['organization_id' => $inspection->organization_id, 'inspection_id' => $inspection->id, 'defect_assessment_id' => $otherAssessment->id]);
 
@@ -86,9 +87,9 @@ final class InspectionLocationMarkerPhotoTest extends TestCase
         ])->assertRedirect();
 
         $numbering = app(InspectionLocationPhotoNumbering::class)->buildForReport($inspection);
-        $this->assertSame([$photo->public_id => 1], $numbering);
+        $this->assertSame([$photo->public_id => 5], $numbering);
         $this->assertArrayNotHasKey($pending->public_id, $numbering);
-        $this->assertSame([1], app(InspectionLocationPhotoNumbering::class)->numbersForMarker($marker->fresh(), $numbering));
+        $this->assertSame([5], app(InspectionLocationPhotoNumbering::class)->numbersForMarker($marker->fresh(), $numbering));
     }
 
     public function test_map_can_use_any_photo_from_the_manual_gallery_order(): void
@@ -114,12 +115,15 @@ final class InspectionLocationMarkerPhotoTest extends TestCase
     private function context(): array
     {
         $organization = Organization::factory()->create();
-        $user = User::factory()->for($organization)->create(['account_type' => UserAccountType::CompanyAdmin]);
+        $user = User::factory()->for($organization)->create([
+            'account_type' => UserAccountType::CompanyAdmin,
+            'operational_role' => OperationalRole::Inspector,
+        ]);
         $equipment = Equipment::factory()->for($organization)->create();
         $inspection = Inspection::factory()->forEquipment($equipment)->create(['status' => InspectionStatus::InProgress]);
         InspectionResponsible::factory()->forInspection($inspection, $user)->create(['responsibility' => InspectionResponsibility::Preparer]);
-        $category = DefectCategory::factory()->create(['organization_id' => $organization->id, 'code' => 'TA']);
-        $defect = Defect::factory()->forEquipment($equipment, $inspection)->create(['defect_category_id' => $category->id]);
+        $category = DefectCategory::AnticorrosiveTreatment;
+        $defect = Defect::factory()->forEquipment($equipment, $inspection)->create(['category' => $category->value]);
         $assessment = DefectAssessment::factory()->forDefect($defect, $inspection)->complete()->create();
         $map = InspectionLocationMap::factory()->forInspection($inspection, $category)->create(['processing_status' => InspectionLocationMapProcessingStatus::Ready]);
         $marker = InspectionLocationMarker::factory()->forMapAndAssessment($map, $assessment)->create();

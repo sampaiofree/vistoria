@@ -7,6 +7,7 @@ namespace Tests\Feature\Inspections;
 use App\Enums\EquipmentRevisionEmissionType;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
+use App\Enums\OperationalRole;
 use App\Enums\UserAccountType;
 use App\Models\Equipment;
 use App\Models\Inspection;
@@ -28,7 +29,12 @@ final class InspectionReportMetadataTest extends TestCase
             'account_type' => UserAccountType::CompanyAdmin->value,
         ]);
         $member = User::factory()->for($organization)->create();
-        $inspection = Inspection::factory()->forEquipment(Equipment::factory()->for($organization)->create())->create();
+        $inspection = Inspection::factory()
+            ->forEquipment(Equipment::factory()->for($organization)->create())
+            ->create(['status' => InspectionStatus::AwaitingReview]);
+        InspectionResponsible::factory()->forInspection($inspection, $member)->create([
+            'responsibility' => InspectionResponsibility::Reviewer,
+        ]);
         $this->actingAs($admin)
             ->put(route('inspections.report-metadata.update', $inspection), [
                 'emission_type' => EquipmentRevisionEmissionType::ForApproval->value,
@@ -58,6 +64,7 @@ final class InspectionReportMetadataTest extends TestCase
                 ->where('report_metadata.report_designer', 'PROJETISTA III')
                 ->where('report_metadata.designer_i_report_number', 'SM-IIE-1717')
                 ->where('report_metadata.can_edit', true)
+                ->where('report_metadata.can_edit_restricted_fields', true)
                 ->where('capabilities.manage_report_metadata.action', route('inspections.report-metadata.update', $inspection)));
 
         $this->actingAs($member)
@@ -77,66 +84,165 @@ final class InspectionReportMetadataTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->where('report_metadata.emission_type', EquipmentRevisionEmissionType::ForApproval->value)
                 ->where('report_metadata.can_edit', false)
+                ->where('report_metadata.can_edit_restricted_fields', false)
                 ->has('emission_options'));
     }
 
-    public function test_report_generation_requires_emission_and_preserves_report_date(): void
+    public function test_inspector_admin_can_edit_other_metadata_but_not_restricted_report_fields(): void
     {
         $organization = Organization::factory()->create();
-        $admin = User::factory()->for($organization)->create([
+        $inspector = User::factory()->for($organization)->create([
             'account_type' => UserAccountType::CompanyAdmin->value,
+            'operational_role' => OperationalRole::Inspector->value,
         ]);
         $inspection = Inspection::factory()
             ->forEquipment(Equipment::factory()->for($organization)->create())
             ->create([
-                'status' => InspectionStatus::Approved,
-                'report_date' => '2026-01-15',
+                'status' => InspectionStatus::AwaitingReview,
+                'emission_type' => EquipmentRevisionEmissionType::ForKnowledge,
+                'report_date' => '2026-08-11',
+                'service_order' => 'OS-42',
+                'external_report_number' => 'REL-EXT-42',
+                'report_designer' => 'PROJETISTA II',
+                'designer_i_report_number' => 'SM-IIE-1717',
+                'first_page_text_template' => 'Texto original',
             ]);
 
-        foreach (InspectionResponsibility::cases() as $responsibility) {
-            InspectionResponsible::factory()->forInspection($inspection, $admin)->primary()->create([
-                'responsibility' => $responsibility,
+        $this->actingAs($inspector)
+            ->get(route('inspections.show', $inspection))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('report_metadata.can_edit', true)
+                ->where('report_metadata.can_edit_restricted_fields', false));
+
+        $unchangedRestrictedFields = [
+            'emission_type' => EquipmentRevisionEmissionType::ForKnowledge->value,
+            'report_date' => '2026-08-11',
+            'service_order' => 'OS-42',
+            'external_report_number' => 'REL-EXT-42',
+        ];
+
+        $this->actingAs($inspector)
+            ->put(route('inspections.report-metadata.update', $inspection), [
+                ...$unchangedRestrictedFields,
+                'report_designer' => 'PROJETISTA III',
+                'designer_i_report_number' => 'SM-IIE-1718',
+                'first_page_text_template' => 'Texto atualizado',
+            ])
+            ->assertRedirect(route('inspections.show', $inspection));
+
+        $inspection->refresh();
+        $this->assertSame('OS-42', $inspection->service_order);
+        $this->assertSame('REL-EXT-42', $inspection->external_report_number);
+        $this->assertSame('PROJETISTA III', $inspection->report_designer);
+        $this->assertSame('SM-IIE-1718', $inspection->designer_i_report_number);
+        $this->assertSame('Texto atualizado', $inspection->first_page_text_template);
+
+        $this->actingAs($inspector)
+            ->put(route('inspections.report-metadata.update', $inspection), [
+                'emission_type' => EquipmentRevisionEmissionType::ForApproval->value,
+                'report_date' => '2026-08-12',
+                'service_order' => 'OS-43',
+                'external_report_number' => 'REL-EXT-43',
+                'report_designer' => 'PROJETISTA IV',
+                'designer_i_report_number' => 'SM-IIE-1719',
+                'first_page_text_template' => 'Não deve persistir',
+            ])
+            ->assertSessionHasErrors([
+                'emission_type',
+                'report_date',
+                'service_order',
+                'external_report_number',
             ]);
+
+        $inspection->refresh();
+        $this->assertSame(EquipmentRevisionEmissionType::ForKnowledge, $inspection->emission_type);
+        $this->assertSame('2026-08-11', $inspection->report_date?->toDateString());
+        $this->assertSame('OS-42', $inspection->service_order);
+        $this->assertSame('REL-EXT-42', $inspection->external_report_number);
+        $this->assertSame('PROJETISTA III', $inspection->report_designer);
+    }
+
+    public function test_only_an_assigned_inspector_can_manage_an_inspection_in_progress(): void
+    {
+        $organization = Organization::factory()->create();
+        $inspector = User::factory()->for($organization)->create([
+            'operational_role' => OperationalRole::Inspector->value,
+        ]);
+        $admin = User::factory()->for($organization)->create([
+            'account_type' => UserAccountType::CompanyAdmin->value,
+            'operational_role' => OperationalRole::Planner->value,
+        ]);
+        $unassignedInspector = User::factory()->for($organization)->create([
+            'operational_role' => OperationalRole::Inspector->value,
+        ]);
+        $inspection = Inspection::factory()
+            ->forEquipment(Equipment::factory()->for($organization)->create())
+            ->create([
+                'status' => InspectionStatus::InProgress,
+                'emission_type' => EquipmentRevisionEmissionType::ForKnowledge,
+                'report_date' => '2026-08-11',
+                'service_order' => 'OS-42',
+                'external_report_number' => 'REL-EXT-42',
+            ]);
+        InspectionResponsible::factory()->forInspection($inspection, $inspector)->create([
+            'responsibility' => InspectionResponsibility::Reviewer,
+        ]);
+
+        $this->actingAs($inspector)
+            ->get(route('inspections.show', $inspection))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('capabilities.manage_report_metadata.action', route('inspections.report-metadata.update', $inspection))
+                ->where('capabilities.manage_general_aspects.action', route('inspections.general-aspects.update', $inspection))
+                ->where('capabilities.assign_responsibles.action', route('inspections.responsibles.store', $inspection))
+                ->where('capabilities.manage_references.action', route('inspections.reference-documents.update', $inspection))
+                ->where('report_metadata.can_edit', true)
+                ->where('report_metadata.can_edit_restricted_fields', false));
+
+        $unchangedRestrictedFields = [
+            'emission_type' => EquipmentRevisionEmissionType::ForKnowledge->value,
+            'report_date' => '2026-08-11',
+            'service_order' => 'OS-42',
+            'external_report_number' => 'REL-EXT-42',
+        ];
+
+        $this->actingAs($inspector)
+            ->put(route('inspections.report-metadata.update', $inspection), [
+                ...$unchangedRestrictedFields,
+                'report_designer' => 'PROJETISTA III',
+                'designer_i_report_number' => 'SM-IIE-1718',
+                'first_page_text_template' => 'Texto atualizado',
+            ])
+            ->assertRedirect(route('inspections.show', $inspection));
+
+        $this->actingAs($inspector)
+            ->put(route('inspections.report-metadata.update', $inspection), [
+                ...$unchangedRestrictedFields,
+                'service_order' => 'OS-ALTERADA',
+                'report_designer' => 'PROJETISTA IV',
+                'first_page_text_template' => 'Texto atualizado',
+            ])
+            ->assertSessionHasErrors('service_order');
+
+        foreach ([$admin, $unassignedInspector] as $user) {
+            $this->actingAs($user)
+                ->put(route('inspections.report-metadata.update', $inspection), [
+                    ...$unchangedRestrictedFields,
+                    'report_designer' => 'NÃO DEVE ATUALIZAR',
+                ])
+                ->assertForbidden();
         }
 
         $this->actingAs($admin)
-            ->post(route('inspections.generate-report', $inspection))
-            ->assertSessionHasErrors('emission_type');
-
-        $inspection->update(['emission_type' => EquipmentRevisionEmissionType::Approved]);
-
-        $this->actingAs($admin)
-            ->post(route('inspections.generate-report', $inspection))
-            ->assertRedirect();
-
-        $inspection->refresh();
-        $this->assertSame(InspectionStatus::ReportGenerated, $inspection->status);
-        $this->assertSame('2026-01-15', $inspection->report_date?->toDateString());
-    }
-
-    public function test_generated_metadata_cannot_clear_emission_or_date(): void
-    {
-        $organization = Organization::factory()->create();
-        $admin = User::factory()->for($organization)->create([
-            'account_type' => UserAccountType::CompanyAdmin->value,
-        ]);
-        $inspection = Inspection::factory()
-            ->forEquipment(Equipment::factory()->for($organization)->create())
-            ->create([
-                'status' => InspectionStatus::ReportGenerated,
-                'report_generated_at' => now(),
-                'report_date' => '2026-01-15',
-                'emission_type' => EquipmentRevisionEmissionType::Approved,
-            ]);
+            ->get(route('inspections.show', $inspection))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('capabilities.manage_report_metadata', false)
+                ->where('capabilities.manage_general_aspects', false)
+                ->where('capabilities.assign_responsibles', false)
+                ->where('capabilities.manage_references', false));
 
         $this->actingAs($admin)
-            ->put(route('inspections.report-metadata.update', $inspection), [
-                'emission_type' => null,
-                'report_date' => null,
-                'service_order' => null,
-                'first_page_text_template' => null,
-            ])
-            ->assertSessionHasErrors(['emission_type', 'report_date']);
+            ->put(route('inspections.general-aspects.update', $inspection), [])
+            ->assertForbidden();
     }
 
     public function test_external_report_number_is_optional_but_limited_to_150_characters(): void
@@ -147,7 +253,10 @@ final class InspectionReportMetadataTest extends TestCase
         ]);
         $inspection = Inspection::factory()
             ->forEquipment(Equipment::factory()->for($organization)->create())
-            ->create(['external_report_number' => 'REL-ORIGINAL']);
+            ->create([
+                'status' => InspectionStatus::AwaitingReview,
+                'external_report_number' => 'REL-ORIGINAL',
+            ]);
 
         $this->actingAs($admin)
             ->put(route('inspections.report-metadata.update', $inspection), [
@@ -170,7 +279,7 @@ final class InspectionReportMetadataTest extends TestCase
         ]);
         $inspection = Inspection::factory()
             ->forEquipment(Equipment::factory()->for($organization)->create())
-            ->create();
+            ->create(['status' => InspectionStatus::AwaitingReview]);
 
         $this->assertSame('PROJETISTA II', $inspection->report_designer);
 
@@ -213,7 +322,7 @@ final class InspectionReportMetadataTest extends TestCase
         ]);
         $inspection = Inspection::factory()
             ->forEquipment(Equipment::factory()->for($organization)->create())
-            ->create();
+            ->create(['status' => InspectionStatus::AwaitingReview]);
         $basePayload = [
             'emission_type' => EquipmentRevisionEmissionType::ForApproval->value,
             'report_date' => '2026-08-15',

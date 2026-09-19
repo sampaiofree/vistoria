@@ -15,9 +15,6 @@ final class InspectionSnapshotBuilder
         $equipment->loadMissing([
             'organization',
             'client',
-            'unit',
-            'area',
-            'subarea',
         ]);
 
         return [
@@ -33,25 +30,16 @@ final class InspectionSnapshotBuilder
                 'legal_name' => $equipment->client->legal_name,
                 'document' => $equipment->client->document,
             ],
-            'unit' => [
-                'public_id' => $equipment->unit->public_id,
-                'name' => $equipment->unit->name,
-                'code' => $equipment->unit->code,
-            ],
-            'area' => [
-                'public_id' => $equipment->area->public_id,
-                'name' => $equipment->area->name,
-                'code' => $equipment->area->code,
-            ],
-            'subarea' => $equipment->subarea === null
-                ? null
-                : [
-                    'public_id' => $equipment->subarea->public_id,
-                    'name' => $equipment->subarea->name,
-                    'code' => $equipment->subarea->code,
-                ],
             'equipment' => [
                 'public_id' => $equipment->public_id,
+                'maintenance_plan_code' => $equipment->maintenance_plan_code,
+                'maintenance_item_code' => $equipment->maintenance_item_code,
+                'area_code' => $equipment->area_code,
+                'subarea_code' => $equipment->subarea_code,
+                'task_list_group' => $equipment->task_list_group,
+                'task_list_group_counter' => $equipment->task_list_group_counter,
+                'area_name' => $equipment->area_name,
+                'subarea_name' => $equipment->subarea_name,
                 'tag' => $equipment->tag,
                 'normalized_tag' => $equipment->normalized_tag,
                 'name' => $equipment->name,

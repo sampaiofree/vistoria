@@ -33,31 +33,34 @@ final class Inspection extends Model
         'designer_i_report_number',
         'procedure_number',
         'atmospheric_classification',
-        'scheduled_for',
-        'inspected_on',
+        'planned_start_on', // Data inicial planejada para a inspeção.
+        'planned_end_on', // Prazo final planejado para a inspeção.
+        'inspected_on', // Data em que a inspeção foi realizada em campo.
         'context_snapshot',
         'snapshot_version',
         'general_notes',
-        'started_at',
-        'field_completed_at',
-        'reviewed_at',
-        'approved_at',
-        'report_generated_at',
-        'report_date',
-        'emission_type',
+        'started_at', // Data e hora de início da execução da inspeção.
+        'field_completed_at', // Data e hora de conclusão da etapa de campo.
+        'reviewed_at', // Data e hora de conclusão da revisão.
+        'approved_at', // Data e hora da aprovação da inspeção.
+        'report_generated_at', // Data e hora de geração do relatório.
+        'report_date', // Data oficial exibida no relatório.
+        'emission_type', //Tipo de emissão
         'first_page_text_template',
-        'released_at',
-        'canceled_at',
+        'released_at', // Data e hora da liberação final da inspeção.
+        'canceled_at', // Data e hora do cancelamento, quando aplicável.
         'created_by',
         'updated_by',
     ];
 
     protected function casts(): array
     {
+        // created_at e updated_at são mantidos automaticamente pelo Eloquent.
         return [
             'inspection_type' => InspectionType::class,
             'status' => InspectionStatus::class,
-            'scheduled_for' => 'date',
+            'planned_start_on' => 'date',
+            'planned_end_on' => 'date',
             'inspected_on' => 'date',
             'context_snapshot' => 'array',
             'started_at' => 'datetime',

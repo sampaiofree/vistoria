@@ -30,7 +30,7 @@ final class StoreInspectionLocationMapSource
 
     public function handle(User $actor, InspectionLocationMap $map, UploadedFile $file, array $data): InspectionLocationMap
     {
-        if ($actor->organization_id !== $map->organization_id) {
+        if ($actor->organization_id !== $map->organization_id || ! $actor->can('manageFieldContent', $map->inspection)) {
             throw ValidationException::withMessages(['file' => 'O mapa não pertence à organização atual.']);
         }
 

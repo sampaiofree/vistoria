@@ -4,9 +4,6 @@ declare(strict_types=1);
 
 namespace App\Policies;
 
-use App\Enums\InspectionResponsibility;
-use App\Enums\InspectionStatus;
-use App\Models\DefectCategory;
 use App\Models\Inspection;
 use App\Models\InspectionLocationMap;
 use App\Models\User;
@@ -18,10 +15,9 @@ final class InspectionLocationMapPolicy
         return $this->activeInOrganization($user) && $map->belongsToOrganization($user->organization_id);
     }
 
-    public function create(User $user, Inspection $inspection, DefectCategory $category): bool
+    public function create(User $user, Inspection $inspection): bool
     {
-        return $this->canEditInspection($user, $inspection)
-            && $inspection->organization_id === $category->organization_id;
+        return $this->canEditInspection($user, $inspection);
     }
 
     public function update(User $user, InspectionLocationMap $map): bool
@@ -51,9 +47,6 @@ final class InspectionLocationMapPolicy
 
     private function canEditInspection(User $user, Inspection $inspection): bool
     {
-        return $this->activeInOrganization($user)
-            && $inspection->belongsToOrganization($user->organization_id)
-            && in_array($inspection->status, [InspectionStatus::InProgress, InspectionStatus::InCorrection], true)
-            && $inspection->hasAnyResponsibilityForUser($user, InspectionResponsibility::Preparer);
+        return $user->can('manageFieldContent', $inspection);
     }
 }

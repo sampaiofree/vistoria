@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace Tests\Feature\InspectionLocations;
 
+use App\Enums\DefectCategory;
 use App\Models\AssessmentPhoto;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
-use App\Models\DefectCategory;
 use App\Models\Equipment;
 use App\Models\Inspection;
 use App\Models\InspectionLocationMap;
@@ -19,18 +19,6 @@ use Tests\TestCase;
 final class InspectionLocationFoundationTest extends TestCase
 {
     use RefreshDatabase;
-
-    public function test_category_can_opt_in_to_location_maps_and_defaults_to_disabled(): void
-    {
-        $organization = Organization::factory()->create();
-        $category = DefectCategory::factory()->create(['organization_id' => $organization->id]);
-
-        $this->assertFalse($category->requires_location_map);
-
-        $category->update(['requires_location_map' => true]);
-
-        $this->assertTrue($category->fresh()->requires_location_map);
-    }
 
     public function test_map_belongs_to_inspection_and_category_and_marker_belongs_to_assessment(): void
     {
@@ -44,7 +32,7 @@ final class InspectionLocationFoundationTest extends TestCase
         ]);
 
         $this->assertTrue($map->inspection->is($inspection));
-        $this->assertTrue($map->category->is($category));
+        $this->assertSame($category, $map->category);
         $this->assertTrue($map->markers->first()->is($marker));
         $this->assertTrue($marker->assessment->is($assessment));
         $this->assertSame(['version' => 1, 'shapes' => [['type' => 'point', 'x' => 0.5, 'y' => 0.5]]], $marker->geometry);
@@ -87,10 +75,10 @@ final class InspectionLocationFoundationTest extends TestCase
     private function inspectionAssessment(): array
     {
         $organization = Organization::factory()->create();
-        $category = DefectCategory::factory()->create(['organization_id' => $organization->id, 'code' => 'TA']);
+        $category = DefectCategory::AnticorrosiveTreatment;
         $equipment = Equipment::factory()->for($organization)->create();
         $inspection = Inspection::factory()->forEquipment($equipment)->create();
-        $defect = Defect::factory()->forEquipment($equipment, $inspection)->create(['defect_category_id' => $category->id]);
+        $defect = Defect::factory()->forEquipment($equipment, $inspection)->create(['category' => $category->value]);
         $assessment = DefectAssessment::factory()->forDefect($defect, $inspection)->create();
 
         return [$inspection, $category, $assessment];

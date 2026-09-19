@@ -54,15 +54,6 @@ class UserFactory extends Factory
         ]);
     }
 
-    public function suspended(): static
-    {
-        return $this->state(fn (): array => [
-            'status' => UserStatus::Suspended->value,
-            'suspended_at' => now(),
-            'suspension_reason' => 'Suspenso para teste.',
-        ]);
-    }
-
     /**
      * Indicate that the model's email address should be unverified.
      */

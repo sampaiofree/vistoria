@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Enums\DefectCategory;
 use App\Enums\InspectionLocationMapProcessingStatus;
 use App\Enums\InspectionLocationMapSourceKind;
 use App\Models\Concerns\BelongsToOrganization;
@@ -21,7 +22,7 @@ final class InspectionLocationMap extends Model
     use BelongsToOrganization, HasFactory, HasPublicId, SoftDeletes;
 
     protected $fillable = [
-        'public_id', 'organization_id', 'equipment_id', 'inspection_id', 'defect_category_id', 'equipment_document_id',
+        'public_id', 'organization_id', 'equipment_id', 'inspection_id', 'category', 'equipment_document_id',
         'title', 'description', 'source_kind', 'source_page', 'source_crop', 'reference_snapshot', 'source_disk', 'source_path',
         'source_mime_type', 'source_size', 'source_checksum', 'source_uploaded_by', 'background_disk', 'background_path', 'background_mime_type',
         'background_size', 'background_width', 'background_height', 'background_checksum', 'processing_status', 'processing_error',
@@ -31,6 +32,7 @@ final class InspectionLocationMap extends Model
     protected function casts(): array
     {
         return [
+            'category' => DefectCategory::class,
             'source_kind' => InspectionLocationMapSourceKind::class,
             'processing_status' => InspectionLocationMapProcessingStatus::class,
             'source_page' => 'integer',
@@ -55,11 +57,6 @@ final class InspectionLocationMap extends Model
     public function equipment(): BelongsTo
     {
         return $this->belongsTo(Equipment::class);
-    }
-
-    public function category(): BelongsTo
-    {
-        return $this->belongsTo(DefectCategory::class, 'defect_category_id');
     }
 
     public function equipmentDocument(): BelongsTo

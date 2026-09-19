@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace Database\Factories;
 
+use App\Enums\DefectCategory;
 use App\Enums\InspectionLocationMapProcessingStatus;
 use App\Enums\InspectionLocationMapSourceKind;
-use App\Models\DefectCategory;
 use App\Models\Equipment;
 use App\Models\Inspection;
 use App\Models\InspectionLocationMap;
@@ -24,7 +24,7 @@ final class InspectionLocationMapFactory extends Factory
             'organization_id' => Organization::factory(),
             'equipment_id' => null,
             'inspection_id' => null,
-            'defect_category_id' => null,
+            'category' => DefectCategory::Civil,
             'equipment_document_id' => null,
             'title' => fake()->sentence(5),
             'description' => null,
@@ -69,19 +69,16 @@ final class InspectionLocationMapFactory extends Factory
                 $map->inspection_id = $inspection->id;
             }
 
-            if ($map->defect_category_id === null) {
-                $map->defect_category_id = DefectCategory::factory()->create(['organization_id' => $map->organization_id])->id;
-            }
         });
     }
 
-    public function forInspection(Inspection $inspection, DefectCategory $category): static
+    public function forInspection(Inspection $inspection, DefectCategory $category = DefectCategory::Civil): static
     {
         return $this->state([
             'organization_id' => $inspection->organization_id,
             'equipment_id' => $inspection->equipment_id,
             'inspection_id' => $inspection->id,
-            'defect_category_id' => $category->id,
+            'category' => $category,
         ]);
     }
 }

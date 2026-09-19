@@ -30,7 +30,8 @@ class InspectionFactory extends Factory
             'designer_i_report_number' => null,
             'procedure_number' => null,
             'atmospheric_classification' => null,
-            'scheduled_for' => null,
+            'planned_start_on' => null,
+            'planned_end_on' => null,
             'inspected_on' => null,
             'context_snapshot' => [],
             'snapshot_version' => InspectionSnapshotBuilder::VERSION,
@@ -69,7 +70,7 @@ class InspectionFactory extends Factory
 
             if (blank($inspection->context_snapshot)) {
                 $equipment = Equipment::query()
-                    ->with(['organization', 'client', 'unit', 'area', 'subarea'])
+                    ->with(['organization', 'client'])
                     ->findOrFail($inspection->equipment_id);
 
                 $inspection->context_snapshot = app(InspectionSnapshotBuilder::class)->build($equipment);

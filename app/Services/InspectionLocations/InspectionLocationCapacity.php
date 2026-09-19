@@ -4,13 +4,14 @@ declare(strict_types=1);
 
 namespace App\Services\InspectionLocations;
 
+use App\Enums\DefectCategory;
 use App\Models\Inspection;
 use App\Models\InspectionLocationMap;
 use Illuminate\Validation\ValidationException;
 
 final class InspectionLocationCapacity
 {
-    public function assertCanCreateMap(Inspection $inspection, int $categoryId): void
+    public function assertCanCreateMap(Inspection $inspection, DefectCategory $category): void
     {
         $query = $inspection->locationMaps();
 
@@ -20,9 +21,9 @@ final class InspectionLocationCapacity
             ]);
         }
 
-        if ((clone $query)->where('defect_category_id', $categoryId)->count() >= (int) config('inspection_locations.limits.maps_per_category')) {
+        if ((clone $query)->where('category', $category->value)->count() >= (int) config('inspection_locations.limits.maps_per_category')) {
             throw ValidationException::withMessages([
-                'defect_category_id' => 'A categoria atingiu o limite de mapas nesta inspeção.',
+                'category' => 'A categoria atingiu o limite de mapas nesta inspeção.',
             ]);
         }
     }

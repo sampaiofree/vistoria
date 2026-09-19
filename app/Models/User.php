@@ -3,6 +3,7 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Enums\OperationalRole;
 use App\Enums\UserAccountType;
 use App\Enums\UserStatus;
 use App\Models\Concerns\HasPublicId;
@@ -26,9 +27,8 @@ class User extends Authenticatable
         'password',
         'must_change_password',
         'account_type',
+        'operational_role',
         'status',
-        'suspended_at',
-        'suspension_reason',
     ];
 
     protected $hidden = [
@@ -43,9 +43,9 @@ class User extends Authenticatable
             'password' => 'hashed',
             'must_change_password' => 'boolean',
             'account_type' => UserAccountType::class,
+            'operational_role' => OperationalRole::class,
             'status' => UserStatus::class,
             'last_login_at' => 'datetime',
-            'suspended_at' => 'datetime',
         ];
     }
 
@@ -69,6 +69,11 @@ class User extends Authenticatable
         return $this->account_type === UserAccountType::CompanyAdmin;
     }
 
+    public function operationalRoleLabel(): string
+    {
+        return $this->operational_role?->label() ?? 'Papel não definido';
+    }
+
     public function isActive(): bool
     {
         return $this->status === UserStatus::Active;
@@ -85,6 +90,10 @@ class User extends Authenticatable
         static::saving(function (self $user): void {
             if ($user->isSuperAdmin() && filled($user->organization_id)) {
                 throw new LogicException('Super-admin users must not belong to an organization.');
+            }
+
+            if ($user->isSuperAdmin() && $user->operational_role !== null) {
+                throw new LogicException('Super-admin users must not have an operational role.');
             }
 
             if (! $user->isSuperAdmin() && blank($user->organization_id)) {

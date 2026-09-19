@@ -74,7 +74,7 @@ final class StoreEquipmentDocument
                 $equipment = Equipment::query()
                     ->forOrganization($this->tenant->id())
                     ->lockForUpdate()
-                    ->with(['client', 'unit', 'area', 'subarea'])
+                    ->with('client')
                     ->findOrFail($equipment->getKey());
 
                 $currentDocuments = EquipmentDocument::query()

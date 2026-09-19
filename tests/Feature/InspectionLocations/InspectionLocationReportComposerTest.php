@@ -5,21 +5,19 @@ declare(strict_types=1);
 namespace Tests\Feature\InspectionLocations;
 
 use App\Actions\InspectionLocations\BuildInspectionLocationSnapshot;
-use App\Enums\GutCriterion;
+use App\Enums\DefectCategory;
 use App\Enums\InspectionLocationMapProcessingStatus;
 use App\Enums\MeasurementUnit;
 use App\Models\AssessmentPhoto;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
 use App\Models\DefectAssessmentQuantity;
-use App\Models\DefectCategory;
-use App\Models\DefectCategoryGutOption;
-use App\Models\DefectClassification;
 use App\Models\Equipment;
 use App\Models\Inspection;
 use App\Models\InspectionLocationMap;
 use App\Models\InspectionLocationMarker;
 use App\Models\Organization;
+use App\Services\Classification\NativeDefectCatalog;
 use App\Services\InspectionLocations\InspectionLocationPhotoNumbering;
 use App\Services\InspectionLocations\InspectionLocationReportComposer;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -34,10 +32,7 @@ final class InspectionLocationReportComposerTest extends TestCase
         $organization = Organization::factory()->create();
         $equipment = Equipment::factory()->for($organization)->create();
         $inspection = Inspection::factory()->forEquipment($equipment)->create();
-        $category = DefectCategory::factory()->create([
-            'organization_id' => $organization->id,
-            'code' => 'TA',
-        ]);
+        $category = DefectCategory::AnticorrosiveTreatment;
         $firstAssessment = $this->assessment($inspection, $category, 'TA-001');
         $secondAssessment = $this->assessment($inspection, $category, 'TA-002');
         $firstMap = InspectionLocationMap::factory()->forInspection($inspection, $category)->create([
@@ -108,12 +103,12 @@ final class InspectionLocationReportComposerTest extends TestCase
         $this->assertCount(2, $report['sheets'][0]['maps'][0]['markers'][0]['geometry']['shapes']);
         $this->assertSame('#7C3AED', $report['sheets'][0]['maps'][0]['markers'][0]['style']['fill']);
         $this->assertSame('none', $report['sheets'][0]['maps'][0]['markers'][0]['style']['stroke']);
-        $this->assertSame('1 A 3', $report['sheets'][0]['maps'][0]['markers'][0]['photo_interval']);
-        $this->assertSame('FOTOS: 1 A 3', $report['sheets'][0]['maps'][0]['markers'][0]['photo_legend']);
+        $this->assertSame('5 A 7', $report['sheets'][0]['maps'][0]['markers'][0]['photo_interval']);
+        $this->assertSame('FOTOS: 5 A 7', $report['sheets'][0]['maps'][0]['markers'][0]['photo_legend']);
         $this->assertSame('Face inferior do pedestal.', $report['sheets'][0]['maps'][0]['markers'][0]['label']);
         $this->assertSame('Mapa 1 — PROJETO DE REFERÊNCIA: U030600-M-560002', $report['sheets'][0]['maps'][0]['report_title']);
-        $this->assertSame('4', $report['sheets'][1]['maps'][0]['markers'][0]['photo_interval']);
-        $this->assertSame('FOTOS: 4', $report['sheets'][1]['maps'][0]['markers'][0]['photo_legend']);
+        $this->assertSame('8', $report['sheets'][1]['maps'][0]['markers'][0]['photo_interval']);
+        $this->assertSame('FOTOS: 8', $report['sheets'][1]['maps'][0]['markers'][0]['photo_legend']);
         $this->assertSame(4, $report['photo_count']);
         $this->assertSame($snapshot, app(BuildInspectionLocationSnapshot::class)->fromComposition($inspection, $report));
         $this->assertArrayNotHasKey('url', $snapshot['categories'][0]['maps'][0]['background']);
@@ -125,7 +120,7 @@ final class InspectionLocationReportComposerTest extends TestCase
         $organization = Organization::factory()->create();
         $equipment = Equipment::factory()->for($organization)->create();
         $inspection = Inspection::factory()->forEquipment($equipment)->create();
-        $category = DefectCategory::factory()->create(['organization_id' => $organization->id, 'code' => 'RX']);
+        $category = DefectCategory::StructuralRecovery;
         $assessment = $this->assessment($inspection, $category, 'CV-001');
         $map = InspectionLocationMap::factory()->forInspection($inspection, $category)->create([
             'processing_status' => InspectionLocationMapProcessingStatus::Ready,
@@ -154,10 +149,10 @@ final class InspectionLocationReportComposerTest extends TestCase
         $organization = Organization::factory()->create();
         $equipment = Equipment::factory()->for($organization)->create();
         $inspection = Inspection::factory()->forEquipment($equipment)->create();
-        $category = DefectCategory::factory()->create(['organization_id' => $organization->id, 'code' => 'CIV']);
+        $category = DefectCategory::Civil;
         $published = $this->assessment($inspection, $category, 'CV-001');
         $draftDefect = Defect::factory()->forEquipment($equipment, $inspection)->create([
-            'defect_category_id' => $category->id,
+            'category' => $category->value,
             'code' => 'CV-002',
         ]);
         $draft = DefectAssessment::factory()->forDefect($draftDefect, $inspection)->draft()->create();
@@ -186,7 +181,7 @@ final class InspectionLocationReportComposerTest extends TestCase
         $organization = Organization::factory()->create();
         $equipment = Equipment::factory()->for($organization)->create();
         $inspection = Inspection::factory()->forEquipment($equipment)->create();
-        $category = DefectCategory::factory()->create(['organization_id' => $organization->id, 'code' => 'MAP-NUM']);
+        $category = DefectCategory::Civil;
         $unmapped = $this->assessment($inspection, $category, 'CV-001');
         $mapped = $this->assessment($inspection, $category, 'CV-002');
         $unmapped->defect->update(['sequence_number' => 1]);
@@ -236,30 +231,9 @@ final class InspectionLocationReportComposerTest extends TestCase
         $organization = Organization::factory()->create();
         $equipment = Equipment::factory()->for($organization)->create();
         $inspection = Inspection::factory()->forEquipment($equipment)->create();
-        $tac = DefectCategory::query()
-            ->where('organization_id', $organization->id)
-            ->where('code', 'TAC')
-            ->firstOrFail();
-        $tac->update(['name' => 'TAC', 'position' => 30]);
-        $rec = DefectCategory::query()
-            ->where('organization_id', $organization->id)
-            ->where('code', 'REC')
-            ->firstOrFail();
-        $rec->update(['name' => 'REC', 'position' => 20]);
-        $cv = DefectCategory::query()
-            ->where('organization_id', $organization->id)
-            ->where('code', 'CV')
-            ->first();
-        if ($cv === null) {
-            $cv = DefectCategory::factory()->create([
-                'organization_id' => $organization->id,
-                'code' => 'CV',
-                'name' => 'CV',
-                'position' => 3,
-            ]);
-        } else {
-            $cv->update(['name' => 'CV', 'position' => 3]);
-        }
+        $tac = DefectCategory::AnticorrosiveTreatment;
+        $rec = DefectCategory::StructuralRecovery;
+        $cv = DefectCategory::Civil;
 
         $firstTacAssessment = $this->assessment($inspection, $tac, 'TA-001');
         $secondTacAssessment = $this->assessment($inspection, $tac, 'TA-002');
@@ -336,53 +310,13 @@ final class InspectionLocationReportComposerTest extends TestCase
         $organization = Organization::factory()->create();
         $equipment = Equipment::factory()->for($organization)->create();
         $inspection = Inspection::factory()->forEquipment($equipment)->create();
-        $category = DefectCategory::factory()->create([
-            'organization_id' => $organization->id,
-            'code' => 'TA',
-        ]);
-        $moderate = DefectClassification::factory()->for($category, 'category')->create([
-            'organization_id' => $organization->id,
-            'code' => 'TA-2',
-            'color' => '#FFBF00',
-            'position' => 2,
-        ]);
-        $critical = DefectClassification::factory()->for($category, 'category')->create([
-            'organization_id' => $organization->id,
-            'code' => 'TA-1',
-            'color' => '#FF0000',
-            'position' => 1,
-        ]);
-        DefectClassification::factory()->for($category, 'category')->create([
-            'organization_id' => $organization->id,
-            'code' => 'TA-3',
-            'color' => null,
-            'position' => 3,
-        ]);
-        DefectCategoryGutOption::factory()->create([
-            'organization_id' => $organization->id,
-            'defect_category_id' => $category->id,
-            'criterion' => GutCriterion::Gravity,
-            'score' => 3,
-            'color' => '#FFFF00',
-        ]);
-        DefectCategoryGutOption::factory()->create([
-            'organization_id' => $organization->id,
-            'defect_category_id' => $category->id,
-            'criterion' => GutCriterion::Urgency,
-            'score' => 3,
-            'color' => '#92D050',
-        ]);
-        DefectCategoryGutOption::factory()->create([
-            'organization_id' => $organization->id,
-            'defect_category_id' => $category->id,
-            'criterion' => GutCriterion::Trend,
-            'score' => 4,
-            'color' => '#FFBF00',
-        ]);
+        $category = DefectCategory::AnticorrosiveTreatment;
+        $moderate = NativeDefectCatalog::classifications($category)->firstWhere('code', 'TA-2');
+
         $classified = $this->assessment($inspection, $category, 'TA-001');
         $classified->update([
-            'defect_classification_id' => $moderate->id,
             'classification_code' => $moderate->code,
+            'classification_snapshot' => $moderate->toArray(),
             'gravity' => 3,
             'urgency' => 3,
             'trend' => 4,
@@ -430,20 +364,20 @@ final class InspectionLocationReportComposerTest extends TestCase
         $this->assertSame("Primeira linha.\nSegunda linha.", $reportMap['observations']);
         $this->assertCount(2, $reportMap['damage_rows']);
         $this->assertSame($classified->public_id, $reportMap['damage_rows'][0]['assessment']['public_id']);
-        $this->assertSame([1, 2], $reportMap['damage_rows'][0]['photo_numbers']);
-        $this->assertSame('1 E 2', $reportMap['damage_rows'][0]['photo_interval']);
+        $this->assertSame([5, 6], $reportMap['damage_rows'][0]['photo_numbers']);
+        $this->assertSame('5 E 6', $reportMap['damage_rows'][0]['photo_interval']);
         $this->assertSame([
             'value' => 42.0,
             'unit' => 'M²',
         ], $reportMap['damage_rows'][0]['quantity']);
         $this->assertSame([
-            'gravity' => ['score' => 3, 'color' => '#FFFF00'],
-            'urgency' => ['score' => 3, 'color' => '#92D050'],
-            'trend' => ['score' => 4, 'color' => '#FFBF00'],
+            'gravity' => ['score' => 3, 'color' => '#000000'],
+            'urgency' => ['score' => 3, 'color' => '#000000'],
+            'trend' => ['score' => 4, 'color' => '#000000'],
         ], $reportMap['damage_rows'][0]['gut']);
         $this->assertSame([
             'code' => 'TA-2',
-            'color' => '#FFBF00',
+            'color' => '#FFC000',
         ], $reportMap['damage_rows'][0]['classification']);
         $this->assertSame('—', $reportMap['damage_rows'][1]['photo_interval']);
         $this->assertSame([
@@ -457,16 +391,9 @@ final class InspectionLocationReportComposerTest extends TestCase
             'trend' => ['score' => null, 'color' => null],
         ], $reportMap['damage_rows'][1]['gut']);
         $this->assertSame([
-            [
-                'public_id' => $critical->public_id,
-                'code' => 'TA-1',
-                'color' => '#FF0000',
-            ],
-            [
-                'public_id' => $moderate->public_id,
-                'code' => 'TA-2',
-                'color' => '#FFBF00',
-            ],
+            ['code' => 'TA-1', 'color' => '#FF0000'],
+            ['code' => 'TA-2', 'color' => '#FFC000'],
+            ['code' => 'TA-3', 'color' => '#FFFF00'],
         ], $reportMap['classification_legend']);
         $this->assertSame($reportMap['observations'], $snapshotMap['observations']);
         $this->assertSame($reportMap['damage_rows'], $snapshotMap['damage_rows']);
@@ -476,7 +403,7 @@ final class InspectionLocationReportComposerTest extends TestCase
     private function assessment(Inspection $inspection, DefectCategory $category, string $code): DefectAssessment
     {
         $defect = Defect::factory()->forEquipment($inspection->equipment, $inspection)->create([
-            'defect_category_id' => $category->id,
+            'category' => $category->value,
             'code' => $code,
         ]);
 

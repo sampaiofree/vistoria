@@ -13,7 +13,6 @@ const props = defineProps({
     maps: { type: Array, default: () => [] },
     unlocated_assessments: { type: Array, default: () => [] },
     unresolved_markers: { type: Array, default: () => [] },
-    coverage: { type: Object, default: () => ({}) },
     create_url: { type: String, required: true },
     can_create: { type: Boolean, default: false },
     tabs: { type: Array, default: () => [] },
@@ -56,15 +55,6 @@ function copyPrevious() {
             <InspectionTabs :tabs="tabs" :active="active_tab" />
         </div>
 
-        <section v-if="coverage.enabled_categories" class="mt-6 rounded-2xl border p-4" :class="coverage.is_complete ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'">
-            <div class="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                    <p class="text-sm font-semibold" :class="coverage.is_complete ? 'text-emerald-900' : 'text-amber-900'">{{ coverage.is_complete ? 'Cobertura de localização completa' : 'Cobertura de localização pendente' }}</p>
-                    <p class="mt-1 text-xs" :class="coverage.is_complete ? 'text-emerald-700' : 'text-amber-700'">{{ coverage.located_assessments }}/{{ coverage.required_assessments }} avaliações localizadas · {{ coverage.ready_maps }}/{{ coverage.map_count }} mapas prontos</p>
-                </div>
-                <span v-if="!coverage.is_complete" class="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-amber-800">{{ coverage.missing_markers }} marcação(ões) pendente(s)</span>
-            </div>
-        </section>
 
         <div class="mt-6 space-y-6">
             <section class="rounded-2xl border border-slate-200 bg-white p-3 sm:p-4">

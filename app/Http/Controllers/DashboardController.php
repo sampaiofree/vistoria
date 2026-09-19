@@ -43,7 +43,7 @@ final class DashboardController extends Controller
                         'overdue' => null,
                         'awaiting_review' => null,
                         'in_correction' => null,
-                        'awaiting_approval' => null,
+                        'awaiting_release' => null,
                     ],
                     'workflow' => [],
                 ],
@@ -90,17 +90,17 @@ final class DashboardController extends Controller
                     'awaiting_review' => route('inspections.index', array_merge([
                         'status' => InspectionStatus::AwaitingReview->value,
                     ], $personalFilters, $companySummary ? [] : [
-                        'responsibility' => InspectionResponsibility::Reviewer->value,
+                        'responsibility' => InspectionResponsibility::Approver->value,
                     ])),
                     'in_correction' => route('inspections.index', array_merge([
                         'status' => InspectionStatus::InCorrection->value,
                     ], $personalFilters, $companySummary ? [] : [
-                        'responsibility' => InspectionResponsibility::Preparer->value,
+                        'responsibility' => InspectionResponsibility::Reviewer->value,
                     ])),
-                    'awaiting_approval' => route('inspections.index', array_merge([
-                        'status' => InspectionStatus::AwaitingApproval->value,
+                    'awaiting_release' => route('inspections.index', array_merge([
+                        'status' => InspectionStatus::AwaitingRelease->value,
                     ], $personalFilters, $companySummary ? [] : [
-                        'responsibility' => InspectionResponsibility::Approver->value,
+                        'responsibility' => InspectionResponsibility::Releaser->value,
                     ])),
                 ],
                 'workflow' => [
@@ -108,9 +108,8 @@ final class DashboardController extends Controller
                     'in_progress' => route('inspections.index', array_merge(['status' => InspectionStatus::InProgress->value], $personalFilters)),
                     'awaiting_review' => route('inspections.index', array_merge(['status' => InspectionStatus::AwaitingReview->value], $personalFilters)),
                     'in_correction' => route('inspections.index', array_merge(['status' => InspectionStatus::InCorrection->value], $personalFilters)),
-                    'awaiting_approval' => route('inspections.index', array_merge(['status' => InspectionStatus::AwaitingApproval->value], $personalFilters)),
-                    'approved' => route('inspections.index', array_merge(['status' => InspectionStatus::Approved->value], $personalFilters)),
-                    'report_generated' => route('inspections.index', array_merge(['status' => InspectionStatus::ReportGenerated->value], $personalFilters)),
+                    'in_review' => route('inspections.index', array_merge(['status' => InspectionStatus::InReview->value], $personalFilters)),
+                    'awaiting_release' => route('inspections.index', array_merge(['status' => InspectionStatus::AwaitingRelease->value], $personalFilters)),
                     'released' => route('inspections.index', array_merge(['status' => InspectionStatus::Released->value], $personalFilters)),
                 ],
             ],
@@ -153,7 +152,6 @@ final class DashboardController extends Controller
      *     status_label:string,
      *     service_order:?string,
      *     client:array{name:string},
-     *     unit:array{name:string},
      *     equipment:array{name:string,tag:string,show_url:string},
      *     progress:array{completed:int,total:int,percentage:int},
      *     show_url:string
@@ -169,7 +167,6 @@ final class DashboardController extends Controller
             ->forOrganization($organizationId)
             ->with([
                 'equipment.client:id,public_id,name',
-                'equipment.unit:id,public_id,name',
             ])
             ->where('status', InspectionStatus::InProgress->value);
 
@@ -198,9 +195,6 @@ final class DashboardController extends Controller
             'client' => [
                 'name' => $inspection->equipment->client?->name ?? '—',
             ],
-            'unit' => [
-                'name' => $inspection->equipment->unit?->name ?? '—',
-            ],
             'equipment' => [
                 'name' => $inspection->equipment->name,
                 'tag' => $inspection->equipment->tag,
@@ -222,7 +216,7 @@ final class DashboardController extends Controller
                 'overdue' => Inspection::query()
                     ->forOrganization($organizationId)
                     ->where('status', InspectionStatus::Planned->value)
-                    ->whereDate('scheduled_for', '<', $today->toDateString())
+                    ->whereDate('planned_end_on', '<', $today->toDateString())
                     ->count(),
                 'awaiting_review' => Inspection::query()
                     ->forOrganization($organizationId)
@@ -232,9 +226,9 @@ final class DashboardController extends Controller
                     ->forOrganization($organizationId)
                     ->where('status', InspectionStatus::InCorrection->value)
                     ->count(),
-                'awaiting_approval' => Inspection::query()
+                'awaiting_release' => Inspection::query()
                     ->forOrganization($organizationId)
-                    ->where('status', InspectionStatus::AwaitingApproval->value)
+                    ->where('status', InspectionStatus::AwaitingRelease->value)
                     ->count(),
             ];
         }
@@ -243,7 +237,7 @@ final class DashboardController extends Controller
             'overdue' => Inspection::query()
                 ->forOrganization($organizationId)
                 ->where('status', InspectionStatus::Planned->value)
-                ->whereDate('scheduled_for', '<', $today->toDateString())
+                ->whereDate('planned_end_on', '<', $today->toDateString())
                 ->whereHas('responsibles', fn ($query) => $query
                     ->where('user_id', $userId)
                     ->where('responsibility', InspectionResponsibility::Preparer->value))
@@ -253,21 +247,21 @@ final class DashboardController extends Controller
                 ->where('status', InspectionStatus::AwaitingReview->value)
                 ->whereHas('responsibles', fn ($query) => $query
                     ->where('user_id', $userId)
-                    ->where('responsibility', InspectionResponsibility::Reviewer->value))
+                    ->where('responsibility', InspectionResponsibility::Approver->value))
                 ->count(),
             'in_correction' => Inspection::query()
                 ->forOrganization($organizationId)
                 ->where('status', InspectionStatus::InCorrection->value)
                 ->whereHas('responsibles', fn ($query) => $query
                     ->where('user_id', $userId)
-                    ->where('responsibility', InspectionResponsibility::Preparer->value))
+                    ->where('responsibility', InspectionResponsibility::Reviewer->value))
                 ->count(),
-            'awaiting_approval' => Inspection::query()
+            'awaiting_release' => Inspection::query()
                 ->forOrganization($organizationId)
-                ->where('status', InspectionStatus::AwaitingApproval->value)
+                ->where('status', InspectionStatus::AwaitingRelease->value)
                 ->whereHas('responsibles', fn ($query) => $query
                     ->where('user_id', $userId)
-                    ->where('responsibility', InspectionResponsibility::Approver->value))
+                    ->where('responsibility', InspectionResponsibility::Releaser->value))
                 ->count(),
         ];
     }
@@ -281,8 +275,6 @@ final class DashboardController extends Controller
      *     status:string,
      *     status_label:string,
      *     created_at:string,
-     *     client: array{name:string},
-     *     unit: array{name:string},
      *     equipment: array{name:string, tag:string},
      *     user_responsibilities: array<int, array{value:string, label:string}>,
      *     schedule: array{date:string, label:string, is_overdue:bool},
@@ -300,10 +292,6 @@ final class DashboardController extends Controller
         $inspections = Inspection::query()
             ->forOrganization($organizationId)
             ->with([
-                'equipment.client:id,public_id,name,status',
-                'equipment.unit:id,public_id,name,client_id,status',
-                'equipment.area:id,public_id,client_unit_id,status',
-                'equipment.subarea:id,public_id,area_id,status',
                 'responsibles.user:id,public_id,name',
             ])
             ->whereHas('responsibles', fn ($query) => $query->where('user_id', $userId))
@@ -314,15 +302,14 @@ final class DashboardController extends Controller
             ->orderByRaw(
                 <<<'SQL'
                     CASE
-                        WHEN status = ? AND scheduled_for < ? THEN 0
+                        WHEN status = ? AND planned_end_on < ? THEN 0
                         WHEN status = ? THEN 1
                         WHEN status = ? THEN 2
                         WHEN status = ? THEN 3
                         WHEN status = ? THEN 4
                         WHEN status = ? THEN 5
                         WHEN status = ? THEN 6
-                        WHEN status = ? THEN 7
-                        ELSE 8
+                        ELSE 7
                     END
                 SQL,
                 [
@@ -330,15 +317,14 @@ final class DashboardController extends Controller
                     $today->toDateString(),
                     InspectionStatus::InCorrection->value,
                     InspectionStatus::AwaitingReview->value,
-                    InspectionStatus::AwaitingApproval->value,
+                    InspectionStatus::InReview->value,
+                    InspectionStatus::AwaitingRelease->value,
                     InspectionStatus::InProgress->value,
                     InspectionStatus::Planned->value,
-                    InspectionStatus::Approved->value,
-                    InspectionStatus::ReportGenerated->value,
                 ],
             )
-            ->orderByRaw('CASE WHEN scheduled_for IS NULL THEN 1 ELSE 0 END')
-            ->orderBy('scheduled_for')
+            ->orderByRaw('CASE WHEN planned_start_on IS NULL THEN 1 ELSE 0 END')
+            ->orderBy('planned_start_on')
             ->orderByDesc('created_at')
             ->limit(8)
             ->get()
@@ -349,13 +335,14 @@ final class DashboardController extends Controller
                 ->where('user_id', $userId)
                 ->map(fn ($responsible): array => [
                     'value' => $responsible->responsibility->value,
-                    'label' => $responsible->responsibility->label(),
+                    'label' => $this->dashboardResponsibilityLabel($responsible->responsibility),
                 ])
                 ->unique('value')
                 ->values()
                 ->all();
 
-            $scheduledFor = $inspection->scheduled_for?->toDateString() ?? '';
+            $plannedStart = $inspection->planned_start_on?->toDateString();
+            $plannedEnd = $inspection->planned_end_on?->toDateString();
 
             return [
                 'public_id' => $inspection->public_id,
@@ -365,27 +352,21 @@ final class DashboardController extends Controller
                 'status' => $inspection->status->value,
                 'status_label' => $inspection->status->label(),
                 'created_at' => $inspection->created_at?->setTimezone($timezone)->format('d/m/Y'),
-                'client' => [
-                    'name' => $inspection->equipment->client?->name ?? '—',
-                ],
-                'unit' => [
-                    'name' => $inspection->equipment->unit?->name ?? '—',
-                ],
                 'equipment' => [
                     'name' => $inspection->equipment->name,
                     'tag' => $inspection->equipment->tag,
                 ],
                 'user_responsibilities' => $responsibilities,
                 'schedule' => [
-                    'date' => $scheduledFor !== '' ? CarbonImmutable::parse($scheduledFor)->format('d/m/Y') : '—',
+                    'date' => $this->plannedWindowLabel($plannedStart, $plannedEnd),
                     'label' => $this->scheduleLabel(
-                        $inspection->scheduled_for?->toDateString(),
+                        $plannedEnd,
                         $today,
                         $inspection->status,
                     ),
                     'is_overdue' => $inspection->status === InspectionStatus::Planned
-                        && $inspection->scheduled_for !== null
-                        && $inspection->scheduled_for->toDateString() < $today->toDateString(),
+                        && $inspection->planned_end_on !== null
+                        && $inspection->planned_end_on->toDateString() < $today->toDateString(),
                 ],
                 'next_action' => [
                     'label' => $this->nextActionLabel($inspection, $user),
@@ -393,6 +374,16 @@ final class DashboardController extends Controller
                 ],
             ];
         })->all();
+    }
+
+    private function dashboardResponsibilityLabel(InspectionResponsibility $responsibility): string
+    {
+        return match ($responsibility) {
+            InspectionResponsibility::Preparer => 'Planejador',
+            InspectionResponsibility::Reviewer => 'Inspetor',
+            InspectionResponsibility::Approver => 'Revisor',
+            InspectionResponsibility::Releaser => 'Liberador',
+        };
     }
 
     /**
@@ -413,11 +404,10 @@ final class DashboardController extends Controller
         $steps = [
             InspectionStatus::Planned->value => 'Planejadas',
             InspectionStatus::InProgress->value => 'Em inspeção',
-            InspectionStatus::AwaitingReview->value => 'Verificação',
+            InspectionStatus::AwaitingReview->value => 'Aguardando revisão',
+            InspectionStatus::InReview->value => 'Em revisão',
             InspectionStatus::InCorrection->value => 'Correção',
-            InspectionStatus::AwaitingApproval->value => 'Aprovação',
-            InspectionStatus::Approved->value => 'Aprovadas',
-            InspectionStatus::ReportGenerated->value => 'Relatório gerado',
+            InspectionStatus::AwaitingRelease->value => 'Aguardando liberação',
             InspectionStatus::Released->value => 'Liberadas',
         ];
 
@@ -495,34 +485,32 @@ final class DashboardController extends Controller
                 ? 'Iniciar inspeção'
                 : 'Ver planejamento',
             InspectionStatus::InProgress => $user->can('submitForReview', $inspection)
-                ? 'Preparar verificação'
+                ? 'Concluir inspeção'
                 : 'Acompanhar inspeção',
             InspectionStatus::AwaitingReview => (
-                $user->can('completeReview', $inspection)
+                $user->can('startReview', $inspection)
+            ) ? 'Iniciar revisão' : 'Acompanhar revisão',
+            InspectionStatus::InReview => (
+                $user->can('approve', $inspection)
                 || $user->can('returnForCorrection', $inspection)
-            ) ? 'Abrir para verificar' : 'Acompanhar verificação',
+            ) ? 'Revisar inspeção' : 'Acompanhar revisão',
             InspectionStatus::InCorrection => $user->can('submitForReview', $inspection)
                 ? 'Corrigir pendências'
                 : 'Acompanhar correção',
-            InspectionStatus::AwaitingApproval => (
-                $user->can('approve', $inspection)
-                || $user->can('returnForCorrection', $inspection)
-            ) ? 'Abrir para aprovar' : 'Acompanhar aprovação',
-            InspectionStatus::Approved => 'Visualizar aprovação',
-            InspectionStatus::ReportGenerated => $user->can('release', $inspection)
-                ? 'Abrir para liberar'
-                : 'Visualizar relatório',
+            InspectionStatus::AwaitingRelease => $user->can('release', $inspection)
+                ? 'Liberar inspeção'
+                : 'Acompanhar liberação',
             InspectionStatus::Released => 'Ver inspeção',
             InspectionStatus::Canceled => 'Ver detalhes',
         };
     }
 
     private function scheduleLabel(
-        ?string $scheduledFor,
+        ?string $plannedEnd,
         CarbonImmutable $today,
         InspectionStatus $status,
     ): string {
-        if ($scheduledFor === null) {
+        if ($plannedEnd === null) {
             return 'Sem prazo';
         }
 
@@ -532,7 +520,7 @@ final class DashboardController extends Controller
 
         $date = CarbonImmutable::createFromFormat(
             'Y-m-d',
-            $scheduledFor,
+            $plannedEnd,
             $today->getTimezone(),
         )->startOfDay();
 
@@ -549,6 +537,18 @@ final class DashboardController extends Controller
         return sprintf('Faltam %d dia%s', $days, $days === 1 ? '' : 's');
     }
 
+    private function plannedWindowLabel(?string $plannedStart, ?string $plannedEnd): string
+    {
+        if ($plannedStart === null || $plannedEnd === null) {
+            return '—';
+        }
+
+        $start = CarbonImmutable::parse($plannedStart)->format('d/m/Y');
+        $end = CarbonImmutable::parse($plannedEnd)->format('d/m/Y');
+
+        return $start === $end ? $start : sprintf('%s a %s', $start, $end);
+    }
+
     private function activityDescription(InspectionStatusHistory $history): string
     {
         $inspectionNumber = $history->inspection?->number ?? 'inspeção';
@@ -557,11 +557,10 @@ final class DashboardController extends Controller
         return match ($history->to_status) {
             InspectionStatus::Planned => sprintf('%s planejou a inspeção %s.', $actor, $inspectionNumber),
             InspectionStatus::InProgress => sprintf('%s iniciou a inspeção %s.', $actor, $inspectionNumber),
-            InspectionStatus::AwaitingReview => sprintf('%s enviou a inspeção %s para verificação.', $actor, $inspectionNumber),
+            InspectionStatus::AwaitingReview => sprintf('%s enviou a inspeção %s para revisão.', $actor, $inspectionNumber),
+            InspectionStatus::InReview => sprintf('%s iniciou a revisão da inspeção %s.', $actor, $inspectionNumber),
             InspectionStatus::InCorrection => sprintf('%s devolveu a inspeção %s para correção.', $actor, $inspectionNumber),
-            InspectionStatus::AwaitingApproval => sprintf('%s enviou a inspeção %s para aprovação.', $actor, $inspectionNumber),
-            InspectionStatus::Approved => sprintf('%s aprovou a inspeção %s.', $actor, $inspectionNumber),
-            InspectionStatus::ReportGenerated => sprintf('%s gerou o relatório da inspeção %s.', $actor, $inspectionNumber),
+            InspectionStatus::AwaitingRelease => sprintf('%s enviou a inspeção %s para liberação.', $actor, $inspectionNumber),
             InspectionStatus::Released => sprintf('%s liberou a inspeção %s.', $actor, $inspectionNumber),
             InspectionStatus::Canceled => sprintf('%s cancelou a inspeção %s.', $actor, $inspectionNumber),
         };

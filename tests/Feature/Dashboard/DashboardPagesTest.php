@@ -6,6 +6,7 @@ namespace Tests\Feature\Dashboard;
 
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
+use App\Enums\OperationalRole;
 use App\Enums\UserAccountType;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
@@ -30,6 +31,7 @@ final class DashboardPagesTest extends TestCase
         $user = User::factory()->create([
             'organization_id' => $organization->id,
             'account_type' => UserAccountType::CompanyAdmin->value,
+            'operational_role' => OperationalRole::Planner,
         ]);
 
         $equipment = Equipment::factory()->create([
@@ -66,11 +68,11 @@ final class DashboardPagesTest extends TestCase
             now()->subHours(3),
         );
 
-        $approval = $this->createInspectionWithResponsibility(
+        $release = $this->createInspectionWithResponsibility(
             $equipment,
             $user,
-            InspectionStatus::AwaitingApproval,
-            InspectionResponsibility::Approver,
+            InspectionStatus::AwaitingRelease,
+            InspectionResponsibility::Releaser,
             'INS-2026-000004',
             now()->addDays(4),
             now()->subHours(2),
@@ -80,7 +82,7 @@ final class DashboardPagesTest extends TestCase
 
         $response
             ->assertOk()
-            ->assertInertia(function (Assert $page) use ($organization, $planned, $review, $correction, $approval, $user): void {
+            ->assertInertia(function (Assert $page) use ($organization, $planned, $review, $correction, $release, $user): void {
                 $page
                     ->component('Dashboard/Index')
                     ->where('mode', 'operational')
@@ -88,7 +90,9 @@ final class DashboardPagesTest extends TestCase
                     ->where('can.create_inspection', true)
                     ->where('can.view_company_summary', true)
                     ->has('auth.logout_url')
-                    ->has('navigation', 6)
+                    ->has('navigation', 4)
+                    ->where('navigation.2.label', 'Itens de Manutenção')
+                    ->where('navigation.3.label', 'Configurações')
                     ->has('links.dashboard')
                     ->has('links.inspections_index')
                     ->has('links.inspections_create')
@@ -97,30 +101,34 @@ final class DashboardPagesTest extends TestCase
                     ->missing('my_inspections')
                     ->missing('workflow_summary')
                     ->missing('recent_activities')
-                    ->loadDeferredProps(function (Assert $deferred) use ($planned, $review, $correction, $approval, $user): void {
+                    ->loadDeferredProps(function (Assert $deferred) use ($planned, $review, $correction, $release, $user): void {
                         $deferred
                             ->where('priority_counts.overdue', 1)
                             ->where('priority_counts.awaiting_review', 1)
                             ->where('priority_counts.in_correction', 1)
-                            ->where('priority_counts.awaiting_approval', 1)
+                            ->where('priority_counts.awaiting_release', 1)
                             ->has('my_inspections', 4)
                             ->where('my_inspections.0.number', $planned->number)
+                            ->missing('my_inspections.0.client')
+                            ->where('my_inspections.0.user_responsibilities.0.label', 'Planejador')
                             ->where('my_inspections.0.schedule.label', '2 dias atrasada')
-                            ->where('my_inspections.0.next_action.label', 'Iniciar inspeção')
+                            ->where('my_inspections.0.next_action.label', 'Ver planejamento')
                             ->where('my_inspections.1.number', $correction->number)
                             ->where('my_inspections.2.number', $review->number)
-                            ->where('my_inspections.3.number', $approval->number)
-                            ->has('workflow_summary', 8)
+                            ->where('my_inspections.2.user_responsibilities.0.label', 'Inspetor')
+                            ->where('my_inspections.3.number', $release->number)
+                            ->where('my_inspections.3.user_responsibilities.0.label', 'Liberador')
+                            ->has('workflow_summary', 7)
                             ->where('workflow_summary.0.label', 'Planejadas')
                             ->where('workflow_summary.0.count', 1)
-                            ->where('workflow_summary.2.label', 'Verificação')
+                            ->where('workflow_summary.2.label', 'Aguardando revisão')
                             ->where('workflow_summary.2.count', 1)
-                            ->where('workflow_summary.3.label', 'Correção')
-                            ->where('workflow_summary.3.count', 1)
-                            ->where('workflow_summary.4.label', 'Aprovação')
+                            ->where('workflow_summary.4.label', 'Correção')
                             ->where('workflow_summary.4.count', 1)
+                            ->where('workflow_summary.5.label', 'Aguardando liberação')
+                            ->where('workflow_summary.5.count', 1)
                             ->has('recent_activities', 4)
-                            ->where('recent_activities.0.status', InspectionStatus::AwaitingApproval->value)
+                            ->where('recent_activities.0.status', InspectionStatus::AwaitingRelease->value)
                             ->where('recent_activities.0.actor', $user->name);
                     });
             });
@@ -147,6 +155,20 @@ final class DashboardPagesTest extends TestCase
                     ->has('workflow_summary', 0)
                     ->has('recent_activities', 0);
             });
+    }
+
+    public function test_member_navigation_hides_administrative_items(): void
+    {
+        $organization = Organization::factory()->create();
+        $member = User::factory()->for($organization)->create();
+
+        $this->actingAs($member)
+            ->get('/dashboard')
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('navigation', 2)
+                ->where('navigation.0.label', 'Dashboard')
+                ->where('navigation.1.label', 'Inspeções')
+                ->missing('navigation.2'));
     }
 
     public function test_dashboard_features_the_current_reinspection_with_real_progress_and_equipment_link(): void
@@ -218,6 +240,7 @@ final class DashboardPagesTest extends TestCase
         $member = User::factory()->create([
             'organization_id' => $organization->id,
             'account_type' => UserAccountType::Member->value,
+            'operational_role' => OperationalRole::Reviewer,
         ]);
         $otherUser = User::factory()->create([
             'organization_id' => $organization->id,
@@ -228,7 +251,7 @@ final class DashboardPagesTest extends TestCase
             Equipment::factory()->create(['organization_id' => $organization->id]),
             $member,
             InspectionStatus::AwaitingReview,
-            InspectionResponsibility::Reviewer,
+            InspectionResponsibility::Approver,
             'INS-2026-000101',
             now()->addDay(),
             now()->subMinutes(10),
@@ -273,7 +296,7 @@ final class DashboardPagesTest extends TestCase
         $priorityUrl = route('inspections.index', [
             'status' => InspectionStatus::AwaitingReview->value,
             'responsible' => $member->getKey(),
-            'responsibility' => InspectionResponsibility::Reviewer->value,
+            'responsibility' => InspectionResponsibility::Approver->value,
         ]);
         $workflowUrl = route('inspections.index', [
             'status' => InspectionStatus::AwaitingReview->value,
@@ -313,9 +336,9 @@ final class DashboardPagesTest extends TestCase
                     $deferred
                         ->has('my_inspections', 2)
                         ->where('my_inspections.0.number', $reviewAsReviewer->number)
-                        ->where('my_inspections.0.next_action.label', 'Abrir para verificar')
+                        ->where('my_inspections.0.next_action.label', 'Iniciar revisão')
                         ->where('my_inspections.1.number', $reviewAsPreparer->number)
-                        ->where('my_inspections.1.next_action.label', 'Acompanhar verificação')
+                        ->where('my_inspections.1.next_action.label', 'Iniciar revisão')
                         ->missing('priority_counts')
                         ->missing('workflow_summary')
                         ->missing('recent_activities');
@@ -336,7 +359,7 @@ final class DashboardPagesTest extends TestCase
             ->assertInertia(function (Assert $page) use ($reviewAsReviewer): void {
                 $page
                     ->component('Inspections/Index')
-                    ->where('filters.responsibility', InspectionResponsibility::Reviewer->value)
+                    ->where('filters.responsibility', InspectionResponsibility::Approver->value)
                     ->where('inspections.total', 1)
                     ->where('inspections.data.0.number', $reviewAsReviewer->number);
             });
@@ -375,8 +398,8 @@ final class DashboardPagesTest extends TestCase
         $approved = $this->createInspectionWithResponsibility(
             Equipment::factory()->create(['organization_id' => $organization->id]),
             $user,
-            InspectionStatus::Approved,
-            InspectionResponsibility::Approver,
+            InspectionStatus::AwaitingRelease,
+            InspectionResponsibility::Releaser,
             'INS-2026-000202',
             CarbonImmutable::parse('2026-07-01'),
             now()->subMinutes(20),
@@ -427,7 +450,8 @@ final class DashboardPagesTest extends TestCase
             'organization_id' => $equipment->organization_id,
             'number' => $number,
             'status' => $status,
-            'scheduled_for' => $scheduledFor,
+            'planned_start_on' => $scheduledFor,
+            'planned_end_on' => $scheduledFor,
             'created_by' => $user->getKey(),
         ]);
 

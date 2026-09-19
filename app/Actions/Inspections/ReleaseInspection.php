@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Actions\Inspections;
 
 use App\Actions\Inspections\Concerns\ValidatesInspectionTransition;
-use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
+use App\Enums\OperationalRole;
 use App\Models\Inspection;
 use App\Models\User;
 use Illuminate\Validation\ValidationException;
@@ -22,25 +22,20 @@ final class ReleaseInspection
     public function handle(Inspection $inspection, User $actor): Inspection
     {
         $this->validateTenant($inspection, $actor);
-        $this->ensureActorHasResponsibility($inspection, $actor, InspectionResponsibility::Releaser);
-        $this->ensureResponsibilityPresent($inspection, InspectionResponsibility::Releaser);
-
-        if ($inspection->status !== InspectionStatus::ReportGenerated) {
-            throw ValidationException::withMessages([
-                'status' => 'O relatório ainda não foi gerado.',
-            ]);
+        if ($actor->operational_role !== OperationalRole::Releaser || ! $inspection->hasAnyResponsibilityForUser($actor, ...\App\Enums\InspectionResponsibility::cases())) {
+            throw ValidationException::withMessages(['actor' => 'Somente o Liberador vinculado pode liberar a inspeção.']);
         }
 
-        if ($inspection->report_generated_at === null) {
+        if ($inspection->status !== InspectionStatus::AwaitingRelease) {
             throw ValidationException::withMessages([
-                'report' => 'O relatório precisa estar gerado para liberar a inspeção.',
+                'status' => 'A inspeção não está aguardando liberação.',
             ]);
         }
 
         return $this->transition->handle(
             $actor,
             $inspection,
-            [InspectionStatus::ReportGenerated],
+            [InspectionStatus::AwaitingRelease],
             InspectionStatus::Released,
             [
                 'released_at' => now(),

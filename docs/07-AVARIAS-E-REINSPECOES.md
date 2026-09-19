@@ -80,7 +80,7 @@ A escrita exige preparador atribuído e inspeção em `in_progress` ou
 Toda avaliação completa exige comentário. Condições `not_located` e
 `not_inspected` exigem justificativa, removem GUT/classificação e não podem manter
 marcações. `repaired` também remove a classificação atual. As quatro condições
-ativas exigem uma configuração GUT válida salva antes da publicação.
+ativas exigem as três notas GUT nativas, de 1 a 5, salvas antes da publicação.
 
 As condições observáveis — `new`, `unchanged`, `worsened`, `improved` e
 `repaired` — também exigem, já na publicação, um quantitativo principal e pelo
@@ -95,9 +95,16 @@ observável exige pelo menos duas fotos e todas as fotos anexadas precisam estar
 prontas. O envio da inspeção à verificação repete essa validação de cobertura.
 
 Há no máximo um quantitativo principal por avaliação, obrigatório para publicar
-uma condição observável. A unidade pode ser unidade,
-metro, metro quadrado, metro cúbico, milímetro, centímetro, quilograma, litro ou
-outra. Alterar quantitativo de uma avaliação completa normalmente a devolve a
+uma condição observável. Apenas CIVIL (`CV`) recebe comprimento, altura e largura
+em metros, além da quantidade, que admite frações. Os quatro campos devem ser
+positivos, com até quatro casas decimais. O formulário mostra `M³ UNI. = comprimento
+× altura × largura` e `M³ TOTAL = M³ UNI. × quantidade`. O backend recalcula ambos
+com aritmética decimal e salva o total como quantitativo em `m3`, sem arredondar
+os produtos intermediários. O modelo existente `DefectAssessmentQuantity`
+armazena esse conjunto por avaliação, mantendo a restrição de unicidade.
+
+TAC e REC continuam recebendo valor e unidade: unidade, metro, metro quadrado,
+metro cúbico, milímetro, centímetro, quilograma, litro ou outra. Alterar quantitativo de uma avaliação completa normalmente a devolve a
 rascunho; quando já existem marcações, ela permanece publicada para preservar a
 consistência do mapa e atualiza a data da avaliação.
 

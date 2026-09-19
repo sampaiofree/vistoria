@@ -6,19 +6,16 @@ namespace Tests\Feature\ViewFirst;
 
 use App\Enums\DefectAssessmentCondition;
 use App\Enums\DefectAssessmentStatus;
+use App\Enums\DefectCategory;
 use App\Enums\EquipmentRevisionEmissionType;
-use App\Enums\GutCriterion;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
 use App\Enums\InspectionType;
-use App\Enums\RegistrationStatus;
+use App\Enums\OperationalRole;
 use App\Enums\UserAccountType;
 use App\Models\AssessmentPhoto;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
-use App\Models\DefectCategory;
-use App\Models\DefectCategoryGutOption;
-use App\Models\DefectClassification;
 use App\Models\Equipment;
 use App\Models\EquipmentRevision;
 use App\Models\Inspection;
@@ -323,7 +320,7 @@ final class ViewFirstReadModelTest extends TestCase
                 ->where('gut', null)
                 ->has('characterization')
                 ->where('quantity', null)
-                ->has('gut_classification_ranges', 0)
+                ->has('gut_classification_ranges', 5)
                 ->has('evidence', 0)
                 ->has('measurement_units', 9)
                 ->where('assessment_navigation.inspection_url', route('inspections.show', $inspection))
@@ -339,39 +336,18 @@ final class ViewFirstReadModelTest extends TestCase
                 ->missing('demo'));
     }
 
-    public function test_assessment_page_exposes_active_category_gut_ranges_with_read_only_capabilities(): void
+    public function test_assessment_page_exposes_native_category_gut_ranges_with_read_only_capabilities(): void
     {
         [$organization, $admin, , , $assessment] = $this->viewFirstScenario();
-        $category = DefectCategory::factory()->create([
-            'organization_id' => $organization->id,
-            'code' => 'CV-TEST',
-            'name' => 'Categoria de teste',
-        ]);
-        $assessment->defect->update(['defect_category_id' => $category->id]);
-
-        DefectClassification::factory()->for($category, 'category')->create([
-            'organization_id' => $organization->id,
-            'code' => 'CV-A',
-            'name' => 'Classificação ativa',
-            'status' => RegistrationStatus::Active,
-            'lower_limit' => 0,
-            'upper_limit' => 25,
-        ]);
-        DefectClassification::factory()->for($category, 'category')->create([
-            'organization_id' => $organization->id,
-            'code' => 'CV-I',
-            'name' => 'Classificação inativa',
-            'status' => RegistrationStatus::Inactive,
-            'lower_limit' => 26,
-            'upper_limit' => 50,
-        ]);
+        $category = DefectCategory::Civil;
+        $assessment->defect->update(['category' => $category->value]);
 
         $this->actingAs($admin)
             ->get(route('defect-assessments.show', $assessment))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
-                ->has('gut_classification_ranges', 1)
-                ->where('gut_classification_ranges.0.code', 'CV-A')
+                ->has('gut_classification_ranges', 5)
+                ->where('gut_classification_ranges.0.code', 'CV-1')
                 ->missing('capabilities.manual_classification_url')
                 ->has('capabilities.status_url'));
 
@@ -383,7 +359,7 @@ final class ViewFirstReadModelTest extends TestCase
             ->get(route('defect-assessments.show', $assessment))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
-                ->has('gut_classification_ranges', 1)
+                ->has('gut_classification_ranges', 5)
                 ->where('capabilities.update', false)
                 ->missing('capabilities.manual_classification_url')
                 ->where('capabilities.quantity_url', null)
@@ -398,11 +374,8 @@ final class ViewFirstReadModelTest extends TestCase
             ->where('inspection_id', $inspection->getKey())
             ->where('status', DefectAssessmentStatus::Complete)
             ->firstOrFail();
-        $category = DefectCategory::factory()->create([
-            'organization_id' => $inspection->organization_id,
-            'code' => 'MAP-TEST',
-        ]);
-        $assessment->defect->update(['defect_category_id' => $category->id]);
+        $category = DefectCategory::Civil;
+        $assessment->defect->update(['category' => $category->value]);
         $map = InspectionLocationMap::factory()->forInspection($inspection, $category)->create();
         InspectionLocationMarker::factory()->forMapAndAssessment($map, $assessment)->create();
         Storage::fake('inspection_photos');
@@ -421,7 +394,7 @@ final class ViewFirstReadModelTest extends TestCase
                 'thumbnail_path' => 'photos/thumbnail.webp',
             ]);
         $unmappedDefect = Defect::factory()->forEquipment($inspection->equipment, $inspection)->create([
-            'defect_category_id' => $category->id,
+            'category' => $category->value,
             'code' => 'VT002-CV-003',
             'sequence_number' => 3,
             'title' => 'Avaria sem localização no mapa',
@@ -443,7 +416,7 @@ final class ViewFirstReadModelTest extends TestCase
                 ->where('evidence.0.id', $photo->public_id)
                 ->where('evidence.0.reorder_url', route('defect-assessments.photos.reorder', $assessment))
                 ->where('evidence.0.report_number', 1)
-                ->where('evidence.0.report_category', 'MAP-TEST')
+                ->where('evidence.0.report_category', 'CV')
                 ->where('evidence.0.delete_url', route('assessment-photos.destroy', $photo)));
 
         $viewer = User::factory()->for($inspection->organization)->create([
@@ -457,7 +430,7 @@ final class ViewFirstReadModelTest extends TestCase
                 ->where('evidence.0.id', $photo->public_id)
                 ->where('evidence.0.reorder_url', null)
                 ->where('evidence.0.report_number', 1)
-                ->where('evidence.0.report_category', 'MAP-TEST')
+                ->where('evidence.0.report_category', 'CV')
                 ->where('evidence.0.delete_url', null));
 
         $this->actingAs($admin)
@@ -466,7 +439,7 @@ final class ViewFirstReadModelTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->where('evidence.0.id', $unmappedPhoto->public_id)
                 ->where('evidence.0.report_number', null)
-                ->where('evidence.0.report_category', 'MAP-TEST'));
+                ->where('evidence.0.report_category', 'CV'));
 
         $this->actingAs($admin)
             ->get(route('inspections.report-preview', $inspection))
@@ -500,7 +473,7 @@ final class ViewFirstReadModelTest extends TestCase
                 ->where('evidence.0.id', $photo->public_id)
                 ->where('evidence.0.reorder_url', null)
                 ->where('evidence.0.report_number', 1)
-                ->where('evidence.0.report_category', 'MAP-TEST')
+                ->where('evidence.0.report_category', 'CV')
                 ->where('evidence.0.delete_url', null));
     }
 
@@ -530,7 +503,10 @@ final class ViewFirstReadModelTest extends TestCase
         $organization = Organization::factory()->create();
         $admin = User::factory()
             ->for($organization)
-            ->create(['account_type' => UserAccountType::CompanyAdmin->value]);
+            ->create([
+                'account_type' => UserAccountType::CompanyAdmin->value,
+                'operational_role' => OperationalRole::Inspector->value,
+            ]);
         $equipment = Equipment::factory()
             ->for($organization)
             ->create();
@@ -688,7 +664,8 @@ final class ViewFirstReadModelTest extends TestCase
             ->reinspection($inspection)
             ->create([
                 'status' => InspectionStatus::InProgress,
-                'scheduled_for' => '2027-08-03',
+                'planned_start_on' => '2027-08-03',
+                'planned_end_on' => '2027-08-03',
                 'inspected_on' => '2027-08-03',
             ]);
 
@@ -750,23 +727,8 @@ final class ViewFirstReadModelTest extends TestCase
             ->complete()
             ->create(['condition' => DefectAssessmentCondition::New]);
         $assessment->update(['previous_assessment_id' => $previousAssessment->id]);
-        $category = DefectCategory::factory()->create(['organization_id' => $organization->id]);
-        $assessment->defect->update(['defect_category_id' => $category->id]);
-
-        foreach ([GutCriterion::Gravity, GutCriterion::Urgency, GutCriterion::Trend] as $criterion) {
-            DefectCategoryGutOption::factory()->create([
-                'organization_id' => $organization->id,
-                'defect_category_id' => $category->id,
-                'criterion' => $criterion,
-                'score' => 5,
-            ]);
-        }
-        DefectClassification::factory()->for($category, 'category')->create([
-            'organization_id' => $organization->id,
-            'code' => 'CV-1',
-            'lower_limit' => 125,
-            'upper_limit' => 125,
-        ]);
+        $category = DefectCategory::Civil;
+        $assessment->defect->update(['category' => $category->value]);
 
         $this->actingAs($admin)
             ->patch(route('defect-assessments.update', $assessment), [
@@ -822,7 +784,10 @@ final class ViewFirstReadModelTest extends TestCase
         $organization = Organization::factory()->create();
         $admin = User::factory()
             ->for($organization)
-            ->create(['account_type' => UserAccountType::CompanyAdmin->value]);
+            ->create([
+                'account_type' => UserAccountType::CompanyAdmin->value,
+                'operational_role' => OperationalRole::Inspector->value,
+            ]);
         $equipment = Equipment::factory()
             ->for($organization)
             ->create(['defect_code_prefix' => 'VT002']);
@@ -834,7 +799,8 @@ final class ViewFirstReadModelTest extends TestCase
                 'report_designer' => 'PROJETISTA II',
                 'designer_i_report_number' => 'SM-IIE-1717',
                 'status' => InspectionStatus::InProgress,
-                'scheduled_for' => '2026-08-04',
+                'planned_start_on' => '2026-08-04',
+                'planned_end_on' => '2026-08-04',
                 'inspected_on' => '2026-08-04',
             ]);
 

@@ -1,11 +1,11 @@
 <script setup>
 import { useForm } from '@inertiajs/vue3';
 const props = defineProps({ action: { type: String, required: true }, users: { type: Array, default: () => [] }, roles: { type: Array, default: () => [] } });
-const form = useForm({ user_id: '', responsibility: '', is_primary: false });
+const form = useForm({ user_id: '', responsibility: '' });
 function submit() { form.post(props.action, { preserveScroll: true, onSuccess: () => form.reset() }); }
 </script>
 <template>
-    <form class="grid gap-3 sm:grid-cols-[1fr_1fr_auto_auto] sm:items-end" @submit.prevent="submit">
+    <form class="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end" @submit.prevent="submit">
         <label class="text-sm font-medium text-slate-700">
             Responsável
             <select v-model="form.user_id" required class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2">
@@ -22,10 +22,6 @@ function submit() { form.post(props.action, { preserveScroll: true, onSuccess: (
             </select>
             <span v-if="form.errors.responsibility" class="mt-1 block text-xs text-rose-600">{{ form.errors.responsibility }}</span>
         </label>
-        <label class="flex items-center gap-2 pb-2 text-sm text-slate-700">
-            <input v-model="form.is_primary" type="checkbox">
-            Principal nesta função
-        </label>
-        <button :disabled="form.processing" class="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white">Atribuir</button>
+        <button :disabled="form.processing" class="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white">Definir responsável</button>
     </form>
 </template>

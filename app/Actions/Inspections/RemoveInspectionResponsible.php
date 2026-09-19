@@ -54,14 +54,9 @@ final class RemoveInspectionResponsible
     {
         $required = match ($status) {
             InspectionStatus::Planned => [],
-            InspectionStatus::InProgress => [InspectionResponsibility::Preparer],
-            InspectionStatus::AwaitingReview, InspectionStatus::InCorrection => [
-                InspectionResponsibility::Preparer, InspectionResponsibility::Reviewer,
-            ],
-            InspectionStatus::AwaitingApproval, InspectionStatus::Approved => [
-                InspectionResponsibility::Preparer, InspectionResponsibility::Reviewer, InspectionResponsibility::Approver,
-            ],
-            InspectionStatus::ReportGenerated => InspectionResponsibility::cases(),
+            InspectionStatus::InProgress, InspectionStatus::InCorrection => [InspectionResponsibility::Reviewer],
+            InspectionStatus::AwaitingReview, InspectionStatus::InReview => [InspectionResponsibility::Approver],
+            InspectionStatus::AwaitingRelease => [InspectionResponsibility::Releaser],
             InspectionStatus::Released, InspectionStatus::Canceled => [],
         };
 

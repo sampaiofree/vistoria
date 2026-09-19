@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Services\InspectionLocations;
 
+use App\Enums\DefectCategory;
 use App\Models\AssessmentPhoto;
 use App\Models\DefectAssessment;
-use App\Models\DefectCategory;
 use App\Models\Inspection;
 use App\Models\InspectionLocationMarker;
 use Illuminate\Support\Collection;
@@ -21,39 +21,29 @@ final class InspectionLocationPhotoNumbering
      *
      * @return array<string, int>
      */
-    public function buildForReport(Inspection $inspection, ?Collection $loadedCategories = null): array
+    public function buildForReport(Inspection $inspection, ?Collection $loadedMaps = null): array
     {
-        $categories = $this->categoryOrder->sort($loadedCategories ?? DefectCategory::query()
-            ->forOrganization($inspection->organization_id)
-            ->whereHas('locationMaps', fn ($query) => $query
-                ->where('organization_id', $inspection->organization_id)
-                ->where('inspection_id', $inspection->id))
-            ->with([
-                'locationMaps' => fn ($query) => $query
-                    ->where('organization_id', $inspection->organization_id)
-                    ->where('inspection_id', $inspection->id)
-                    ->with([
-                        'markers.assessment.defect',
-                        'markers.assessment.photos',
-                    ])
-                    ->orderBy('position')
-                    ->orderBy('id'),
-            ])
-            ->get());
+        $maps = $loadedMaps ?? $inspection->locationMaps()
+            ->where('organization_id', $inspection->organization_id)
+            ->with(['markers.assessment.defect', 'markers.assessment.photos'])
+            ->orderBy('position')
+            ->orderBy('id')
+            ->get();
+        $categories = $this->categoryOrder->sort(collect(DefectCategory::cases()));
 
         $numbering = [];
 
         foreach ($categories as $category) {
-            $nextNumber = $this->categoryOrder->priority($category->code, $category->name) === 0 ? 5 : 1;
+            $nextNumber = $this->categoryOrder->priority($category->value, $category->label()) === 0 ? 5 : 1;
             $seenAssessments = [];
 
-            foreach ($category->locationMaps as $map) {
+            foreach ($maps->filter(fn ($map): bool => $map->category === $category) as $map) {
                 foreach ($map->markers as $marker) {
                     $assessment = $marker->assessment;
 
                     if ($assessment === null
                         || ! $assessment->isComplete()
-                        || (int) $assessment->defect?->defect_category_id !== (int) $category->id
+                        || $assessment->defect?->category !== $category
                         || isset($seenAssessments[$assessment->id])) {
                         continue;
                     }

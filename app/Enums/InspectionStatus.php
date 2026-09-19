@@ -7,10 +7,9 @@ enum InspectionStatus: string
     case Planned = 'planned';
     case InProgress = 'in_progress';
     case AwaitingReview = 'awaiting_review';
+    case InReview = 'in_review';
     case InCorrection = 'in_correction';
-    case AwaitingApproval = 'awaiting_approval';
-    case Approved = 'approved';
-    case ReportGenerated = 'report_generated';
+    case AwaitingRelease = 'awaiting_release';
     case Released = 'released';
     case Canceled = 'canceled';
 
@@ -19,11 +18,10 @@ enum InspectionStatus: string
         return match ($this) {
             self::Planned => 'Planejada',
             self::InProgress => 'Em inspeção',
-            self::AwaitingReview => 'Aguardando verificação',
+            self::AwaitingReview => 'Aguardando revisão',
+            self::InReview => 'Em revisão',
             self::InCorrection => 'Em correção',
-            self::AwaitingApproval => 'Aguardando aprovação',
-            self::Approved => 'Aprovada',
-            self::ReportGenerated => 'Relatório gerado',
+            self::AwaitingRelease => 'Aguardando liberação',
             self::Released => 'Liberada',
             self::Canceled => 'Cancelada',
         };

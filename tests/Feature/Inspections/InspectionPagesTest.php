@@ -95,7 +95,8 @@ final class InspectionPagesTest extends TestCase
                 'external_report_number' => 'REL-123',
                 'procedure_number' => 'PROC-123',
                 'atmospheric_classification' => 'C4',
-                'scheduled_at' => '29/07/2026',
+                'planned_start_on' => '29/07/2026',
+                'planned_end_on' => '31/07/2026',
                 'context_snapshot' => ['equipment' => ['tag' => 'EQ-01', 'name' => 'Bomba']],
                 'snapshot_version' => 1,
                 'responsibles' => [],
@@ -149,9 +150,14 @@ final class InspectionPagesTest extends TestCase
                 'external_report_number' => 'REL-123',
                 'procedure_number' => 'PROC-123',
                 'atmospheric_classification' => 'C4',
-                'scheduled_at' => '29/07/2026',
-                'scheduled_for_input' => '2026-07-29',
+                'planned_start_on' => '29/07/2026',
+                'planned_end_on' => '31/07/2026',
+                'planned_start_on_input' => '2026-07-29',
+                'planned_end_on_input' => '2026-07-31',
             ],
+            'equipment_options' => [['value' => 1, 'label' => 'EQ-01 — Bomba']],
+            'inspectors' => [['id' => 2, 'name' => 'João Inspetor']],
+            'selected_inspector_id' => 2,
             'action' => '/inspections/1',
             'cancel_url' => '/inspections/1',
         ]));
@@ -161,10 +167,14 @@ final class InspectionPagesTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Inspections/Edit')
                 ->where('inspection.number', 'INS-2026-000001')
-                ->where('inspection.scheduled_for_input', '2026-07-29')
+                ->where('inspection.planned_start_on_input', '2026-07-29')
+                ->where('inspection.planned_end_on_input', '2026-07-31')
                 ->where('inspection.service_order', 'OS-123')
                 ->missing('inspection.general_notes')
-                ->has('inspection.equipment.client'));
+                ->has('inspection.equipment.client')
+                ->has('equipment_options', 1)
+                ->has('inspectors', 1)
+                ->where('selected_inspector_id', 2));
     }
 
     public function test_correction_and_cancel_forms_require_justification(): void
@@ -173,6 +183,30 @@ final class InspectionPagesTest extends TestCase
 
         $this->assertStringContainsString('requires_justification === true', $source);
         $this->assertStringContainsString('required rows="3"', $source);
+    }
+
+    public function test_index_uses_compact_filters_and_status_milestones_instead_of_date_columns(): void
+    {
+        $source = file_get_contents(resource_path('js/pages/Inspections/Index.vue'));
+
+        $this->assertStringContainsString('filterForm.search', $source);
+        $this->assertStringContainsString('filterForm.status', $source);
+        $this->assertStringContainsString('filterForm.scheduled_from', $source);
+        $this->assertStringContainsString('filterForm.scheduled_to', $source);
+        $this->assertStringContainsString('status_milestone', $source);
+        $this->assertStringNotContainsString('Janela planejada', $source);
+        $this->assertStringNotContainsString('>Inspecionada<', $source);
+        $this->assertStringContainsString('border-teal-700 px-3', $source);
+    }
+
+    public function test_show_keeps_the_planning_block_on_the_overview(): void
+    {
+        $source = file_get_contents(resource_path('js/pages/Inspections/Show.vue'));
+
+        $this->assertStringContainsString('active_tab === \'overview\'', $source);
+        $this->assertStringContainsString('>Planejamento<', $source);
+        $this->assertStringContainsString('inspection.planned_start_on', $source);
+        $this->assertStringContainsString('inspection.planned_end_on', $source);
     }
 
     public function test_snapshot_has_no_editable_controls(): void

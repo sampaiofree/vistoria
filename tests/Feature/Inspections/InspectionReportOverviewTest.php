@@ -6,6 +6,7 @@ namespace Tests\Feature\Inspections;
 
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
+use App\Enums\OperationalRole;
 use App\Enums\PhotoProcessingStatus;
 use App\Enums\UserAccountType;
 use App\Jobs\ProcessInspectionOverviewPhoto;
@@ -70,7 +71,9 @@ final class InspectionReportOverviewTest extends TestCase
     public function test_assigned_member_can_edit_but_unassigned_member_and_final_inspection_cannot(): void
     {
         [$organization, , $inspection] = $this->scenario();
-        $assigned = User::factory()->for($organization)->create();
+        $assigned = User::factory()->for($organization)->create([
+            'operational_role' => OperationalRole::Inspector,
+        ]);
         $unassigned = User::factory()->for($organization)->create();
         InspectionResponsible::factory()->forInspection($inspection, $assigned)->create([
             'responsibility' => InspectionResponsibility::Reviewer,
@@ -83,10 +86,7 @@ final class InspectionReportOverviewTest extends TestCase
 
         $this->actingAs($unassigned)
             ->get(route('inspections.report-overview', $inspection))
-            ->assertInertia(fn (Assert $page) => $page
-                ->where('capabilities.edit', false)
-                ->where('overview.blocks.0.update_url', null)
-                ->where('overview.blocks.0.photos.0.upload_url', null));
+            ->assertForbidden();
 
         $this->actingAs($unassigned)
             ->put(route('inspections.report-overview.blocks.update', [$inspection, 1]), $payload)
@@ -220,10 +220,15 @@ final class InspectionReportOverviewTest extends TestCase
         $organization = Organization::factory()->create();
         $admin = User::factory()->for($organization)->create([
             'account_type' => UserAccountType::CompanyAdmin->value,
+            'operational_role' => OperationalRole::Inspector,
         ]);
         $inspection = Inspection::factory()
             ->forEquipment(Equipment::factory()->for($organization)->create())
             ->create(['status' => InspectionStatus::InProgress]);
+
+        InspectionResponsible::factory()->forInspection($inspection, $admin)->create([
+            'responsibility' => InspectionResponsibility::Preparer,
+        ]);
 
         return [$organization, $admin, $inspection];
     }

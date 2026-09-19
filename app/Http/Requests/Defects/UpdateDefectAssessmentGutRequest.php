@@ -23,9 +23,9 @@ final class UpdateDefectAssessmentGutRequest extends FormRequest
     {
         return [
             'condition' => ['required', Rule::enum(DefectAssessmentCondition::class)],
-            'gravity' => ['nullable', 'integer', 'min:0', 'max:65535'],
-            'urgency' => ['nullable', 'integer', 'min:0', 'max:65535'],
-            'trend' => ['nullable', 'integer', 'min:0', 'max:65535'],
+            'gravity' => ['nullable', 'integer', 'min:1', 'max:5'],
+            'urgency' => ['nullable', 'integer', 'min:1', 'max:5'],
+            'trend' => ['nullable', 'integer', 'min:1', 'max:5'],
         ];
     }
 }

@@ -56,9 +56,6 @@ final class EquipmentDocumentController extends Controller
 
         $equipmentDocument->loadMissing([
             'equipment.client',
-            'equipment.unit',
-            'equipment.area',
-            'equipment.subarea',
             'uploader',
         ]);
 
@@ -77,23 +74,6 @@ final class EquipmentDocumentController extends Controller
                 'name' => $equipment->client->name,
                 'show_url' => route('clients.show', $equipment->client),
             ],
-            'unit' => [
-                'public_id' => $equipment->unit->public_id,
-                'name' => $equipment->unit->name,
-                'show_url' => route('units.show', $equipment->unit),
-            ],
-            'area' => [
-                'public_id' => $equipment->area->public_id,
-                'name' => $equipment->area->name,
-                'show_url' => route('areas.show', $equipment->area),
-            ],
-            'subarea' => $equipment->subarea === null
-                ? null
-                : [
-                    'public_id' => $equipment->subarea->public_id,
-                    'name' => $equipment->subarea->name,
-                    'show_url' => route('subareas.show', $equipment->subarea),
-                ],
             'can' => [
                 'download' => $request->user()->can('download', $equipmentDocument),
                 'update_status' => $request->user()->can('updateStatus', $equipmentDocument),

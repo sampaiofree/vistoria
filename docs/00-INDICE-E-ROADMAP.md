@@ -39,7 +39,7 @@ aprovar e liberar inspeções técnicas. O sistema atual inclui:
 | [07 — Avarias e reinspeções](07-AVARIAS-E-REINSPECOES.md) | Avarias, avaliações, relações e cobertura histórica |
 | [08 — Fotos e armazenamento](08-FOTOS-E-ARMAZENAMENTO.md) | Upload, processamento, acesso e falhas |
 | [08A — Mapas e localização](08A-MAPAS-E-LOCALIZACAO-DA-INSPECAO.md) | Mapas, editor, marcações, cobertura e relatório |
-| [09 — Classificação e GUT](09-CLASSIFICACAO-CIVIL-GUT.md) | Taxonomia configurável e cálculo GUT |
+| [09 — Classificação e GUT](09-CLASSIFICACAO-CIVIL-GUT.md) | Catálogo nativo e cálculo GUT |
 | [13 — Deploy](13-DEPLOY-HETZNER.md) | Requisitos e checklist de produção |
 | [13A — Passo a passo de produção](13A-PASSO-A-PASSO-DEPLOY-PRODUCAO.md) | Runbook do primeiro deploy e atualizações |
 
@@ -66,9 +66,8 @@ CI.
 
 - Não há seed operacional ou cenário de demonstração. Dados são criados pela
   aplicação; factories são usadas nos testes.
-- A exportação para PDF e DOCX acontece no navegador a partir da prévia A4. O
-  estado `report_generated` registra uma transição da inspeção, não um arquivo de
-  relatório persistido no servidor.
+- A exportação para PDF e DOCX acontece no navegador a partir da prévia A4 e não
+  altera o status nem persiste um arquivo de relatório no servidor.
 - O cadastro atual de uma nova origem de mapa recebe PNG, JPEG ou WEBP. Campos e
   caminhos ligados a documentos de referência permanecem por compatibilidade
   histórica, mas não constituem o fluxo atual de upload da interface.

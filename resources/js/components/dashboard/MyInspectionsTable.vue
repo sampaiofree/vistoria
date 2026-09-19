@@ -51,7 +51,6 @@ const skeletonRows = [1, 2, 3, 4, 5, 6, 7, 8];
                 <thead class="bg-slate-50 text-left text-xs font-semibold text-slate-600">
                     <tr>
                         <th scope="col" class="px-5 py-3">Inspeção</th>
-                        <th scope="col" class="px-5 py-3">Cliente / Unidade</th>
                         <th scope="col" class="px-5 py-3">Equipamento</th>
                         <th scope="col" class="px-5 py-3">Minha função</th>
                         <th scope="col" class="px-5 py-3">Status</th>
@@ -62,7 +61,6 @@ const skeletonRows = [1, 2, 3, 4, 5, 6, 7, 8];
                 <tbody class="divide-y divide-slate-200">
                     <tr v-for="row in skeletonRows" :key="row" class="animate-pulse">
                         <td class="px-5 py-4"><div class="h-4 w-32 rounded bg-slate-200" /><div class="mt-2 h-3 w-24 rounded bg-slate-100" /></td>
-                        <td class="px-5 py-4"><div class="h-4 w-28 rounded bg-slate-200" /><div class="mt-2 h-3 w-24 rounded bg-slate-100" /></td>
                         <td class="px-5 py-4"><div class="h-4 w-36 rounded bg-slate-200" /><div class="mt-2 h-3 w-20 rounded bg-slate-100" /></td>
                         <td class="px-5 py-4"><div class="h-4 w-24 rounded bg-slate-200" /><div class="mt-2 h-3 w-20 rounded bg-slate-100" /></td>
                         <td class="px-5 py-4"><div class="h-7 w-28 rounded-full bg-slate-200" /></td>
@@ -79,7 +77,6 @@ const skeletonRows = [1, 2, 3, 4, 5, 6, 7, 8];
                 <thead class="bg-slate-50 text-left text-xs font-semibold text-slate-600">
                     <tr>
                         <th scope="col" class="px-5 py-3">Inspeção</th>
-                        <th scope="col" class="px-5 py-3">Cliente / Unidade</th>
                         <th scope="col" class="px-5 py-3">Equipamento</th>
                         <th scope="col" class="px-5 py-3">Minha função</th>
                         <th scope="col" class="px-5 py-3">Status</th>
@@ -97,14 +94,6 @@ const skeletonRows = [1, 2, 3, 4, 5, 6, 7, 8];
                                 {{ inspection.inspection_type_label }} · criada em {{ inspection.created_at }}
                             </div>
                         </th>
-                        <td class="px-5 py-4">
-                            <div class="font-medium text-slate-900">
-                                {{ inspection.client.name }}
-                            </div>
-                            <div class="mt-1 text-sm text-slate-500">
-                                {{ inspection.unit.name }}
-                            </div>
-                        </td>
                         <td class="px-5 py-4">
                             <div class="font-medium text-slate-900">
                                 {{ inspection.equipment.name }}

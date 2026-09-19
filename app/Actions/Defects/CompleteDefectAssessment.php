@@ -7,7 +7,6 @@ namespace App\Actions\Defects;
 use App\Enums\DefectAssessmentCondition;
 use App\Enums\DefectAssessmentStatus;
 use App\Enums\GutCriterion;
-use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
 use App\Models\DefectAssessment;
 use App\Models\Inspection;
@@ -37,8 +36,7 @@ final class CompleteDefectAssessment
             $assessment = DefectAssessment::query()
                 ->forOrganization($this->tenant->id())
                 ->with([
-                    'defect.categoryDefinition.gutOptions',
-                    'defect.categoryDefinition.classifications',
+                    'defect',
                     'inspection',
                     'photos',
                     'quantity',
@@ -88,7 +86,6 @@ final class CompleteDefectAssessment
                     'gut_snapshot' => null,
                     'gut_classified_at' => null,
                     'gut_classified_by' => null,
-                    'defect_classification_id' => null,
                     'classification_code' => null,
                     'classification_priority' => null,
                     'deadline_months' => null,
@@ -141,10 +138,7 @@ final class CompleteDefectAssessment
             ]);
         }
 
-        if (! $inspection->hasAnyResponsibilityForUser(
-            $actor,
-            InspectionResponsibility::Preparer,
-        )) {
+        if (! $actor->can('manageFieldContent', $inspection)) {
             throw ValidationException::withMessages([
                 'actor' => 'O usuário não está autorizado a concluir avaliações nesta inspeção.',
             ]);
@@ -162,13 +156,7 @@ final class CompleteDefectAssessment
 
     private function ensureConfiguredGutSelected(DefectAssessment $assessment): void
     {
-        $category = $assessment->defect->categoryDefinition;
-
-        if ($category === null) {
-            throw ValidationException::withMessages([
-                'gut' => 'A avaria precisa possuir uma categoria configurada para publicar a avaliação.',
-            ]);
-        }
+        $category = $assessment->defect->category;
 
         $this->gutResolver->resolve($category, [
             GutCriterion::Gravity->value => $assessment->gravity,

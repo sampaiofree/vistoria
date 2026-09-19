@@ -25,7 +25,6 @@ final class DefectAssessment extends Model
         'organization_id',
         'equipment_id',
         'defect_id',
-        'defect_classification_id',
         'inspection_id',
         'previous_assessment_id',
         'condition',
@@ -73,11 +72,6 @@ final class DefectAssessment extends Model
     public function defect(): BelongsTo
     {
         return $this->belongsTo(Defect::class);
-    }
-
-    public function classification(): BelongsTo
-    {
-        return $this->belongsTo(DefectClassification::class, 'defect_classification_id');
     }
 
     public function inspection(): BelongsTo

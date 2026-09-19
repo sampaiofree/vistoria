@@ -2,7 +2,6 @@
 
 namespace App\Http\Requests\Equipments;
 
-use App\Enums\RegistrationStatus;
 use App\Models\Equipment;
 use App\Support\TextNormalizer;
 use Illuminate\Foundation\Http\FormRequest;
@@ -18,17 +17,20 @@ final class StoreEquipmentRequest extends FormRequest
     protected function prepareForValidation(): void
     {
         $this->merge([
+            'maintenance_plan_code' => TextNormalizer::technicalCode($this->input('maintenance_plan_code')),
+            'maintenance_item_code' => TextNormalizer::technicalCode($this->input('maintenance_item_code')),
+            'area_code' => TextNormalizer::technicalCode($this->input('area_code')),
+            'subarea_code' => TextNormalizer::technicalCode($this->input('subarea_code')),
+            'task_list_group' => TextNormalizer::technicalCode($this->input('task_list_group')),
+            'task_list_group_counter' => TextNormalizer::technicalCode($this->input('task_list_group_counter')),
+            'area_name' => TextNormalizer::nullableText($this->input('area_name')),
+            'subarea_name' => TextNormalizer::nullableText($this->input('subarea_name')),
             'tag' => TextNormalizer::equipmentTag((string) $this->input('tag')),
             'defect_code_prefix' => TextNormalizer::technicalCode($this->input('defect_code_prefix')),
             'name' => TextNormalizer::text((string) $this->input('name')),
             'description' => TextNormalizer::nullableText($this->input('description')),
-            'manufacturer' => TextNormalizer::nullableText($this->input('manufacturer')),
-            'model' => TextNormalizer::nullableText($this->input('model')),
-            'serial_number' => TextNormalizer::nullableText($this->input('serial_number')),
-            'asset_code' => TextNormalizer::technicalCode($this->input('asset_code')),
             'abc_code' => TextNormalizer::technicalCode($this->input('abc_code')),
             'installation_location' => TextNormalizer::nullableText($this->input('installation_location')),
-            'notes' => TextNormalizer::nullableText($this->input('notes')),
         ]);
     }
 
@@ -37,50 +39,11 @@ final class StoreEquipmentRequest extends FormRequest
         $organizationId = $this->user()?->organization_id;
 
         return [
-            'client_id' => [
-                'required',
-                'integer',
-                Rule::exists('clients', 'id')
-                    ->where(fn ($query) => $query
-                        ->where('organization_id', $organizationId)
-                        ->where('status', RegistrationStatus::Active->value)),
-            ],
-            'client_unit_id' => [
-                'required',
-                'integer',
-                Rule::exists('client_units', 'id')
-                    ->where(fn ($query) => $query
-                        ->where('organization_id', $organizationId)
-                        ->where('status', RegistrationStatus::Active->value)
-                        ->where('client_id', $this->input('client_id'))),
-            ],
-            'area_id' => [
-                'required',
-                'integer',
-                Rule::exists('areas', 'id')
-                    ->where(fn ($query) => $query
-                        ->where('organization_id', $organizationId)
-                        ->where('status', RegistrationStatus::Active->value)
-                        ->where('client_unit_id', $this->input('client_unit_id'))),
-            ],
-            'subarea_id' => [
-                'nullable',
-                'integer',
-                Rule::exists('subareas', 'id')
-                    ->where(fn ($query) => $query
-                        ->where('organization_id', $organizationId)
-                        ->where('status', RegistrationStatus::Active->value)
-                        ->where('area_id', $this->input('area_id'))),
-            ],
-            'tag' => [
-                'required',
-                'string',
-                'max:120',
-                Rule::unique('equipments', 'normalized_tag')
-                    ->where(fn ($query) => $query
-                        ->where('organization_id', $organizationId)
-                        ->where('client_id', $this->input('client_id'))
-                        ->where('client_unit_id', $this->input('client_unit_id'))),
+            'tag' => ['required', 'string', 'max:120'],
+            'maintenance_item_code' => [
+                'required', 'string', 'max:80',
+                Rule::unique('equipments', 'maintenance_item_code')
+                    ->where(fn ($query) => $query->where('organization_id', $organizationId)),
             ],
             'defect_code_prefix' => [
                 'required',
@@ -90,16 +53,17 @@ final class StoreEquipmentRequest extends FormRequest
                     ->where(fn ($query) => $query
                         ->where('organization_id', $organizationId)),
             ],
+            'maintenance_plan_code' => ['nullable', 'string', 'max:80'],
+            'area_code' => ['nullable', 'string', 'max:80'],
+            'subarea_code' => ['nullable', 'string', 'max:80'],
+            'task_list_group' => ['nullable', 'string', 'max:80'],
+            'task_list_group_counter' => ['nullable', 'string', 'max:80'],
+            'area_name' => ['nullable', 'string', 'max:180'],
+            'subarea_name' => ['nullable', 'string', 'max:180'],
             'name' => ['required', 'string', 'max:180'],
             'description' => ['nullable', 'string', 'max:10000'],
-            'manufacturer' => ['nullable', 'string', 'max:150'],
-            'model' => ['nullable', 'string', 'max:150'],
-            'serial_number' => ['nullable', 'string', 'max:150'],
-            'asset_code' => ['nullable', 'string', 'max:120'],
             'abc_code' => ['nullable', 'string', 'max:20'],
             'installation_location' => ['nullable', 'string', 'max:255'],
-            'commissioned_at' => ['nullable', 'date'],
-            'notes' => ['nullable', 'string', 'max:10000'],
         ];
     }
 }

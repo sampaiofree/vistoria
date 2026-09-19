@@ -6,25 +6,24 @@ namespace App\Http\Controllers;
 
 use App\Actions\Inspections\ApproveInspection;
 use App\Actions\Inspections\CancelInspection;
-use App\Actions\Inspections\CompleteInspectionReview;
-use App\Actions\Inspections\MarkInspectionReportGenerated;
 use App\Actions\Inspections\ReleaseInspection;
 use App\Actions\Inspections\ReturnInspectionForCorrection;
+use App\Actions\Inspections\ReturnInspectionForReview;
 use App\Actions\Inspections\StartInspection;
+use App\Actions\Inspections\StartInspectionReview;
 use App\Actions\Inspections\SubmitInspectionForReview;
 use App\Http\Controllers\Concerns\ResolvesTenantStructure;
 use App\Http\Requests\Inspections\ApproveInspectionRequest;
 use App\Http\Requests\Inspections\CancelInspectionRequest;
-use App\Http\Requests\Inspections\CompleteInspectionReviewRequest;
 use App\Http\Requests\Inspections\ReleaseInspectionRequest;
 use App\Http\Requests\Inspections\ReturnInspectionForCorrectionRequest;
+use App\Http\Requests\Inspections\ReturnInspectionForReviewRequest;
 use App\Http\Requests\Inspections\StartInspectionRequest;
+use App\Http\Requests\Inspections\StartInspectionReviewRequest;
 use App\Http\Requests\Inspections\SubmitInspectionForReviewRequest;
 use App\Models\Inspection;
 use App\Services\Tenancy\TenantContext;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
 
 final class InspectionTransitionController extends Controller
 {
@@ -53,7 +52,7 @@ final class InspectionTransitionController extends Controller
 
         $action->handle($inspection, $request->user());
 
-        return back()->with('success', 'Inspeção enviada para verificação.');
+        return back()->with('success', 'Inspeção enviada para revisão.');
     }
 
     public function returnForCorrection(
@@ -73,17 +72,17 @@ final class InspectionTransitionController extends Controller
         return back()->with('success', 'Inspeção devolvida para correção.');
     }
 
-    public function completeReview(
-        CompleteInspectionReviewRequest $request,
+    public function startReview(
+        StartInspectionReviewRequest $request,
         TenantContext $tenant,
         Inspection $inspection,
-        CompleteInspectionReview $action,
+        StartInspectionReview $action,
     ): RedirectResponse {
         $inspection = $this->tenantInspection($tenant, $inspection);
 
         $action->handle($inspection, $request->user());
 
-        return back()->with('success', 'Verificação concluída.');
+        return back()->with('success', 'Revisão iniciada.');
     }
 
     public function approve(
@@ -96,7 +95,7 @@ final class InspectionTransitionController extends Controller
 
         $action->handle($inspection, $request->user());
 
-        return back()->with('success', 'Inspeção aprovada.');
+        return back()->with('success', 'Inspeção aprovada para liberação.');
     }
 
     public function release(
@@ -112,24 +111,16 @@ final class InspectionTransitionController extends Controller
         return back()->with('success', 'Inspeção liberada.');
     }
 
-    public function generateReport(
+    public function returnForReview(
+        ReturnInspectionForReviewRequest $request,
         TenantContext $tenant,
-        Request $request,
         Inspection $inspection,
-        MarkInspectionReportGenerated $action,
+        ReturnInspectionForReview $action,
     ): RedirectResponse {
         $inspection = $this->tenantInspection($tenant, $inspection);
-        $this->authorize('generateReport', $inspection);
+        $action->handle($inspection, $request->user(), $request->validated('justification'));
 
-        if ($inspection->emission_type === null) {
-            throw ValidationException::withMessages([
-                'emission_type' => 'Defina o tipo de emissão antes de gerar o relatório.',
-            ]);
-        }
-
-        $action->handle($inspection, $request->user());
-
-        return back()->with('success', 'Relatório gerado.');
+        return back()->with('success', 'Inspeção devolvida para revisão.');
     }
 
     public function cancel(

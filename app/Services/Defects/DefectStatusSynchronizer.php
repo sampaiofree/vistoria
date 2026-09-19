@@ -95,7 +95,7 @@ final class DefectStatusSynchronizer
         $inspection = $assessment->inspection;
 
         $inspectionKey = $inspection?->inspected_on?->getTimestamp()
-            ?? $inspection?->scheduled_for?->getTimestamp()
+            ?? $inspection?->planned_start_on?->getTimestamp()
             ?? $inspection?->created_at?->getTimestamp()
             ?? $inspection?->getKey()
             ?? 0;

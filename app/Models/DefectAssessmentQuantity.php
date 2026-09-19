@@ -24,6 +24,10 @@ final class DefectAssessmentQuantity extends Model
         'defect_assessment_id',
         'description',
         'quantity',
+        'length',
+        'height',
+        'width',
+        'unit_volume',
         'measurement_value',
         'measurement_unit',
         'position',
@@ -34,7 +38,11 @@ final class DefectAssessmentQuantity extends Model
     {
         return [
             'quantity' => 'decimal:4',
-            'measurement_value' => 'decimal:4',
+            'length' => 'decimal:4',
+            'height' => 'decimal:4',
+            'width' => 'decimal:4',
+            'unit_volume' => 'decimal:12',
+            'measurement_value' => 'decimal:'.(($this->attributes['length'] ?? null) === null ? 4 : 16),
             'measurement_unit' => MeasurementUnit::class,
             'position' => 'integer',
         ];
@@ -47,6 +55,6 @@ final class DefectAssessmentQuantity extends Model
 
     public function value(): float
     {
-        return round((float) $this->measurement_value, 4);
+        return (float) $this->measurement_value;
     }
 }

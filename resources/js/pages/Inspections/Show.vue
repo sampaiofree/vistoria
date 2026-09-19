@@ -192,6 +192,20 @@ async function exportReport(format) {
                 :capability="capabilities.manage_report_metadata"
             />
 
+            <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Planejamento</p>
+                <div class="mt-4 grid gap-4 sm:grid-cols-2">
+                    <div>
+                        <p class="text-sm text-slate-500">Data inicial planejada</p>
+                        <p class="mt-1 font-semibold text-slate-950">{{ inspection.planned_start_on || '—' }}</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-slate-500">Prazo final planejado</p>
+                        <p class="mt-1 font-semibold text-slate-950">{{ inspection.planned_end_on || '—' }}</p>
+                    </div>
+                </div>
+            </section>
+
             <GeneralAspectsPanel :aspects="general_aspects" />
 
             <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">

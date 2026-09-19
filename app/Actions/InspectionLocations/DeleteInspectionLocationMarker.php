@@ -17,7 +17,9 @@ final class DeleteInspectionLocationMarker
 {
     public function handle(User $actor, InspectionLocationMarker $marker, int $markerVersion, int $mapVersion): void
     {
-        if ($actor->organization_id !== $marker->organization_id || $marker->map->processing_status !== InspectionLocationMapProcessingStatus::Ready) {
+        if ($actor->organization_id !== $marker->organization_id
+            || ! $actor->can('manageFieldContent', $marker->map->inspection)
+            || $marker->map->processing_status !== InspectionLocationMapProcessingStatus::Ready) {
             throw ValidationException::withMessages(['map' => 'O mapa não está disponível para marcação.']);
         }
 

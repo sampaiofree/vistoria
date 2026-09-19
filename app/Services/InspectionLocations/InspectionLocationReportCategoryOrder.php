@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\InspectionLocations;
 
-use App\Models\DefectCategory;
+use App\Enums\DefectCategory;
 use Illuminate\Support\Collection;
 
 final class InspectionLocationReportCategoryOrder
@@ -32,10 +32,10 @@ final class InspectionLocationReportCategoryOrder
     {
         return $categories
             ->sortBy(fn (DefectCategory $category): array => [
-                $this->priority($category->code, $category->name),
-                $category->position,
-                $this->normalize($category->name),
-                $category->id,
+                $this->priority($category->value, $category->label()),
+                $category->position(),
+                $this->normalize($category->label()),
+                $category->value,
             ])
             ->values();
     }

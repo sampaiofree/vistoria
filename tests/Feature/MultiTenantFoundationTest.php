@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Enums\OrganizationStatus;
 use App\Enums\UserAccountType;
-use App\Enums\UserStatus;
 use App\Models\Organization;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -95,16 +94,12 @@ class MultiTenantFoundationTest extends TestCase
         $this->assertSame('public_id', $user->getRouteKeyName());
     }
 
-    public function test_suspension_metadata_is_preserved(): void
+    public function test_organization_suspension_metadata_is_preserved(): void
     {
         $organization = Organization::factory()->suspended()->create();
-        $user = User::factory()->for($organization)->suspended()->create();
 
         $this->assertSame(OrganizationStatus::Suspended, $organization->status);
         $this->assertNotNull($organization->suspended_at);
         $this->assertSame('Suspensa para teste.', $organization->suspension_reason);
-        $this->assertSame(UserStatus::Suspended, $user->status);
-        $this->assertNotNull($user->suspended_at);
-        $this->assertSame('Suspenso para teste.', $user->suspension_reason);
     }
 }

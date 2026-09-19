@@ -10,13 +10,14 @@ final class ClientPolicy
     public function viewAny(User $user): bool
     {
         return $user->isActive()
-            && ! $user->isSuperAdmin()
+            && $user->isCompanyAdmin()
             && $user->organization_id !== null;
     }
 
     public function view(User $user, Client $client): bool
     {
         return $user->isActive()
+            && $user->isCompanyAdmin()
             && $this->sameOrganization($user, $client);
     }
 
@@ -24,7 +25,10 @@ final class ClientPolicy
     {
         return $user->isActive()
             && $user->isCompanyAdmin()
-            && $user->organization_id !== null;
+            && $user->organization_id !== null
+            && ! Client::withTrashed()
+                ->where('organization_id', $user->organization_id)
+                ->exists();
     }
 
     public function update(User $user, Client $client): bool

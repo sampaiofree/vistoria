@@ -7,6 +7,7 @@ namespace App\Actions\Inspections;
 use App\Actions\Inspections\Concerns\ValidatesInspectionTransition;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
+use App\Enums\OperationalRole;
 use App\Models\Inspection;
 use App\Models\User;
 use Illuminate\Validation\ValidationException;
@@ -22,15 +23,20 @@ final class StartInspection
     public function handle(Inspection $inspection, User $actor): Inspection
     {
         $this->validateTenant($inspection, $actor);
-        $this->ensureActorHasResponsibility($inspection, $actor, InspectionResponsibility::Preparer);
+
+        if ($actor->operational_role !== OperationalRole::Inspector) {
+            throw ValidationException::withMessages([
+                'actor' => 'Somente usuários com papel operacional Inspetor podem iniciar a inspeção.',
+            ]);
+        }
+
+        $this->ensureActorHasResponsibility($inspection, $actor, ...InspectionResponsibility::cases());
 
         if (! $inspection->equipment->canReceiveInspection()) {
             throw ValidationException::withMessages([
                 'equipment' => 'O equipamento não pode iniciar uma inspeção neste momento.',
             ]);
         }
-
-        $this->ensureResponsibilityPresent($inspection, InspectionResponsibility::Preparer);
 
         return $this->transition->handle(
             $actor,

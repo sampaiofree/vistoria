@@ -4,13 +4,10 @@ declare(strict_types=1);
 
 namespace App\Actions\Defects;
 
-use App\Actions\Classification\ProvisionDefaultDefectTaxonomy;
 use App\Enums\DefectAssessmentCondition;
 use App\Enums\DefectAssessmentStatus;
-use App\Enums\DefectCategory;
 use App\Enums\DefectRelationType;
 use App\Enums\DefectStatus;
-use App\Enums\InspectionStatus;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
 use App\Models\DefectRelation;
@@ -26,7 +23,6 @@ final class CreateRelatedDefect
     public function __construct(
         private readonly TenantContext $tenant,
         private readonly DefectCodeGenerator $codeGenerator,
-        private readonly ProvisionDefaultDefectTaxonomy $taxonomy,
     ) {}
 
     public function handle(User $actor, Inspection $inspection, Defect $source, array $data): Defect
@@ -34,19 +30,16 @@ final class CreateRelatedDefect
         return DB::transaction(function () use ($actor, $inspection, $source, $data): Defect {
             $inspection = Inspection::query()->forOrganization($this->tenant->id())->with(['equipment', 'responsibles'])->lockForUpdate()->findOrFail($inspection->getKey());
             $source = Defect::query()->forOrganization($this->tenant->id())->lockForUpdate()->findOrFail($source->getKey());
-            $this->validate($inspection, $source, $data);
+            $this->validate($actor, $inspection, $source, $data);
 
-            $category = $source->categoryDefinition
-                ?? $this->taxonomy->handle($this->tenant->id());
-            $generated = $this->codeGenerator->nextForCategory($inspection->equipment, $category);
+            $category = $source->category;
+            $generated = $this->codeGenerator->next($inspection->equipment, $category);
             $defect = Defect::query()->create([
                 'organization_id' => $this->tenant->id(),
                 'equipment_id' => $inspection->equipment_id,
                 'first_inspection_id' => $inspection->getKey(),
-                'defect_category_id' => $category->getKey(),
                 'code' => $generated['code'],
-                // Legacy compatibility until the enum column is removed. The relation is canonical.
-                'category' => DefectCategory::Civil,
+                'category' => $category,
                 'sequence_number' => $generated['number'],
                 'title' => $data['title'],
                 'origin_description' => $data['origin_description'] ?? null,
@@ -84,16 +77,13 @@ final class CreateRelatedDefect
         });
     }
 
-    private function validate(Inspection $inspection, Defect $source, array $data): void
+    private function validate(User $actor, Inspection $inspection, Defect $source, array $data): void
     {
         if ($source->equipment_id !== $inspection->equipment_id) {
             throw ValidationException::withMessages(['defect' => 'A avaria não pertence ao equipamento desta inspeção.']);
         }
 
-        if (! in_array($inspection->status, [
-            InspectionStatus::InProgress,
-            InspectionStatus::InCorrection,
-        ], true)) {
+        if (! $actor->can('manageFieldContent', $inspection)) {
             throw ValidationException::withMessages(['inspection' => 'A inspeção não está em estado editável.']);
         }
 

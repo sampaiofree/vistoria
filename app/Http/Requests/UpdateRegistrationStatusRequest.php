@@ -10,7 +10,7 @@ final class UpdateRegistrationStatusRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        foreach (['client', 'unit', 'area', 'subarea', 'defectCategory', 'defectClassification'] as $parameter) {
+        foreach (['client', 'defectCategory', 'defectClassification'] as $parameter) {
             $resource = $this->route($parameter);
 
             if ($resource !== null) {

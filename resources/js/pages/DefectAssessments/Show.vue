@@ -6,6 +6,7 @@ import DefectAssessmentStatusBadge from '@/components/domain/defects/DefectAsses
 import PhotoGallery from '@/components/domain/view-first/PhotoGallery.vue';
 import AssessmentPhotoUpload from '@/components/domain/defects/AssessmentPhotoUpload.vue';
 import AssessmentHistoryModal from '@/components/domain/defects/AssessmentHistoryModal.vue';
+import { calculateCivilVolume, formatCivilMeasurement } from '@/lib/civilQuantity';
 
 const props = defineProps({
     assessment: { type: Object, required: true },
@@ -54,6 +55,10 @@ const startingReinspection = ref(false);
 const quantityForm = useForm({
     measurement_value: props.quantity?.measurement_value ?? '',
     measurement_unit: props.quantity?.measurement_unit ?? props.measurement_units[0]?.value ?? 'unit',
+    length: props.quantity?.length ?? '',
+    height: props.quantity?.height ?? '',
+    width: props.quantity?.width ?? '',
+    quantity: props.quantity?.quantity ?? 1,
 });
 
 const title = computed(() => props.assessment.defect?.code ?? 'Avaliação da avaria');
@@ -79,12 +84,20 @@ const classificationDisplay = computed(() => props.classification ?? {
     color: null,
 });
 const quantityUnitLabel = computed(() => props.measurement_units.find((unit) => unit.value === props.quantity?.measurement_unit)?.label ?? props.quantity?.measurement_unit ?? '');
+const isCivil = computed(() => props.assessment.defect?.category === 'CV');
+const civilVolume = computed(() => calculateCivilVolume(quantityForm));
+const civilFields = [
+    { key: 'length', label: 'Comprimento (m)' },
+    { key: 'height', label: 'Altura (m)' },
+    { key: 'width', label: 'Largura (m)' },
+    { key: 'quantity', label: 'Quantidade' },
+];
 const gutDisplay = computed(() => gutCriteria.map((criterion) => {
     const snapshot = props.gut_snapshot?.criteria?.[criterion.key] ?? null;
     const score = props.assessment[criterion.key] ?? snapshot?.score ?? null;
     const option = props.gut_options[criterion.key]?.find((item) => Number(item.score) === Number(score));
 
-    return { ...criterion, score, color: option?.color ?? snapshot?.color ?? null };
+    return { ...criterion, score, color: snapshot?.color ?? option?.color ?? null };
 }));
 const gutScorePreview = computed(() => gutReady.value
     ? Number(gutForm.gravity) * Number(gutForm.urgency) * Number(gutForm.trend)
@@ -171,12 +184,11 @@ function saveQuantity() {
 
     quantityForm
         .transform((data) => ({
-            quantity: data.measurement_value === '' || data.measurement_value === null
-                ? null
-                : {
-                    measurement_value: data.measurement_value,
-                    measurement_unit: data.measurement_unit,
-                },
+            quantity: isCivil.value
+                ? { length: data.length, height: data.height, width: data.width, quantity: data.quantity }
+                : data.measurement_value === '' || data.measurement_value === null
+                    ? null
+                    : { measurement_value: data.measurement_value, measurement_unit: data.measurement_unit },
         }))
         .put(props.capabilities.quantity_url, {
             preserveScroll: true,
@@ -200,7 +212,14 @@ function removeQuantity() {
 
 function startEditing(card) {
     if (card === 'quantity') {
-        quantityForm.defaults({ measurement_value: props.quantity?.measurement_value ?? '', measurement_unit: props.quantity?.measurement_unit ?? props.measurement_units[0]?.value ?? 'unit' });
+        quantityForm.defaults({
+            measurement_value: props.quantity?.measurement_value ?? '',
+            measurement_unit: props.quantity?.measurement_unit ?? props.measurement_units[0]?.value ?? 'unit',
+            length: props.quantity?.length ?? '',
+            height: props.quantity?.height ?? '',
+            width: props.quantity?.width ?? '',
+            quantity: props.quantity?.quantity ?? 1,
+        });
         quantityForm.reset();
     }
     if (card === 'gut') {
@@ -368,26 +387,45 @@ function cancelEditing(card) {
                 <div class="flex flex-wrap items-start justify-between gap-3">
                     <div>
                         <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">02 · Quantitativo</p>
-                        <h2 class="mt-2 text-xl font-semibold text-slate-950">Dimensão principal da manifestação</h2>
+                        <h2 class="mt-2 text-xl font-semibold text-slate-950">{{ isCivil ? 'Volume da avaria' : 'Dimensão principal da manifestação' }}</h2>
                         <p class="mt-1 text-sm text-slate-500">
-                            Valor total observado na avaria.<span v-if="requiresEvidence"> Obrigatório para publicar.</span>
+                            {{ isCivil ? 'Informe as dimensões em metros e a quantidade. O volume será calculado automaticamente.' : 'Valor total observado na avaria.' }}<span v-if="requiresEvidence"> Obrigatório para publicar.</span>
                         </p>
                     </div>
                     <button v-if="capabilities.quantity_url && !editing.quantity" type="button" class="rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 hover:border-slate-400" @click="startEditing('quantity')">Editar</button>
                 </div>
                 <div v-if="editing.quantity" class="mt-5 grid gap-4 border-t border-slate-100 pt-5 sm:grid-cols-2">
-                    <label class="block">
-                        <span :class="labelClass">Valor</span>
-                        <input v-model.number="quantityForm.measurement_value" :disabled="!capabilities.quantity_url" type="number" min="0.0001" step="0.0001" placeholder="Ex.: 1,20" :class="inputClass">
-                        <p v-if="quantityForm.errors['quantity.measurement_value']" :class="errorClass">{{ quantityForm.errors['quantity.measurement_value'] }}</p>
-                    </label>
-                    <label class="block">
-                        <span :class="labelClass">Unidade</span>
-                        <select v-model="quantityForm.measurement_unit" :disabled="!capabilities.quantity_url" :class="inputClass">
-                            <option v-for="unitOption in measurement_units" :key="unitOption.value" :value="unitOption.value">{{ unitOption.label }}</option>
-                        </select>
-                        <p v-if="quantityForm.errors['quantity.measurement_unit']" :class="errorClass">{{ quantityForm.errors['quantity.measurement_unit'] }}</p>
-                    </label>
+                    <template v-if="isCivil">
+                        <label v-for="field in civilFields" :key="field.key" class="block">
+                            <span :class="labelClass">{{ field.label }}</span>
+                            <input v-model.number="quantityForm[field.key]" :disabled="!capabilities.quantity_url" type="number" min="0.0001" step="0.0001" :class="inputClass">
+                            <p v-if="quantityForm.errors[`quantity.${field.key}`]" :class="errorClass">{{ quantityForm.errors[`quantity.${field.key}`] }}</p>
+                        </label>
+                        <div class="rounded-xl bg-slate-50 p-4">
+                            <p :class="labelClass">M³ UNI.</p>
+                            <p class="mt-1 text-base font-semibold text-slate-900" aria-live="polite">{{ formatCivilMeasurement(civilVolume?.unitVolume) }} m³</p>
+                            <p class="mt-1 text-xs text-slate-500">Comprimento × altura × largura</p>
+                        </div>
+                        <div class="rounded-xl bg-teal-50 p-4">
+                            <p :class="labelClass">M³ TOTAL · Quantitativo</p>
+                            <p class="mt-1 text-base font-semibold text-teal-900" aria-live="polite">{{ formatCivilMeasurement(civilVolume?.totalVolume) }} m³</p>
+                            <p class="mt-1 text-xs text-slate-500">M³ UNI. × quantidade</p>
+                        </div>
+                    </template>
+                    <template v-else>
+                        <label class="block">
+                            <span :class="labelClass">Valor</span>
+                            <input v-model.number="quantityForm.measurement_value" :disabled="!capabilities.quantity_url" type="number" min="0.0001" step="0.0001" placeholder="Ex.: 1,20" :class="inputClass">
+                            <p v-if="quantityForm.errors['quantity.measurement_value']" :class="errorClass">{{ quantityForm.errors['quantity.measurement_value'] }}</p>
+                        </label>
+                        <label class="block">
+                            <span :class="labelClass">Unidade</span>
+                            <select v-model="quantityForm.measurement_unit" :disabled="!capabilities.quantity_url" :class="inputClass">
+                                <option v-for="unitOption in measurement_units" :key="unitOption.value" :value="unitOption.value">{{ unitOption.label }}</option>
+                            </select>
+                            <p v-if="quantityForm.errors['quantity.measurement_unit']" :class="errorClass">{{ quantityForm.errors['quantity.measurement_unit'] }}</p>
+                        </label>
+                    </template>
                 </div>
                 <p v-if="editing.quantity && quantityForm.errors.quantity" :class="errorClass">{{ quantityForm.errors.quantity }}</p>
                 <div v-if="editing.quantity && capabilities.quantity_url" class="mt-4 flex flex-wrap justify-end gap-3">
@@ -396,7 +434,21 @@ function cancelEditing(card) {
                     <button type="button" :disabled="quantityForm.processing" class="rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50" @click="saveQuantity">Salvar quantitativo</button>
                 </div>
                 <div v-else class="mt-5 border-t border-slate-100 pt-5">
-                    <p v-if="quantity" class="text-base font-semibold text-slate-900">{{ quantity.measurement_value }} {{ quantityUnitLabel }}</p>
+                    <div v-if="quantity && isCivil" class="grid gap-4 sm:grid-cols-2">
+                        <div v-for="field in civilFields" :key="field.key">
+                            <p class="text-sm text-slate-500">{{ field.label }}</p>
+                            <p class="mt-1 font-semibold text-slate-900">{{ formatCivilMeasurement(quantity[field.key]) }}</p>
+                        </div>
+                        <div>
+                            <p class="text-sm text-slate-500">M³ UNI.</p>
+                            <p class="mt-1 font-semibold text-slate-900">{{ formatCivilMeasurement(quantity.unit_volume) }} m³</p>
+                        </div>
+                        <div>
+                            <p class="text-sm text-teal-700">M³ TOTAL · Quantitativo</p>
+                            <p class="mt-1 text-base font-semibold text-teal-900">{{ formatCivilMeasurement(quantity.measurement_value) }} m³</p>
+                        </div>
+                    </div>
+                    <p v-else-if="quantity" class="text-base font-semibold text-slate-900">{{ quantity.measurement_value }} {{ quantityUnitLabel }}</p>
                     <p v-else class="text-sm text-slate-500">Nenhum quantitativo informado.</p>
                 </div>
             </section>
@@ -413,12 +465,12 @@ function cancelEditing(card) {
                         <button v-if="capabilities.gut_url && !editing.gut" type="button" class="rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 hover:border-slate-400" @click="startEditing('gut')">Editar</button>
                     </div>
                 </div>
-                <p v-if="!gutConfigured" class="mt-5 border-t border-slate-100 pt-5 text-sm text-amber-700">Configure ao menos uma nota para Gravidade, Urgência e Tendência nesta categoria antes de classificar a avaliação.</p>
+                <p v-if="!gutConfigured" class="mt-5 border-t border-slate-100 pt-5 text-sm text-amber-700">As notas GUT não estão disponíveis. Atualize a página para tentar novamente.</p>
                 <div v-else-if="editing.gut" class="mt-5 grid gap-4 border-t border-slate-100 pt-5 md:grid-cols-3">
                     <div v-for="criterion in gutCriteria" :key="criterion.key" class="rounded-2xl border border-slate-200 p-4">
                         <h3 class="text-sm font-semibold text-slate-800">{{ criterion.label }}</h3>
                         <div class="mt-3 flex flex-wrap gap-2" role="group" :aria-label="criterion.label">
-                            <button v-for="option in gut_options[criterion.key]" :key="option.id" type="button" :disabled="gutForm.processing" class="min-w-11 rounded-lg border px-3 py-2 text-sm font-bold transition focus:outline-none focus:ring-2 focus:ring-slate-400 disabled:cursor-not-allowed disabled:opacity-70" :class="isGutSelected(criterion.key, option.score) ? 'ring-2 ring-slate-800 ring-offset-1' : ''" :style="{ borderColor: option.color, backgroundColor: `${option.color}22` }" :aria-pressed="isGutSelected(criterion.key, option.score)" @click="selectGut(criterion.key, option.score)">{{ option.score }}</button>
+                            <button v-for="option in gut_options[criterion.key]" :key="option.score" type="button" :disabled="gutForm.processing" class="min-w-11 rounded-lg border px-3 py-2 text-sm font-bold transition focus:outline-none focus:ring-2 focus:ring-slate-400 disabled:cursor-not-allowed disabled:opacity-70" :class="isGutSelected(criterion.key, option.score) ? 'ring-2 ring-slate-800 ring-offset-1' : ''" :style="{ borderColor: option.color, backgroundColor: `${option.color}22` }" :aria-pressed="isGutSelected(criterion.key, option.score)" @click="selectGut(criterion.key, option.score)">{{ option.score }}</button>
                         </div>
                         <p v-if="gutForm.errors[criterion.key]" :class="errorClass">{{ gutForm.errors[criterion.key] }}</p>
                     </div>

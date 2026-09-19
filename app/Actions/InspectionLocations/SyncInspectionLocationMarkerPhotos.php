@@ -20,6 +20,7 @@ final class SyncInspectionLocationMarkerPhotos
     {
         $map = $marker->map;
         if ($actor->organization_id !== $marker->organization_id
+            || ! $actor->can('manageFieldContent', $map->inspection)
             || $marker->defect_assessment_id === null
             || $map->processing_status !== InspectionLocationMapProcessingStatus::Ready) {
             throw ValidationException::withMessages(['photos' => 'A marcação não está disponível para vincular fotografias.']);

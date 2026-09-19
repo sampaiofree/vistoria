@@ -7,11 +7,16 @@ namespace App\Actions\InspectionLocations;
 use App\Exceptions\StaleInspectionLocationMapException;
 use App\Models\InspectionLocationMap;
 use App\Models\User;
+use Illuminate\Validation\ValidationException;
 
 final class UpdateInspectionLocationMap
 {
     public function handle(User $actor, InspectionLocationMap $map, array $data): InspectionLocationMap
     {
+        if (! $actor->can('manageFieldContent', $map->inspection)) {
+            throw ValidationException::withMessages(['map' => 'O mapa não está disponível para edição.']);
+        }
+
         $updated = InspectionLocationMap::query()
             ->whereKey($map->id)
             ->where('lock_version', $data['lock_version'])

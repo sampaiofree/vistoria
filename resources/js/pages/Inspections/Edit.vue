@@ -9,6 +9,18 @@ defineProps({
         type: Object,
         required: true,
     },
+    equipment_options: {
+        type: Array,
+        default: () => [],
+    },
+    inspectors: {
+        type: Array,
+        default: () => [],
+    },
+    selected_inspector_id: {
+        type: [Number, String],
+        default: null,
+    },
     action: {
         type: String,
         required: true,
@@ -38,9 +50,6 @@ defineProps({
                     <p v-if="inspection.equipment.client" class="text-sm text-slate-500">
                         {{ inspection.equipment.client.name }}
                     </p>
-                    <p v-if="inspection.equipment.unit" class="text-sm text-slate-500">
-                        {{ inspection.equipment.unit.name }}
-                    </p>
                 </div>
 
                 <div class="flex flex-wrap gap-2">
@@ -59,7 +68,9 @@ defineProps({
                 :action="action"
                 :cancel-url="cancel_url"
                 :inspection="inspection"
-                mode="edit"
+                :equipment-options="equipment_options"
+                :inspectors="inspectors"
+                :selected-inspector-id="selected_inspector_id"
                 submit-label="Salvar alterações"
             />
         </section>

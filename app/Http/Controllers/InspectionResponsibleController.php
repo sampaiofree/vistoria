@@ -44,7 +44,7 @@ final class InspectionResponsibleController extends Controller
             $request->boolean('is_primary'),
         );
 
-        return back()->with('success', 'Responsável atribuído.');
+        return back()->with('success', 'Responsável definido. A atribuição anterior da função foi substituída.');
     }
 
     public function update(

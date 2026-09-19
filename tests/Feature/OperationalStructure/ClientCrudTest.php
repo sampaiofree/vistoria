@@ -8,8 +8,11 @@ use App\Models\Organization;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
+use RuntimeException;
 use Tests\TestCase;
 
 final class ClientCrudTest extends TestCase
@@ -71,7 +74,60 @@ final class ClientCrudTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_member_can_view_clients_index_as_inertia_page(): void
+    public function test_admin_cannot_create_a_second_client_in_the_same_organization(): void
+    {
+        $organization = Organization::factory()->create();
+        $admin = User::factory()->for($organization)->create(['account_type' => UserAccountType::CompanyAdmin]);
+        Client::factory()->for($organization)->create();
+
+        $this->actingAs($admin)
+            ->post(route('clients.store'), ['name' => 'Segundo cliente'])
+            ->assertForbidden();
+
+        $this->assertDatabaseCount('clients', 1);
+    }
+
+    public function test_each_organization_can_have_its_own_single_client(): void
+    {
+        $organizationA = Organization::factory()->create();
+        $organizationB = Organization::factory()->create();
+        $adminA = User::factory()->for($organizationA)->create(['account_type' => UserAccountType::CompanyAdmin]);
+        $adminB = User::factory()->for($organizationB)->create(['account_type' => UserAccountType::CompanyAdmin]);
+
+        $this->actingAs($adminA)->post(route('clients.store'), ['name' => 'Cliente A'])->assertRedirect();
+        $this->actingAs($adminB)->post(route('clients.store'), ['name' => 'Cliente B'])->assertRedirect();
+
+        $this->assertDatabaseHas('clients', ['organization_id' => $organizationA->id, 'name' => 'Cliente A']);
+        $this->assertDatabaseHas('clients', ['organization_id' => $organizationB->id, 'name' => 'Cliente B']);
+    }
+
+    public function test_unique_client_migration_refuses_multiple_legacy_records_without_changing_data(): void
+    {
+        $migration = require database_path('migrations/2026_09_16_000043_limit_clients_to_one_per_organization.php');
+        $migration->down();
+        $organization = Organization::factory()->create();
+        Client::factory()->for($organization)->create();
+        DB::table('clients')->insert([
+            'organization_id' => $organization->id,
+            'public_id' => (string) Str::ulid(),
+            'name' => 'Cliente legado adicional',
+            'status' => 'active',
+        ]);
+
+        try {
+            $migration->up();
+            $this->fail('A migração deveria bloquear múltiplos clientes legados.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString((string) $organization->id, $exception->getMessage());
+        }
+
+        $this->assertDatabaseCount('clients', 2);
+
+        DB::table('clients')->where('name', 'Cliente legado adicional')->delete();
+        $migration->up();
+    }
+
+    public function test_member_cannot_access_client_pages(): void
     {
         Storage::fake('public');
 
@@ -88,19 +144,24 @@ final class ClientCrudTest extends TestCase
                 'logo_path' => 'organizations/'.$organization->id.'/clients/logo.png',
             ]);
 
-        Client::factory()->for($organization)->create(['name' => 'Z cliente sem logo']);
+        $this->actingAs($member)->get(route('clients.index'))->assertForbidden();
+        $this->get(route('clients.show', $clientWithLogo))->assertForbidden();
+    }
 
-        $response = $this
-            ->actingAs($member)
-            ->get(route('clients.index'));
+    public function test_client_navigation_is_nested_in_administrator_settings_only(): void
+    {
+        $organization = Organization::factory()->create();
+        $admin = User::factory()->for($organization)->create(['account_type' => UserAccountType::CompanyAdmin]);
+        $member = User::factory()->for($organization)->create();
 
-        $response
-            ->assertOk()
-            ->assertInertia(fn (Assert $page) => $page
-                ->component('Clients/Index')
-                ->where('can.create', false)
-                ->where('clients.data.0.logo_url', Storage::disk('public')->url($clientWithLogo->logo_path))
-                ->where('clients.data.0.can_update', false));
+        $this->actingAs($admin)->get(route('dashboard'))->assertInertia(fn (Assert $page) => $page
+            ->where('navigation.3.label', 'Configurações')
+            ->where('navigation.3.children.2.label', 'Cliente')
+            ->where('navigation.3.children.2.href', route('clients.index'))
+            ->missing('navigation.3.children.3'));
+
+        $this->actingAs($member)->get(route('dashboard'))->assertInertia(fn (Assert $page) => $page
+            ->has('navigation', 2));
     }
 
     public function test_client_show_page_includes_client_logo_url(): void
@@ -108,13 +169,13 @@ final class ClientCrudTest extends TestCase
         Storage::fake('public');
 
         $organization = Organization::factory()->create();
-        $member = User::factory()->for($organization)->create();
+        $admin = User::factory()->for($organization)->create(['account_type' => UserAccountType::CompanyAdmin]);
         $client = Client::factory()->for($organization)->create([
             'logo_path' => 'organizations/'.$organization->id.'/clients/logo.png',
         ]);
 
         $this
-            ->actingAs($member)
+            ->actingAs($admin)
             ->get(route('clients.show', $client))
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Clients/Show')

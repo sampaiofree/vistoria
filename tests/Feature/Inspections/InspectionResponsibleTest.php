@@ -3,8 +3,6 @@
 namespace Tests\Feature\Inspections;
 
 use App\Actions\Inspections\AssignInspectionResponsible;
-use App\Actions\Inspections\RemoveInspectionResponsible;
-use App\Actions\Inspections\SetPrimaryInspectionResponsible;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
 use App\Models\Inspection;
@@ -68,75 +66,22 @@ class InspectionResponsibleTest extends TestCase
         $this->assertDatabaseCount('inspection_responsibles', 0);
     }
 
-    public function test_it_rejects_duplicate_but_allows_multiple_preparers_and_multiple_roles(): void
+    public function test_it_replaces_the_existing_user_for_a_responsibility_and_keeps_it_primary(): void
     {
         $first = User::factory()->create(['organization_id' => $this->organization]);
         $second = User::factory()->create(['organization_id' => $this->organization]);
         $assign = app(AssignInspectionResponsible::class);
 
-        $firstAssignment = $assign->handle($this->inspection, $first, 'preparer', $this->actor);
+        $assign->handle($this->inspection, $first, 'preparer', $this->actor);
         $secondAssignment = $assign->handle($this->inspection, $second, InspectionResponsibility::Preparer, $this->actor);
         $assign->handle($this->inspection, $first, InspectionResponsibility::Reviewer, $this->actor);
-        $this->expectValidationFailure(fn () => $assign->handle($this->inspection, $first, 'preparer', $this->actor));
 
-        $this->assertDatabaseCount('inspection_responsibles', 3);
-        $this->assertSame(2, $this->inspection->responsibles()->where('responsibility', 'preparer')->count());
-        $this->assertTrue($firstAssignment->is_primary);
-        $this->assertFalse($secondAssignment->is_primary);
+        $this->assertDatabaseCount('inspection_responsibles', 2);
+        $this->assertSame(1, $this->inspection->responsibles()->where('responsibility', 'preparer')->count());
+        $this->assertDatabaseMissing('inspection_responsibles', ['inspection_id' => $this->inspection->id, 'user_id' => $first->id, 'responsibility' => 'preparer']);
+        $this->assertTrue($secondAssignment->is_primary);
         $this->assertNotNull($this->inspection->responsibles()->first()->assigned_at);
         $this->assertSame($this->actor->id, $this->inspection->responsibles()->first()->assigned_by);
-    }
-
-    public function test_changing_primary_is_atomic_and_scoped_to_the_responsibility(): void
-    {
-        $assign = app(AssignInspectionResponsible::class);
-        $first = $assign->handle($this->inspection, User::factory()->create(['organization_id' => $this->organization]), 'preparer', $this->actor, true);
-        $second = $assign->handle($this->inspection, User::factory()->create(['organization_id' => $this->organization]), 'preparer', $this->actor);
-        $reviewer = $assign->handle($this->inspection, $first->user, 'reviewer', $this->actor, true);
-
-        app(SetPrimaryInspectionResponsible::class)->handle($second, $this->actor);
-
-        $this->assertFalse($first->refresh()->is_primary);
-        $this->assertTrue($second->refresh()->is_primary);
-        $this->assertTrue($reviewer->refresh()->is_primary);
-        $this->assertSame(1, $this->inspection->responsibles()->where('responsibility', 'preparer')->where('is_primary', true)->count());
-    }
-
-    public function test_removal_preserves_the_only_responsible_required_by_an_started_stage(): void
-    {
-        $responsible = app(AssignInspectionResponsible::class)->handle(
-            $this->inspection, User::factory()->create(['organization_id' => $this->organization]), 'preparer', $this->actor,
-        );
-        $this->inspection->update(['status' => InspectionStatus::InProgress]);
-
-        $this->expectValidationFailure(fn () => app(RemoveInspectionResponsible::class)->handle($responsible, $this->actor));
-        $this->assertDatabaseHas('inspection_responsibles', ['id' => $responsible->id]);
-    }
-
-    public function test_removing_a_primary_responsible_promotes_the_next_person_in_the_same_role(): void
-    {
-        $assign = app(AssignInspectionResponsible::class);
-        $first = $assign->handle(
-            $this->inspection,
-            User::factory()->create(['organization_id' => $this->organization]),
-            InspectionResponsibility::Preparer,
-            $this->actor,
-        );
-        $second = $assign->handle(
-            $this->inspection,
-            User::factory()->create(['organization_id' => $this->organization]),
-            InspectionResponsibility::Preparer,
-            $this->actor,
-        );
-
-        app(RemoveInspectionResponsible::class)->handle($first, $this->actor);
-
-        $this->assertDatabaseMissing('inspection_responsibles', ['id' => $first->id]);
-        $this->assertTrue($second->refresh()->is_primary);
-        $this->assertSame(1, $this->inspection->responsibles()
-            ->where('responsibility', InspectionResponsibility::Preparer->value)
-            ->where('is_primary', true)
-            ->count());
     }
 
     public function test_responsible_changes_are_blocked_after_release(): void
@@ -156,8 +101,6 @@ class InspectionResponsibleTest extends TestCase
             'reviewer',
             $this->actor,
         ));
-        $this->expectValidationFailure(fn () => app(SetPrimaryInspectionResponsible::class)->handle($responsible, $this->actor));
-        $this->expectValidationFailure(fn () => app(RemoveInspectionResponsible::class)->handle($responsible, $this->actor));
     }
 
     private function expectValidationFailure(callable $callback): void

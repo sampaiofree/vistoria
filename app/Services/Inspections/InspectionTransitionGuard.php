@@ -21,24 +21,20 @@ final class InspectionTransitionGuard
             'canceled',
         ],
         'awaiting_review' => [
+            'in_review',
+            'canceled',
+        ],
+        'in_review' => [
             'in_correction',
-            'awaiting_approval',
+            'awaiting_release',
             'canceled',
         ],
         'in_correction' => [
             'awaiting_review',
             'canceled',
         ],
-        'awaiting_approval' => [
-            'in_correction',
-            'approved',
-            'canceled',
-        ],
-        'approved' => [
-            'report_generated',
-            'canceled',
-        ],
-        'report_generated' => [
+        'awaiting_release' => [
+            'awaiting_review',
             'released',
             'canceled',
         ],

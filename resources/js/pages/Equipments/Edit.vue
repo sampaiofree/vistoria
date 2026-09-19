@@ -17,41 +17,23 @@ const props = defineProps({
         type: String,
         required: true,
     },
-    clients: {
-        type: Array,
-        required: true,
-    },
-    units: {
-        type: Array,
-        required: true,
-    },
-    areas: {
-        type: Array,
-        required: true,
-    },
-    subareas: {
-        type: Array,
-        required: true,
-    },
 });
 
 const form = useForm({
-    client_id: props.equipment.client_id ?? '',
-    client_unit_id: props.equipment.client_unit_id ?? '',
-    area_id: props.equipment.area_id ?? '',
-    subarea_id: props.equipment.subarea_id ?? '',
+    maintenance_plan_code: props.equipment.maintenance_plan_code ?? '',
+    maintenance_item_code: props.equipment.maintenance_item_code ?? '',
+    area_code: props.equipment.area_code ?? '',
+    area_name: props.equipment.area_name ?? '',
+    subarea_code: props.equipment.subarea_code ?? '',
+    subarea_name: props.equipment.subarea_name ?? '',
+    task_list_group: props.equipment.task_list_group ?? '',
+    task_list_group_counter: props.equipment.task_list_group_counter ?? '',
     tag: props.equipment.tag ?? '',
     defect_code_prefix: props.equipment.defect_code_prefix ?? '',
     name: props.equipment.name ?? '',
     description: props.equipment.description ?? '',
-    manufacturer: props.equipment.manufacturer ?? '',
-    model: props.equipment.model ?? '',
-    serial_number: props.equipment.serial_number ?? '',
-    asset_code: props.equipment.asset_code ?? '',
     abc_code: props.equipment.abc_code ?? '',
     installation_location: props.equipment.installation_location ?? '',
-    commissioned_at: props.equipment.commissioned_at ?? '',
-    notes: props.equipment.notes ?? '',
 });
 
 function submit() {
@@ -74,7 +56,7 @@ function submit() {
                         <StatusBadge :status="equipment.status" />
                     </div>
                     <p class="mt-2 text-sm text-slate-500">
-                        TAG {{ equipment.tag }} · {{ equipment.public_id }}
+                        Item manutenção {{ equipment.maintenance_item_code || 'Não informado' }} · TAG {{ equipment.tag }} · {{ equipment.public_id }}
                     </p>
                 </div>
 
@@ -92,10 +74,7 @@ function submit() {
         <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <EquipmentForm
                 :form="form"
-                :clients="clients"
-                :units="units"
-                :areas="areas"
-                :subareas="subareas"
+                :prefix-editable="equipment.can_edit_defect_code_prefix"
                 :cancel-url="cancel_url"
                 submit-label="Salvar alterações"
                 @submit="submit"
