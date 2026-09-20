@@ -5,8 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Enums\InspectionLocationMapProcessingStatus;
-use App\Http\Controllers\Concerns\ResolvesTenantStructure;
-use App\Models\InspectionLocationMap;
+use App\Models\DefectLocationMapVersion;
 use App\Services\InspectionLocations\InspectionLocationAssetGuard;
 use App\Services\Tenancy\TenantContext;
 use RuntimeException;
@@ -14,20 +13,23 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 final class InspectionLocationMapAssetController extends Controller
 {
-    use ResolvesTenantStructure;
-
     public function background(
         TenantContext $tenant,
-        InspectionLocationMap $map,
+        DefectLocationMapVersion $mapVersion,
         InspectionLocationAssetGuard $assetGuard,
         string $variant = 'background',
     ): StreamedResponse {
-        $map = $this->tenantInspectionLocationMap($tenant, $map);
-        abort_unless(request()->user()->can('view', $map), 403);
-        abort_unless($map->processing_status === InspectionLocationMapProcessingStatus::Ready, 404);
+        $version = DefectLocationMapVersion::query()
+            ->forOrganization($tenant->id())
+            ->with('map.defect')
+            ->whereKey($mapVersion->id)
+            ->firstOrFail();
+        $user = request()->user();
+        abort_unless($user->isActive() && ! $user->isSuperAdmin() && $user->organization_id === $version->organization_id, 403);
+        abort_unless($version->processing_status === InspectionLocationMapProcessingStatus::Ready, 404);
 
         try {
-            $asset = $assetGuard->background($map, $variant);
+            $asset = $assetGuard->background($version, $variant);
         } catch (RuntimeException) {
             abort(404);
         }
@@ -35,8 +37,8 @@ final class InspectionLocationMapAssetController extends Controller
         abort_unless($asset['disk']->exists($asset['path']), 404);
         $stream = $asset['disk']->readStream($asset['path']);
         abort_unless(is_resource($stream), 404);
-        $contentType = $asset['path'] === $map->background_path
-            ? ($map->background_mime_type ?? 'image/webp')
+        $contentType = $asset['path'] === $version->background_path
+            ? ($version->background_mime_type ?? 'image/webp')
             : 'image/webp';
 
         return response()->stream(function () use ($stream): void {

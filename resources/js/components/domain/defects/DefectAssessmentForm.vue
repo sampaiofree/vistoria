@@ -42,21 +42,21 @@ const props = defineProps({
 
 const allConditions = [
     { value: 'new', label: 'Nova' },
-    { value: 'unchanged', label: 'Igual' },
-    { value: 'worsened', label: 'Agravou' },
-    { value: 'improved', label: 'Melhorou' },
-    { value: 'repaired', label: 'Reparada' },
-    { value: 'not_located', label: 'Não localizada' },
-    { value: 'not_inspected', label: 'Não inspecionada' },
+    { value: 'reinspected', label: 'Reinspecionada' },
+    { value: 'reclassified', label: 'Reclassificada' },
+    { value: 'canceled', label: 'Cancelada' },
+    { value: 'canceled_sr', label: 'Cancelada S/R' },
+    { value: 'treated', label: 'Tratada' },
 ];
 
 const conditionOptions = computed(() => (
     props.allowNewCondition
-        ? allConditions
+        ? allConditions.filter((condition) => condition.value === 'new')
         : allConditions.filter((condition) => condition.value !== 'new')
 ));
 
 const isCompleteAssessment = computed(() => props.assessment?.status === 'complete');
+const recommendationIsRequired = computed(() => !['canceled', 'canceled_sr'].includes(form.condition));
 const canSaveDraft = computed(() => props.storeAction !== null || props.updateAction !== null);
 const canComplete = computed(() => {
     if (isCompleteAssessment.value && props.updateAction !== null) {
@@ -67,7 +67,7 @@ const canComplete = computed(() => {
 });
 
 const form = useForm({
-    condition: props.assessment?.condition ?? 'unchanged',
+    condition: props.assessment?.condition ?? (props.allowNewCondition ? 'new' : 'reinspected'),
     location_description: props.assessment?.location_description ?? '',
     comment: props.assessment?.comment ?? '',
     recommendation: props.assessment?.recommendation ?? '',
@@ -190,7 +190,7 @@ function submitComplete() {
                 <span :class="labelClass">Justificativa</span>
                 <textarea v-model="form.reason" :class="inputClass" rows="3" maxlength="10000"></textarea>
                 <p class="mt-1 text-xs text-slate-500">
-                    Obrigatória quando a condição for “não localizada” ou “não inspecionada”.
+                    Obrigatória quando a condição for “Cancelada” ou “Cancelada S/R”.
                 </p>
                 <p v-if="form.errors.reason" :class="helpClass">{{ form.errors.reason }}</p>
             </label>
@@ -207,6 +207,9 @@ function submitComplete() {
             <label class="block lg:col-span-2">
                 <span :class="labelClass">Recomendação</span>
                 <textarea v-model="form.recommendation" :class="inputClass" rows="3" maxlength="10000"></textarea>
+                <p v-if="recommendationIsRequired" class="mt-1 text-xs text-slate-500">
+                    Obrigatória para concluir a avaliação.
+                </p>
                 <p v-if="form.errors.recommendation" :class="helpClass">{{ form.errors.recommendation }}</p>
             </label>
 

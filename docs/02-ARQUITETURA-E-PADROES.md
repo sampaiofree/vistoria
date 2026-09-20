@@ -123,10 +123,9 @@ a partir do read model entregue pelo servidor.
 
 - criação de inspeções, sequências de avaria, posições e revisões críticas usam
   transações e bloqueios quando necessário;
-- mapas e marcações possuem `lock_version`; uma gravação obsoleta solicita que o
+- localizações de avaliação possuem `lock_version`; uma gravação obsoleta solicita que o
   usuário recarregue a página;
-- Jobs de mapas publicam derivados somente se o checksum da origem ainda for o
-  esperado;
+- Jobs de mapas publicam derivados somente na versão e no checksum esperados;
 - dispatches de imagem ocorrem após o commit da transação;
 - snapshots desacoplam histórico de alterações cadastrais posteriores.
 

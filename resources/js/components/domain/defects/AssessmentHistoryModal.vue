@@ -21,6 +21,13 @@ function onKeydown(event) {
     if (event.key === 'Escape') close();
 }
 
+function formatQuantity(value) {
+    const number = Number(value);
+    return Number.isFinite(number)
+        ? new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(number)
+        : '—';
+}
+
 watch(() => props.open, async (open) => {
     if (typeof document === 'undefined') return;
 
@@ -72,9 +79,19 @@ onBeforeUnmount(() => {
 
                         <dl class="mt-4 grid gap-3 text-sm sm:grid-cols-3">
                             <div class="rounded-xl bg-slate-50 p-3"><dt class="text-xs font-semibold uppercase text-slate-500">GUT</dt><dd class="mt-1 font-medium text-slate-900">G {{ item.gut.gravity ?? '—' }} · U {{ item.gut.urgency ?? '—' }} · T {{ item.gut.trend ?? '—' }}</dd></div>
-                            <div class="rounded-xl bg-slate-50 p-3"><dt class="text-xs font-semibold uppercase text-slate-500">Quantidade</dt><dd class="mt-1 font-medium text-slate-900">{{ item.quantity ? `${item.quantity.value} ${item.quantity.unit_symbol}` : '—' }}</dd></div>
+                            <div class="rounded-xl bg-slate-50 p-3"><dt class="text-xs font-semibold uppercase text-slate-500">Quantidade</dt><dd class="mt-1 font-medium text-slate-900">{{ item.quantity ? `${formatQuantity(item.quantity.value)} ${item.quantity.unit_symbol}` : '—' }}</dd></div>
                             <div class="rounded-xl bg-slate-50 p-3"><dt class="text-xs font-semibold uppercase text-slate-500">Localização</dt><dd class="mt-1 font-medium text-slate-900">{{ item.location_description || '—' }}</dd></div>
                         </dl>
+
+                        <div v-if="item.quantity?.snapshot?.items?.length" class="mt-4 rounded-xl border border-slate-200 p-3">
+                            <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Itens do quantitativo publicado</p>
+                            <ol class="mt-2 divide-y divide-slate-100">
+                                <li v-for="quantityItem in item.quantity.snapshot.items" :key="quantityItem.position" class="flex items-center justify-between gap-3 py-2 text-sm">
+                                    <span class="text-slate-700">Item {{ quantityItem.position }} · {{ quantityItem.description || quantityItem.element?.label || 'Sem descrição' }}</span>
+                                    <strong class="shrink-0 text-slate-950">{{ formatQuantity(quantityItem.total) }} {{ item.quantity.unit_symbol }}</strong>
+                                </li>
+                            </ol>
+                        </div>
 
                         <div class="mt-4 space-y-3 text-sm text-slate-700">
                             <p v-if="item.reason"><strong class="text-slate-900">Justificativa:</strong> {{ item.reason }}</p>

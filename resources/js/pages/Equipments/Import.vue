@@ -10,6 +10,7 @@ const props = defineProps({
     preview_url: { type: String, required: true },
     confirm_url: { type: String, required: true },
     index_url: { type: String, required: true },
+    client_action: { type: Object, default: null },
 });
 
 const uploadForm = useForm({ file: null });
@@ -89,6 +90,17 @@ function confirmImport() {
                 <p class="mt-1 text-sm text-slate-500">{{ preview.total }} registro(s) encontrados. Revise as colunas antes de importar.</p>
 
                 <form class="mt-6 space-y-5" @submit.prevent="confirmImport">
+                    <div v-if="mappingForm.errors.client" role="alert" class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">
+                        <p>{{ mappingForm.errors.client }}</p>
+                        <Link
+                            v-if="client_action"
+                            :href="client_action.url"
+                            class="rounded-lg border border-rose-300 bg-white px-3 py-2 font-semibold text-rose-800"
+                        >
+                            {{ client_action.label }}
+                        </Link>
+                    </div>
+
                     <div class="grid gap-4 lg:grid-cols-2">
                         <label v-for="field in field_options" :key="field.value" class="block">
                             <span class="text-sm font-medium text-slate-700">
@@ -124,7 +136,7 @@ function confirmImport() {
                     <div class="flex flex-wrap justify-between gap-3">
                         <Link :href="index_url" class="inline-flex items-center rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700">Cancelar</Link>
                         <button type="submit" :disabled="mappingForm.processing || !canConfirm" class="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60">
-                            Confirmar importação
+                            {{ mappingForm.processing ? 'Importando...' : 'Confirmar importação' }}
                         </button>
                     </div>
                 </form>

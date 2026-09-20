@@ -104,12 +104,7 @@ final class CreateDefectWithAssessment
             ]);
 
             if (($data['assessment_action'] ?? DefectAssessmentStatus::Draft->value) === DefectAssessmentStatus::Complete->value) {
-                $assessment = $this->saveGut->handle($actor, $assessment, [
-                    'condition' => $assessment->condition->value,
-                    'gravity' => $data['gravity'] ?? null,
-                    'urgency' => $data['urgency'] ?? null,
-                    'trend' => $data['trend'] ?? null,
-                ]);
+                $assessment = $this->saveGut->handle($actor, $assessment, $data);
 
                 $assessment = $this->completeAssessment->handle($actor, $assessment, $data);
             }

@@ -173,10 +173,11 @@ inspeção ou reenviá-la após uma correção:
 - toda avaria pertencente ao escopo da inspeção, nova ou herdada, precisa ter
   avaliação completa no ciclo corrente;
 - avaliações com evidência obrigatória já precisam de quantitativo e pelo menos
-  duas fotos prontas para serem publicadas; o envio repete a validação das fotos.
+  duas fotos prontas, mapa processado e localização confirmada para serem
+  publicadas; o envio repete a validação das fotos.
 
-Não há obrigatoriedade de mapas por categoria. Regras de GUT e conclusão da
-avaliação são aplicadas antes desses validadores.
+Não há mapa livre por categoria: cada avaria possui seu mapa lógico e cada
+avaliação que exige evidência precisa apontar para uma versão pronta.
 
 ## Tela e navegação contextual
 
@@ -203,8 +204,8 @@ A coluna Cliente / Unidade não é exibida.
 ## Conteúdo técnico e metadados
 
 O Inspetor vinculado é o único que pode editar o conteúdo de campo em **Em
-inspeção** e **Em correção**: avarias, avaliações, quantitativos, fotos, mapas,
-marcadores e vista geral. Em **Em inspeção**, ele também é o único autorizado a
+inspeção** e **Em correção**: avarias, avaliações, quantitativos, fotos, upload do
+mapa, localização e vista geral. Em **Em inspeção**, ele também é o único autorizado a
 alterar dados da inspeção e a transicionar. Os metadados Tipo de emissão, OS,
 Data do relatório e Número do relatório externo continuam somente leitura para
 o Inspetor. Administradores mantêm os metadados e referências nos estágios em

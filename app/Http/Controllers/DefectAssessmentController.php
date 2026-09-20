@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Actions\Classification\CreateDefectAssessmentQuantity;
+use App\Actions\Classification\DeleteDefectAssessmentQuantity;
 use App\Actions\Classification\SaveDefectAssessmentGut;
 use App\Actions\Classification\UpdateDefectAssessmentQuantity;
 use App\Actions\Defects\AssessExistingDefect;
@@ -23,6 +25,7 @@ use App\Http\Requests\Defects\UpdateDefectAssessmentRequest;
 use App\Models\AssessmentPhoto;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
+use App\Models\DefectAssessmentQuantity;
 use App\Models\Inspection;
 use App\Services\Inspections\InspectionReadModelPresenter;
 use App\Services\Tenancy\TenantContext;
@@ -154,7 +157,8 @@ final class DefectAssessmentController extends Controller
 
         $this->authorize('complete', $defectAssessment);
 
-        if ($request->filled('gravity') || $request->filled('urgency') || $request->filled('trend')) {
+        if (collect(UpdateDefectAssessmentGutRequest::technicalFieldNames())
+            ->contains(fn (string $field): bool => $request->exists($field))) {
             $gut->handle($request->user(), $defectAssessment, $request->validated());
         }
 
@@ -182,17 +186,45 @@ final class DefectAssessmentController extends Controller
         return back()->with('success', 'Classificação GUT atualizada.');
     }
 
-    public function updateQuantity(
+    public function storeQuantity(
         UpdateDefectAssessmentQuantityRequest $request,
         TenantContext $tenant,
         DefectAssessment $defectAssessment,
-        UpdateDefectAssessmentQuantity $action,
+        CreateDefectAssessmentQuantity $action,
     ): RedirectResponse {
         $defectAssessment = $this->tenantDefectAssessment($tenant, $defectAssessment);
         $this->authorize('update', $defectAssessment);
-        $action->handle($request->user(), $defectAssessment, $request->validated('quantity'));
+        $action->handle($request->user(), $defectAssessment, $request->validated());
 
-        return back()->with('success', 'Quantitativo atualizado.');
+        return back()->with('success', 'Item do quantitativo adicionado.');
+    }
+
+    public function updateQuantity(
+        UpdateDefectAssessmentQuantityRequest $request,
+        TenantContext $tenant,
+        DefectAssessmentQuantity $defectAssessmentQuantity,
+        UpdateDefectAssessmentQuantity $action,
+    ): RedirectResponse {
+        $quantity = $this->tenantDefectAssessmentQuantity($tenant, $defectAssessmentQuantity);
+        $quantity->loadMissing('assessment');
+        $this->authorize('update', $quantity->assessment);
+        $action->handle($request->user(), $quantity, $request->validated());
+
+        return back()->with('success', 'Item do quantitativo atualizado.');
+    }
+
+    public function destroyQuantity(
+        Request $request,
+        TenantContext $tenant,
+        DefectAssessmentQuantity $defectAssessmentQuantity,
+        DeleteDefectAssessmentQuantity $action,
+    ): RedirectResponse {
+        $quantity = $this->tenantDefectAssessmentQuantity($tenant, $defectAssessmentQuantity);
+        $quantity->loadMissing('assessment');
+        $this->authorize('update', $quantity->assessment);
+        $action->handle($request->user(), $quantity);
+
+        return back()->with('success', 'Item do quantitativo excluído.');
     }
 
     public function reorderPhotos(

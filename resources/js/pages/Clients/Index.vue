@@ -1,5 +1,5 @@
 <script setup>
-import { Link, useForm } from '@inertiajs/vue3';
+import { Link } from '@inertiajs/vue3';
 import AppLayout from '@/components/ui/AppLayout.vue';
 import Pagination from '@/components/ui/Pagination.vue';
 import StatusBadge from '@/components/ui/StatusBadge.vue';
@@ -23,18 +23,6 @@ const props = defineProps({
         required: true,
     },
 });
-
-const form = useForm({
-    search: props.filters.search ?? '',
-});
-
-function submit() {
-    form.get('/clients', {
-        preserveState: true,
-        preserveScroll: true,
-        replace: true,
-    });
-}
 </script>
 
 <template>
@@ -42,37 +30,17 @@ function submit() {
         title="Cliente"
         subtitle="Cadastro único da base operacional vinculada a esta organização."
     >
-        <!--<section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                <form class="flex flex-1 flex-col gap-3 sm:flex-row" @submit.prevent="submit">
-                    <label class="flex-1">
-                        <span class="sr-only">Pesquisar clientes</span>
-                        <input
-                            v-model="form.search"
-                            type="search"
-                            class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
-                            placeholder="Buscar por nome, razão social ou documento"
-                        >
-                    </label>
-                    <button
-                        type="submit"
-                        class="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:text-slate-900"
-                    >
-                        Buscar
-                    </button>
-                </form>
+        <template #actions>
+            <Link
+                v-if="can.create"
+                :href="create_url"
+                class="rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white"
+            >
+                Cadastrar cliente
+            </Link>
+        </template>
 
-                <Link
-                    v-if="can.create"
-                    :href="create_url"
-                    class="inline-flex items-center justify-center rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-700"
-                >
-                    Cadastrar cliente
-                </Link>
-            </div>
-        </section>-->
-
-        <section class="mt-6 rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <section class="rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div class="border-b border-slate-200 px-5 py-4">
                 <div class="text-sm font-semibold text-slate-900">
                     Cliente

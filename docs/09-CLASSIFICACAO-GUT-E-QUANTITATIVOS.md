@@ -32,7 +32,11 @@ Componentes previstos:
 - `NativeDefectCatalog`
 - `DefectClassificationDefinition`
 - `GutClassificationResolver`
-- serviço específico para cálculo de quantitativos
+- `NativeQuantityCatalog`
+- `NativeDefectQuantityCalculator`
+
+A versão vigente do catálogo GUT é **2**. A versão vigente das fórmulas nativas de
+quantitativo é **1**.
 
 Não existem telas de cadastro ou edição das regras GUT.
 
@@ -70,18 +74,29 @@ Os campos calculados são somente leitura.
 
 ---
 
-# 3. Status da avaria
+# 3. Condição da avaliação
 
-As categorias utilizam os seguintes status:
+As categorias utilizam as seguintes condições:
 
-- Reinspecionada
-- Reclassificada
-- Cancelada
-- Cancelada S/R
-- Nova
-- Tratada
+- `new` — Nova;
+- `reinspected` — Reinspecionada;
+- `reclassified` — Reclassificada;
+- `canceled` — Cancelada;
+- `canceled_sr` — Cancelada S/R;
+- `treated` — Tratada.
 
-O status é independente da classificação GUT.
+Nova, Reinspecionada e Reclassificada exigem GUT, quantitativo e fotos. Tratada
+exige quantitativo e fotos, limpa o GUT atual e marca a avaria como reparada.
+Cancelada e Cancelada S/R exigem motivo, dispensam GUT, quantitativo e fotos e não
+alteram o status da avaria. A primeira avaliação pode usar qualquer situação para
+registrar avarias preexistentes; reinspeções não aceitam Nova. Os estados `draft`
+e `complete` da avaliação e os estados da avaria continuam independentes dessas
+condições.
+
+Condições com evidência também exigem mapa processado e localização confirmada.
+A cor da localização é automática: usa `classification_snapshot.color` quando
+existe classificação final; tratadas e avaliações ainda sem GUT usam o neutro
+`#64748B`. Cor e estilo nunca são aceitos do cliente.
 
 ---
 
@@ -124,6 +139,9 @@ GUT = G × U × T
 | TA-3 | 15–24 | Tratar em até 5 anos |
 | TA-4 | 9–14 | Intervenção por oportunidade |
 | TA-5 | 3–8 | Registro de condição |
+
+Os produtos TAC `1` e `2` permanecem sem classificação. Eles ainda podem ser
+publicados quando os demais requisitos da avaliação estiverem atendidos.
 
 ---
 
@@ -244,6 +262,10 @@ Cada opção é apresentada com sua nota correspondente.
 - Mão francesa e talas de ligação
 
 > Para transportadores de correia do Pátio e Porto existe matriz específica de Urgência no procedimento. Quando aplicável, o sistema deve utilizar esse catálogo específico.
+
+Enquanto essa matriz específica não estiver completa no catálogo, a opção
+Transportadores/Outros exige descrição técnica e nota manual de 1 a 5. O sistema
+salva os dois valores no snapshot.
 
 ---
 
@@ -408,7 +430,7 @@ O inspetor seleciona a função/criticidade do elemento.
 - Pórticos e vigas de ponte rolante
 - Tirantes e mão-francesa de estruturas em balanço
 
-> A lista acima deve ser cadastrada conforme a matriz oficial. Caso o sistema possua itens adicionais do catálogo técnico, estes devem manter a nota definida na Tabela 11 do procedimento.
+> A lista acima deve ser definida no catálogo nativo conforme a matriz oficial. Itens adicionais devem manter a nota definida na Tabela 11 do procedimento.
 
 ---
 
@@ -439,13 +461,17 @@ Cada condição deve ser apresentada já vinculada à respectiva nota `T = 1...5
 
 O catálogo completo deve reproduzir a Tabela 12 do procedimento, sem permitir combinações não existentes.
 
+Quando a matriz não definir uma condição aplicável, o inspetor deve informar uma
+descrição técnica e uma nota manual de 1 a 5; ambas ficam no snapshot.
+
 ---
 
 # 7. Campos GUT — TAC
 
 ## 7.1 Gravidade — G
 
-A Gravidade vem da classe do ativo já existente no sistema.
+A Gravidade vem do Código ABC do equipamento, exposto no cadastro como seleção
+`A`, `B`, `C` ou `D`.
 
 | G | Classe do ativo |
 |---:|---|
@@ -453,13 +479,16 @@ A Gravidade vem da classe do ativo já existente no sistema.
 | 2 | B |
 | 3 | A |
 
-O inspetor não precisa selecionar novamente esta informação.
+O inspetor não precisa selecionar novamente esta informação na avaliação. Código
+ausente ou fora desse domínio bloqueia o GUT TAC e orienta a correção do
+equipamento.
 
 ---
 
 ## 7.2 Urgência — U
 
-A Urgência vem da classificação de atmosfera/corrosividade já existente no sistema.
+A Urgência vem da classificação de atmosfera/corrosividade da inspeção, exposta
+como seleção `C2`, `C3`, `C4`, `C5` ou `CX`.
 
 | U | Atmosfera |
 |---:|---|
@@ -469,7 +498,8 @@ A Urgência vem da classificação de atmosfera/corrosividade já existente no s
 | 4 | C5 |
 | 5 | CX |
 
-O inspetor não precisa selecionar novamente esta informação quando o dado já estiver disponível no ativo.
+O inspetor não precisa selecionar novamente esta informação na avaliação. Valor
+ausente ou inválido bloqueia o GUT TAC e orienta a correção da inspeção.
 
 ---
 
@@ -489,7 +519,33 @@ O sistema determina `T` automaticamente a partir da opção selecionada.
 
 ---
 
-# 8. Quantitativo CIVIL
+# 8. Estrutura dos quantitativos
+
+Cada avaliação possui um único total final e uma única unidade determinada pela
+categoria, mas pode conter um ou mais itens. A avaliação é o agrupador e
+`DefectAssessmentQuantity` representa cada item. Não existe outro total vivo na
+avaliação: o servidor soma os totais brutos dos itens sem arredondamento intermediário.
+
+- CIVIL: vários itens somados em `m³`;
+- TAC: vários lançamentos de área somados em `m²`;
+- REC: diferentes elementos somados em `kg`.
+
+Cada item possui posição automática, descrição opcional, entradas, quantidade, valor
+unitário, total, modo, unidade, versão e snapshot da fórmula. Novos itens são anexados
+ao final. Ao excluir um item, os restantes são renumerados sem alterar sua ordem
+relativa. Não há reordenação manual.
+
+Ao publicar, o snapshot do quantitativo usa um envelope agregado com versão própria,
+categoria, unidade, quantidade de itens, total bruto e a lista integral dos itens.
+Snapshots históricos no formato singular continuam válidos e são interpretados como
+um agregado de um item, sem recálculo.
+
+Relatórios e resumos exibem somente o total final. A tela da avaliação e o histórico
+exibem os itens para auditoria.
+
+---
+
+# 9. Quantitativo CIVIL
 
 Unidade principal:
 
@@ -526,9 +582,19 @@ M³ total = 0,60 m³
 
 `M³ unitário` e `M³ total` são somente leitura.
 
+A quantidade deve ser positiva e pode ser fracionária.
+
+Exemplo composto:
+
+```text
+Item 1 = 2,00 × 0,50 × 0,30 × 2 = 0,60 m³
+Item 2 = 1,00 × 0,40 × 0,20 × 3 = 0,24 m³
+Total da avaliação = 0,84 m³
+```
+
 ---
 
-# 9. Quantitativo TAC
+# 10. Quantitativo TAC
 
 Unidade:
 
@@ -552,7 +618,7 @@ Campo:
 
 ---
 
-# 10. Quantitativo REC
+# 11. Quantitativo REC
 
 Unidade principal:
 
@@ -560,7 +626,8 @@ Unidade principal:
 kg
 ```
 
-O **Elemento REC é obrigatório**.
+O **Elemento REC é obrigatório em cada item**. Uma avaliação pode combinar elementos
+diferentes; o total final é a soma dos pesos de todos eles.
 
 O elemento controla:
 
@@ -580,9 +647,15 @@ Regra geral para elementos calculáveis:
 Peso total = Peso unitário × Quantidade
 ```
 
+A fórmula de PERFIL W usa literalmente `(A − 2 × EA) × EA`, conforme a decisão
+funcional desta versão do documento.
+
+A quantidade deve ser positiva e pode ser fracionária. O sistema rejeita
+geometrias impossíveis, inclusive diâmetro interno tubular menor ou igual a zero.
+
 ---
 
-## 10.1 PERFIL W
+## 11.1 PERFIL W
 
 Campos:
 
@@ -607,7 +680,7 @@ Peso unitário × Quantidade
 
 ---
 
-## 10.2 PERFIL L
+## 11.2 PERFIL L
 
 Campos:
 
@@ -644,7 +717,7 @@ Apresentação = 38,51 kg
 
 ---
 
-## 10.3 PERFIL U
+## 11.3 PERFIL U
 
 Campos:
 
@@ -669,7 +742,7 @@ Peso unitário × Quantidade
 
 ---
 
-## 10.4 PERFIL UE
+## 11.4 PERFIL UE
 
 Campos:
 
@@ -696,7 +769,7 @@ Peso unitário × Quantidade
 
 ---
 
-## 10.5 CHAPA LISA
+## 11.5 CHAPA LISA
 
 Campos:
 
@@ -715,7 +788,7 @@ Peso unitário × Quantidade
 
 ---
 
-## 10.6 BARRA CHATA
+## 11.6 BARRA CHATA
 
 Campos:
 
@@ -734,7 +807,7 @@ Peso unitário × Quantidade
 
 ---
 
-## 10.7 CHAPA XADREZ
+## 11.7 CHAPA XADREZ
 
 Campos:
 
@@ -753,7 +826,7 @@ Peso unitário × Quantidade
 
 ---
 
-## 10.8 GUARDA-CORPO
+## 11.8 GUARDA-CORPO
 
 Campos:
 
@@ -774,7 +847,7 @@ Constante:
 
 ---
 
-## 10.9 ESCADA MARINHEIRO
+## 11.9 ESCADA MARINHEIRO
 
 Campos:
 
@@ -795,7 +868,7 @@ Constante:
 
 ---
 
-## 10.10 PERFIL TUBULAR
+## 11.10 PERFIL TUBULAR
 
 Campos:
 
@@ -821,7 +894,7 @@ Peso unitário × Quantidade
 
 ---
 
-## 10.11 PERFIL L DESIGUAIS
+## 11.11 PERFIL L DESIGUAIS
 
 Campos:
 
@@ -845,7 +918,7 @@ Peso unitário × Quantidade
 
 ---
 
-## 10.12 METALON
+## 11.12 METALON
 
 Campos:
 
@@ -869,7 +942,7 @@ Peso unitário × Quantidade
 
 ---
 
-## 10.13 PERFIL T
+## 11.13 PERFIL T
 
 Campos:
 
@@ -893,7 +966,7 @@ Peso unitário × Quantidade
 
 ---
 
-## 10.14 Elementos REC com peso manual
+## 11.14 Elementos REC com peso manual
 
 Os seguintes elementos não possuem fórmula de peso na planilha analisada:
 
@@ -916,7 +989,7 @@ Peso total (kg)
 
 ---
 
-# 11. Comportamento dos campos no frontend
+# 12. Comportamento dos campos no frontend
 
 ## Campos escolhidos pelo inspetor
 
@@ -988,7 +1061,7 @@ Peso total (kg)
 
 ---
 
-# 12. Persistência das escolhas técnicas
+# 13. Persistência das escolhas técnicas
 
 Não salvar apenas:
 
@@ -1026,7 +1099,7 @@ Isso permite reproduzir historicamente por que a nota foi atribuída.
 
 ---
 
-# 13. Snapshots e versionamento
+# 14. Snapshots e versionamento
 
 A avaliação deve preservar:
 
@@ -1049,11 +1122,12 @@ Não recalcular automaticamente avaliações antigas quando regras futuras forem
 
 ---
 
-# 14. Regras de arredondamento
+# 15. Regras de arredondamento
 
 Cálculos devem utilizar a precisão interna necessária.
 
-Arredondamento deve ocorrer somente para apresentação.
+Arredondamento deve ocorrer somente para apresentação, sempre com duas casas
+decimais nos resultados de quantitativo.
 
 Exemplo:
 
@@ -1071,7 +1145,7 @@ O valor bruto calculado deve permanecer disponível para persistência e auditor
 
 ---
 
-# 15. Resumo
+# 16. Resumo
 
 | Categoria | G | U | T | Classificação | Quantitativo | Entrada |
 |---|---|---|---|---|---|---|
@@ -1081,7 +1155,7 @@ O valor bruto calculado deve permanecer disponível para persistência e auditor
 
 ---
 
-# 16. Validação mínima
+# 17. Validação mínima
 
 ## GUT
 
@@ -1103,13 +1177,18 @@ Testar:
 Testar:
 
 - CIVIL: m³ unitário e total;
+- CIVIL composto: `0,60 + 0,24 = 0,84 m³`;
 - cada fórmula REC;
+- elementos REC diferentes na mesma avaliação e soma final em `kg`;
 - unidades de entrada;
 - densidade `7.850 kg/m³`;
 - aplicação da quantidade após cálculo unitário;
 - peso manual de Ligação Parafusada, Telhas e Grade de Piso;
 - TAC com m² manual;
+- múltiplos lançamentos TAC e soma final em `m²`;
+- descrição opcional, posições automáticas e renumeração após exclusão;
+- unicidade da posição por organização e avaliação;
 - arredondamento somente na apresentação;
 - versionamento das fórmulas;
-- preservação histórica dos resultados.
-
+- snapshot agregado e compatibilidade com snapshots singulares;
+- preservação histórica dos resultados e relatório sem multiplicação duplicada.

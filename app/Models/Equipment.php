@@ -105,9 +105,9 @@ class Equipment extends Model
             ->orderByDesc('id');
     }
 
-    public function inspectionLocationMaps(): HasMany
+    public function defectLocationMaps(): HasMany
     {
-        return $this->hasMany(InspectionLocationMap::class)->orderBy('position')->orderBy('id');
+        return $this->hasMany(DefectLocationMap::class)->orderBy('id');
     }
 
     public function defects(): HasMany

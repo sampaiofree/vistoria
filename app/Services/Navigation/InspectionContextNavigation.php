@@ -7,13 +7,10 @@ namespace App\Services\Navigation;
 use App\Enums\DefectAssessmentCondition;
 use App\Enums\DefectAssessmentStatus;
 use App\Enums\DefectStatus;
-use App\Enums\InspectionLocationMapProcessingStatus;
 use App\Models\AssessmentPhoto;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
 use App\Models\Inspection;
-use App\Models\InspectionLocationMap;
-use App\Models\InspectionLocationMarker;
 use App\Models\InspectionOverviewPhoto;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -54,18 +51,6 @@ final class InspectionContextNavigation
 
         if ($assessment instanceof DefectAssessment) {
             return $assessment->inspection;
-        }
-
-        $map = $request->route('map');
-
-        if ($map instanceof InspectionLocationMap) {
-            return $map->inspection;
-        }
-
-        $marker = $request->route('marker');
-
-        if ($marker instanceof InspectionLocationMarker) {
-            return $marker->inspection;
         }
 
         $photo = $request->route('assessmentPhoto');
@@ -110,29 +95,13 @@ final class InspectionContextNavigation
 
         $defects = $this->defectsForInspection($inspection);
         $canCreateDefect = $user->can('create', [Defect::class, $inspection]);
-        $maps = InspectionLocationMap::query()
-            ->forOrganization($inspection->organization_id)
-            ->where('inspection_id', $inspection->getKey())
-            ->withCount('markers')
-            ->orderBy('position')
-            ->orderBy('id')
-            ->get();
-        $canCreateMap = $user->can('create', [InspectionLocationMap::class, $inspection]);
-
         $currentDefectId = $this->currentDefectId($request);
-        $currentMapId = $this->currentMapId($request);
         $defectsActive = $request->routeIs(
             'inspections.defects',
             'inspections.defects.create',
             'inspections.reinspection-checklist',
             'defects.*',
             'defect-assessments.*',
-        );
-        $locationsActive = $request->routeIs(
-            'inspections.locations',
-            'inspections.location-maps.*',
-            'inspection-location-maps.*',
-            'inspection-location-markers.*',
         );
         $teamActive = $request->routeIs('inspections.team');
 
@@ -183,23 +152,6 @@ final class InspectionContextNavigation
                         $currentDefectId,
                         $defectsActive,
                         $canCreateDefect,
-                    ),
-                ],
-                [
-                    'key' => 'locations',
-                    'label' => 'Localização',
-                    'href' => route('inspections.locations', $inspection),
-                    'icon' => 'map',
-                    'badge' => (string) $maps->count(),
-                    'active' => $locationsActive,
-                    'default_open' => $locationsActive,
-                    'children' => $this->mapGroups(
-                        $inspection,
-                        $maps,
-                        $user,
-                        $currentMapId,
-                        $locationsActive,
-                        $canCreateMap,
                     ),
                 ],
                 [
@@ -333,49 +285,6 @@ final class InspectionContextNavigation
         return $children;
     }
 
-    /**
-     * @param  Collection<int, InspectionLocationMap>  $maps
-     * @return array<int, array<string, mixed>>
-     */
-    private function mapGroups(
-        Inspection $inspection,
-        Collection $maps,
-        User $user,
-        ?int $currentMapId,
-        bool $sectionActive,
-        bool $canCreateMap,
-    ): array {
-        $children = $maps->map(function (InspectionLocationMap $map) use ($inspection, $currentMapId, $user): array {
-            $active = $map->getKey() === $currentMapId;
-            $ready = $map->processing_status === InspectionLocationMapProcessingStatus::Ready
-                && $map->background_path !== null;
-            $canUpdate = $user->can('update', $map);
-
-            return [
-                'key' => 'map-'.$map->public_id,
-                'label' => $map->category->value.' · '.$map->title,
-                'href' => $canUpdate
-                    ? route($ready ? 'inspection-location-maps.editor' : 'inspection-location-maps.edit', $map)
-                    : route('inspections.locations', $inspection).'#map-'.$map->public_id,
-                'meta' => $map->category->label().' · '.$this->mapMeta($map),
-                'tone' => $ready ? 'success' : ($map->processing_status === InspectionLocationMapProcessingStatus::Failed ? 'danger' : 'warning'),
-                'active' => $active,
-            ];
-        })->values()->all();
-
-        if ($canCreateMap) {
-            array_unshift($children, [
-                'key' => 'map-create',
-                'label' => '+ Novo mapa',
-                'href' => route('inspections.location-maps.create', $inspection),
-                'tone' => 'success',
-                'active' => request()->routeIs('inspections.location-maps.create'),
-            ]);
-        }
-
-        return $children;
-    }
-
     private function currentDefectId(Request $request): ?int
     {
         $assessment = $request->route('defectAssessment');
@@ -387,21 +296,6 @@ final class InspectionContextNavigation
         $defect = $request->route('defect');
 
         return $defect instanceof Defect ? (int) $defect->getKey() : null;
-    }
-
-    private function currentMapId(Request $request): ?int
-    {
-        $map = $request->route('map');
-
-        if ($map instanceof InspectionLocationMap) {
-            return (int) $map->getKey();
-        }
-
-        $marker = $request->route('marker');
-
-        return $marker instanceof InspectionLocationMarker
-            ? (int) $marker->inspection_location_map_id
-            : null;
     }
 
     private function assessmentPhotoCount(?DefectAssessment $assessment): ?string
@@ -420,23 +314,10 @@ final class InspectionContextNavigation
         }
 
         return match ($assessment->condition) {
-            DefectAssessmentCondition::Repaired, DefectAssessmentCondition::Improved => 'success',
-            DefectAssessmentCondition::Worsened, DefectAssessmentCondition::NotLocated => 'danger',
+            DefectAssessmentCondition::Treated => 'success',
+            DefectAssessmentCondition::Canceled, DefectAssessmentCondition::CanceledWithoutRepair => 'danger',
+            DefectAssessmentCondition::Reclassified => 'warning',
             default => 'neutral',
-        };
-    }
-
-    private function mapMeta(InspectionLocationMap $map): string
-    {
-        return match ($map->processing_status) {
-            InspectionLocationMapProcessingStatus::Ready => sprintf(
-                '%d %s',
-                $map->markers_count,
-                $map->markers_count === 1 ? 'marcação' : 'marcações',
-            ),
-            InspectionLocationMapProcessingStatus::Processing => 'Processando imagem',
-            InspectionLocationMapProcessingStatus::Failed => 'Falha no processamento',
-            InspectionLocationMapProcessingStatus::Pending => 'Imagem pendente',
         };
     }
 

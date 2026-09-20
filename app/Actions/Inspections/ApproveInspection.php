@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Actions\Inspections;
 
 use App\Actions\Inspections\Concerns\ValidatesInspectionTransition;
+use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
 use App\Enums\OperationalRole;
 use App\Models\Inspection;
@@ -22,7 +23,7 @@ final class ApproveInspection
     public function handle(Inspection $inspection, User $actor): Inspection
     {
         $this->validateTenant($inspection, $actor);
-        if ($actor->operational_role !== OperationalRole::Reviewer || ! $inspection->hasAnyResponsibilityForUser($actor, ...\App\Enums\InspectionResponsibility::cases())) {
+        if ($actor->operational_role !== OperationalRole::Reviewer || ! $inspection->hasAnyResponsibilityForUser($actor, ...InspectionResponsibility::cases())) {
             throw ValidationException::withMessages(['actor' => 'Somente o Revisor vinculado pode aprovar a inspeção.']);
         }
 

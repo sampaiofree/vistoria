@@ -44,7 +44,7 @@ final class DefectStatusSynchronizer
                 'updated_by' => $actor?->getKey() ?? $defect->updated_by,
             ];
 
-            if ($latestAssessment->condition === DefectAssessmentCondition::Repaired) {
+            if ($latestAssessment->condition->marksDefectAsRepaired()) {
                 $attributes['status'] = DefectStatus::Repaired;
                 $attributes['repaired_at'] = $latestAssessment->assessed_at;
             } else {
@@ -64,6 +64,10 @@ final class DefectStatusSynchronizer
             ->where('organization_id', $defect->organization_id)
             ->where('defect_id', $defect->getKey())
             ->where('status', DefectAssessmentStatus::Complete->value)
+            ->whereNotIn('condition', [
+                DefectAssessmentCondition::Canceled->value,
+                DefectAssessmentCondition::CanceledWithoutRepair->value,
+            ])
             ->whereHas('inspection', fn ($query) => $query->where('status', '!=', InspectionStatus::Canceled->value))
             ->with(['inspection'])
             ->get();

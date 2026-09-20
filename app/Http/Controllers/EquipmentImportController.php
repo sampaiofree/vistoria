@@ -7,8 +7,10 @@ namespace App\Http\Controllers;
 use App\Actions\Equipments\ImportEquipmentsFromCsv;
 use App\Http\Requests\Equipments\ConfirmEquipmentImportRequest;
 use App\Http\Requests\Equipments\PreviewEquipmentImportRequest;
+use App\Models\Client;
 use App\Models\Equipment;
 use App\Services\Equipments\EquipmentCsv;
+use App\Services\Tenancy\TenantContext;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -19,6 +21,10 @@ use Inertia\Response as InertiaResponse;
 
 final class EquipmentImportController extends Controller
 {
+    public function __construct(
+        private readonly TenantContext $tenant,
+    ) {}
+
     public function create(Request $request): InertiaResponse|RedirectResponse
     {
         $this->authorize('create', Equipment::class);
@@ -111,7 +117,32 @@ final class EquipmentImportController extends Controller
             'preview_url' => route('equipments.import.preview'),
             'confirm_url' => route('equipments.import.confirm'),
             'index_url' => route('equipments.index'),
+            'client_action' => $this->clientAction(),
         ]);
+    }
+
+    /** @return array{url:string, label:string}|null */
+    private function clientAction(): ?array
+    {
+        $client = Client::query()
+            ->forOrganization($this->tenant->id())
+            ->first();
+
+        if ($client === null) {
+            return [
+                'url' => route('clients.create'),
+                'label' => 'Cadastrar cliente',
+            ];
+        }
+
+        if (! $client->isActive()) {
+            return [
+                'url' => route('clients.show', $client),
+                'label' => 'Gerenciar cliente',
+            ];
+        }
+
+        return null;
     }
 
     private function cacheKey(string $token): string

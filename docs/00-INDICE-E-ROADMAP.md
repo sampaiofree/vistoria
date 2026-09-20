@@ -6,8 +6,7 @@ Esta pasta descreve o comportamento existente da aplicação Vistoria. O código
 branch atual é a fonte de verdade; propostas antigas, comandos de scaffolding e
 listas de implementação não fazem parte da documentação viva.
 
-Última reconciliação: **14/09/2026**, a partir do commit `6657ef4` e das
-alterações locais deste conjunto.
+Última reconciliação: **19/09/2026**.
 
 ## Visão rápida
 
@@ -20,9 +19,9 @@ aprovar e liberar inspeções técnicas. O sistema atual inclui:
 - documentos e histórico de revisões de equipamentos;
 - inspeções iniciais e reinspeções com responsáveis e histórico de estados;
 - avarias permanentes e avaliações históricas;
-- catálogos de categoria, classificação e critérios GUT por organização;
+- catálogo técnico nativo de categorias, classificações e critérios GUT;
 - fotografias privadas processadas de forma assíncrona;
-- mapas de localização, marcações e vínculo com fotografias;
+- mapa versionado e uma localização por avaliação de avaria;
 - prévia paginada em A4 e exportação no navegador para PDF e DOCX;
 - dashboard, notificações e painel protegido do Horizon.
 
@@ -38,8 +37,8 @@ aprovar e liberar inspeções técnicas. O sistema atual inclui:
 | [06 — Inspeções e fluxo](06-INSPECOES-E-FLUXO.md) | Dashboard, inspeções, estados, responsáveis e relatório |
 | [07 — Avarias e reinspeções](07-AVARIAS-E-REINSPECOES.md) | Avarias, avaliações, relações e cobertura histórica |
 | [08 — Fotos e armazenamento](08-FOTOS-E-ARMAZENAMENTO.md) | Upload, processamento, acesso e falhas |
-| [08A — Mapas e localização](08A-MAPAS-E-LOCALIZACAO-DA-INSPECAO.md) | Mapas, editor, marcações, cobertura e relatório |
-| [09 — Classificação e GUT](09-CLASSIFICACAO-CIVIL-GUT.md) | Catálogo nativo e cálculo GUT |
+| [08A — Mapas e localização](08A-MAPAS-E-LOCALIZACAO-DA-INSPECAO.md) | Mapa por avaria, versões, localização, cobertura e relatório |
+| [09 — Classificação GUT e Quantitativos](09-CLASSIFICACAO-GUT-E-QUANTITATIVOS.md) | Catálogo técnico nativo, cálculo GUT e quantitativos por categoria |
 | [13 — Deploy](13-DEPLOY-HETZNER.md) | Requisitos e checklist de produção |
 | [13A — Passo a passo de produção](13A-PASSO-A-PASSO-DEPLOY-PRODUCAO.md) | Runbook do primeiro deploy e atualizações |
 
@@ -68,16 +67,14 @@ CI.
   aplicação; factories são usadas nos testes.
 - A exportação para PDF e DOCX acontece no navegador a partir da prévia A4 e não
   altera o status nem persiste um arquivo de relatório no servidor.
-- O cadastro atual de uma nova origem de mapa recebe PNG, JPEG ou WEBP. Campos e
-  caminhos ligados a documentos de referência permanecem por compatibilidade
-  histórica, mas não constituem o fluxo atual de upload da interface.
+- O upload do mapa ocorre na avaliação e recebe PNG, JPEG ou WEBP. Cada upload
+  cria uma versão histórica do mapa lógico da avaria.
 - Não existem ações HTTP de retry manual para imagens. Cada Job tenta três vezes;
   uma falha definitiva exige substituir ou reenviar o arquivo.
 - O scheduler da aplicação não executa limpeza periódica de arquivos. Somente as
   métricas do Horizon estão agendadas.
-- A taxonomia padrão inclui CV, TAC e REC, porém partes textuais do relatório
-  continuam orientadas ao formato técnico atualmente implementado. Não há fluxos
-  especializados completos para todas as disciplinas.
+- O catálogo nativo inclui CV, TAC e REC. A configuração dessas categorias e de
+  suas classificações exige alteração versionada no código.
 - Operação offline, aplicativo nativo, inteligência artificial, cobrança SaaS e
   API pública não estão implementados.
 - O provisionamento e a homologação do VPS continuam sendo atividades do ambiente

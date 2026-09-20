@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Actions\Defects;
 
-use App\Enums\DefectAssessmentCondition;
 use App\Enums\DefectAssessmentStatus;
 use App\Enums\GutCriterion;
 use App\Enums\InspectionStatus;
@@ -13,6 +12,7 @@ use App\Models\Inspection;
 use App\Models\User;
 use App\Services\Classification\GutClassificationResolver;
 use App\Services\Defects\DefectAssessmentCompletionValidator;
+use App\Services\Defects\DefectAssessmentQuantitySnapshot;
 use App\Services\Defects\DefectSnapshotBuilder;
 use App\Services\Defects\DefectStatusSynchronizer;
 use App\Services\Tenancy\TenantContext;
@@ -28,6 +28,7 @@ final class CompleteDefectAssessment
         private readonly DefectStatusSynchronizer $statusSynchronizer,
         private readonly DefectSnapshotBuilder $snapshotBuilder,
         private readonly GutClassificationResolver $gutResolver,
+        private readonly DefectAssessmentQuantitySnapshot $quantitySnapshot,
     ) {}
 
     public function handle(User $actor, DefectAssessment $assessment, array $data = []): DefectAssessment
@@ -39,7 +40,9 @@ final class CompleteDefectAssessment
                     'defect',
                     'inspection',
                     'photos',
-                    'quantity',
+                    'quantities',
+                    'locationMapVersion',
+                    'location',
                 ])
                 ->lockForUpdate()
                 ->findOrFail($assessment->getKey());
@@ -69,15 +72,14 @@ final class CompleteDefectAssessment
                 'status' => DefectAssessmentStatus::Complete,
                 'assessed_at' => now(),
                 'defect_snapshot' => $this->snapshotBuilder->build($assessment->defect),
+                'quantity_snapshot' => $assessment->condition->requiresEvidence()
+                    ? $this->quantitySnapshot->build($assessment->defect->category, $assessment->quantities)
+                    : null,
                 'snapshot_version' => DefectSnapshotBuilder::VERSION,
                 'updated_by' => $actor->getKey(),
             ]);
 
-            if (in_array($assessment->condition, [
-                DefectAssessmentCondition::Repaired,
-                DefectAssessmentCondition::NotLocated,
-                DefectAssessmentCondition::NotInspected,
-            ], true)) {
+            if (! $assessment->condition->requiresGut()) {
                 $assessment->fill([
                     'gravity' => null,
                     'urgency' => null,
@@ -96,15 +98,6 @@ final class CompleteDefectAssessment
                 ]);
             }
 
-            if (in_array($assessment->condition, [
-                DefectAssessmentCondition::NotLocated,
-                DefectAssessmentCondition::NotInspected,
-            ], true) && $assessment->locationMarkers()->exists()) {
-                throw ValidationException::withMessages([
-                    'condition' => 'Remova as marcações desta avaliação antes de publicar uma condição sem localização no mapa.',
-                ]);
-            }
-
             $this->validator->ensureConditionAllowed(
                 $assessment->defect,
                 $assessment->inspection,
@@ -113,12 +106,7 @@ final class CompleteDefectAssessment
 
             $this->validator->ensureCanComplete($assessment);
 
-            if (in_array($assessment->condition, [
-                DefectAssessmentCondition::New,
-                DefectAssessmentCondition::Unchanged,
-                DefectAssessmentCondition::Worsened,
-                DefectAssessmentCondition::Improved,
-            ], true)) {
+            if ($assessment->condition->requiresGut()) {
                 $this->ensureConfiguredGutSelected($assessment);
             }
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Inspections;
 
+use App\Enums\AtmosphericCorrosivity;
 use App\Enums\OperationalRole;
 use App\Enums\UserStatus;
 use App\Models\Inspection;
@@ -23,11 +24,17 @@ final class UpdatePlannedInspectionRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        $this->merge([
+        $normalized = [
             'equipment_id' => blank($this->input('equipment_id')) ? null : (int) $this->input('equipment_id'),
             'inspector_id' => blank($this->input('inspector_id')) ? null : (int) $this->input('inspector_id'),
             'service_order' => TextNormalizer::nullableText($this->input('service_order')),
-        ]);
+        ];
+
+        if ($this->exists('atmospheric_classification')) {
+            $normalized['atmospheric_classification'] = TextNormalizer::technicalCode($this->input('atmospheric_classification'));
+        }
+
+        $this->merge($normalized);
     }
 
     public function rules(): array
@@ -55,7 +62,7 @@ final class UpdatePlannedInspectionRequest extends FormRequest
             'planned_end_on' => ['required', 'date', 'after_or_equal:planned_start_on'],
             'external_report_number' => ['prohibited'],
             'procedure_number' => ['prohibited'],
-            'atmospheric_classification' => ['prohibited'],
+            'atmospheric_classification' => ['nullable', Rule::enum(AtmosphericCorrosivity::class)],
         ];
     }
 }

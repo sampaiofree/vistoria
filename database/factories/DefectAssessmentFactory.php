@@ -101,7 +101,7 @@ final class DefectAssessmentFactory extends Factory
     public function repaired(): static
     {
         return $this->state(fn (): array => [
-            'condition' => DefectAssessmentCondition::Repaired,
+            'condition' => DefectAssessmentCondition::Treated,
             'status' => DefectAssessmentStatus::Complete,
             'assessed_at' => now(),
         ]);

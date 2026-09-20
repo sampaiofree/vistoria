@@ -24,7 +24,7 @@ final class StoreDefectRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        $this->merge([
+        $normalized = [
             'title' => TextNormalizer::text((string) $this->input('title')),
             'category' => $this->input('category', DefectCategory::Civil->value),
             'origin_description' => TextNormalizer::nullableText($this->input('origin_description')),
@@ -33,12 +33,25 @@ final class StoreDefectRequest extends FormRequest
             'recommendation' => TextNormalizer::nullableText($this->input('recommendation')),
             'internal_notes' => TextNormalizer::nullableText($this->input('internal_notes')),
             'assessment_action' => strtolower(trim((string) $this->input('assessment_action', DefectAssessmentStatus::Draft->value))),
-        ]);
+        ];
+
+        foreach (UpdateDefectAssessmentGutRequest::technicalCodeFields() as $field) {
+            if ($this->exists($field)) {
+                $normalized[$field] = TextNormalizer::nullableText($this->input($field));
+            }
+        }
+        foreach (['urgency_manual_description', 'trend_manual_description'] as $field) {
+            if ($this->exists($field)) {
+                $normalized[$field] = TextNormalizer::nullableText($this->input($field));
+            }
+        }
+
+        $this->merge($normalized);
     }
 
     public function rules(): array
     {
-        return [
+        return UpdateDefectAssessmentGutRequest::technicalRules() + [
             'category' => ['nullable', Rule::enum(DefectCategory::class)],
             'title' => ['required', 'string', 'max:200'],
             'origin_description' => ['nullable', 'string', 'max:10000'],
@@ -49,11 +62,13 @@ final class StoreDefectRequest extends FormRequest
                 'string',
                 'max:10000',
             ],
-            'recommendation' => ['nullable', 'string', 'max:10000'],
+            'recommendation' => [
+                Rule::requiredIf(fn (): bool => $this->input('assessment_action', DefectAssessmentStatus::Draft->value) === DefectAssessmentStatus::Complete->value),
+                'nullable',
+                'string',
+                'max:10000',
+            ],
             'internal_notes' => ['nullable', 'string', 'max:10000'],
-            'gravity' => ['nullable', 'integer', 'min:1', 'max:5'],
-            'urgency' => ['nullable', 'integer', 'min:1', 'max:5'],
-            'trend' => ['nullable', 'integer', 'min:1', 'max:5'],
             'assessment_action' => ['nullable', Rule::in([
                 DefectAssessmentStatus::Draft->value,
                 DefectAssessmentStatus::Complete->value,

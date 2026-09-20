@@ -107,12 +107,13 @@ processamento.
 
 ## Relação com mapas e relatório
 
-Uma marcação seleciona fotografias da mesma avaliação, inspeção e organização. A
-ordem no pivot da marcação é preservada, mas a numeração final do relatório é
-calculada pela ordem das categorias, mapas, marcações, avaliações e galeria.
+Não existe seleção de fotos na localização. Todas as fotografias prontas da
+avaliação localizada são incluídas automaticamente, seguindo a ordem da galeria.
+A numeração final segue categoria e sequência da avaria; TAC começa em 5.
 
-Fotografias publicadas que não recebam número por meio de um mapa bloqueiam a
-exportação atual do relatório.
+Avaliações com evidência obrigatória não podem ser publicadas sem mapa pronto e
+localização confirmada, portanto suas fotografias publicadas possuem uma origem
+de numeração no relatório.
 
 ## Operação
 

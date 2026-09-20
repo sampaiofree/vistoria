@@ -116,6 +116,9 @@ final class UpdatePlannedInspection
                 'previous_inspection_id' => $previousInspection?->getKey(),
                 'inspection_type' => $previousInspection === null ? InspectionType::Initial : InspectionType::Reinspection,
                 'service_order' => TextNormalizer::nullableText($data['service_order'] ?? null),
+                'atmospheric_classification' => array_key_exists('atmospheric_classification', $data)
+                    ? TextNormalizer::technicalCode($data['atmospheric_classification'])
+                    : $inspection->atmospheric_classification,
                 'planned_start_on' => $data['planned_start_on'],
                 'planned_end_on' => $data['planned_end_on'],
                 'context_snapshot' => $this->snapshotBuilder->build($equipment),

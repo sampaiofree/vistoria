@@ -67,6 +67,11 @@ final class InspectionPolicy
             && $this->sameOrganization($user, $inspection);
     }
 
+    public function updateReportRevision(User $user, Inspection $inspection): bool
+    {
+        return $this->manageFieldContent($user, $inspection);
+    }
+
     public function manageReportOverview(User $user, Inspection $inspection): bool
     {
         if ($inspection->status === InspectionStatus::Planned) {

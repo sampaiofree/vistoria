@@ -7,39 +7,52 @@ namespace App\Enums;
 enum DefectAssessmentCondition: string
 {
     case New = 'new';
-    case Unchanged = 'unchanged';
-    case Worsened = 'worsened';
-    case Improved = 'improved';
-    case Repaired = 'repaired';
-    case NotLocated = 'not_located';
-    case NotInspected = 'not_inspected';
+    case Reinspected = 'reinspected';
+    case Reclassified = 'reclassified';
+    case Canceled = 'canceled';
+    case CanceledWithoutRepair = 'canceled_sr';
+    case Treated = 'treated';
 
     public function label(): string
     {
         return match ($this) {
             self::New => 'Nova',
-            self::Unchanged => 'Igual',
-            self::Worsened => 'Agravou',
-            self::Improved => 'Melhorou',
-            self::Repaired => 'Reparada',
-            self::NotLocated => 'Não localizada',
-            self::NotInspected => 'Não foi possível inspecionar',
+            self::Reinspected => 'Reinspecionada',
+            self::Reclassified => 'Reclassificada',
+            self::Canceled => 'Cancelada',
+            self::CanceledWithoutRepair => 'Cancelada S/R',
+            self::Treated => 'Tratada',
         };
     }
 
     public function requiresReason(): bool
     {
-        return in_array($this, [self::NotLocated, self::NotInspected], true);
+        return in_array($this, [self::Canceled, self::CanceledWithoutRepair], true);
     }
 
     public function keepsDefectActive(): bool
     {
-        return $this !== self::Repaired;
+        return $this !== self::Treated;
     }
 
     public function requiresEvidence(): bool
     {
-        return ! in_array($this, [self::NotLocated, self::NotInspected], true);
+        return ! $this->isCanceled();
+    }
+
+    public function requiresGut(): bool
+    {
+        return in_array($this, [self::New, self::Reinspected, self::Reclassified], true);
+    }
+
+    public function isCanceled(): bool
+    {
+        return in_array($this, [self::Canceled, self::CanceledWithoutRepair], true);
+    }
+
+    public function marksDefectAsRepaired(): bool
+    {
+        return $this === self::Treated;
     }
 
     /**

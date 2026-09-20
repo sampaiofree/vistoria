@@ -76,6 +76,7 @@ final class InspectionBatchCreationTest extends TestCase
         $inspection = Inspection::query()->where('equipment_id', $firstEquipment->id)->firstOrFail();
         $this->assertSame(InspectionStatus::Planned, $inspection->status);
         $this->assertSame('OS-001', $inspection->service_order);
+        $this->assertNull($inspection->atmospheric_classification);
         $this->assertSame('2026-10-10', $inspection->planned_start_on?->toDateString());
         $this->assertSame('2026-10-12', $inspection->planned_end_on?->toDateString());
         $this->assertDatabaseHas('inspection_responsibles', [

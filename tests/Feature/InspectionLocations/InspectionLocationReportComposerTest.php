@@ -5,19 +5,14 @@ declare(strict_types=1);
 namespace Tests\Feature\InspectionLocations;
 
 use App\Actions\InspectionLocations\BuildInspectionLocationSnapshot;
+use App\Enums\DefectAssessmentCondition;
 use App\Enums\DefectCategory;
-use App\Enums\InspectionLocationMapProcessingStatus;
-use App\Enums\MeasurementUnit;
 use App\Models\AssessmentPhoto;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
-use App\Models\DefectAssessmentQuantity;
 use App\Models\Equipment;
 use App\Models\Inspection;
-use App\Models\InspectionLocationMap;
-use App\Models\InspectionLocationMarker;
 use App\Models\Organization;
-use App\Services\Classification\NativeDefectCatalog;
 use App\Services\InspectionLocations\InspectionLocationPhotoNumbering;
 use App\Services\InspectionLocations\InspectionLocationReportComposer;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -27,386 +22,114 @@ final class InspectionLocationReportComposerTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_composer_creates_ordered_map_sheets_and_keeps_category_photo_numbering(): void
+    public function test_report_creates_one_sheet_per_located_assessment_in_category_and_defect_order(): void
     {
-        $organization = Organization::factory()->create();
-        $equipment = Equipment::factory()->for($organization)->create();
-        $inspection = Inspection::factory()->forEquipment($equipment)->create();
-        $category = DefectCategory::AnticorrosiveTreatment;
-        $firstAssessment = $this->assessment($inspection, $category, 'TA-001');
-        $secondAssessment = $this->assessment($inspection, $category, 'TA-002');
-        $firstMap = InspectionLocationMap::factory()->forInspection($inspection, $category)->create([
-            'title' => 'Mapa 1',
-            'position' => 1,
-            'processing_status' => InspectionLocationMapProcessingStatus::Ready,
-            'background_width' => 1600,
-            'background_height' => 900,
-            'reference_snapshot' => ['document_number' => 'U030600-M-560002'],
-        ]);
-        $secondMap = InspectionLocationMap::factory()->forInspection($inspection, $category)->create([
-            'title' => 'Mapa 2',
-            'position' => 2,
-            'processing_status' => InspectionLocationMapProcessingStatus::Ready,
-        ]);
-        $firstMarker = InspectionLocationMarker::factory()->forMapAndAssessment($firstMap, $firstAssessment)->create([
-            'label' => 'Face inferior do pedestal.',
-            'position' => 1,
-            'style' => ['stroke' => 'none', 'fill' => '#7C3AED', 'stroke_width' => 0.005, 'opacity' => 0.9, 'dashed' => false],
-            'geometry' => ['version' => 1, 'shapes' => [
-                ['type' => 'rectangle', 'x' => 0.1, 'y' => 0.1, 'width' => 0.1, 'height' => 0.1],
-                ['type' => 'rectangle', 'x' => 0.4, 'y' => 0.4, 'width' => 0.1, 'height' => 0.1],
-            ]],
-        ]);
-        $secondMarker = InspectionLocationMarker::factory()->forMapAndAssessment($secondMap, $secondAssessment)->create();
-        $firstPhoto = AssessmentPhoto::factory()->ready()->create([
-            'organization_id' => $organization->id,
-            'inspection_id' => $inspection->id,
-            'defect_assessment_id' => $firstAssessment->id,
-            'position' => 1,
-        ]);
-        $secondPhoto = AssessmentPhoto::factory()->ready()->create([
-            'organization_id' => $organization->id,
-            'inspection_id' => $inspection->id,
-            'defect_assessment_id' => $firstAssessment->id,
-            'position' => 2,
-        ]);
-        $thirdPhoto = AssessmentPhoto::factory()->ready()->create([
-            'organization_id' => $organization->id,
-            'inspection_id' => $inspection->id,
-            'defect_assessment_id' => $firstAssessment->id,
-            'position' => 3,
-        ]);
-        $fourthPhoto = AssessmentPhoto::factory()->ready()->create([
-            'organization_id' => $organization->id,
-            'inspection_id' => $inspection->id,
-            'defect_assessment_id' => $secondAssessment->id,
-            'position' => 1,
-        ]);
-        $firstMarker->photos()->attach([
-            $firstPhoto->id => ['organization_id' => $organization->id, 'inspection_id' => $inspection->id, 'position' => 1],
-            $secondPhoto->id => ['organization_id' => $organization->id, 'inspection_id' => $inspection->id, 'position' => 2],
-            $thirdPhoto->id => ['organization_id' => $organization->id, 'inspection_id' => $inspection->id, 'position' => 3],
-        ]);
-        $secondMarker->photos()->attach($fourthPhoto->id, [
-            'organization_id' => $organization->id,
-            'inspection_id' => $inspection->id,
-            'position' => 1,
-        ]);
-
-        $report = app(InspectionLocationReportComposer::class)->compose($inspection);
-        $snapshot = app(BuildInspectionLocationSnapshot::class)->fromComposition($inspection, $report);
-
-        $this->assertCount(1, $report['categories']);
-        $this->assertCount(2, $report['sheets']);
-        $this->assertCount(1, $report['sheets'][0]['maps']);
-        $this->assertCount(1, $report['sheets'][1]['maps']);
-        $this->assertCount(2, $report['sheets'][0]['maps'][0]['markers'][0]['geometry']['shapes']);
-        $this->assertSame('#7C3AED', $report['sheets'][0]['maps'][0]['markers'][0]['style']['fill']);
-        $this->assertSame('none', $report['sheets'][0]['maps'][0]['markers'][0]['style']['stroke']);
-        $this->assertSame('5 A 7', $report['sheets'][0]['maps'][0]['markers'][0]['photo_interval']);
-        $this->assertSame('FOTOS: 5 A 7', $report['sheets'][0]['maps'][0]['markers'][0]['photo_legend']);
-        $this->assertSame('Face inferior do pedestal.', $report['sheets'][0]['maps'][0]['markers'][0]['label']);
-        $this->assertSame('Mapa 1 — PROJETO DE REFERÊNCIA: U030600-M-560002', $report['sheets'][0]['maps'][0]['report_title']);
-        $this->assertSame('8', $report['sheets'][1]['maps'][0]['markers'][0]['photo_interval']);
-        $this->assertSame('FOTOS: 8', $report['sheets'][1]['maps'][0]['markers'][0]['photo_legend']);
-        $this->assertSame(4, $report['photo_count']);
-        $this->assertSame($snapshot, app(BuildInspectionLocationSnapshot::class)->fromComposition($inspection, $report));
-        $this->assertArrayNotHasKey('url', $snapshot['categories'][0]['maps'][0]['background']);
-        $this->assertArrayNotHasKey('thumbnail_url', $snapshot['categories'][0]['maps'][0]['markers'][0]['photos'][0]);
-    }
-
-    public function test_marker_falls_back_to_all_numbered_assessment_photos_when_no_selection_exists(): void
-    {
-        $organization = Organization::factory()->create();
-        $equipment = Equipment::factory()->for($organization)->create();
-        $inspection = Inspection::factory()->forEquipment($equipment)->create();
-        $category = DefectCategory::StructuralRecovery;
-        $assessment = $this->assessment($inspection, $category, 'CV-001');
-        $map = InspectionLocationMap::factory()->forInspection($inspection, $category)->create([
-            'processing_status' => InspectionLocationMapProcessingStatus::Ready,
-        ]);
-        InspectionLocationMarker::factory()->forMapAndAssessment($map, $assessment)->create();
-
-        foreach (range(1, 4) as $position) {
-            AssessmentPhoto::factory()->ready()->create([
-                'organization_id' => $organization->id,
-                'inspection_id' => $inspection->id,
-                'defect_assessment_id' => $assessment->id,
-                'position' => $position,
-            ]);
+        $inspection = $this->inspection();
+        $civil = $this->assessment($inspection, DefectCategory::Civil, 'CV-002', 2);
+        $tac = $this->assessment($inspection, DefectCategory::AnticorrosiveTreatment, 'TA-001', 1);
+        $firstCivil = $this->assessment($inspection, DefectCategory::Civil, 'CV-001', 1);
+        $canceled = $this->assessment($inspection, DefectCategory::Civil, 'CV-003', 3);
+        $canceled->update(['condition' => DefectAssessmentCondition::Canceled]);
+        foreach ([$civil, $tac, $firstCivil, $canceled] as $assessment) {
+            $this->locateAssessment($assessment);
         }
 
-        $marker = app(InspectionLocationReportComposer::class)
-            ->compose($inspection)['sheets'][0]['maps'][0]['markers'][0];
-
-        $this->assertSame([1, 2, 3, 4], $marker['photo_numbers']);
-        $this->assertSame('1 A 4', $marker['photo_interval']);
-        $this->assertSame('FOTOS: 1 A 4', $marker['photo_legend']);
-    }
-
-    public function test_report_omits_markers_linked_to_draft_assessments(): void
-    {
-        $organization = Organization::factory()->create();
-        $equipment = Equipment::factory()->for($organization)->create();
-        $inspection = Inspection::factory()->forEquipment($equipment)->create();
-        $category = DefectCategory::Civil;
-        $published = $this->assessment($inspection, $category, 'CV-001');
-        $draftDefect = Defect::factory()->forEquipment($equipment, $inspection)->create([
-            'category' => $category->value,
-            'code' => 'CV-002',
-        ]);
-        $draft = DefectAssessment::factory()->forDefect($draftDefect, $inspection)->draft()->create();
-        $map = InspectionLocationMap::factory()->forInspection($inspection, $category)->create([
-            'processing_status' => InspectionLocationMapProcessingStatus::Ready,
-        ]);
-        InspectionLocationMarker::factory()->forMapAndAssessment($map, $published)->create(['position' => 1]);
-        InspectionLocationMarker::factory()->forMapAndAssessment($map, $draft)->create(['position' => 2]);
-        $draftPhoto = AssessmentPhoto::factory()->ready()->create([
-            'organization_id' => $organization->id,
-            'inspection_id' => $inspection->id,
-            'defect_assessment_id' => $draft->id,
-        ]);
-
-        $report = app(InspectionLocationReportComposer::class)->compose($inspection);
-        $reportMap = $report['sheets'][0]['maps'][0];
-
-        $this->assertSame(1, $reportMap['marker_count']);
-        $this->assertCount(1, $reportMap['markers']);
-        $this->assertSame('CV-001', $reportMap['markers'][0]['defect']['code']);
-        $this->assertArrayNotHasKey($draftPhoto->public_id, $report['numbering']);
-    }
-
-    public function test_report_numbering_ignores_unmapped_assessments_and_keeps_all_photos_from_mapped_assessment(): void
-    {
-        $organization = Organization::factory()->create();
-        $equipment = Equipment::factory()->for($organization)->create();
-        $inspection = Inspection::factory()->forEquipment($equipment)->create();
-        $category = DefectCategory::Civil;
-        $unmapped = $this->assessment($inspection, $category, 'CV-001');
-        $mapped = $this->assessment($inspection, $category, 'CV-002');
-        $unmapped->defect->update(['sequence_number' => 1]);
-        $mapped->defect->update(['sequence_number' => 2]);
-        $map = InspectionLocationMap::factory()->forInspection($inspection, $category)->create([
-            'processing_status' => InspectionLocationMapProcessingStatus::Ready,
-        ]);
-        $marker = InspectionLocationMarker::factory()->forMapAndAssessment($map, $mapped)->create();
-
-        $unmappedPhoto = AssessmentPhoto::factory()->ready()->create([
-            'organization_id' => $organization->id,
-            'inspection_id' => $inspection->id,
-            'defect_assessment_id' => $unmapped->id,
-        ]);
-        $firstMappedPhoto = AssessmentPhoto::factory()->ready()->create([
-            'organization_id' => $organization->id,
-            'inspection_id' => $inspection->id,
-            'defect_assessment_id' => $mapped->id,
-            'position' => 1,
-        ]);
-        $secondMappedPhoto = AssessmentPhoto::factory()->ready()->create([
-            'organization_id' => $organization->id,
-            'inspection_id' => $inspection->id,
-            'defect_assessment_id' => $mapped->id,
-            'position' => 2,
-        ]);
-        $marker->photos()->attach($firstMappedPhoto->id, [
-            'organization_id' => $organization->id,
-            'inspection_id' => $inspection->id,
-            'position' => 1,
-        ]);
-
-        $numbering = app(InspectionLocationPhotoNumbering::class)->buildForReport($inspection);
         $report = app(InspectionLocationReportComposer::class)->compose($inspection);
 
-        $this->assertSame([
-            $firstMappedPhoto->public_id => 1,
-            $secondMappedPhoto->public_id => 2,
-        ], $numbering);
-        $this->assertArrayNotHasKey($unmappedPhoto->public_id, $numbering);
-        $this->assertSame(2, $report['photo_count']);
-        $this->assertSame([1], $report['sheets'][0]['maps'][0]['markers'][0]['photo_numbers']);
-    }
-
-    public function test_report_numbering_restarts_by_category_and_reserves_one_to_four_only_for_tac(): void
-    {
-        $organization = Organization::factory()->create();
-        $equipment = Equipment::factory()->for($organization)->create();
-        $inspection = Inspection::factory()->forEquipment($equipment)->create();
-        $tac = DefectCategory::AnticorrosiveTreatment;
-        $rec = DefectCategory::StructuralRecovery;
-        $cv = DefectCategory::Civil;
-
-        $firstTacAssessment = $this->assessment($inspection, $tac, 'TA-001');
-        $secondTacAssessment = $this->assessment($inspection, $tac, 'TA-002');
-        $recAssessment = $this->assessment($inspection, $rec, 'REC-001');
-        $cvAssessment = $this->assessment($inspection, $cv, 'CV-001');
-
-        $firstTacMap = InspectionLocationMap::factory()->forInspection($inspection, $tac)->create(['position' => 1]);
-        $secondTacMap = InspectionLocationMap::factory()->forInspection($inspection, $tac)->create(['position' => 2]);
-        InspectionLocationMarker::factory()->forMapAndAssessment($firstTacMap, $firstTacAssessment)->create(['position' => 1]);
-        InspectionLocationMarker::factory()->forMapAndAssessment($secondTacMap, $secondTacAssessment)->create(['position' => 1]);
-
-        $recMap = InspectionLocationMap::factory()->forInspection($inspection, $rec)->create(['position' => 1]);
-        InspectionLocationMarker::factory()->forMapAndAssessment($recMap, $recAssessment)->create();
-        $cvMap = InspectionLocationMap::factory()->forInspection($inspection, $cv)->create(['position' => 1]);
-        InspectionLocationMarker::factory()->forMapAndAssessment($cvMap, $cvAssessment)->create();
-
-        $firstTacPhoto = AssessmentPhoto::factory()->ready()->create([
-            'organization_id' => $organization->id,
-            'inspection_id' => $inspection->id,
-            'defect_assessment_id' => $firstTacAssessment->id,
-            'position' => 1,
-        ]);
-        $thirdTacPhoto = AssessmentPhoto::factory()->ready()->create([
-            'organization_id' => $organization->id,
-            'inspection_id' => $inspection->id,
-            'defect_assessment_id' => $firstTacAssessment->id,
-            'position' => 9,
-        ]);
-        $fourthTacPhoto = AssessmentPhoto::factory()->ready()->create([
-            'organization_id' => $organization->id,
-            'inspection_id' => $inspection->id,
-            'defect_assessment_id' => $firstTacAssessment->id,
-            'position' => 10,
-        ]);
-        $secondTacPhoto = AssessmentPhoto::factory()->ready()->create([
-            'organization_id' => $organization->id,
-            'inspection_id' => $inspection->id,
-            'defect_assessment_id' => $secondTacAssessment->id,
-            'position' => 1,
-        ]);
-        $recPhoto = AssessmentPhoto::factory()->ready()->create([
-            'organization_id' => $organization->id,
-            'inspection_id' => $inspection->id,
-            'defect_assessment_id' => $recAssessment->id,
-            'position' => 1,
-        ]);
-        $cvPhoto = AssessmentPhoto::factory()->ready()->create([
-            'organization_id' => $organization->id,
-            'inspection_id' => $inspection->id,
-            'defect_assessment_id' => $cvAssessment->id,
-            'position' => 1,
-        ]);
-
-        $numbering = app(InspectionLocationPhotoNumbering::class)->buildForReport($inspection);
-        $report = app(InspectionLocationReportComposer::class)->compose($inspection);
-
-        $this->assertSame([
-            $firstTacPhoto->public_id => 5,
-            $thirdTacPhoto->public_id => 6,
-            $fourthTacPhoto->public_id => 7,
-            $secondTacPhoto->public_id => 8,
-            $recPhoto->public_id => 1,
-            $cvPhoto->public_id => 1,
-        ], $numbering);
-        $this->assertCount(6, $numbering);
+        $this->assertSame(['TAC', 'CV'], collect($report['categories'])->pluck('category.code')->all());
         $this->assertSame(
-            ['TAC', 'REC', 'CV'],
-            collect($report['categories'])->pluck('category.code')->all(),
+            ['TA-001', 'CV-001', 'CV-002'],
+            collect($report['sheets'])->pluck('maps.0.markers.0.defect.code')->all(),
         );
+        $this->assertCount(3, $report['sheets']);
+        $this->assertFalse(collect($report['sheets'])->contains(
+            fn (array $sheet): bool => data_get($sheet, 'maps.0.markers.0.defect.code') === 'CV-003',
+        ));
+        foreach ($report['sheets'] as $sheet) {
+            $this->assertCount(1, $sheet['maps']);
+            $this->assertCount(1, $sheet['maps'][0]['markers']);
+        }
     }
 
-    public function test_map_footer_groups_damage_rows_and_exposes_colored_category_legend_and_observations(): void
+    public function test_report_uses_all_ready_assessment_photos_and_preserves_tac_reservation(): void
+    {
+        $inspection = $this->inspection();
+        $tac = $this->assessment($inspection, DefectCategory::AnticorrosiveTreatment, 'TA-001', 1);
+        $civil = $this->assessment($inspection, DefectCategory::Civil, 'CV-001', 1);
+        $this->locateAssessment($tac);
+        $this->locateAssessment($civil);
+        $tacPhotos = $this->photos($tac, 3);
+        $civilPhotos = $this->photos($civil, 2);
+
+        $numbering = app(InspectionLocationPhotoNumbering::class)->buildForReport($inspection);
+        $report = app(InspectionLocationReportComposer::class)->compose($inspection);
+
+        $this->assertSame([5, 6, 7], array_map(fn (AssessmentPhoto $photo): int => $numbering[$photo->public_id], $tacPhotos));
+        $this->assertSame([1, 2], array_map(fn (AssessmentPhoto $photo): int => $numbering[$photo->public_id], $civilPhotos));
+        $this->assertSame('5 A 7', $report['sheets'][0]['maps'][0]['markers'][0]['photo_interval']);
+        $this->assertSame('1 E 2', $report['sheets'][1]['maps'][0]['markers'][0]['photo_interval']);
+        $this->assertSame(5, $report['photo_count']);
+    }
+
+    public function test_report_keeps_historical_version_and_automatic_color_without_editable_style(): void
+    {
+        $inspection = $this->inspection();
+        $assessment = $this->assessment($inspection, DefectCategory::StructuralRecovery, 'REC-001', 1);
+        $assessment->update(['classification_snapshot' => ['code' => 'IE-2', 'color' => '#FFC000']]);
+        $historical = $this->locateAssessment($assessment);
+        $snapshotBefore = app(InspectionLocationReportComposer::class)->compose($inspection);
+
+        $newer = $historical->replicate(['public_id', 'version']);
+        $newer->public_id = null;
+        $newer->version = 2;
+        $newer->created_for_assessment_id = $assessment->id;
+        $newer->save();
+
+        $report = app(InspectionLocationReportComposer::class)->compose($inspection);
+        $map = $report['sheets'][0]['maps'][0];
+        $this->assertSame($historical->version, $map['source']['version']);
+        $this->assertSame('#FFC000', $map['markers'][0]['style']['fill']);
+        $this->assertSame('#FFC000', $map['damage_rows'][0]['classification']['color']);
+        $this->assertSame(
+            $snapshotBefore['sheets'][0]['maps'][0]['background']['checksum'],
+            $map['background']['checksum'],
+        );
+
+        $snapshot = app(BuildInspectionLocationSnapshot::class)->fromComposition($inspection, $report);
+        $this->assertArrayNotHasKey('url', $snapshot['categories'][0]['maps'][0]['background']);
+
+        $assessment->update(['condition' => DefectAssessmentCondition::Treated, 'classification_snapshot' => null]);
+        $neutral = app(InspectionLocationReportComposer::class)->compose($inspection);
+        $this->assertSame('#64748B', $neutral['sheets'][0]['maps'][0]['markers'][0]['style']['fill']);
+    }
+
+    private function inspection(): Inspection
     {
         $organization = Organization::factory()->create();
         $equipment = Equipment::factory()->for($organization)->create();
-        $inspection = Inspection::factory()->forEquipment($equipment)->create();
-        $category = DefectCategory::AnticorrosiveTreatment;
-        $moderate = NativeDefectCatalog::classifications($category)->firstWhere('code', 'TA-2');
 
-        $classified = $this->assessment($inspection, $category, 'TA-001');
-        $classified->update([
-            'classification_code' => $moderate->code,
-            'classification_snapshot' => $moderate->toArray(),
-            'gravity' => 3,
-            'urgency' => 3,
-            'trend' => 4,
-            'gut_snapshot' => [
-                'criteria' => [
-                    'gravity' => ['score' => 3, 'color' => '#000000'],
-                    'urgency' => ['score' => 3, 'color' => '#000000'],
-                    'trend' => ['score' => 4, 'color' => '#000000'],
-                ],
-            ],
-        ]);
-        DefectAssessmentQuantity::factory()->forAssessment($classified)->create([
-            'measurement_value' => 42,
-            'measurement_unit' => MeasurementUnit::SquareMeter,
-        ]);
-        $unclassified = $this->assessment($inspection, $category, 'TA-002');
-        $unclassified->update(['gravity' => 9]);
-        $map = InspectionLocationMap::factory()->forInspection($inspection, $category)->create([
-            'description' => "Primeira linha.\nSegunda linha.",
-            'processing_status' => InspectionLocationMapProcessingStatus::Ready,
-        ]);
-        InspectionLocationMarker::factory()->forMapAndAssessment($map, $classified)->create([
-            'position' => 1,
-            'geometry' => ['version' => 1, 'shapes' => [
-                ['type' => 'point', 'x' => 0.25, 'y' => 0.25],
-                ['type' => 'point', 'x' => 0.75, 'y' => 0.75],
-            ]],
-        ]);
-        InspectionLocationMarker::factory()->forMapAndAssessment($map, $unclassified)->create(['position' => 2]);
-
-        foreach (range(1, 2) as $position) {
-            AssessmentPhoto::factory()->ready()->create([
-                'organization_id' => $organization->id,
-                'inspection_id' => $inspection->id,
-                'defect_assessment_id' => $classified->id,
-                'position' => $position,
-            ]);
-        }
-
-        $report = app(InspectionLocationReportComposer::class)->compose($inspection);
-        $reportMap = $report['sheets'][0]['maps'][0];
-        $snapshotMap = app(BuildInspectionLocationSnapshot::class)
-            ->fromComposition($inspection, $report)['categories'][0]['maps'][0];
-
-        $this->assertSame("Primeira linha.\nSegunda linha.", $reportMap['observations']);
-        $this->assertCount(2, $reportMap['damage_rows']);
-        $this->assertSame($classified->public_id, $reportMap['damage_rows'][0]['assessment']['public_id']);
-        $this->assertSame([5, 6], $reportMap['damage_rows'][0]['photo_numbers']);
-        $this->assertSame('5 E 6', $reportMap['damage_rows'][0]['photo_interval']);
-        $this->assertSame([
-            'value' => 42.0,
-            'unit' => 'M²',
-        ], $reportMap['damage_rows'][0]['quantity']);
-        $this->assertSame([
-            'gravity' => ['score' => 3, 'color' => '#000000'],
-            'urgency' => ['score' => 3, 'color' => '#000000'],
-            'trend' => ['score' => 4, 'color' => '#000000'],
-        ], $reportMap['damage_rows'][0]['gut']);
-        $this->assertSame([
-            'code' => 'TA-2',
-            'color' => '#FFC000',
-        ], $reportMap['damage_rows'][0]['classification']);
-        $this->assertSame('—', $reportMap['damage_rows'][1]['photo_interval']);
-        $this->assertSame([
-            'code' => null,
-            'color' => null,
-        ], $reportMap['damage_rows'][1]['classification']);
-        $this->assertNull($reportMap['damage_rows'][1]['quantity']);
-        $this->assertSame([
-            'gravity' => ['score' => 9, 'color' => null],
-            'urgency' => ['score' => null, 'color' => null],
-            'trend' => ['score' => null, 'color' => null],
-        ], $reportMap['damage_rows'][1]['gut']);
-        $this->assertSame([
-            ['code' => 'TA-1', 'color' => '#FF0000'],
-            ['code' => 'TA-2', 'color' => '#FFC000'],
-            ['code' => 'TA-3', 'color' => '#FFFF00'],
-        ], $reportMap['classification_legend']);
-        $this->assertSame($reportMap['observations'], $snapshotMap['observations']);
-        $this->assertSame($reportMap['damage_rows'], $snapshotMap['damage_rows']);
-        $this->assertSame($reportMap['classification_legend'], $snapshotMap['classification_legend']);
+        return Inspection::factory()->forEquipment($equipment)->create();
     }
 
-    private function assessment(Inspection $inspection, DefectCategory $category, string $code): DefectAssessment
+    private function assessment(Inspection $inspection, DefectCategory $category, string $code, int $sequence): DefectAssessment
     {
         $defect = Defect::factory()->forEquipment($inspection->equipment, $inspection)->create([
-            'category' => $category->value,
+            'category' => $category,
             'code' => $code,
+            'sequence_number' => $sequence,
         ]);
 
-        return DefectAssessment::factory()->forDefect($defect, $inspection)->complete()->create(['comment' => 'Avaliação publicada.']);
+        return DefectAssessment::factory()->forDefect($defect, $inspection)->complete()->create();
+    }
+
+    /** @return array<int,AssessmentPhoto> */
+    private function photos(DefectAssessment $assessment, int $count): array
+    {
+        return collect(range(1, $count))->map(fn (int $position): AssessmentPhoto => AssessmentPhoto::factory()->ready()->create([
+            'organization_id' => $assessment->organization_id,
+            'inspection_id' => $assessment->inspection_id,
+            'defect_assessment_id' => $assessment->id,
+            'position' => $position,
+        ]))->all();
     }
 }

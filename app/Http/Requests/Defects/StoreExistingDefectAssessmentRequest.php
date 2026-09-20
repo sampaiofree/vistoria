@@ -27,7 +27,7 @@ final class StoreExistingDefectAssessmentRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        $this->merge([
+        $normalized = [
             'condition' => strtolower(trim((string) $this->input('condition'))),
             'location_description' => TextNormalizer::nullableText($this->input('location_description')),
             'comment' => TextNormalizer::nullableText($this->input('comment')),
@@ -35,7 +35,20 @@ final class StoreExistingDefectAssessmentRequest extends FormRequest
             'reason' => TextNormalizer::nullableText($this->input('reason')),
             'internal_notes' => TextNormalizer::nullableText($this->input('internal_notes')),
             'assessment_action' => strtolower(trim((string) $this->input('assessment_action', DefectAssessmentStatus::Draft->value))),
-        ]);
+        ];
+
+        foreach (UpdateDefectAssessmentGutRequest::technicalCodeFields() as $field) {
+            if ($this->exists($field)) {
+                $normalized[$field] = TextNormalizer::nullableText($this->input($field));
+            }
+        }
+        foreach (['urgency_manual_description', 'trend_manual_description'] as $field) {
+            if ($this->exists($field)) {
+                $normalized[$field] = TextNormalizer::nullableText($this->input($field));
+            }
+        }
+
+        $this->merge($normalized);
     }
 
     public function rules(): array
@@ -48,17 +61,23 @@ final class StoreExistingDefectAssessmentRequest extends FormRequest
             ),
         );
 
-        return [
+        return UpdateDefectAssessmentGutRequest::technicalRules() + [
             'condition' => ['required', 'string', Rule::in($conditionValues)],
             'location_description' => ['nullable', 'string', 'max:500'],
             'comment' => ['nullable', 'string', 'max:10000'],
-            'recommendation' => ['nullable', 'string', 'max:10000'],
+            'recommendation' => [
+                Rule::requiredIf(fn (): bool => $this->input('assessment_action', DefectAssessmentStatus::Draft->value) === DefectAssessmentStatus::Complete->value
+                    && DefectAssessmentCondition::tryFrom((string) $this->input('condition'))?->requiresEvidence()),
+                'nullable',
+                'string',
+                'max:10000',
+            ],
             'reason' => [
                 Rule::requiredIf(fn (): bool => in_array(
                     $this->input('condition'),
                     [
-                        DefectAssessmentCondition::NotLocated->value,
-                        DefectAssessmentCondition::NotInspected->value,
+                        DefectAssessmentCondition::Canceled->value,
+                        DefectAssessmentCondition::CanceledWithoutRepair->value,
                     ],
                     true,
                 )),
@@ -67,9 +86,6 @@ final class StoreExistingDefectAssessmentRequest extends FormRequest
                 'max:10000',
             ],
             'internal_notes' => ['nullable', 'string', 'max:10000'],
-            'gravity' => ['nullable', 'integer', 'min:1', 'max:5'],
-            'urgency' => ['nullable', 'integer', 'min:1', 'max:5'],
-            'trend' => ['nullable', 'integer', 'min:1', 'max:5'],
             'assessment_action' => ['nullable', Rule::in([
                 DefectAssessmentStatus::Draft->value,
                 DefectAssessmentStatus::Complete->value,

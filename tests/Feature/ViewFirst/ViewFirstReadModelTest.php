@@ -19,8 +19,6 @@ use App\Models\DefectAssessment;
 use App\Models\Equipment;
 use App\Models\EquipmentRevision;
 use App\Models\Inspection;
-use App\Models\InspectionLocationMap;
-use App\Models\InspectionLocationMarker;
 use App\Models\InspectionOverviewBlock;
 use App\Models\InspectionOverviewPhoto;
 use App\Models\InspectionResponsible;
@@ -44,7 +42,6 @@ final class ViewFirstReadModelTest extends TestCase
             route('inspections.show', $inspection),
             route('inspections.report-overview', $inspection),
             route('inspections.defects', $inspection),
-            route('inspections.locations', $inspection),
             route('inspections.photos', $inspection),
             route('inspections.documents', $inspection),
             route('inspections.history', $inspection),
@@ -63,7 +60,6 @@ final class ViewFirstReadModelTest extends TestCase
             'overview' => route('inspections.show', $inspection),
             'report_overview' => route('inspections.report-overview', $inspection),
             'defects' => route('inspections.defects', $inspection),
-            'locations' => route('inspections.locations', $inspection),
             'photos' => route('inspections.photos', $inspection),
             'documents' => route('inspections.documents', $inspection),
             'history' => route('inspections.history', $inspection),
@@ -79,20 +75,7 @@ final class ViewFirstReadModelTest extends TestCase
                         ->component('Inspections/ReportOverview')
                         ->where('active_tab', 'report_overview')
                         ->has('overview.blocks', 2)
-                        ->has('tabs', 8));
-
-                continue;
-            }
-
-            if ($activeTab === 'locations') {
-                $this->actingAs($admin)
-                    ->get($url)
-                    ->assertOk()
-                    ->assertInertia(fn (Assert $page) => $page
-                        ->component('InspectionLocationMaps/Index')
-                        ->where('active_tab', 'locations')
-                        ->has('categories')
-                        ->has('tabs', 8));
+                        ->has('tabs', 7));
 
                 continue;
             }
@@ -105,7 +88,7 @@ final class ViewFirstReadModelTest extends TestCase
                     ->where('active_tab', $activeTab)
                     ->has('inspection.overview_url')
                     ->has('inspection.defects_url')
-                    ->has('inspection.locations_url')
+                    ->missing('inspection.locations_url')
                     ->has('inspection.photos_url')
                     ->has('inspection.documents_url')
                     ->has('inspection.history_url')
@@ -116,7 +99,8 @@ final class ViewFirstReadModelTest extends TestCase
                     ->has('summary.criticality.code')
                     ->has('summary.condition_breakdown')
                     ->has('summary.classification_breakdown')
-                    ->has('tabs', 8)
+                    ->has('tabs', 7)
+                    ->where('tabs', fn ($tabs): bool => collect($tabs)->doesntContain('key', 'locations'))
                     ->has('content')
                     ->missing('demo'));
         }
@@ -139,7 +123,7 @@ final class ViewFirstReadModelTest extends TestCase
                 ->has('content.items.0.quantities', 0)
                 ->has('content.items.0.evidence', 0)
                 ->has('content.items.1.evidence', 0)
-                ->has('content.filters', 6)
+                ->has('content.filters', 7)
                 ->where('content.filters.0.key', 'active'));
 
         $this->actingAs($admin)
@@ -319,20 +303,22 @@ final class ViewFirstReadModelTest extends TestCase
                 ->where('classification.provisional', false)
                 ->where('gut', null)
                 ->has('characterization')
-                ->where('quantity', null)
+                ->has('quantities', 0)
+                ->where('quantity_summary.total', null)
                 ->has('gut_classification_ranges', 5)
                 ->has('evidence', 0)
                 ->has('measurement_units', 9)
                 ->where('assessment_navigation.inspection_url', route('inspections.show', $inspection))
                 ->where('assessment_navigation.defects_url', route('inspections.defects', $inspection))
-                ->where('assessment_navigation.locations_url', route('inspections.locations', $inspection))
+                ->missing('assessment_navigation.locations_url')
                 ->where('assessment_navigation.position', 1)
                 ->where('assessment_navigation.total', 2)
-                ->has('assessment_navigation', 7)
-                ->has('condition_options', 7)
+                ->has('assessment_navigation', 6)
+                ->has('condition_options', 6)
                 ->where('capabilities.update', true)
                 ->where('capabilities.complete', true)
-                ->has('capabilities.quantity_url')
+                ->missing('capabilities.locations_url')
+                ->has('capabilities.quantity_store_url')
                 ->missing('demo'));
     }
 
@@ -362,7 +348,7 @@ final class ViewFirstReadModelTest extends TestCase
                 ->has('gut_classification_ranges', 5)
                 ->where('capabilities.update', false)
                 ->missing('capabilities.manual_classification_url')
-                ->where('capabilities.quantity_url', null)
+                ->where('capabilities.quantity_store_url', null)
                 ->where('capabilities.photo_upload_url', null)
                 ->where('capabilities.status_url', null));
     }
@@ -376,8 +362,7 @@ final class ViewFirstReadModelTest extends TestCase
             ->firstOrFail();
         $category = DefectCategory::Civil;
         $assessment->defect->update(['category' => $category->value]);
-        $map = InspectionLocationMap::factory()->forInspection($inspection, $category)->create();
-        InspectionLocationMarker::factory()->forMapAndAssessment($map, $assessment)->create();
+        $mapVersion = $this->locateAssessment($assessment);
         Storage::fake('inspection_photos');
         Storage::disk('inspection_photos')->put('photos/optimized.webp', 'optimized');
         Storage::disk('inspection_photos')->put('photos/thumbnail.webp', 'thumbnail');
@@ -452,7 +437,7 @@ final class ViewFirstReadModelTest extends TestCase
                 ->where('content.photographic_documentation.photo_count', 1)
                 ->where('content.photographic_documentation.blocks.0.assessment_public_id', $assessment->public_id)
                 ->has('content.location_sequence', 1)
-                ->where('content.location_sequence.0.map.public_id', $map->public_id)
+                ->where('content.location_sequence.0.map.public_id', $mapVersion->map->public_id)
                 ->where('content.location_sequence.0.annex_title', fn ($title): bool => is_string($title)
                     && str_starts_with($title, 'ANEXO B – LOCALIZAÇÃO E DOCUMENTAÇÃO FOTOGRÁFICA - '))
                 ->where('content.location_sequence.0.photographic_blocks.0.assessment_public_id', $assessment->public_id)
@@ -551,7 +536,7 @@ final class ViewFirstReadModelTest extends TestCase
             ->get(route('defect-assessments.show', $assessment))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
-                ->has('condition_options', 6)
+                ->has('condition_options', 5)
                 ->where('condition_options', fn ($options): bool => collect($options)
                     ->doesntContain('value', DefectAssessmentCondition::New->value)));
     }
@@ -627,7 +612,7 @@ final class ViewFirstReadModelTest extends TestCase
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->where('assessment.condition', DefectAssessmentCondition::New->value)
-                ->has('condition_options', 7)
+                ->has('condition_options', 6)
                 ->where('capabilities.update', true)
                 ->where('capabilities.complete', true));
 
@@ -697,7 +682,6 @@ final class ViewFirstReadModelTest extends TestCase
         foreach ([
             route('inspections.show', $inspection),
             route('inspections.defects', $inspection),
-            route('inspections.locations', $inspection),
             route('inspections.photos', $inspection),
             route('inspections.documents', $inspection),
             route('inspections.history', $inspection),
@@ -732,7 +716,7 @@ final class ViewFirstReadModelTest extends TestCase
 
         $this->actingAs($admin)
             ->patch(route('defect-assessments.update', $assessment), [
-                'condition' => DefectAssessmentCondition::Worsened->value,
+                'condition' => DefectAssessmentCondition::Reclassified->value,
                 'location_description' => 'Face norte do pedestal',
                 'comment' => 'Abertura maior do que na inspeção anterior.',
                 'recommendation' => 'Executar reparo estrutural prioritário.',
@@ -743,7 +727,7 @@ final class ViewFirstReadModelTest extends TestCase
 
         $assessment->refresh();
 
-        $this->assertSame(DefectAssessmentCondition::Worsened, $assessment->condition);
+        $this->assertSame(DefectAssessmentCondition::Reclassified, $assessment->condition);
         $this->assertSame(DefectAssessmentStatus::Draft, $assessment->status);
         $this->assertSame('Face norte do pedestal', $assessment->location_description);
         $this->assertSame('Abertura maior do que na inspeção anterior.', $assessment->comment);
@@ -755,15 +739,18 @@ final class ViewFirstReadModelTest extends TestCase
 
         $this->actingAs($admin)
             ->post(route('defect-assessments.complete', $assessment), [
-                'condition' => DefectAssessmentCondition::Worsened->value,
+                'condition' => DefectAssessmentCondition::Reclassified->value,
                 'location_description' => 'Face norte do pedestal',
                 'comment' => 'Abertura maior do que na inspeção anterior.',
                 'recommendation' => 'Executar reparo estrutural prioritário.',
                 'reason' => null,
                 'internal_notes' => 'Confirmar tratamento com a engenharia.',
-                'gravity' => 5,
-                'urgency' => 5,
-                'trend' => 5,
+                'safety_impact_code' => 'primary_above_2m',
+                'asset_impact_code' => 'primary_general_high_criticality',
+                'urgency_option_code' => 'building_support_column',
+                'trend_group_code' => 'cracking',
+                'trend_manual_description' => 'Fissura ativa com progressão confirmada.',
+                'trend_manual_score' => 5,
             ])
             ->assertRedirect(route('defect-assessments.show', $assessment));
 
@@ -840,7 +827,7 @@ final class ViewFirstReadModelTest extends TestCase
             ->forDefect($fissure, $inspection)
             ->draft()
             ->create([
-                'condition' => DefectAssessmentCondition::Worsened,
+                'condition' => DefectAssessmentCondition::Reclassified,
                 'location_description' => 'Face norte do pedestal',
                 'comment' => 'Manifestação observada em campo.',
                 'created_by' => $admin->id,
@@ -858,7 +845,7 @@ final class ViewFirstReadModelTest extends TestCase
             ->forDefect($moisture, $inspection)
             ->complete()
             ->create([
-                'condition' => DefectAssessmentCondition::Improved,
+                'condition' => DefectAssessmentCondition::Reclassified,
                 'comment' => 'Condição melhorou.',
                 'created_by' => $admin->id,
                 'updated_by' => $admin->id,

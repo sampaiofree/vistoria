@@ -4,8 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\InspectionLocations;
 
-use App\Enums\InspectionLocationMapSourceKind;
-use App\Models\InspectionLocationMap;
+use App\Models\DefectLocationMapVersion;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
@@ -13,77 +12,64 @@ use RuntimeException;
 final class InspectionLocationAssetGuard
 {
     /** @return array{disk:FilesystemAdapter,path:string} */
-    public function source(InspectionLocationMap $map): array
+    public function source(DefectLocationMapVersion $version): array
     {
-        $map->loadMissing(['inspection', 'equipmentDocument']);
-        $diskName = $map->source_disk;
-        $path = $map->source_path;
-
-        $this->assertRelativePath($diskName, $path);
-
-        if ($map->source_kind === InspectionLocationMapSourceKind::ReferenceDocument) {
-            $document = $map->equipmentDocument;
-            if ($document === null
-                || $document->organization_id !== $map->organization_id
-                || $document->equipment_id !== $map->equipment_id
-                || $document->disk !== $diskName
-                || $document->path !== $path
-                || $document->checksum !== $map->source_checksum) {
-                throw new RuntimeException('Origem documental inconsistente.');
-            }
-        } else {
-            $this->assertInspectionMapPath($map, $diskName, $path);
-        }
-
-        return ['disk' => Storage::disk($diskName), 'path' => $path];
+        return $this->asset($version, $version->source_disk, $version->source_path);
     }
 
     /** @return array{disk:FilesystemAdapter,path:string} */
-    public function background(InspectionLocationMap $map, string $variant = 'background'): array
+    public function background(DefectLocationMapVersion $version, string $variant = 'background'): array
     {
-        $map->loadMissing('inspection');
-        $diskName = $map->background_disk;
-        $path = $map->background_path;
-        $this->assertRelativePath($diskName, $path);
-        $this->assertInspectionMapPath($map, $diskName, $path);
+        $asset = $this->asset($version, $version->background_disk, $version->background_path);
 
         if ($variant === 'thumbnail') {
-            $thumbnailPath = dirname($path).'/thumbnail.webp';
-            $this->assertInspectionMapPath($map, $diskName, $thumbnailPath);
-            if (Storage::disk($diskName)->exists($thumbnailPath)) {
-                $path = $thumbnailPath;
+            $thumbnail = dirname($asset['path']).'/thumbnail.webp';
+            $this->assertVersionPath($version, $version->background_disk, $thumbnail);
+            if ($asset['disk']->exists($thumbnail)) {
+                $asset['path'] = $thumbnail;
             }
         } elseif ($variant !== 'background') {
-            throw new RuntimeException('Variante de imagem inválida.');
+            throw new RuntimeException('Variante de imagem invalida.');
         }
 
-        return ['disk' => Storage::disk($diskName), 'path' => $path];
+        return $asset;
+    }
+
+    /** @return array{disk:FilesystemAdapter,path:string} */
+    private function asset(DefectLocationMapVersion $version, ?string $disk, ?string $path): array
+    {
+        $this->assertRelativePath($disk, $path);
+        $this->assertVersionPath($version, $disk, $path);
+
+        return ['disk' => Storage::disk((string) $disk), 'path' => (string) $path];
     }
 
     private function assertRelativePath(?string $disk, ?string $path): void
     {
-        if (! in_array($disk, ['inspection_maps', 'equipment_documents'], true)
+        if ($disk !== 'inspection_maps'
             || $path === null
             || $path === ''
             || str_contains($path, "\0")
             || str_contains($path, '\\')
             || str_starts_with($path, '/')
             || collect(explode('/', $path))->contains(fn (string $part): bool => $part === '' || $part === '.' || $part === '..')) {
-            throw new RuntimeException('Caminho de asset inválido.');
+            throw new RuntimeException('Caminho de asset invalido.');
         }
     }
 
-    private function assertInspectionMapPath(InspectionLocationMap $map, ?string $disk, ?string $path): void
+    private function assertVersionPath(DefectLocationMapVersion $version, ?string $disk, ?string $path): void
     {
+        $version->loadMissing('map.defect');
         $prefix = sprintf(
-            'organizations/%d/inspections/%s/maps/%s/',
-            $map->organization_id,
-            $map->inspection->public_id,
-            $map->public_id,
+            'organizations/%d/defects/%s/maps/%s/versions/%s/',
+            $version->organization_id,
+            $version->map->defect->public_id,
+            $version->map->public_id,
+            $version->public_id,
         );
 
         if ($disk !== 'inspection_maps' || $path === null || ! str_starts_with($path, $prefix)) {
-            throw new RuntimeException('Asset fora do diretório privado do mapa.');
+            throw new RuntimeException('Asset fora do diretorio privado da versao do mapa.');
         }
     }
 }

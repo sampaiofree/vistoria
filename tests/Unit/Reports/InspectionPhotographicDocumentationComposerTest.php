@@ -22,7 +22,7 @@ final class InspectionPhotographicDocumentationComposerTest extends TestCase
                     'id' => 100,
                     'public_id' => 'assessment-100',
                     'status' => 'complete',
-                    'condition' => 'worsened',
+                    'condition' => 'reclassified',
                     'condition_label' => 'Agravou',
                     'comment' => 'Comentário técnico.',
                     'recommendation' => 'Recomendação técnica.',
@@ -79,7 +79,7 @@ final class InspectionPhotographicDocumentationComposerTest extends TestCase
         $this->assertSame('Recomendação técnica.', $result['blocks'][1]['recommendation']);
         $this->assertSame('VT009-CV-001', $result['blocks'][1]['defect_code']);
         $this->assertSame('IE-2', $result['blocks'][1]['classification_code']);
-        $this->assertSame('worsened', $result['blocks'][1]['condition']);
+        $this->assertSame('reclassified', $result['blocks'][1]['condition']);
         $this->assertSame('Agravou', $result['blocks'][1]['condition_label']);
         $this->assertSame('IE-3', $result['blocks'][1]['previous_classification']['code']);
         $this->assertSame('IE-2', $result['blocks'][1]['current_classification']['code']);

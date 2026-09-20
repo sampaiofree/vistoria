@@ -4,7 +4,11 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Enums\DefectCategory;
 use App\Enums\MeasurementUnit;
+use App\Enums\QuantityCalculationMode;
+use App\Enums\QuantityCalculationType;
+use App\Enums\StructuralRecoveryElement;
 use App\Models\Concerns\BelongsToOrganization;
 use App\Models\Concerns\HasPublicId;
 use Database\Factories\DefectAssessmentQuantityFactory;
@@ -23,13 +27,17 @@ final class DefectAssessmentQuantity extends Model
         'inspection_id',
         'defect_assessment_id',
         'description',
+        'category',
+        'calculation_type',
+        'rec_element',
+        'inputs',
         'quantity',
-        'length',
-        'height',
-        'width',
-        'unit_volume',
+        'unit_value',
         'measurement_value',
         'measurement_unit',
+        'mode',
+        'formula_version',
+        'formula_snapshot',
         'position',
         'notes',
     ];
@@ -37,13 +45,17 @@ final class DefectAssessmentQuantity extends Model
     protected function casts(): array
     {
         return [
-            'quantity' => 'decimal:4',
-            'length' => 'decimal:4',
-            'height' => 'decimal:4',
-            'width' => 'decimal:4',
-            'unit_volume' => 'decimal:12',
-            'measurement_value' => 'decimal:'.(($this->attributes['length'] ?? null) === null ? 4 : 16),
+            'category' => DefectCategory::class,
+            'calculation_type' => QuantityCalculationType::class,
+            'rec_element' => StructuralRecoveryElement::class,
+            'inputs' => 'array',
+            'quantity' => 'decimal:16',
+            'unit_value' => 'decimal:16',
+            'measurement_value' => 'decimal:16',
             'measurement_unit' => MeasurementUnit::class,
+            'mode' => QuantityCalculationMode::class,
+            'formula_version' => 'integer',
+            'formula_snapshot' => 'array',
             'position' => 'integer',
         ];
     }
@@ -56,5 +68,29 @@ final class DefectAssessmentQuantity extends Model
     public function value(): float
     {
         return (float) $this->measurement_value;
+    }
+
+    /** @return array<string, mixed> */
+    public function snapshot(): array
+    {
+        return [
+            ...($this->formula_snapshot ?? []),
+            'source' => data_get($this->formula_snapshot, 'source', 'native_quantity_catalog'),
+            'formula_version' => $this->formula_version,
+            'position' => $this->position,
+            'description' => $this->description,
+            'category' => $this->category?->value,
+            'calculation_type' => $this->calculation_type?->value,
+            'mode' => $this->mode?->value,
+            'element' => $this->rec_element === null ? null : [
+                'code' => $this->rec_element->value,
+                'label' => $this->rec_element->label(),
+            ],
+            'inputs' => $this->inputs ?? [],
+            'quantity' => $this->quantity,
+            'unit_value' => $this->unit_value,
+            'total' => $this->measurement_value,
+            'measurement_unit' => $this->measurement_unit->value,
+        ];
     }
 }

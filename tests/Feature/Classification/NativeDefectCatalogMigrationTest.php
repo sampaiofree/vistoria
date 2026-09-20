@@ -16,6 +16,7 @@ use App\Models\Organization;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -23,6 +24,8 @@ final class NativeDefectCatalogMigrationTest extends TestCase
 {
     public function test_upgrade_cleans_development_data_and_preserves_other_records_and_foreign_keys(): void
     {
+        Storage::fake('inspection_photos');
+
         $this->onPreviousSchema(function (Organization $organization): void {
             $user = User::factory()->for($organization)->create();
             $equipment = Equipment::factory()->for($organization)->create();
@@ -40,7 +43,14 @@ final class NativeDefectCatalogMigrationTest extends TestCase
             DefectAssessmentQuantity::factory()->forAssessment($assessment)->create();
             $photo = AssessmentPhoto::factory()->ready()->create([
                 'organization_id' => $organization->id, 'inspection_id' => $inspection->id, 'defect_assessment_id' => $assessment->id,
+                'disk' => 'inspection_photos',
+                'original_path' => 'assessments/original.jpg',
+                'optimized_path' => 'assessments/optimized.jpg',
+                'thumbnail_path' => 'assessments/thumbnail.jpg',
             ]);
+            foreach ([$photo->original_path, $photo->optimized_path, $photo->thumbnail_path] as $path) {
+                Storage::disk('inspection_photos')->put($path, 'photo');
+            }
             $mapId = DB::table('inspection_location_maps')->insertGetId([
                 'public_id' => (string) Str::ulid(), 'organization_id' => $organization->id,
                 'equipment_id' => $equipment->id, 'inspection_id' => $inspection->id,
@@ -77,6 +87,11 @@ final class NativeDefectCatalogMigrationTest extends TestCase
             $this->assertSame($document->id, $document->refresh()->id);
             $this->assertSame($inspection->id, $inspection->refresh()->id);
             $this->assertSame($nextInspection->id, $nextInspection->refresh()->id);
+            Storage::disk('inspection_photos')->assertMissing([
+                'assessments/original.jpg',
+                'assessments/optimized.jpg',
+                'assessments/thumbnail.jpg',
+            ]);
             $this->assertNativeSchema();
 
             $nativeDefect = Defect::factory()->forEquipment($equipment, $inspection)->create(['category' => DefectCategory::StructuralRecovery]);

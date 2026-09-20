@@ -7,6 +7,7 @@ const props = defineProps({
     inspection: { type: Object, required: true },
     equipmentOptions: { type: Array, default: () => [] },
     inspectors: { type: Array, default: () => [] },
+    atmosphericOptions: { type: Array, default: () => [] },
     selectedInspectorId: { type: [Number, String], default: null },
     submitLabel: { type: String, default: 'Salvar alterações' },
 });
@@ -15,6 +16,7 @@ const form = useForm({
     equipment_id: props.inspection.equipment_id ?? '',
     inspector_id: props.selectedInspectorId ?? '',
     service_order: props.inspection.service_order ?? '',
+    atmospheric_classification: props.inspection.atmospheric_classification ?? '',
     planned_start_on: props.inspection.planned_start_on_input ?? '',
     planned_end_on: props.inspection.planned_end_on_input ?? '',
 });
@@ -55,6 +57,17 @@ function submit() {
                     <span>Ordem de serviço</span>
                     <input v-model="form.service_order" type="text" maxlength="100" class="w-full rounded-lg border border-slate-300 px-3 py-2">
                     <span v-if="form.errors.service_order" class="block text-xs text-rose-600">{{ form.errors.service_order }}</span>
+                </label>
+                <label class="space-y-1.5 text-sm font-medium text-slate-700 md:col-span-2">
+                    <span>Classificação atmosférica</span>
+                    <select v-model="form.atmospheric_classification" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2">
+                        <option value="">Não informada</option>
+                        <option v-for="option in atmosphericOptions" :key="option.value" :value="option.value">
+                            {{ option.value }} — {{ option.label }}
+                        </option>
+                    </select>
+                    <span class="block text-xs font-normal text-slate-500">Usada para calcular a urgência U das avarias TAC.</span>
+                    <span v-if="form.errors.atmospheric_classification" class="block text-xs text-rose-600">{{ form.errors.atmospheric_classification }}</span>
                 </label>
                 <label class="space-y-1.5 text-sm font-medium text-slate-700">
                     <span>Data inicial planejada</span>

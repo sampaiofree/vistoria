@@ -38,9 +38,9 @@ class Organization extends Model
         return $this->hasMany(User::class);
     }
 
-    public function inspectionLocationMaps(): HasMany
+    public function defectLocationMaps(): HasMany
     {
-        return $this->hasMany(InspectionLocationMap::class);
+        return $this->hasMany(DefectLocationMap::class);
     }
 
     public function clients(): HasMany

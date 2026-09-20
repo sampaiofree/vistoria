@@ -74,6 +74,7 @@ final class CreateInspection
                 'previous_inspection_id' => $previousInspection?->getKey(),
                 'inspection_type' => $type,
                 'status' => InspectionStatus::Planned,
+                'report_revision' => $this->nextReportRevision($equipment),
                 'emission_type' => EquipmentRevisionEmissionType::ForKnowledge,
                 'service_order' => TextNormalizer::nullableText($data['service_order'] ?? null),
                 'external_report_number' => TextNormalizer::nullableText($data['external_report_number'] ?? null),
@@ -124,5 +125,13 @@ final class CreateInspection
             ->orderByDesc('released_at')
             ->orderByDesc('id')
             ->first();
+    }
+
+    private function nextReportRevision(Equipment $equipment): int
+    {
+        return ((int) (Inspection::query()
+            ->where('organization_id', $this->tenant->id())
+            ->where('equipment_id', $equipment->getKey())
+            ->max('report_revision') ?? -1)) + 1;
     }
 }

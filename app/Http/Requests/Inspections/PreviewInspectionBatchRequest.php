@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Inspections;
 
+use App\Enums\AtmosphericCorrosivity;
 use App\Enums\OperationalRole;
 use App\Enums\UserStatus;
 use App\Models\Inspection;
@@ -33,6 +34,7 @@ final class PreviewInspectionBatchRequest extends FormRequest
                 return [
                     'equipment_id' => blank($inspection['equipment_id'] ?? null) ? null : (int) $inspection['equipment_id'],
                     'service_order' => TextNormalizer::nullableText($inspection['service_order'] ?? null),
+                    'atmospheric_classification' => TextNormalizer::technicalCode($inspection['atmospheric_classification'] ?? null),
                     'planned_start_on' => $inspection['planned_start_on'] ?? null,
                     'planned_end_on' => $inspection['planned_end_on'] ?? null,
                     'inspector_id' => blank($inspection['inspector_id'] ?? null) ? null : (int) $inspection['inspector_id'],
@@ -57,6 +59,7 @@ final class PreviewInspectionBatchRequest extends FormRequest
                 ),
             ],
             'inspections.*.service_order' => ['nullable', 'string', 'max:100'],
+            'inspections.*.atmospheric_classification' => ['nullable', Rule::enum(AtmosphericCorrosivity::class)],
             'inspections.*.planned_start_on' => ['required', 'date'],
             'inspections.*.planned_end_on' => ['required', 'date', 'after_or_equal:inspections.*.planned_start_on'],
             'inspections.*.inspector_id' => [

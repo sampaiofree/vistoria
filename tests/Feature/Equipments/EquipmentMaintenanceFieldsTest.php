@@ -75,6 +75,10 @@ final class EquipmentMaintenanceFieldsTest extends TestCase
                 ->missing('equipment.client_id')
                 ->missing('equipment.area_id')->missing('equipment.subarea_id')->missing('equipment.client_unit_id'));
         }
+        $this->get(route('equipments.edit', $equipment))->assertInertia(fn (Assert $page) => $page
+            ->has('abc_options', 4)
+            ->where('abc_options.0.value', 'A')
+            ->where('abc_options.3.value', 'D'));
         $this->get(route('equipments.index', ['search' => '000123']))->assertInertia(fn (Assert $page) => $page
             ->has('equipments.data', 1)
             ->where('equipments.data.0.maintenance_item_code', '000123')
@@ -171,6 +175,17 @@ final class EquipmentMaintenanceFieldsTest extends TestCase
             $this->assertNull($equipment->$field);
         }
         $this->assertSame('MANUAL', $equipment->defect_code_prefix);
+    }
+
+    public function test_equipment_rejects_an_unknown_abc_code(): void
+    {
+        [, $admin, $client] = $this->context();
+
+        $this->actingAs($admin)
+            ->post(route('equipments.store'), $this->payload($client, ['abc_code' => 'E']))
+            ->assertSessionHasErrors('abc_code');
+
+        $this->assertDatabaseCount('equipments', 0);
     }
 
     public function test_new_inspections_snapshot_the_new_fields_without_changing_existing_snapshots(): void

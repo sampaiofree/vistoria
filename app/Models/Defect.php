@@ -77,6 +77,11 @@ final class Defect extends Model
             ->orderBy('id');
     }
 
+    public function locationMap(): HasOne
+    {
+        return $this->hasOne(DefectLocationMap::class);
+    }
+
     public function latestAssessment(): HasOne
     {
         return $this->hasOne(DefectAssessment::class)

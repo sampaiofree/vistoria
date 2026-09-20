@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Actions\Inspections;
 
 use App\Actions\Inspections\Concerns\ValidatesInspectionTransition;
+use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
 use App\Enums\OperationalRole;
 use App\Models\Inspection;
@@ -28,7 +29,7 @@ final class ReturnInspectionForCorrection
                 'status' => 'A inspeção não está em revisão.',
             ]);
         }
-        if ($actor->operational_role !== OperationalRole::Reviewer || ! $inspection->hasAnyResponsibilityForUser($actor, ...\App\Enums\InspectionResponsibility::cases())) {
+        if ($actor->operational_role !== OperationalRole::Reviewer || ! $inspection->hasAnyResponsibilityForUser($actor, ...InspectionResponsibility::cases())) {
             throw ValidationException::withMessages(['actor' => 'Somente o Revisor vinculado pode devolver a inspeção para correção.']);
         }
 

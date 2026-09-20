@@ -5,8 +5,7 @@ declare(strict_types=1);
 namespace App\Jobs;
 
 use App\Enums\InspectionLocationMapProcessingStatus;
-use App\Enums\InspectionLocationMapSourceKind;
-use App\Models\InspectionLocationMap;
+use App\Models\DefectLocationMapVersion;
 use App\Services\InspectionLocations\InspectionLocationAssetGuard;
 use App\Services\Notifications\NotifyInspectionImageFailure;
 use Illuminate\Bus\Queueable;
@@ -29,7 +28,7 @@ final class ProcessInspectionLocationMap implements ShouldQueue
     public int $timeout = 180;
 
     public function __construct(
-        public readonly int $mapId,
+        public readonly int $mapVersionId,
         public readonly ?string $expectedSourceChecksum = null,
     ) {
         $this->onQueue('images');
@@ -42,13 +41,13 @@ final class ProcessInspectionLocationMap implements ShouldQueue
 
     public function handle(InspectionLocationAssetGuard $assetGuard): void
     {
-        $map = InspectionLocationMap::query()->with(['inspection', 'equipmentDocument'])->find($this->mapId);
-        if ($map === null || $map->trashed() || ! $this->matchesExpectedSource($map)) {
+        $version = DefectLocationMapVersion::query()->with('map.defect')->find($this->mapVersionId);
+        if ($version === null || ! $this->matchesExpectedSource($version)) {
             return;
         }
 
-        $claimed = InspectionLocationMap::query()
-            ->whereKey($map->id)
+        $claimed = DefectLocationMapVersion::query()
+            ->whereKey($version->id)
             ->where('processing_status', InspectionLocationMapProcessingStatus::Pending->value)
             ->when($this->expectedSourceChecksum !== null, fn ($query) => $query->where('source_checksum', $this->expectedSourceChecksum))
             ->update([
@@ -60,40 +59,25 @@ final class ProcessInspectionLocationMap implements ShouldQueue
             return;
         }
 
-        $map->refresh();
+        $version->refresh();
         $image = null;
         $thumbnail = null;
-        $outputDisk = null;
         $outputPaths = [];
 
         try {
-            $source = $assetGuard->source($map);
+            $source = $assetGuard->source($version);
             if (! $source['disk']->exists($source['path'])) {
-                throw new RuntimeException('Origem não encontrada.');
+                throw new RuntimeException('Origem nao encontrada.');
             }
-
-            $maxBytes = (int) config('inspection_locations.limits.source_size_kilobytes') * 1024;
-            if ((int) $source['disk']->size($source['path']) > $maxBytes) {
+            if ((int) $source['disk']->size($source['path']) > (int) config('inspection_locations.limits.source_size_kilobytes') * 1024) {
                 throw new RuntimeException('Origem acima do limite permitido.');
             }
 
             $image = new Imagick;
             $this->configureResources($image);
-            $image->setOption('pdf:use-cropbox', 'true');
-            $path = $source['disk']->path($source['path']);
-            if ($map->source_mime_type === 'application/pdf') {
-                $page = max(1, (int) ($map->source_page ?? 1));
-                if ($page > (int) config('inspection_locations.limits.pdf_pages')) {
-                    throw new RuntimeException('Página acima do limite permitido.');
-                }
-                $path .= '['.($page - 1).']';
-            }
-
-            $image->readImage($path);
+            $image->readImage($source['disk']->path($source['path']));
             $image->setIteratorIndex(0);
-            $image->setImageFormat('png');
             $this->assertSafeDimensions($image);
-            $this->applyCrop($image, $map->source_crop);
             $image->thumbnailImage(
                 (int) config('inspection_locations.processing.max_output_dimension'),
                 (int) config('inspection_locations.processing.max_output_dimension'),
@@ -113,29 +97,21 @@ final class ProcessInspectionLocationMap implements ShouldQueue
             $thumbnail->setImageFormat('webp');
             $thumbnail->setImageCompressionQuality(78);
 
-            $disk = 'inspection_maps';
-            $directory = sprintf(
-                'organizations/%d/inspections/%s/maps/%s',
-                $map->organization_id,
-                $map->inspection->public_id,
-                $map->public_id,
-            );
-            $derivativeDirectory = $directory.'/derivatives/'.hash('sha256', (string) $map->source_checksum);
-            $backgroundPath = $derivativeDirectory.'/background.webp';
-            $thumbnailPath = $derivativeDirectory.'/thumbnail.webp';
+            $directory = dirname((string) $version->source_path).'/derivatives/'.hash('sha256', (string) $version->source_checksum);
+            $backgroundPath = $directory.'/background.webp';
+            $thumbnailPath = $directory.'/thumbnail.webp';
             $backgroundBlob = $image->getImageBlob();
             $thumbnailBlob = $thumbnail->getImageBlob();
-            $outputDisk = $disk;
             $outputPaths = [$backgroundPath, $thumbnailPath];
-            Storage::disk($disk)->put($backgroundPath, $backgroundBlob);
-            Storage::disk($disk)->put($thumbnailPath, $thumbnailBlob);
+            Storage::disk('inspection_maps')->put($backgroundPath, $backgroundBlob);
+            Storage::disk('inspection_maps')->put($thumbnailPath, $thumbnailBlob);
 
-            $published = InspectionLocationMap::query()
-                ->whereKey($map->id)
-                ->where('source_checksum', $map->source_checksum)
+            $published = DefectLocationMapVersion::query()
+                ->whereKey($version->id)
+                ->where('source_checksum', $version->source_checksum)
                 ->where('processing_status', InspectionLocationMapProcessingStatus::Processing->value)
                 ->update([
-                    'background_disk' => $disk,
+                    'background_disk' => 'inspection_maps',
                     'background_path' => $backgroundPath,
                     'background_mime_type' => 'image/webp',
                     'background_size' => strlen($backgroundBlob),
@@ -147,21 +123,19 @@ final class ProcessInspectionLocationMap implements ShouldQueue
                     'processing_error' => null,
                     'updated_at' => now(),
                 ]);
+
             if ($published !== 1) {
-                $this->removeGeneratedOutputs($outputDisk, $outputPaths, $map->public_id);
-                $outputDisk = null;
-                $outputPaths = [];
+                Storage::disk('inspection_maps')->delete($outputPaths);
             } else {
-                $this->removeUploadedSource($map->refresh(), $assetGuard);
+                $this->removeUploadedSource($version->refresh(), $assetGuard);
             }
         } catch (Throwable $exception) {
-            $this->removeGeneratedOutputs($outputDisk, $outputPaths, $map->public_id);
-            $this->markPendingForRetry($map);
-            Log::warning('Falha ao processar mapa de localização.', [
-                'map_public_id' => $map->public_id,
+            Storage::disk('inspection_maps')->delete($outputPaths);
+            $this->markPendingForRetry($version);
+            Log::warning('Falha ao processar versao do mapa de localizacao.', [
+                'map_version_public_id' => $version->public_id,
                 'exception' => $exception::class,
             ]);
-
             throw $exception;
         } finally {
             $thumbnail?->clear();
@@ -173,21 +147,26 @@ final class ProcessInspectionLocationMap implements ShouldQueue
 
     public function failed(Throwable $exception): void
     {
-        $map = InspectionLocationMap::query()->with(['inspection', 'equipmentDocument'])->find($this->mapId);
-        if ($map === null || ! $this->matchesExpectedSource($map) || $map->processing_status === InspectionLocationMapProcessingStatus::Ready || $map->processing_status === InspectionLocationMapProcessingStatus::Failed) {
+        $version = DefectLocationMapVersion::query()->with(['createdForAssessment.inspection', 'map.defect'])->find($this->mapVersionId);
+        if ($version === null || ! $this->matchesExpectedSource($version) || in_array($version->processing_status, [
+            InspectionLocationMapProcessingStatus::Ready,
+            InspectionLocationMapProcessingStatus::Failed,
+        ], true)) {
             return;
         }
 
-        $this->removeFailedUploadedSource($map, app(InspectionLocationAssetGuard::class));
-        $this->markFailed($map);
-
-        app(NotifyInspectionImageFailure::class)->handle(
-            $map->inspection,
-            $map->source_uploaded_by ?? $map->updated_by,
-            'Falha no processamento do mapa',
-            sprintf('A imagem do mapa “%s” não pôde ser processada. Escolha outra imagem.', $map->title),
-            route('inspection-location-maps.edit', $map),
-        );
+        $this->removeUploadedSource($version, app(InspectionLocationAssetGuard::class));
+        $this->markFailed($version);
+        $assessment = $version->createdForAssessment;
+        if ($assessment !== null) {
+            app(NotifyInspectionImageFailure::class)->handle(
+                $assessment->inspection,
+                $version->source_uploaded_by,
+                'Falha no processamento do mapa',
+                sprintf('A imagem do mapa da avaria %s nao pode ser processada. Escolha outra imagem.', $version->map->defect->code),
+                route('defect-assessments.show', $assessment),
+            );
+        }
     }
 
     private function configureResources(Imagick $image): void
@@ -202,30 +181,29 @@ final class ProcessInspectionLocationMap implements ShouldQueue
     {
         $width = $image->getImageWidth();
         $height = $image->getImageHeight();
-        $maxDimension = (int) config('inspection_locations.limits.image_dimension');
-        $maxPixels = (int) config('inspection_locations.limits.image_pixels');
-
-        if ($width < 1 || $height < 1 || $width > $maxDimension || $height > $maxDimension || ($width * $height) > $maxPixels) {
-            throw new RuntimeException('A imagem excede o limite seguro de dimensões.');
+        if ($width < 1 || $height < 1
+            || $width > (int) config('inspection_locations.limits.image_dimension')
+            || $height > (int) config('inspection_locations.limits.image_dimension')
+            || ($width * $height) > (int) config('inspection_locations.limits.image_pixels')) {
+            throw new RuntimeException('A imagem excede o limite seguro de dimensoes.');
         }
     }
 
-    private function matchesExpectedSource(InspectionLocationMap $map): bool
+    private function matchesExpectedSource(DefectLocationMapVersion $version): bool
     {
         return $this->expectedSourceChecksum === null
-            || ($map->source_checksum !== null && hash_equals($this->expectedSourceChecksum, $map->source_checksum));
+            || ($version->source_checksum !== null && hash_equals($this->expectedSourceChecksum, $version->source_checksum));
     }
 
-    private function markFailed(InspectionLocationMap $map): void
+    private function markFailed(DefectLocationMapVersion $version): void
     {
-        InspectionLocationMap::query()
-            ->whereKey($map->id)
-            ->where('source_checksum', $map->source_checksum)
+        DefectLocationMapVersion::query()
+            ->whereKey($version->id)
+            ->where('source_checksum', $version->source_checksum)
             ->whereIn('processing_status', [
                 InspectionLocationMapProcessingStatus::Pending->value,
                 InspectionLocationMapProcessingStatus::Processing->value,
-            ])
-            ->update([
+            ])->update([
                 'processing_status' => InspectionLocationMapProcessingStatus::Failed,
                 'processing_error' => (string) config('inspection_locations.processing.error_message'),
                 'processed_at' => null,
@@ -233,11 +211,11 @@ final class ProcessInspectionLocationMap implements ShouldQueue
             ]);
     }
 
-    private function markPendingForRetry(InspectionLocationMap $map): void
+    private function markPendingForRetry(DefectLocationMapVersion $version): void
     {
-        InspectionLocationMap::query()
-            ->whereKey($map->id)
-            ->where('source_checksum', $map->source_checksum)
+        DefectLocationMapVersion::query()
+            ->whereKey($version->id)
+            ->where('source_checksum', $version->source_checksum)
             ->where('processing_status', InspectionLocationMapProcessingStatus::Processing->value)
             ->update([
                 'processing_status' => InspectionLocationMapProcessingStatus::Pending,
@@ -246,80 +224,21 @@ final class ProcessInspectionLocationMap implements ShouldQueue
             ]);
     }
 
-    private function removeUploadedSource(InspectionLocationMap $map, InspectionLocationAssetGuard $assetGuard): void
+    private function removeUploadedSource(DefectLocationMapVersion $version, InspectionLocationAssetGuard $assetGuard): void
     {
-        if ($map->source_kind !== InspectionLocationMapSourceKind::Upload || $map->source_path === null) {
+        if ($version->source_path === null) {
             return;
         }
-
         try {
-            $source = $assetGuard->source($map);
+            $source = $assetGuard->source($version);
             if (! $source['disk']->exists($source['path']) || $source['disk']->delete($source['path'])) {
-                $map->update(['source_path' => null]);
-            } else {
-                Log::warning('Não foi possível remover o upload temporário de um mapa processado.', ['map_public_id' => $map->public_id]);
+                $version->update(['source_path' => null]);
             }
         } catch (Throwable $exception) {
-            Log::warning('Não foi possível remover o upload temporário de um mapa processado.', [
-                'map_public_id' => $map->public_id,
+            Log::warning('Nao foi possivel remover o upload temporario de uma versao de mapa.', [
+                'map_version_public_id' => $version->public_id,
                 'exception' => $exception::class,
             ]);
         }
-    }
-
-    private function removeFailedUploadedSource(InspectionLocationMap $map, InspectionLocationAssetGuard $assetGuard): void
-    {
-        if ($map->source_kind !== InspectionLocationMapSourceKind::Upload || $map->source_path === null) {
-            return;
-        }
-
-        try {
-            $source = $assetGuard->source($map);
-            if (! $source['disk']->exists($source['path']) || $source['disk']->delete($source['path'])) {
-                $map->update(['source_path' => null]);
-            }
-        } catch (Throwable $exception) {
-            Log::warning('Não foi possível remover o upload temporário de um mapa após falha definitiva.', [
-                'map_public_id' => $map->public_id,
-                'exception' => $exception::class,
-            ]);
-        }
-    }
-
-    /** @param array<int, string> $paths */
-    private function removeGeneratedOutputs(?string $disk, array $paths, string $mapPublicId): void
-    {
-        if ($disk === null || $paths === []) {
-            return;
-        }
-
-        try {
-            Storage::disk($disk)->delete($paths);
-        } catch (Throwable) {
-            Log::warning('Não foi possível limpar derivados descartados de um mapa de localização.', [
-                'map_public_id' => $mapPublicId,
-            ]);
-        }
-    }
-
-    private function applyCrop(Imagick $image, ?array $crop): void
-    {
-        if ($crop === null) {
-            return;
-        }
-
-        if ((float) $crop['x'] + (float) $crop['width'] > 1 || (float) $crop['y'] + (float) $crop['height'] > 1) {
-            throw new RuntimeException('O recorte ultrapassa os limites da imagem.');
-        }
-
-        $width = $image->getImageWidth();
-        $height = $image->getImageHeight();
-        $image->cropImage(
-            (int) round($width * $crop['width']),
-            (int) round($height * $crop['height']),
-            (int) round($width * $crop['x']),
-            (int) round($height * $crop['y']),
-        );
-        $image->setImagePage(0, 0, 0, 0);
     }
 }

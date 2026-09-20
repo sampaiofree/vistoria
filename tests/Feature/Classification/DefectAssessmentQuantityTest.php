@@ -15,8 +15,6 @@ use App\Models\DefectAssessment;
 use App\Models\DefectAssessmentQuantity;
 use App\Models\Equipment;
 use App\Models\Inspection;
-use App\Models\InspectionLocationMap;
-use App\Models\InspectionLocationMarker;
 use App\Models\InspectionResponsible;
 use App\Models\Organization;
 use App\Models\User;
@@ -24,284 +22,260 @@ use App\Services\Demo\ViewFirstDemoPresenter;
 use App\Services\InspectionLocations\InspectionLocationReportComposer;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Testing\TestResponse;
 use Inertia\Testing\AssertableInertia as Assert;
-use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 final class DefectAssessmentQuantityTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_inspector_can_create_and_replace_the_single_quantity(): void
+    public function test_singular_quantity_endpoint_was_removed(): void
     {
         [$actor, $assessment] = $this->scenario();
 
         $this->actingAs($actor)
-            ->put(route('defect-assessments.quantity.update', $assessment), [
-                'quantity' => [
-                    'measurement_value' => 2.5,
-                    'measurement_unit' => MeasurementUnit::SquareMeter->value,
-                ],
+            ->put("/defect-assessments/{$assessment->public_id}/quantity", [
+                'quantity' => ['area' => 1],
             ])
-            ->assertRedirect()
-            ->assertSessionHas('success');
+            ->assertNotFound();
+    }
 
-        $quantity = $assessment->quantity()->firstOrFail();
+    public function test_civil_items_are_appended_and_summed_without_intermediate_rounding(): void
+    {
+        [$actor, $assessment] = $this->scenario(DefectCategory::Civil);
 
-        $this->assertSame(2.5, $quantity->value());
-        $this->assertSame(MeasurementUnit::SquareMeter, $quantity->measurement_unit);
+        $this->store($actor, $assessment, [
+            'description' => 'Trecho 1',
+            'quantity' => ['length' => 2, 'height' => 0.5, 'width' => 0.3, 'quantity' => 2],
+        ])->assertSessionHasNoErrors();
+        $this->store($actor, $assessment, [
+            'description' => 'Trecho 2',
+            'quantity' => ['length' => 1, 'height' => 0.4, 'width' => 0.2, 'quantity' => 3],
+        ])->assertSessionHasNoErrors();
 
-        $this->actingAs($actor)
-            ->get(route('defect-assessments.show', $assessment))
-            ->assertOk()
+        $items = $assessment->quantities()->get();
+        $this->assertCount(2, $items);
+        $this->assertSame([1, 2], $items->pluck('position')->all());
+        $this->assertSame('0.6000000000000000', $items[0]->measurement_value);
+        $this->assertSame('0.2400000000000000', $items[1]->measurement_value);
+        $this->assertSame(MeasurementUnit::CubicMeter, $items[0]->measurement_unit);
+
+        $technical = app(ViewFirstDemoPresenter::class)->defectTechnicalData($assessment->defect, $assessment->fresh());
+        $this->assertSame('0.8400000000000000', $technical['quantity_summary']['total_raw']);
+        $this->assertSame('0,84 m³', $technical['quantity_summary']['total_label']);
+
+        $this->actingAs($actor)->get(route('defect-assessments.show', $assessment))
             ->assertInertia(fn (Assert $page) => $page
-                ->where('quantity.measurement_value', 2.5)
-                ->where('quantity.measurement_unit', MeasurementUnit::SquareMeter->value)
-                ->has('capabilities.quantity_url')
-                ->missing('quantities'));
-
-        $this->actingAs($actor)
-            ->put(route('defect-assessments.quantity.update', $assessment), [
-                'quantity' => [
-                    'measurement_value' => 0.8,
-                    'measurement_unit' => MeasurementUnit::Meter->value,
-                ],
-            ])
-            ->assertRedirect();
-
-        $this->assertSame(1, $assessment->quantity()->count());
-        $this->assertSame($quantity->id, $assessment->quantity()->firstOrFail()->id);
-        $this->assertSame(0.8, $assessment->quantity()->firstOrFail()->value());
-        $this->assertSame(MeasurementUnit::Meter, $assessment->quantity()->firstOrFail()->measurement_unit);
+                ->has('quantities', 2)
+                ->where('quantities.0.description', 'Trecho 1')
+                ->where('quantities.1.position', 2)
+                ->where('quantity_summary.total_raw', '0.8400000000000000')
+                ->has('capabilities.quantity_store_url')
+                ->missing('quantity'));
     }
 
-    public function test_inspector_can_remove_the_quantity(): void
+    public function test_tac_accepts_multiple_area_items_and_updates_only_the_selected_item(): void
     {
         [$actor, $assessment] = $this->scenario();
-        DefectAssessmentQuantity::factory()->forAssessment($assessment)->create();
+        $this->store($actor, $assessment, ['quantity' => ['area' => '1.1234567890123']]);
+        $this->store($actor, $assessment, ['description' => 'Face sul', 'quantity' => ['area' => '2.5']]);
+        $second = $assessment->quantities()->where('position', 2)->firstOrFail();
 
-        $this->actingAs($actor)
-            ->put(route('defect-assessments.quantity.update', $assessment), [
-                'quantity' => null,
-            ])
-            ->assertRedirect();
+        $this->actingAs($actor)->put(route('defect-assessment-quantities.update', $second), [
+            'description' => '  Face   norte  ',
+            'quantity' => ['area' => '0.8'],
+        ])->assertRedirect()->assertSessionHasNoErrors();
 
-        $this->assertNull($assessment->quantity()->first());
+        $this->assertSame('1.1234567890123000', $assessment->quantities()->where('position', 1)->firstOrFail()->measurement_value);
+        $this->assertSame('0.8000000000000000', $second->refresh()->measurement_value);
+        $this->assertSame('Face norte', $second->description);
     }
 
-    public function test_changing_quantity_reopens_a_complete_assessment(): void
+    public function test_rec_supports_different_elements_in_the_same_assessment(): void
+    {
+        [$actor, $assessment] = $this->scenario(DefectCategory::StructuralRecovery);
+        $this->store($actor, $assessment, ['description' => 'Perfil L', 'quantity' => [
+            'element' => 'profile_l', 'width' => 76, 'thickness' => 6, 'length' => 2.8, 'quantity' => 2,
+        ]]);
+        $this->store($actor, $assessment, ['description' => 'Guarda-corpo', 'quantity' => [
+            'element' => 'guardrail', 'length' => 3, 'quantity' => 1,
+        ]]);
+        $this->store($actor, $assessment, ['description' => 'Chapa lisa', 'quantity' => [
+            'element' => 'smooth_plate', 'width' => 1000, 'length' => 1000,
+            'thickness' => '3.0956738853503185', 'quantity' => 1,
+        ]]);
+
+        $items = $assessment->quantities()->get();
+        $this->assertSame(['profile_l', 'guardrail', 'smooth_plate'], $items->pluck('rec_element')->map->value->all());
+        $this->assertTrue($items->every(fn ($item): bool => $item->measurement_unit === MeasurementUnit::Kilogram));
+        $technical = app(ViewFirstDemoPresenter::class)->defectTechnicalData($assessment->defect, $assessment->fresh());
+        $this->assertSame('152,81 kg', $technical['quantity_summary']['total_label']);
+    }
+
+    public function test_deleting_an_intermediate_item_renumbers_the_remaining_positions(): void
     {
         [$actor, $assessment] = $this->scenario();
+        foreach ([1, 2, 3] as $area) {
+            $this->store($actor, $assessment, ['quantity' => compact('area')]);
+        }
+        $middle = $assessment->quantities()->where('position', 2)->firstOrFail();
+
+        $this->actingAs($actor)
+            ->delete(route('defect-assessment-quantities.destroy', $middle))
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $items = $assessment->quantities()->get();
+        $this->assertSame([1, 2], $items->pluck('position')->all());
+        $this->assertSame([1.0, 3.0], $items->map->value()->all());
+    }
+
+    public function test_database_enforces_unique_position_per_assessment_but_allows_many_items(): void
+    {
+        [, $assessment] = $this->scenario();
+        DefectAssessmentQuantity::factory()->forAssessment($assessment)->create(['position' => 1]);
+        DefectAssessmentQuantity::factory()->forAssessment($assessment)->create(['position' => 2]);
+
+        $this->assertSame(2, $assessment->quantities()->count());
+        $this->expectException(QueryException::class);
+        DefectAssessmentQuantity::factory()->forAssessment($assessment)->create(['position' => 2]);
+    }
+
+    public function test_published_assessment_rebuilds_aggregate_snapshot_after_item_changes(): void
+    {
+        [$actor, $assessment] = $this->scenario(DefectCategory::Civil);
+        $this->store($actor, $assessment, ['quantity' => ['length' => 2, 'height' => 0.5, 'width' => 0.3, 'quantity' => 2]]);
+        $this->locateAssessment($assessment);
         $assessment->update([
             'status' => DefectAssessmentStatus::Complete,
             'assessed_at' => now(),
-            'defect_snapshot' => ['defect' => ['code' => $assessment->defect->code]],
+            'defect_snapshot' => ['version' => 2],
+            'quantity_snapshot' => ['legacy' => true],
         ]);
-        DefectAssessmentQuantity::factory()->forAssessment($assessment)->create();
 
-        $this->actingAs($actor)
-            ->put(route('defect-assessments.quantity.update', $assessment), [
-                'quantity' => [
-                    'measurement_value' => 0.35,
-                    'measurement_unit' => MeasurementUnit::CubicMeter->value,
-                ],
-            ])
-            ->assertRedirect();
+        $this->store($actor, $assessment, ['quantity' => ['length' => 1, 'height' => 0.4, 'width' => 0.2, 'quantity' => 3]])
+            ->assertSessionHasNoErrors();
+
+        $snapshot = $assessment->refresh()->quantity_snapshot;
+        $this->assertSame(DefectAssessmentStatus::Complete, $assessment->status);
+        $this->assertSame(2, $snapshot['snapshot_version']);
+        $this->assertSame(2, $snapshot['item_count']);
+        $this->assertSame('0.8400000000000000', $snapshot['total']);
+        $this->assertCount(2, $snapshot['items']);
+        $this->assertSame(1, $snapshot['items'][0]['position']);
+    }
+
+    public function test_deleting_the_last_item_reopens_a_published_assessment(): void
+    {
+        [$actor, $assessment] = $this->scenario();
+        $this->store($actor, $assessment, ['quantity' => ['area' => 2]]);
+        $this->locateAssessment($assessment);
+        $assessment->update([
+            'status' => DefectAssessmentStatus::Complete,
+            'assessed_at' => now(),
+            'defect_snapshot' => ['version' => 2],
+            'quantity_snapshot' => ['total' => '2', 'measurement_unit' => 'm2'],
+        ]);
+        $item = $assessment->quantities()->firstOrFail();
+
+        $this->actingAs($actor)->delete(route('defect-assessment-quantities.destroy', $item))
+            ->assertSessionHasNoErrors();
 
         $assessment->refresh();
-
         $this->assertSame(DefectAssessmentStatus::Draft, $assessment->status);
-        $this->assertNull($assessment->assessed_at);
+        $this->assertNull($assessment->quantity_snapshot);
         $this->assertNull($assessment->defect_snapshot);
-        $this->assertSame(MeasurementUnit::CubicMeter, $assessment->quantity()->firstOrFail()->measurement_unit);
+        $this->assertSame(0, $assessment->quantities()->count());
     }
 
-    public function test_invalid_quantity_is_rejected_without_replacing_existing_value(): void
-    {
-        [$actor, $assessment] = $this->scenario();
-        $existing = DefectAssessmentQuantity::factory()->forAssessment($assessment)->create([
-            'measurement_value' => 1.25,
-        ]);
-
-        $this->actingAs($actor)
-            ->put(route('defect-assessments.quantity.update', $assessment), [
-                'quantity' => [
-                    'measurement_value' => 0,
-                    'measurement_unit' => 'unsupported',
-                ],
-            ])
-            ->assertSessionHasErrors([
-                'quantity.measurement_value',
-                'quantity.measurement_unit',
-            ]);
-
-        $this->assertSame($existing->id, $assessment->quantity()->firstOrFail()->id);
-        $this->assertSame(1.25, $assessment->quantity()->firstOrFail()->value());
-    }
-
-    public function test_database_rejects_a_second_quantity_for_the_same_assessment(): void
-    {
-        [, $assessment] = $this->scenario();
-        DefectAssessmentQuantity::factory()->forAssessment($assessment)->create();
-
-        $this->expectException(QueryException::class);
-
-        DefectAssessmentQuantity::factory()->forAssessment($assessment)->create();
-    }
-
-    public function test_civil_dimensions_calculate_volumes_with_fractional_quantity_and_replace_the_same_record(): void
+    public function test_server_rejects_calculated_values_units_empty_payload_and_long_description(): void
     {
         [$actor, $assessment] = $this->scenario(DefectCategory::Civil);
-
-        $this->actingAs($actor)->put(route('defect-assessments.quantity.update', $assessment), [
-            'quantity' => ['length' => 2.5, 'height' => 0.2, 'width' => 0.4, 'quantity' => 1.5],
-        ])->assertRedirect()->assertSessionHasNoErrors();
-
-        $quantity = $assessment->quantity()->firstOrFail();
-        $this->assertSame('0.200000000000', $quantity->unit_volume);
-        $this->assertSame('0.3000000000000000', $quantity->measurement_value);
-        $this->assertSame('1.5000', $quantity->quantity);
-        $this->assertSame(MeasurementUnit::CubicMeter, $quantity->measurement_unit);
-        $this->assertSame(0.3, $quantity->value());
-
-        $this->get(route('defect-assessments.show', $assessment))->assertInertia(fn (Assert $page) => $page
-            ->where('assessment.defect.category', 'CV')
-            ->where('quantity.length', 2.5)
-            ->where('quantity.height', 0.2)
-            ->where('quantity.width', 0.4)
-            ->where('quantity.quantity', 1.5)
-            ->where('quantity.unit_volume', 0.2)
-            ->where('quantity.measurement_value', 0.3)
-            ->where('quantity.measurement_unit', 'm3'));
-
-        $this->put(route('defect-assessments.quantity.update', $assessment), [
-            'quantity' => ['length' => 3, 'height' => 0.2, 'width' => 0.4, 'quantity' => 2.5],
-        ])->assertRedirect()->assertSessionHasNoErrors();
-
-        $this->assertSame(1, $assessment->quantity()->count());
-        $this->assertSame($quantity->id, $assessment->quantity()->firstOrFail()->id);
-        $this->assertSame(0.6, $quantity->refresh()->value());
-    }
-
-    public function test_civil_small_volumes_remain_nonzero_in_storage_and_summaries(): void
-    {
-        [$actor, $assessment] = $this->scenario(DefectCategory::Civil);
-
-        $this->actingAs($actor)->put(route('defect-assessments.quantity.update', $assessment), [
-            'quantity' => ['length' => '0.0001', 'height' => '0.0001', 'width' => '0.0001', 'quantity' => '0.0001'],
-        ])->assertRedirect()->assertSessionHasNoErrors();
-
-        $quantity = $assessment->quantity()->firstOrFail();
-        $this->assertSame('0.000000000001', $quantity->unit_volume);
-        $this->assertSame('0.0000000000000001', $quantity->measurement_value);
-        $this->assertSame(1.0e-16, $quantity->value());
-        $technical = app(ViewFirstDemoPresenter::class)->defectTechnicalData($assessment->defect, $assessment->fresh());
-        $this->assertSame(1.0e-16, $technical['quantity_summary']['total']);
-        $this->assertSame('0,0000000000000001 m³', $technical['quantity_summary']['total_label']);
-    }
-
-    #[DataProvider('invalidCivilMeasurements')]
-    public function test_invalid_civil_measurements_preserve_the_previous_quantity(array $input, string $error): void
-    {
-        [$actor, $assessment] = $this->scenario(DefectCategory::Civil);
-        $existing = DefectAssessmentQuantity::factory()->forAssessment($assessment)->create([
-            'length' => 1, 'height' => 1, 'width' => 1, 'quantity' => 2,
-            'unit_volume' => 1, 'measurement_value' => 2, 'measurement_unit' => MeasurementUnit::CubicMeter,
-        ]);
-
-        $this->actingAs($actor)->put(route('defect-assessments.quantity.update', $assessment), [
-            'quantity' => $input,
-        ])->assertSessionHasErrors($error);
-
-        $this->assertSame(1, $assessment->quantity()->count());
-        $this->assertSame(2.0, $existing->refresh()->value());
-        $this->assertSame('1.0000', $existing->length);
-    }
-
-    public static function invalidCivilMeasurements(): array
-    {
         $valid = ['length' => 1, 'height' => 1, 'width' => 1, 'quantity' => 1];
 
-        return [
-            'missing width' => [['length' => 1, 'height' => 1, 'quantity' => 1], 'quantity.width'],
-            'zero length' => [[...$valid, 'length' => 0], 'quantity.length'],
-            'negative height' => [[...$valid, 'height' => -1], 'quantity.height'],
-            'nonnumeric width' => [[...$valid, 'width' => 'abc'], 'quantity.width'],
-            'zero quantity' => [[...$valid, 'quantity' => 0], 'quantity.quantity'],
-            'negative quantity' => [[...$valid, 'quantity' => -0.5], 'quantity.quantity'],
-            'excess precision' => [[...$valid, 'width' => '0.00001'], 'quantity.width'],
-            'input overflow' => [[...$valid, 'length' => '10000000000'], 'quantity.length'],
-            'total overflow' => [[...$valid, 'length' => 10000, 'height' => 10000, 'width' => 10000], 'quantity'],
-            'forged total' => [[...$valid, 'measurement_value' => 999], 'quantity'],
-            'forged unit' => [[...$valid, 'measurement_unit' => 'm2'], 'quantity'],
-            'forged unit volume' => [[...$valid, 'unit_volume' => 999], 'quantity'],
-            'empty set' => [[], 'quantity'],
-        ];
+        $this->store($actor, $assessment, [
+            'description' => str_repeat('a', 181),
+            'quantity' => [...$valid, 'measurement_value' => 999, 'measurement_unit' => 'm2'],
+        ])->assertSessionHasErrors(['description', 'quantity']);
+        $this->store($actor, $assessment, ['quantity' => []])->assertSessionHasErrors('quantity');
+        $this->assertSame(0, $assessment->quantities()->count());
     }
 
-    public function test_civil_quantity_can_be_removed_and_cannot_be_changed_by_another_organization(): void
+    public function test_civil_quantity_rejects_non_decimal_or_non_positive_dimensions(): void
     {
         [$actor, $assessment] = $this->scenario(DefectCategory::Civil);
-        $input = ['quantity' => ['length' => 1, 'height' => 2, 'width' => 3, 'quantity' => 0.5]];
-        $url = route('defect-assessments.quantity.update', $assessment);
-        $this->actingAs($actor)->put($url, $input)->assertSessionHasNoErrors();
+        $valid = ['length' => 1, 'height' => 1, 'width' => 1, 'quantity' => 1];
 
-        $outsider = User::factory()->for(Organization::factory())->create(['operational_role' => OperationalRole::Inspector]);
-        $this->actingAs($outsider)->put($url, $input)->assertForbidden();
-        $this->assertSame(3.0, $assessment->quantity()->firstOrFail()->value());
+        foreach ([
+            'letters' => [[...$valid, 'width' => 'abc'], 'quantity.width'],
+            'scientific notation' => [[...$valid, 'width' => '1e3'], 'quantity.width'],
+            'zero' => [[...$valid, 'height' => 0], 'quantity.height'],
+            'negative' => [[...$valid, 'length' => -1], 'quantity.length'],
+        ] as [$quantity, $field]) {
+            $this->store($actor, $assessment, ['quantity' => $quantity])
+                ->assertSessionHasErrors($field);
+        }
 
-        $this->actingAs($actor)->put($url, ['quantity' => null])->assertSessionHasNoErrors();
-        $this->assertNull($assessment->quantity()->first());
+        $this->assertSame(0, $assessment->quantities()->count());
     }
 
-    public function test_civil_quantity_with_a_marker_stays_published_and_reports_use_total_only_once(): void
+    public function test_civil_quantity_form_displays_units_and_blocks_exponent_keys(): void
     {
-        [$actor, $assessment] = $this->scenario(DefectCategory::Civil);
-        $assessment->update(['status' => DefectAssessmentStatus::Complete, 'assessed_at' => now(), 'defect_snapshot' => ['version' => 2]]);
-        $map = InspectionLocationMap::factory()->forInspection($assessment->inspection)->create();
-        InspectionLocationMarker::factory()->forMapAndAssessment($map, $assessment)->create();
+        $source = file_get_contents(resource_path('js/pages/DefectAssessments/Show.vue'));
 
-        $this->actingAs($actor)->put(route('defect-assessments.quantity.update', $assessment), [
-            'quantity' => ['length' => 2, 'height' => 3, 'width' => 4, 'quantity' => 2.5],
-        ])->assertSessionHasNoErrors();
-
-        $this->assertSame(DefectAssessmentStatus::Complete, $assessment->refresh()->status);
-        $this->assertSame(['version' => 2], $assessment->defect_snapshot);
-        $technical = app(ViewFirstDemoPresenter::class)->defectTechnicalData($assessment->defect, $assessment->fresh());
-        $this->assertSame(60.0, $technical['quantity_summary']['total']);
-        $report = app(InspectionLocationReportComposer::class)->compose($assessment->inspection);
-        $this->assertSame(60.0, $report['sheets'][0]['maps'][0]['damage_rows'][0]['quantity']['value']);
-        $this->assertSame('M³', $report['sheets'][0]['maps'][0]['damage_rows'][0]['quantity']['unit']);
+        $this->assertStringContainsString("inputmode=\"decimal\"", $source);
+        $this->assertStringContainsString('@keydown="blockInvalidNumberKey"', $source);
+        $this->assertStringContainsString("['e', 'E', '+', '-']", $source);
+        $this->assertStringContainsString("field.key === 'quantity' ? 'un.' : 'm'", $source);
+        $this->assertStringContainsString('civilInputUnit(key)', $source);
     }
 
-    public function test_structural_recovery_keeps_the_generic_quantity_contract(): void
-    {
-        [$actor, $assessment] = $this->scenario(DefectCategory::StructuralRecovery);
-        $url = route('defect-assessments.quantity.update', $assessment);
-        $this->actingAs($actor)->put($url, [
-            'quantity' => ['measurement_value' => 2.5, 'measurement_unit' => 'm2'],
-        ])->assertSessionHasNoErrors();
-
-        $this->assertSame(2.5, $assessment->quantity()->firstOrFail()->value());
-        $this->assertNull($assessment->quantity()->firstOrFail()->length);
-        $this->put($url, ['quantity' => ['length' => 1, 'height' => 1, 'width' => 1, 'quantity' => 1]])
-            ->assertSessionHasErrors('quantity');
-        $this->assertSame(2.5, $assessment->quantity()->firstOrFail()->value());
-    }
-
-    public function test_tac_keeps_four_decimal_places_for_the_generic_value(): void
+    public function test_quantity_item_cannot_be_changed_by_another_organization(): void
     {
         [$actor, $assessment] = $this->scenario();
-        $this->actingAs($actor)->put(route('defect-assessments.quantity.update', $assessment), [
-            'quantity' => ['measurement_value' => '1.123456', 'measurement_unit' => 'm2'],
-        ])->assertSessionHasNoErrors();
+        $this->store($actor, $assessment, ['quantity' => ['area' => 2]]);
+        $item = $assessment->quantities()->firstOrFail();
+        $outsider = User::factory()->for(Organization::factory())->create([
+            'operational_role' => OperationalRole::Inspector,
+        ]);
 
-        $this->assertSame('1.1235', $assessment->quantity()->firstOrFail()->measurement_value);
-        $this->assertSame(1.1235, $assessment->quantity()->firstOrFail()->value());
-        $this->get(route('defect-assessments.show', $assessment))->assertInertia(fn (Assert $page) => $page
-            ->where('quantity.measurement_value', 1.1235)
-            ->missing('quantity.length')
-            ->missing('quantity.unit_volume'));
+        $this->actingAs($outsider)->put(route('defect-assessment-quantities.update', $item), [
+            'quantity' => ['area' => 99],
+        ])->assertForbidden();
+        $this->assertSame(2.0, $item->refresh()->value());
+    }
+
+    public function test_report_uses_only_the_published_aggregate_total(): void
+    {
+        [$actor, $assessment] = $this->scenario(DefectCategory::Civil);
+        $this->store($actor, $assessment, ['quantity' => ['length' => 2, 'height' => 0.5, 'width' => 0.3, 'quantity' => 2]]);
+        $this->store($actor, $assessment, ['quantity' => ['length' => 1, 'height' => 0.4, 'width' => 0.2, 'quantity' => 3]]);
+        $this->locateAssessment($assessment);
+        $technical = app(ViewFirstDemoPresenter::class)->defectTechnicalData($assessment->defect, $assessment->fresh());
+        $assessment->update([
+            'status' => DefectAssessmentStatus::Complete,
+            'quantity_snapshot' => [
+                'source' => 'native_quantity_catalog', 'snapshot_version' => 2, 'category' => 'CV',
+                'measurement_unit' => 'm3', 'item_count' => 2,
+                'total' => $technical['quantity_summary']['total_raw'],
+                'items' => $assessment->quantities()->get()->map->snapshot()->all(),
+            ],
+        ]);
+
+        $report = app(InspectionLocationReportComposer::class)->compose($assessment->inspection);
+        $quantity = $report['sheets'][0]['maps'][0]['damage_rows'][0]['quantity'];
+        $this->assertSame('0,84', $quantity['value']);
+        $this->assertSame('0.8400000000000000', $quantity['raw_value']);
+        $this->assertSame('M³', $quantity['unit']);
+    }
+
+    private function store(User $actor, DefectAssessment $assessment, array $data): TestResponse
+    {
+        return $this->actingAs($actor)->post(
+            route('defect-assessments.quantities.store', $assessment),
+            $data,
+        )->assertRedirect();
     }
 
     /** @return array{User, DefectAssessment} */

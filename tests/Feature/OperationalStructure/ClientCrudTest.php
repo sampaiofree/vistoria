@@ -19,6 +19,28 @@ final class ClientCrudTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_client_index_exposes_creation_only_when_the_organization_has_no_client(): void
+    {
+        $organization = Organization::factory()->create();
+        $admin = User::factory()->for($organization)->create(['account_type' => UserAccountType::CompanyAdmin->value]);
+
+        $this->actingAs($admin)
+            ->get(route('clients.index'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('can.create', true)
+                ->where('create_url', route('clients.create')));
+
+        $this->get(route('clients.create'))
+            ->assertInertia(fn (Assert $page) => $page->component('Clients/Create'));
+
+        Client::factory()->for($organization)->create();
+
+        $this->get(route('clients.index'))
+            ->assertInertia(fn (Assert $page) => $page->where('can.create', false));
+
+        $this->get(route('clients.create'))->assertForbidden();
+    }
+
     public function test_admin_can_create_client_and_document_is_normalized(): void
     {
         $organization = Organization::factory()->create();

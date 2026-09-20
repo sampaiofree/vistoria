@@ -9,6 +9,7 @@ use App\Actions\Equipments\CreateEquipment;
 use App\Actions\Equipments\DeactivateEquipment;
 use App\Actions\Equipments\DecommissionEquipment;
 use App\Actions\Equipments\UpdateEquipment;
+use App\Enums\AssetAbcClass;
 use App\Enums\EquipmentRevisionEmissionType;
 use App\Enums\EquipmentStatus;
 use App\Http\Controllers\Concerns\ResolvesTenantStructure;
@@ -67,7 +68,7 @@ final class EquipmentController extends Controller
     {
         $this->authorize('create', Equipment::class);
 
-        return Inertia::render('Equipments/Create', ['action' => route('equipments.store'), 'cancel_url' => route('equipments.index')]);
+        return Inertia::render('Equipments/Create', ['action' => route('equipments.store'), 'cancel_url' => route('equipments.index'), 'abc_options' => AssetAbcClass::options()]);
     }
 
     public function store(StoreEquipmentRequest $request, CreateEquipment $action): RedirectResponse
@@ -96,7 +97,7 @@ final class EquipmentController extends Controller
         $equipment = $this->tenantEquipment($tenant, $equipment);
         $this->authorize('update', $equipment);
 
-        return Inertia::render('Equipments/Edit', ['equipment' => $this->equipmentFormPayload($equipment), 'action' => route('equipments.update', $equipment), 'cancel_url' => route('equipments.show', $equipment)]);
+        return Inertia::render('Equipments/Edit', ['equipment' => $this->equipmentFormPayload($equipment), 'action' => route('equipments.update', $equipment), 'cancel_url' => route('equipments.show', $equipment), 'abc_options' => AssetAbcClass::options()]);
     }
 
     public function update(UpdateEquipmentRequest $request, TenantContext $tenant, Equipment $equipment, UpdateEquipment $action): RedirectResponse

@@ -58,9 +58,9 @@ Campos funcionais incluem:
 - justificativa e notas internas;
 - item, referência de projeto e impacto na atividade;
 - GUT e classificação derivada;
-- um quantitativo principal e unidade;
-- fotografias e marcações de mapa;
-- snapshots da avaria, do GUT e da classificação.
+- um total de quantitativo, composto por um ou mais itens da mesma unidade;
+- fotografias, versão do mapa e uma localização confirmável;
+- snapshots da avaria, do GUT, da classificação e do quantitativo.
 
 A escrita exige preparador atribuído e inspeção em `in_progress` ou
 `in_correction`.
@@ -69,23 +69,24 @@ A escrita exige preparador atribuído e inspeção em `in_progress` ou
 
 | Valor | Uso |
 |---|---|
-| `new` | Somente na primeira avaliação da avaria |
-| `unchanged` | Condição mantida |
-| `worsened` | Condição agravada |
-| `improved` | Condição melhorada sem reparo completo |
-| `repaired` | Encerra a avaria atual |
-| `not_located` | Não localizada; exige justificativa |
-| `not_inspected` | Não foi possível inspecionar; exige justificativa |
+| `new` | Situação padrão da primeira avaliação; não é permitida em avaliações posteriores |
+| `reinspected` | Avaria observada novamente em uma reinspeção |
+| `reclassified` | Avaria reclassificada tecnicamente |
+| `canceled` | Avaliação cancelada com motivo |
+| `canceled_sr` | Avaliação cancelada sem reparo, com motivo |
+| `treated` | Tratamento executado; encerra a avaria atual |
 
-Toda avaliação completa exige comentário. Condições `not_located` e
-`not_inspected` exigem justificativa, removem GUT/classificação e não podem manter
-marcações. `repaired` também remove a classificação atual. As quatro condições
-ativas exigem as três notas GUT nativas, de 1 a 5, salvas antes da publicação.
+Toda avaliação completa exige comentário. A primeira avaliação pode registrar
+qualquer situação, inclusive para avarias já existentes em sistemas anteriores;
+avaliações posteriores não aceitam `new`. `new`, `reinspected` e
+`reclassified` exigem GUT, quantitativo, fotografias, mapa pronto e localização
+confirmada. `treated` exige os mesmos itens de evidência, remove o GUT e a classificação atuais e altera a avaria para
+`repaired`.
 
-As condições observáveis — `new`, `unchanged`, `worsened`, `improved` e
-`repaired` — também exigem, já na publicação, um quantitativo principal e pelo
-menos duas fotografias, todas com processamento concluído. `not_located` e
-`not_inspected` não exigem quantitativo nem evidência fotográfica.
+`canceled` e `canceled_sr` exigem motivo, removem o GUT e a classificação e
+dispensam quantitativo e fotografias. Essas duas condições não alteram o status da
+avaria. Uma avaliação publicada pode voltar a rascunho durante correção.
+Substituir seu mapa ou remover a localização faz essa transição automaticamente.
 
 ## Fotos e quantitativo
 
@@ -94,19 +95,28 @@ alterada somente enquanto a inspeção não for final. A publicação de uma con
 observável exige pelo menos duas fotos e todas as fotos anexadas precisam estar
 prontas. O envio da inspeção à verificação repete essa validação de cobertura.
 
-Há no máximo um quantitativo principal por avaliação, obrigatório para publicar
-uma condição observável. Apenas CIVIL (`CV`) recebe comprimento, altura e largura
-em metros, além da quantidade, que admite frações. Os quatro campos devem ser
-positivos, com até quatro casas decimais. O formulário mostra `M³ UNI. = comprimento
-× altura × largura` e `M³ TOTAL = M³ UNI. × quantidade`. O backend recalcula ambos
-com aritmética decimal e salva o total como quantitativo em `m3`, sem arredondar
-os produtos intermediários. O modelo existente `DefectAssessmentQuantity`
-armazena esse conjunto por avaliação, mantendo a restrição de unicidade.
+Cada avaliação possui um único total de quantitativo, composto por um ou mais itens.
+`DefectAssessmentQuantity` representa um item e a própria avaliação é o agrupador.
+Cada item guarda descrição opcional, posição, categoria, tipo de cálculo, entradas
+estruturadas, valor unitário bruto, total bruto, unidade, modo manual ou calculado,
+versão e snapshot da fórmula. Todos os itens seguem a unidade determinada pela
+categoria. O navegador apresenta a prévia individual e o total, mas o backend sempre
+recalcula as fórmulas e soma os itens com aritmética decimal. Resultados são exibidos
+com duas casas sem arredondamento intermediário do valor persistido.
 
-TAC e REC continuam recebendo valor e unidade: unidade, metro, metro quadrado,
-metro cúbico, milímetro, centímetro, quilograma, litro ou outra. Alterar quantitativo de uma avaliação completa normalmente a devolve a
-rascunho; quando já existem marcações, ela permanece publicada para preservar a
-consistência do mapa e atualiza a data da avaliação.
+Em CIVIL (`CV`), cada item multiplica comprimento, altura e largura em metros para
+obter o volume unitário; este é multiplicado pela quantidade positiva e
+fracionária e a avaliação soma os itens em `m³`. TAC recebe um ou mais lançamentos
+de área manual e os soma em `m²`. Cada item REC exige o elemento, calcula peso em
+`kg` pelas fórmulas nativas e densidade fixa
+de `7.850 kg/m³`; Ligação Parafusada, Telhas e Grade de Piso recebem peso total
+manual. As fórmulas e seus campos estão no documento 09.
+
+Ao publicar, um snapshot agregado guarda categoria, unidade, quantidade de itens,
+total bruto e a lista integral dos itens com posição, descrição, entradas e fórmula.
+Relatórios e históricos usam esse snapshot. Alterar dados em uma inspeção ainda
+editável recria o snapshot atual; excluir o último item reabre a avaliação como
+rascunho. Inspeções liberadas permanecem imutáveis.
 
 ## Relações entre avarias
 
@@ -131,9 +141,11 @@ avarias criadas no ciclo atual e as avarias ativas originadas na cadeia de
 inspeções anteriores. A rota histórica do checklist redireciona para essa lista.
 
 Ao escolher **Avaliar** em uma avaria herdada, o sistema cria apenas uma nova
-avaliação em rascunho, inicialmente como `unchanged`, ligada à última avaliação
+avaliação em rascunho, inicialmente como `reinspected`, ligada à última avaliação
 publicada. Código, identidade e origem da avaria permanecem iguais; textos, GUT,
-classificação, quantidade e fotos anteriores não são copiados.
+classificação, quantidade e fotos anteriores não são copiados. A versão pronta do
+mapa e a geometria anterior são herdadas, mas a localização fica pendente de uma
+nova confirmação explícita.
 
 Cada avaria da lista precisa ter avaliação completa no ciclo corrente antes do
 envio para verificação. A tela de avaliação é a mesma em todos os ciclos e mostra
@@ -141,16 +153,16 @@ a situação atual como primeiro bloco. Em avaliações herdadas, o cabeçalho r
 a última avaliação e um modal apresenta toda a cadeia histórica com fotos somente
 para consulta.
 
-Avarias reparadas deixam o filtro ativo, mas permanecem nos filtros de todas e
+Avarias tratadas deixam o filtro ativo, mas permanecem nos filtros de todas e
 reparadas, no histórico e no relatório. Se o problema reaparecer, cria-se uma nova
 avaria com relação `recurrence`, preservando o encerramento anterior.
 
 ## Histórico e relatório
 
-Ao publicar, a avaliação captura um snapshot da avaria. GUT e classificação
-também preservam a regra aplicada naquele momento. O relatório usa somente
+Ao publicar, a avaliação captura um snapshot da avaria. GUT, classificação e
+quantitativo também preservam a regra aplicada naquele momento. O relatório usa somente
 avaliações publicadas, inclui um quadro com situação e classes anterior/atual e
-ordena fotografias conforme os mapas e a galeria. Condições sem evidência
+ordena fotografias por categoria, sequência da avaria e galeria. Condições sem evidência
 fotográfica recebem ficha textual. Pendências impedem exportar PDF ou DOCX.
 
 Inspeções canceladas não determinam o status corrente da avaria. Dados já

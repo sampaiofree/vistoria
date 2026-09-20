@@ -21,6 +21,10 @@ defineProps({
         type: [Number, String],
         default: null,
     },
+    atmospheric_options: {
+        type: Array,
+        default: () => [],
+    },
     action: {
         type: String,
         required: true,
@@ -70,6 +74,7 @@ defineProps({
                 :inspection="inspection"
                 :equipment-options="equipment_options"
                 :inspectors="inspectors"
+                :atmospheric-options="atmospheric_options"
                 :selected-inspector-id="selected_inspector_id"
                 submit-label="Salvar alterações"
             />

@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Inspections;
 
-use App\Enums\UserAccountType;
 use App\Enums\InspectionStatus;
+use App\Enums\UserAccountType;
 use App\Models\Equipment;
 use App\Models\EquipmentDocument;
 use App\Models\Inspection;

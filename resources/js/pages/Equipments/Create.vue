@@ -12,6 +12,10 @@ const props = defineProps({
         type: String,
         required: true,
     },
+    abc_options: {
+        type: Array,
+        default: () => [],
+    },
 });
 
 const form = useForm({
@@ -46,6 +50,7 @@ function submit() {
         <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <EquipmentForm
                 :form="form"
+                :abc-options="abc_options"
                 :cancel-url="cancel_url"
                 submit-label="Criar equipamento"
                 @submit="submit"

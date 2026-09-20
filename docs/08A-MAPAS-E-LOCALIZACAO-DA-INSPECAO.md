@@ -1,161 +1,102 @@
-# 08A — Mapas e localização da inspeção
+# 08A — Mapas e localização por avaria
 
 ## Modelo atual
 
-Um mapa pertence simultaneamente a organização, equipamento, inspeção e categoria.
-Uma marcação pertence ao mapa e referencia uma avaliação da mesma inspeção,
-equipamento, organização e categoria.
+Cada avaria (`Defect`) possui no máximo um mapa lógico, compartilhado por todas
+as suas avaliações. Cada upload cria uma versão imutável da imagem e somente a
+avaliação em edição passa a apontar para a nova versão.
 
 ```text
-Inspection
-└── InspectionLocationMap
-    └── InspectionLocationMarker
-        ├── DefectAssessment
-        └── AssessmentPhoto (N:N ordenado)
+Defect
+└── DefectLocationMap (1:1)
+    └── DefectLocationMapVersion (1:N)
+        └── DefectAssessment (N:1)
+            └── DefectAssessmentLocation (1:1)
 ```
 
-Mapas e marcações usam `public_id`, soft delete, posição e `lock_version`.
+`defect_location_maps` garante unicidade por avaria;
+`defect_assessment_locations` garante uma localização por avaliação. A
+localização contém uma ou várias regiões geométricas da mesma avaria, uma legenda
+opcional, confirmação e `lock_version`.
 
-## Permissões e estado editável
+As tabelas antigas de mapas livres, marcações múltiplas e seleção de fotografias
+foram descartadas sem migração de conteúdo legado.
 
-Somente um preparador atribuído pode criar ou editar mapas e marcações, e apenas
-quando a inspeção está em `in_progress` ou `in_correction`. Leitura é permitida a
-usuários ativos do tenant. Superadministradores não acessam o módulo.
+## Fluxo na avaliação
 
-A categoria do mapa é um código nativo: `CV`, `TAC` ou `REC`. A avaliação da
-marcação precisa pertencer à mesma organização, inspeção, equipamento e categoria.
+A seção **Mapa e localização** aparece antes dos registros fotográficos. O
+Inspetor envia PNG, JPEG ou WebP, aguarda o processamento, abre o editor da
+avaliação, desenha uma ou várias regiões, informa uma legenda opcional e salva.
+Salvar também confirma a localização.
 
-## Criação e origem
+Não há seletor de avaria, criação independente, título/categoria/ordem editáveis,
+cor manual, múltiplas marcações nem seleção manual de fotos. Título, categoria e
+ordem vêm da avaria. Todas as fotos prontas da avaliação são usadas
+automaticamente no relatório.
 
-O mapa é criado com título, descrição, categoria e posição. A interface atual
-recebe uma imagem PNG, JPEG ou WEBP com até 50 MB. A imagem também deve respeitar:
+A aba **Localização** da inspeção é somente uma visão consolidada por categoria e
+avaria. Seus links levam à avaliação ou ao editor e não existe botão **Novo mapa**.
 
-- no máximo 30.000 px por lado;
-- no máximo 80 milhões de pixels;
-- recorte normalizado inteiramente dentro da imagem, quando informado.
+## Cor automática
 
-O upload atual define `source_kind=upload`. O schema conserva campos para
-`reference_document`, página de PDF, recorte e snapshot de referência por
-compatibilidade histórica, mas a rota atual de nova origem aceita somente imagem.
+O cliente nunca envia nem persiste estilo editável. Avaliações com classificação
+GUT usam `classification_snapshot.color`. Avaliações tratadas e rascunhos ainda
+sem classificação usam `#64748B`. Alterar o GUT muda a cor automaticamente.
 
-## Processamento
+## Publicação e reinspeção
 
-`ProcessInspectionLocationMap` roda na fila `images`, com três tentativas, timeout
-de 180 segundos e backoff de 10, 60 e 300 segundos.
+`new`, `reinspected`, `reclassified` e `treated` exigem uma versão pronta e uma
+localização confirmada, além dos demais requisitos de evidência. `canceled` e
+`canceled_sr` são dispensadas e não entram na documentação de localização.
 
-O Job:
+Uma reinspeção herda a versão pronta usada pela avaliação anterior e copia sua
+geometria e legenda. A cópia começa sem `confirmed_at`: o Inspetor precisa
+confirmá-la explicitamente antes de publicar.
 
-1. confirma que o mapa e o checksum ainda representam a origem esperada;
-2. reivindica atomicamente um mapa `pending`;
-3. valida tamanho e dimensões;
-4. lê a primeira imagem ou a página histórica de PDF indicada;
-5. aplica recorte, quando existir;
-6. gera fundo WEBP com até 3000 px e thumbnail com até 640 px;
-7. publica os derivados somente se a origem não mudou;
-8. remove o upload temporário após sucesso.
+Substituir a imagem cria nova versão e mantém a geometria como prévia, mas invalida
+sua confirmação. Se a avaliação estava publicada, volta a rascunho e limpa os
+snapshots de publicação. Avaliações anteriores continuam apontando para a versão
+histórica.
 
-Uma tentativa intermediária devolve o mapa a `pending`. Depois da última falha, o
-mapa passa a `failed`, os arquivos temporários controlados são removidos e os
-usuários relacionados recebem notificação. A recuperação é feita com outra
-imagem; não há endpoint de retry manual.
+## Upload, processamento e segurança
 
-Os assets são privados e servidos por Controller após tenant e Policy. Validações
-de caminho impedem usar dados persistidos inconsistentes para ler ou excluir
-arquivos fora da raiz esperada.
+O upload aceita imagens de até 50 MB, no máximo 30.000 px por lado e 80 milhões
+de pixels. `ProcessInspectionLocationMap` trabalha na fila `images`, com três
+tentativas, timeout de 180 segundos e backoff de 10, 60 e 300 segundos.
 
-## Limites de capacidade
+O Job reivindica uma versão pendente, valida origem e checksum, gera fundo WebP
+de até 3000 px e thumbnail de até 640 px e só publica derivados se versão e
+checksum ainda forem os esperados. Um Job antigo nunca escreve em outra versão.
+Após sucesso, o upload temporário é removido; falha definitiva marca a versão e
+notifica os usuários relacionados.
 
-| Recurso | Limite atual |
-|---|---:|
-| Mapas por inspeção | 100 |
-| Mapas por categoria na inspeção | 25 |
-| Marcações por mapa | 500 |
-| Avaliações carregadas no editor | 1000 |
-| Fotografias por avaliação no editor | 100 |
-| Formas por marcação | 50 |
-| Pontos por polígono ou linha | 100 |
-| Tamanho combinado de geometria e estilo | 65.536 bytes |
+Arquivos ficam no disco privado, em diretório que inclui organização, avaria,
+mapa e versão. A leitura valida tenant, estado pronto e caminho controlado antes
+de transmitir com cache privado.
 
-## Editor e geometria
+## Geometria e concorrência
 
-A geometria tem versão 1 e usa coordenadas normalizadas entre 0 e 1, independentes
-da resolução do fundo. Uma marcação contém de uma a cinquenta formas:
+A geometria usa coordenadas normalizadas de 0 a 1 e schema 1. São aceitos ponto,
+retângulo, polígono e polilinha, com até 50 formas e 100 pontos por
+polígono/linha.
 
-- ponto;
-- retângulo;
-- polígono;
-- polilinha.
+Atualização e exclusão usam `lock_version`. Uma gravação obsoleta exige recarregar
+o editor. `style`, `color` e `defect_assessment_id` são proibidos nas requisições.
 
-Uma chamada opcional guarda posição e âncora. O estilo aceita borda, preenchimento,
-espessura, opacidade e tracejado. Cores usam hexadecimal; pontos e linhas exigem
-borda visível. Propriedades desconhecidas, números não finitos e formas fora do
-mapa são rejeitados.
+## Relatório e ciclo de arquivos
 
-O editor possui alternativa textual e controles de teclado. A posição ordena as
-marcações independentemente da geometria.
+O relatório gera uma folha por avaliação completa, localizada e não cancelada,
+ordenada pela categoria e sequência da avaria. A folha usa a versão histórica,
+uma geometria e todas as fotos prontas da avaliação. A numeração reinicia por
+categoria; TAC reserva 1 a 4 e começa em 5.
 
-## Concorrência
-
-Criação, edição, exclusão, reordenação e vínculo de fotos avançam `lock_version`.
-O cliente precisa enviar as versões atuais do mapa e, quando aplicável, da
-marcação. Uma divergência gera erro de conflito e exige recarregar o editor.
-
-O checksum da origem protege também contra um Job antigo sobrescrever derivados
-de um upload mais novo.
-
-## Fotografias da marcação
-
-Somente fotos da avaliação vinculada, na mesma inspeção e tenant, podem ser
-selecionadas. A lista elimina duplicidades e persiste a ordem no pivot.
-
-Para a cobertura obrigatória, cada marcação precisa ter ao menos uma foto e todas
-devem estar `ready`. Uma marcação sem avaliação atual pode existir após cópia de
-reinspeção, mas permanece pendente até ser resolvida.
-
-## Cópia para reinspeção
-
-A cópia é permitida quando:
-
-- existe inspeção anterior do mesmo equipamento e organização;
-- a inspeção atual está editável;
-- o usuário pode editar os mapas;
-- a inspeção atual ainda não possui mapas.
-
-O sistema copia mapas, fundo processado, geometria, estilo e ordem. Cada marcação é
-vinculada à avaliação corrente da mesma avaria quando ela já existe; caso
-contrário, fica pendente. Fotografias antigas não são copiadas para o novo vínculo.
-
-## Mapas e conclusão
-
-O catálogo nativo não configura obrigatoriedade de mapas. O campo
-`requires_location_map` e a validação de cobertura por categoria foram removidos.
-Mapas continuam agrupados pelo código da categoria; marcações continuam sujeitas
-às validações de contexto, geometria, fotografias e concorrência do editor.
-O redesenho desse agrupamento fica para uma mudança posterior.
-
-## Relatório e numeração
-
-O compositor ordena categorias, mapas e marcações e intercala cada mapa com a
-documentação fotográfica das avaliações encontradas pela primeira vez. A
-numeração reinicia por categoria; TAC reserva 1 a 4 para as fotografias da vista
-geral e inicia as fotografias de avaliação em 5.
-
-Somente avaliações completas e fotos prontas recebem número. A legenda compacta
-sequências em valores ou intervalos. Uma fotografia publicada sem índice de mapa
-é sinalizada e bloqueia a exportação atual.
-
-## Exclusão
-
-Excluir um mapa aplica soft delete ao mapa e às marcações e tenta remover origem e
-derivados pertencentes ao módulo. Caminhos inconsistentes e documentos apenas
-referenciados nunca são usados em exclusões. Excluir marcação também usa
-concorrência otimista e libera sua restrição de vínculo ativo.
-
-Não existe limpeza agendada de mapas excluídos; uma falha de remoção imediata fica
-registrada em log.
+Versões referenciadas nunca são removidas. Uma versão falha, removida ou
+substituída só tem registros e arquivos eliminados quando nenhuma avaliação
+aponta para ela. O mapa lógico é eliminado apenas quando fica sem versões.
 
 ## Cobertura automatizada
 
-Há testes para fundação, limites, upload, processamento, assets privados, rotas,
-editor, geometrias, concorrência, reordenação, fotos, cópia, cobertura, relatório,
-numeração e hardening de tenant e caminhos.
+Os testes cobrem unicidade, upload e substituição, invalidação de publicação,
+concorrência, rejeição de cor, assets privados, isolamento multiempresa, herança
+de reinspeção, confirmação obrigatória, limpeza de versões, relatório histórico,
+fotografias automáticas e reserva TAC.

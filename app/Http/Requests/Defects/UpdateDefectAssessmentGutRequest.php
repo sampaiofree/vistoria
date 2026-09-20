@@ -6,6 +6,7 @@ namespace App\Http\Requests\Defects;
 
 use App\Enums\DefectAssessmentCondition;
 use App\Models\DefectAssessment;
+use App\Support\TextNormalizer;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -19,13 +20,78 @@ final class UpdateDefectAssessmentGutRequest extends FormRequest
             && ($this->user()?->can('update', $assessment) ?? false);
     }
 
+    protected function prepareForValidation(): void
+    {
+        $normalized = [];
+
+        foreach (self::technicalCodeFields() as $field) {
+            if ($this->exists($field)) {
+                $normalized[$field] = TextNormalizer::nullableText($this->input($field));
+            }
+        }
+
+        foreach (['urgency_manual_description', 'trend_manual_description'] as $field) {
+            if ($this->exists($field)) {
+                $normalized[$field] = TextNormalizer::nullableText($this->input($field));
+            }
+        }
+
+        $this->merge($normalized);
+    }
+
     public function rules(): array
     {
-        return [
+        return self::technicalRules() + [
             'condition' => ['required', Rule::enum(DefectAssessmentCondition::class)],
-            'gravity' => ['nullable', 'integer', 'min:1', 'max:5'],
-            'urgency' => ['nullable', 'integer', 'min:1', 'max:5'],
-            'trend' => ['nullable', 'integer', 'min:1', 'max:5'],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    public static function technicalRules(): array
+    {
+        return [
+            'gravity' => ['prohibited'],
+            'urgency' => ['prohibited'],
+            'trend' => ['prohibited'],
+            'gut_score' => ['prohibited'],
+            'classification_code' => ['prohibited'],
+            'safety_impact_code' => ['nullable', 'string', 'max:120'],
+            'asset_impact_code' => ['nullable', 'string', 'max:120'],
+            'urgency_option_code' => ['nullable', 'string', 'max:120'],
+            'urgency_manual_description' => ['nullable', 'string', 'max:1000'],
+            'urgency_manual_score' => ['nullable', 'integer', 'min:1', 'max:5'],
+            'trend_group_code' => ['nullable', 'string', 'max:120'],
+            'trend_option_code' => ['nullable', 'string', 'max:120'],
+            'trend_manual_description' => ['nullable', 'string', 'max:1000'],
+            'trend_manual_score' => ['nullable', 'integer', 'min:1', 'max:5'],
+        ];
+    }
+
+    /** @return list<string> */
+    public static function technicalFieldNames(): array
+    {
+        return [
+            'safety_impact_code',
+            'asset_impact_code',
+            'urgency_option_code',
+            'urgency_manual_description',
+            'urgency_manual_score',
+            'trend_group_code',
+            'trend_option_code',
+            'trend_manual_description',
+            'trend_manual_score',
+        ];
+    }
+
+    /** @return list<string> */
+    public static function technicalCodeFields(): array
+    {
+        return [
+            'safety_impact_code',
+            'asset_impact_code',
+            'urgency_option_code',
+            'trend_group_code',
+            'trend_option_code',
         ];
     }
 }

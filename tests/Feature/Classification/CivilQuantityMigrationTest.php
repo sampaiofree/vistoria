@@ -6,6 +6,8 @@ namespace Tests\Feature\Classification;
 
 use App\Enums\DefectCategory;
 use App\Enums\MeasurementUnit;
+use App\Enums\QuantityCalculationMode;
+use App\Enums\QuantityCalculationType;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
 use App\Models\DefectAssessmentQuantity;
@@ -32,7 +34,7 @@ final class CivilQuantityMigrationTest extends TestCase
             $paths = glob(database_path('migrations/*.php'));
             sort($paths);
             foreach ($paths as $path) {
-                if (basename($path) >= '2026_09_18_000050_add_civil_dimensions_to_defect_assessment_quantities.php') {
+                if (basename($path) >= '2026_09_18_000050_structure_native_defect_assessment_quantities.php') {
                     break;
                 }
                 (require $path)->up();
@@ -47,14 +49,22 @@ final class CivilQuantityMigrationTest extends TestCase
                 'measurement_value' => 2.75, 'measurement_unit' => MeasurementUnit::SquareMeter,
             ]);
 
-            (require database_path('migrations/2026_09_18_000050_add_civil_dimensions_to_defect_assessment_quantities.php'))->up();
+            $migration = require database_path('migrations/2026_09_18_000050_structure_native_defect_assessment_quantities.php');
+            $migration->up();
 
             $this->assertSame(2.75, $quantity->refresh()->value());
             $this->assertSame(MeasurementUnit::SquareMeter, $quantity->measurement_unit);
-            $this->assertNull($quantity->length);
-            $this->assertNull($quantity->height);
-            $this->assertNull($quantity->width);
-            $this->assertNull($quantity->unit_volume);
+            $this->assertSame(DefectCategory::AnticorrosiveTreatment, $quantity->category);
+            $this->assertSame(QuantityCalculationType::TacArea, $quantity->calculation_type);
+            $this->assertSame(QuantityCalculationMode::Manual, $quantity->mode);
+            $this->assertSame(0, $quantity->formula_version);
+            $this->assertSame([], $quantity->inputs);
+            $this->assertSame('legacy_quantity', $quantity->formula_snapshot['source']);
+            $this->assertTrue(Schema::hasColumns('defect_assessment_quantities', [
+                'category', 'calculation_type', 'rec_element', 'inputs', 'unit_value', 'mode',
+                'formula_version', 'formula_snapshot',
+            ]));
+            $this->assertTrue(Schema::hasColumn('defect_assessments', 'quantity_snapshot'));
             $this->assertSame(1, DefectAssessmentQuantity::count());
             $this->assertSame([], DB::select('PRAGMA foreign_key_check'));
             $this->assertSame(1, (int) DB::selectOne('PRAGMA foreign_keys')->foreign_keys);
@@ -68,6 +78,9 @@ final class CivilQuantityMigrationTest extends TestCase
 
             $assessment->delete();
             $this->assertSame(0, DefectAssessmentQuantity::count());
+
+            $this->expectException(\RuntimeException::class);
+            $migration->down();
         } finally {
             DB::disconnect('civil_quantity_migration_test');
             DB::purge('civil_quantity_migration_test');

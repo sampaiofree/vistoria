@@ -7,6 +7,8 @@ use App\Actions\Inspections\CreateInspectionBatch;
 use App\Actions\Inspections\UpdateGeneralAspects;
 use App\Actions\Inspections\UpdatePlannedInspection;
 use App\Actions\Inspections\UpdateReportMetadata;
+use App\Actions\Inspections\UpdateInspectionReportRevision;
+use App\Enums\AtmosphericCorrosivity;
 use App\Enums\DefectCategory;
 use App\Enums\EquipmentRevisionEmissionType;
 use App\Enums\EquipmentStatus;
@@ -22,6 +24,7 @@ use App\Http\Requests\Inspections\PreviewInspectionBatchRequest;
 use App\Http\Requests\Inspections\UpdateGeneralAspectsRequest;
 use App\Http\Requests\Inspections\UpdatePlannedInspectionRequest;
 use App\Http\Requests\Inspections\UpdateReportMetadataRequest;
+use App\Http\Requests\Inspections\UpdateInspectionReportRevisionRequest;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
 use App\Models\Equipment;
@@ -31,7 +34,6 @@ use App\Models\InspectionReferenceDocument;
 use App\Models\InspectionResponsible;
 use App\Models\InspectionStatusHistory;
 use App\Models\User;
-use App\Services\InspectionLocations\InspectionLocationPresenter;
 use App\Services\InspectionLocations\InspectionLocationReportComposer;
 use App\Services\InspectionLocations\InspectionLocationReportSequenceComposer;
 use App\Services\Inspections\InspectionReadModelPresenter;
@@ -278,6 +280,8 @@ final class InspectionController extends Controller
                 'inspection_type_label' => $inspection->inspection_type->label(),
                 'status' => $inspection->status->value,
                 'status_label' => $inspection->status->label(),
+                'planned_start_on' => $inspection->planned_start_on?->format('d/m/Y'),
+                'planned_end_on' => $inspection->planned_end_on?->format('d/m/Y'),
                 'released_at' => $inspection->released_at?->toISOString(),
                 'previous_inspection' => $inspection->previousInspection === null ? null : [
                     'number' => $inspection->previousInspection->number,
@@ -289,11 +293,11 @@ final class InspectionController extends Controller
                 'overview_url' => route('inspections.show', $inspection),
                 'report_overview_url' => route('inspections.report-overview', $inspection),
                 'defects_url' => route('inspections.defects', $inspection),
-                'locations_url' => route('inspections.locations', $inspection),
                 'photos_url' => route('inspections.photos', $inspection),
                 'documents_url' => route('inspections.documents', $inspection),
                 'history_url' => route('inspections.history', $inspection),
                 'report_url' => route('inspections.report-preview', $inspection),
+                'report_revision' => $inspection->report_revision,
                 'equipment' => $this->inspectionEquipmentPayload($inspection->equipment),
                 // Mantidos para compatibilidade com consumidores legados do payload; a Visão geral não os renderiza.
                 'context_snapshot' => $inspection->context_snapshot,
@@ -319,6 +323,9 @@ final class InspectionController extends Controller
                     : false,
                 'manage_report_metadata' => $canManageReportMetadata
                     ? ['action' => route('inspections.report-metadata.update', $inspection)]
+                    : false,
+                'update_report_revision' => $request->user()->can('updateReportRevision', $inspection)
+                    ? ['action' => route('inspections.report-revision.update', $inspection)]
                     : false,
                 'manage_general_aspects' => $canManageGeneralAspects
                     ? ['action' => route('inspections.general-aspects.update', $inspection)]
@@ -382,7 +389,6 @@ final class InspectionController extends Controller
                 ['key' => 'overview', 'label' => 'Visão geral', 'url' => route('inspections.show', $inspection)],
                 ['key' => 'report_overview', 'label' => 'Vista geral', 'url' => route('inspections.report-overview', $inspection)],
                 ['key' => 'defects', 'label' => 'Avarias', 'url' => route('inspections.defects', $inspection)],
-                ['key' => 'locations', 'label' => 'Localização', 'url' => route('inspections.locations', $inspection)],
                 ['key' => 'team', 'label' => 'Equipe', 'url' => route('inspections.team', $inspection), 'count' => $inspection->responsibles->count()],
                 ['key' => 'photos', 'label' => 'Fotografias', 'url' => route('inspections.photos', $inspection)],
                 ['key' => 'documents', 'label' => 'Documentos', 'url' => route('inspections.documents', $inspection)],
@@ -401,18 +407,6 @@ final class InspectionController extends Controller
         InspectionReadModelPresenter $presenter,
     ): InertiaResponse {
         return $this->renderHub($tenant, $request, $inspection, $presenter, 'defects');
-    }
-
-    public function locations(
-        TenantContext $tenant,
-        Request $request,
-        Inspection $inspection,
-        InspectionLocationPresenter $presenter,
-    ): InertiaResponse {
-        $inspection = $this->tenantInspection($tenant, $inspection);
-        $this->authorize('view', $inspection);
-
-        return Inertia::render('InspectionLocationMaps/Index', $presenter->present($inspection, $request->user()));
     }
 
     public function photos(
@@ -600,6 +594,7 @@ final class InspectionController extends Controller
             'equipment_options' => $this->planningEquipmentOptions($tenant),
             'inspectors' => $this->inspectorOptions($tenant),
             'selected_inspector_id' => $inspector?->user_id,
+            'atmospheric_options' => AtmosphericCorrosivity::options(),
             'action' => route('inspections.update', $inspection),
             'cancel_url' => route('inspections.show', $inspection),
         ]);
@@ -640,6 +635,22 @@ final class InspectionController extends Controller
         return redirect()
             ->route('inspections.show', $inspection)
             ->with('success', 'Dados do relatório atualizados.');
+    }
+
+    public function updateReportRevision(
+        UpdateInspectionReportRevisionRequest $request,
+        TenantContext $tenant,
+        Inspection $inspection,
+        UpdateInspectionReportRevision $action,
+    ): RedirectResponse {
+        $inspection = $this->tenantInspection($tenant, $inspection);
+        $this->authorize('updateReportRevision', $inspection);
+
+        $action->handle($inspection, $request->user(), $request->validated('report_revision'));
+
+        return redirect()
+            ->route('inspections.show', $inspection)
+            ->with('success', 'Revisão atualizada.');
     }
 
     public function updateGeneralAspects(
@@ -816,7 +827,6 @@ final class InspectionController extends Controller
             ['key' => 'overview', 'label' => 'Visão geral', 'url' => route('inspections.show', $inspection)],
             ['key' => 'report_overview', 'label' => 'Vista geral', 'url' => route('inspections.report-overview', $inspection)],
             ['key' => 'defects', 'label' => 'Avarias', 'url' => route('inspections.defects', $inspection)],
-            ['key' => 'locations', 'label' => 'Localização', 'url' => route('inspections.locations', $inspection)],
             ['key' => 'photos', 'label' => 'Fotografias', 'url' => route('inspections.photos', $inspection)],
             ['key' => 'documents', 'label' => 'Documentos', 'url' => route('inspections.documents', $inspection)],
             ['key' => 'history', 'label' => 'Histórico', 'url' => route('inspections.history', $inspection)],
@@ -843,6 +853,7 @@ final class InspectionController extends Controller
             'released_at' => $inspection->released_at?->toISOString(),
             'service_order' => $inspection->service_order,
             'report_date' => $inspection->report_date?->toDateString(),
+            'report_revision' => $inspection->report_revision,
             'emission_type' => $inspection->emission_type?->value,
             'emission_type_label' => $inspection->emission_type?->label(),
             'first_page_text_template' => $inspection->first_page_text_template,

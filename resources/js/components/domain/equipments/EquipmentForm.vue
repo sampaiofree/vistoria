@@ -18,6 +18,10 @@ defineProps({
         type: Boolean,
         default: true,
     },
+    abcOptions: {
+        type: Array,
+        default: () => [],
+    },
 });
 
 defineEmits(['submit']);
@@ -106,7 +110,13 @@ const helpClass = 'mt-1 text-xs text-rose-600';
 
             <label class="block">
                 <span :class="labelClass">Código ABC</span>
-                <input v-model="form.abc_code" :class="inputClass" type="text" maxlength="20" autocomplete="off">
+                <select v-model="form.abc_code" :class="inputClass">
+                    <option value="">Não informado</option>
+                    <option v-for="option in abcOptions" :key="option.value" :value="option.value">
+                        {{ option.value }} — {{ option.label }}
+                    </option>
+                </select>
+                <p class="mt-1 text-xs text-slate-500">Usado para calcular a gravidade G das avarias TAC.</p>
                 <p v-if="form.errors.abc_code" :class="helpClass">{{ form.errors.abc_code }}</p>
             </label>
 

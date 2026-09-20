@@ -58,7 +58,7 @@ Organização
         ├── avaliações das avarias
         ├── fotografias
         ├── vista geral do relatório
-        └── mapas e marcações
+        └── versões de mapa e localização por avaliação
 ```
 
 ## Fluxo principal
@@ -70,9 +70,10 @@ Organização
    subárea ativas.
 4. O administrador cria uma inspeção planejada e define responsáveis técnicos.
 5. Um preparador inicia a inspeção, registra ou reavalia avarias, classifica por
-   GUT, informa o quantitativo, envia fotos e, quando exigido pela categoria,
-   cria marcações nos mapas. Condições observáveis só podem ser publicadas com um
-   quantitativo e duas fotografias prontas.
+   GUT, informa o quantitativo, envia fotos, faz upload do mapa e identifica uma
+   ou várias regiões da avaria. Não existe seleção manual de avaria ou cor.
+   Condições que exigem evidência só podem ser publicadas com ao menos um item de quantitativo e
+   duas fotografias prontas, mapa processado e localização confirmada.
 6. A inspeção passa por verificação e aprovação conforme as responsabilidades.
 7. A prévia A4 pode ser impressa ou exportada no navegador quando seus requisitos
    próprios estão completos.

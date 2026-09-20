@@ -6,7 +6,6 @@ namespace App\Services\Demo;
 
 use App\Enums\DefectAssessmentCondition;
 use App\Enums\DefectAssessmentStatus;
-use App\Enums\DefectCategory;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
 use App\Enums\MeasurementUnit;
@@ -17,8 +16,11 @@ use App\Models\Equipment;
 use App\Models\Inspection;
 use App\Models\User;
 use App\Services\Classification\NativeDefectCatalog;
+use App\Services\Defects\DefectAssessmentQuantitySnapshot;
 use App\Services\Defects\InspectionDefectScope;
+use App\Services\Defects\NativeQuantityCatalog;
 use App\Services\Defects\ResolvePreviousDefectAssessment;
+use App\Services\InspectionLocations\DefectLocationColor;
 use App\Services\InspectionLocations\InspectionLocationPhotoNumbering;
 use App\Services\Reports\EquipmentRevisionChronology;
 use App\Services\Reports\GeneralAspectsDocument;
@@ -45,6 +47,8 @@ class ViewFirstDemoPresenter
         private readonly InspectionOverviewPresenter $inspectionOverview,
         private readonly InspectionDefectScope $inspectionDefectScope,
         private readonly ResolvePreviousDefectAssessment $previousAssessmentResolver,
+        private readonly DefectLocationColor $defectLocationColor,
+        private readonly DefectAssessmentQuantitySnapshot $quantitySnapshots,
     ) {}
 
     /**
@@ -155,10 +159,12 @@ class ViewFirstDemoPresenter
             'inspection.equipment.defects.assessments.creator',
             'inspection.equipment.defects.assessments.photos',
             'inspection.equipment.defects.assessments.quantities',
+            'inspection.equipment',
             'inspection.equipment.defects.firstInspection',
             'photos',
             'quantities',
-            'locationMarkers.map',
+            'locationMapVersion.map',
+            'location',
             'previousAssessment.inspection',
             'previousAssessment.creator',
             'creator',
@@ -173,13 +179,33 @@ class ViewFirstDemoPresenter
         $previousUrl = $this->adjacentAssessmentUrl($items, $position, -1, $assessment->inspection);
         $nextUrl = $this->adjacentAssessmentUrl($items, $position, 1, $assessment->inspection);
         $canUpdate = $user->can('update', $assessment);
-        $locationMarkerCount = $assessment->locationMarkers->count();
-        $keepPublished = $assessment->isComplete() && $locationMarkerCount > 0;
-        $canEdit = $canUpdate && ($assessment->isDraft() || $keepPublished);
+        $keepPublished = $assessment->isComplete();
+        $canEdit = $canUpdate;
         $canChangeStatus = $canUpdate;
         $category = $assessment->defect->category;
         $classification = $technical['classification'];
-        $quantity = $technical['quantities'][0] ?? null;
+        $quantities = collect($technical['quantities'])
+            ->map(function (array $quantity) use ($assessment, $canEdit): array {
+                $live = $assessment->quantities->firstWhere('position', $quantity['position']);
+
+                return [
+                    ...$quantity,
+                    'public_id' => $live?->public_id,
+                    'update_url' => $canEdit && $live !== null
+                        ? route('defect-assessment-quantities.update', $live)
+                        : null,
+                    'delete_url' => $canEdit && $live !== null
+                        ? route('defect-assessment-quantities.destroy', $live)
+                        : null,
+                ];
+            })
+            ->values()
+            ->all();
+        $gutDefinition = NativeDefectCatalog::technicalDefinition(
+            $category,
+            $assessment->inspection->equipment->abc_code,
+            $assessment->inspection->atmospheric_classification,
+        );
         $reportNumbering = $this->photoNumbering->buildForReport($assessment->inspection);
         $reportCategory = $assessment->defect->categoryCode();
         $assessmentHistory = $this->assessmentHistory($assessment);
@@ -198,21 +224,15 @@ class ViewFirstDemoPresenter
             'classification' => $classification,
             'gut' => $technical['gut'],
             'gut_options' => NativeDefectCatalog::gutOptions(),
+            'gut_definition' => $gutDefinition,
             'gut_snapshot' => $assessment->gut_snapshot,
+            'quantity_snapshot' => $assessment->quantity_snapshot,
             'gut_classification_ranges' => NativeDefectCatalog::classifications($category)
                 ->map(fn ($classification): array => $classification->toArray())->all(),
             'characterization' => $technical['characterization'],
-            'quantity' => $quantity === null ? null : [
-                'measurement_value' => $quantity['measurement_value'],
-                'measurement_unit' => $quantity['measurement_unit'],
-                ...($category === DefectCategory::Civil ? [
-                    'length' => $quantity['length'],
-                    'height' => $quantity['height'],
-                    'width' => $quantity['width'],
-                    'quantity' => $quantity['quantity'],
-                    'unit_volume' => $quantity['unit_volume'],
-                ] : []),
-            ],
+            'quantities' => $quantities,
+            'quantity_summary' => $technical['quantity_summary'],
+            'quantity_definition' => NativeQuantityCatalog::definition($category),
             'discipline' => $technical['discipline'] ?? Str::lower($assessment->defect->categoryCode()),
             'discipline_label' => $technical['discipline_label'] ?? $assessment->defect->categoryLabel(),
             'classification_family' => $category->value,
@@ -226,6 +246,7 @@ class ViewFirstDemoPresenter
             'photo_interval' => $technical['photo_interval'] ?? null,
             'occurrence' => $technical['occurrence'] ?? null,
             'evidence' => $this->evidenceForDefect($assessment->defect, $technical, $assessment, $canEdit, $reportNumbering),
+            'location_map' => $this->assessmentLocationMapPayload($assessment, $canEdit),
             'photos' => $assessment->photos->map(fn ($photo): array => [
                 'id' => $photo->public_id,
                 'title' => $photo->original_name,
@@ -246,16 +267,12 @@ class ViewFirstDemoPresenter
                 'next_url' => $nextUrl,
                 'inspection_url' => route('inspections.show', $assessment->inspection),
                 'defects_url' => route('inspections.defects', $assessment->inspection),
-                'locations_url' => route('inspections.locations', $assessment->inspection),
                 'position' => is_int($position) ? $position + 1 : 1,
                 'total' => $items->count(),
             ],
             'condition_options' => collect(DefectAssessmentCondition::options())
-                ->when(
-                    $assessment->inspection_id !== $assessment->defect->first_inspection_id,
-                    fn (Collection $options): Collection => $options
-                        ->reject(fn (array $option): bool => $option['value'] === DefectAssessmentCondition::New->value),
-                )
+                ->filter(fn (array $option): bool => $assessment->inspection_id === $assessment->defect->first_inspection_id
+                    || $option['value'] !== DefectAssessmentCondition::New->value)
                 ->values()
                 ->all(),
             'measurement_units' => MeasurementUnit::options(),
@@ -263,9 +280,8 @@ class ViewFirstDemoPresenter
                 'update' => $canEdit,
                 'complete' => $canChangeStatus,
                 'keep_published' => $keepPublished,
-                'can_move_to_draft' => $locationMarkerCount === 0,
-                'location_marker_count' => $locationMarkerCount,
-                'locations_url' => route('inspections.locations', $assessment->inspection),
+                'can_move_to_draft' => true,
+                'location_marker_count' => $assessment->location === null ? 0 : 1,
                 'status_url' => $canChangeStatus
                     ? route('defect-assessments.status.update', $assessment)
                     : null,
@@ -281,10 +297,52 @@ class ViewFirstDemoPresenter
                 'gut_url' => $canEdit
                     ? route('defect-assessments.gut.update', $assessment)
                     : null,
-                'quantity_url' => $canEdit
-                    ? route('defect-assessments.quantity.update', $assessment)
+                'quantity_store_url' => $canEdit
+                    ? route('defect-assessments.quantities.store', $assessment)
+                    : null,
+                'location_map_upload_url' => $canEdit
+                    ? route('defect-assessments.location-map.store', $assessment)
+                    : null,
+                'location_map_delete_url' => $canEdit && $assessment->locationMapVersion !== null
+                    ? route('defect-assessments.location-map.destroy', $assessment)
                     : null,
             ],
+        ];
+    }
+
+    /** @return array<string,mixed>|null */
+    private function assessmentLocationMapPayload(DefectAssessment $assessment, bool $canEdit): ?array
+    {
+        $version = $assessment->locationMapVersion;
+        if ($version === null) {
+            return null;
+        }
+
+        return [
+            'map_public_id' => $version->map->public_id,
+            'version_public_id' => $version->public_id,
+            'version' => $version->version,
+            'processing_status' => $version->processing_status->value,
+            'processing_error' => $version->processing_error,
+            'background_url' => $version->isReady()
+                ? route('defect-location-map-versions.background', [
+                    'mapVersion' => $version,
+                    'variant' => 'thumbnail',
+                    'v' => $version->background_checksum,
+                ])
+                : null,
+            'color' => $this->defectLocationColor->forAssessment($assessment),
+            'location' => $assessment->location === null ? null : [
+                'public_id' => $assessment->location->public_id,
+                'geometry' => $assessment->location->geometry,
+                'label' => $assessment->location->label,
+                'confirmed' => $assessment->location->isConfirmed(),
+                'confirmed_at' => $assessment->location->confirmed_at?->format('d/m/Y H:i'),
+                'lock_version' => $assessment->location->lock_version,
+            ],
+            'editor_url' => $canEdit && $version->isReady()
+                ? route('defect-assessments.location.editor', $assessment)
+                : null,
         ];
     }
 
@@ -297,7 +355,6 @@ class ViewFirstDemoPresenter
             'overview_url' => route('inspections.show', $inspection),
             'report_overview_url' => route('inspections.report-overview', $inspection),
             'defects_url' => route('inspections.defects', $inspection),
-            'locations_url' => route('inspections.locations', $inspection),
             'photos_url' => route('inspections.photos', $inspection),
             'documents_url' => route('inspections.documents', $inspection),
             'history_url' => route('inspections.history', $inspection),
@@ -316,7 +373,6 @@ class ViewFirstDemoPresenter
             ['key' => 'overview', 'label' => 'Visão geral', 'url' => route('inspections.show', $inspection)],
             ['key' => 'report_overview', 'label' => 'Vista geral', 'url' => route('inspections.report-overview', $inspection)],
             ['key' => 'defects', 'label' => 'Avarias', 'url' => route('inspections.defects', $inspection), 'count' => $summary['total']],
-            ['key' => 'locations', 'label' => 'Localização', 'url' => route('inspections.locations', $inspection), 'count' => $summary['total']],
             ['key' => 'photos', 'label' => 'Fotografias', 'url' => route('inspections.photos', $inspection), 'count' => $photoCount],
             ['key' => 'documents', 'label' => 'Documentos', 'url' => route('inspections.documents', $inspection), 'count' => $inspection->referenceDocuments->count()],
             ['key' => 'history', 'label' => 'Histórico', 'url' => route('inspections.history', $inspection), 'count' => $inspection->statusHistories->count()],
@@ -346,8 +402,9 @@ class ViewFirstDemoPresenter
                     ['key' => 'active', 'label' => 'Ativas', 'count' => collect($items)->where('is_repaired', false)->count()],
                     ['key' => 'all', 'label' => 'Todas', 'count' => $summary['total']],
                     ['key' => 'pending', 'label' => 'Pendentes', 'count' => $summary['pending']],
-                    ['key' => 'repaired', 'label' => 'Reparadas', 'count' => $summary['repaired']],
-                    ['key' => 'not_inspected', 'label' => 'Não inspecionadas', 'count' => $summary['not_inspected']],
+                    ['key' => 'treated', 'label' => 'Tratadas', 'count' => $summary['treated']],
+                    ['key' => 'canceled', 'label' => 'Canceladas', 'count' => $summary['canceled']],
+                    ['key' => 'canceled_sr', 'label' => 'Canceladas S/R', 'count' => $summary['canceled_sr']],
                     ['key' => 'critical', 'label' => 'Críticas', 'count' => $summary['critical']],
                 ],
             ],
@@ -487,8 +544,9 @@ class ViewFirstDemoPresenter
             'pending' => $total - $completed,
             'progress_percent' => $total === 0 ? 0 : (int) round(($completed / $total) * 100),
             'critical' => $collection->where('classification.is_critical', true)->count(),
-            'repaired' => $collection->where('assessment.condition', DefectAssessmentCondition::Repaired->value)->count(),
-            'not_inspected' => $collection->where('assessment.condition', DefectAssessmentCondition::NotInspected->value)->count(),
+            'treated' => $collection->where('assessment.condition', DefectAssessmentCondition::Treated->value)->count(),
+            'canceled' => $collection->where('assessment.condition', DefectAssessmentCondition::Canceled->value)->count(),
+            'canceled_sr' => $collection->where('assessment.condition', DefectAssessmentCondition::CanceledWithoutRepair->value)->count(),
             'criticality' => $criticality,
             'condition_breakdown' => $conditionBreakdown,
             'classification_breakdown' => $classificationBreakdown,
@@ -526,30 +584,36 @@ class ViewFirstDemoPresenter
     private function quantityTotals(Collection $items): Collection
     {
         return $items
-            ->flatMap(fn (array $item): array => collect($item['quantities'] ?? [])
-                ->map(function (array $quantity): array {
-                    $unitValue = (string) ($quantity['measurement_unit'] ?? $quantity['unit'] ?? MeasurementUnit::Other->value);
-                    $unit = $quantity['unit'] ?? MeasurementUnit::tryFrom($unitValue)?->symbol() ?? $unitValue;
+            ->map(function (array $item): ?array {
+                $summary = $item['quantity_summary'] ?? null;
+                if (! is_array($summary) || ($summary['total'] ?? null) === null) {
+                    return null;
+                }
 
-                    return [
-                        'unit_value' => $unitValue,
-                        'unit' => $unit,
-                        'total' => (float) ($quantity['total'] ?? $quantity['total_volume'] ?? 0),
-                        'civil' => ($quantity['length'] ?? null) !== null,
-                    ];
-                })
-                ->all())
+                $unitValue = (string) ($summary['unit_value'] ?? MeasurementUnit::Other->value);
+
+                return [
+                    'unit_value' => $unitValue,
+                    'unit' => $summary['unit'] ?? MeasurementUnit::tryFrom($unitValue)?->symbol() ?? $unitValue,
+                    'total_raw' => (string) ($summary['total_raw'] ?? $summary['total']),
+                ];
+            })
+            ->filter()
             ->groupBy('unit_value')
             ->map(function (Collection $rows): array {
                 $first = $rows->first();
-                $precise = $rows->contains('civil', true);
-                $total = $precise ? (float) $rows->sum('total') : round($rows->sum('total'), 4);
+                $totalRaw = (string) $rows->reduce(
+                    fn (BigDecimal $sum, array $row): BigDecimal => $sum->plus(BigDecimal::of($row['total_raw'])),
+                    BigDecimal::zero(),
+                );
+                $total = (float) $totalRaw;
 
                 return [
                     'unit_value' => $first['unit_value'],
                     'unit' => $first['unit'],
                     'total' => $total,
-                    'total_label' => $this->formatQuantity($total, $precise).' '.$first['unit'],
+                    'total_raw' => $totalRaw,
+                    'total_label' => $this->formatQuantity($total).' '.$first['unit'],
                 ];
             })
             ->values();
@@ -564,7 +628,7 @@ class ViewFirstDemoPresenter
             ->firstWhere('inspection_id', $inspection->getKey());
         $previousAssessment = $this->previousAssessmentResolver->handle($defect, $inspection);
 
-        $previousAssessment?->loadMissing(['inspection', 'quantity', 'photos']);
+        $previousAssessment?->loadMissing(['inspection', 'quantities', 'photos']);
         $technical = $this->technicalData($defect, $assessment);
         $classification = $technical['classification'];
         $evidence = $this->evidenceForDefect($defect, $technical, $assessment);
@@ -592,8 +656,8 @@ class ViewFirstDemoPresenter
             'condition_label' => $assessment?->condition->label() ?? 'Pendente',
             'assessment_status' => $assessment?->status->value ?? 'not_assessed',
             'is_pending' => $isPending,
-            'is_repaired' => $assessment?->condition === DefectAssessmentCondition::Repaired,
-            'is_not_inspected' => $assessment?->condition === DefectAssessmentCondition::NotInspected,
+            'is_repaired' => $defect->isRepaired(),
+            'is_canceled' => $assessment?->condition->isCanceled() ?? false,
             'classification' => $classification,
             'gut' => $technical['gut'],
             'characterization' => $technical['characterization'],
@@ -720,7 +784,7 @@ class ViewFirstDemoPresenter
         );
         $classification['score_band'] = $finding['classification_score_band'];
         $classification['profile_version'] = null;
-        $classification['historical'] = ($finding['current_condition'] ?? null) === DefectAssessmentCondition::Repaired->value;
+        $classification['historical'] = ($finding['current_condition'] ?? null) === DefectAssessmentCondition::Treated->value;
 
         $gut = $finding['gut'];
         $score = (int) $finding['gut_score'];
@@ -938,43 +1002,30 @@ class ViewFirstDemoPresenter
     private function persistedTechnicalData(Defect $defect, ?DefectAssessment $assessment): array
     {
         $classification = $this->persistedClassification($assessment);
-        $quantities = $assessment === null
-            ? collect()
-            : $assessment->quantities->map(function ($quantity): array {
-                $unit = $quantity->measurement_unit;
-                $value = (float) $quantity->measurement_value;
-                $total = $quantity->value();
-
-                return [
-                    'public_id' => $quantity->public_id,
-                    'measurement_value' => $value,
-                    'measurement_unit' => $unit->value,
-                    'length' => $quantity->length === null ? null : (float) $quantity->length,
-                    'height' => $quantity->height === null ? null : (float) $quantity->height,
-                    'width' => $quantity->width === null ? null : (float) $quantity->width,
-                    'quantity' => (float) $quantity->quantity,
-                    'unit_volume' => $quantity->unit_volume === null ? null : (float) $quantity->unit_volume,
-                    'unit' => $unit->symbol(),
-                    'total' => $total,
-                    'total_label' => $this->formatQuantity($total, $quantity->length !== null).' '.$unit->symbol(),
-                ];
-            });
+        $snapshot = $this->quantitySnapshot($assessment);
+        $quantities = collect($snapshot['items'] ?? [])
+            ->map(fn (array $item): array => $this->quantityPayloadFromSnapshot($item));
         $totalsByUnit = $quantities
             ->groupBy('measurement_unit')
             ->map(function (Collection $rows): array {
                 $first = $rows->first();
-                $precise = $rows->contains(fn (array $row): bool => $row['length'] !== null);
-                $total = $precise ? (float) $rows->sum('total') : round($rows->sum('total'), 4);
+                $total = (float) $rows->sum('total');
 
                 return [
                     'unit' => $first['unit'],
                     'unit_value' => $first['measurement_unit'],
                     'total' => $total,
-                    'total_label' => $this->formatQuantity($total, $precise).' '.$first['unit'],
+                    'total_label' => $this->formatQuantity($total).' '.$first['unit'],
                 ];
             })
             ->values();
         $singleTotal = $totalsByUnit->count() === 1 ? $totalsByUnit->first() : null;
+        if ($snapshot !== null && $singleTotal !== null) {
+            $singleTotal['total'] = (float) $snapshot['total'];
+            $singleTotal['total_raw'] = (string) $snapshot['total'];
+            $singleTotal['total_label'] = $this->formatQuantity((float) $snapshot['total']).' '.$singleTotal['unit'];
+            $totalsByUnit = collect([$singleTotal]);
+        }
         $gut = $assessment !== null
             && $assessment->gravity !== null
             && $assessment->urgency !== null
@@ -1028,8 +1079,10 @@ class ViewFirstDemoPresenter
             'quantities' => $quantities->values()->all(),
             'quantity_summary' => [
                 'total' => $singleTotal['total'] ?? null,
+                'total_raw' => $singleTotal['total_raw'] ?? null,
                 'total_label' => $totalsByUnit->pluck('total_label')->implode(' · '),
                 'unit' => $singleTotal['unit'] ?? ($totalsByUnit->isEmpty() ? null : 'Múltiplas'),
+                'unit_value' => $singleTotal['unit_value'] ?? null,
                 'line_count' => $quantities->count(),
                 'totals_by_unit' => $totalsByUnit->all(),
             ],
@@ -1058,6 +1111,59 @@ class ViewFirstDemoPresenter
                 'classification' => $classification,
                 'gut' => $gut,
             ],
+        ];
+    }
+
+    /** @return array<string, mixed>|null */
+    private function quantitySnapshot(?DefectAssessment $assessment): ?array
+    {
+        if ($assessment === null) {
+            return null;
+        }
+
+        if ($assessment->isComplete() && is_array($assessment->quantity_snapshot)) {
+            return $this->quantitySnapshots->normalize($assessment->quantity_snapshot);
+        }
+
+        $assessment->loadMissing(['defect', 'quantities']);
+
+        return $this->quantitySnapshots->build($assessment->defect->category, $assessment->quantities);
+    }
+
+    /** @param array<string, mixed> $snapshot @return array<string, mixed> */
+    private function quantityPayloadFromSnapshot(array $snapshot, ?string $publicId = null): array
+    {
+        $unitValue = (string) ($snapshot['measurement_unit'] ?? MeasurementUnit::Other->value);
+        $unit = MeasurementUnit::tryFrom($unitValue);
+        $inputs = is_array($snapshot['inputs'] ?? null) ? $snapshot['inputs'] : [];
+        $totalRaw = (string) ($snapshot['total'] ?? '0');
+        $unitRaw = isset($snapshot['unit_value']) ? (string) $snapshot['unit_value'] : null;
+        $elementCode = data_get($snapshot, 'element.code');
+
+        return [
+            'public_id' => $publicId,
+            'position' => (int) ($snapshot['position'] ?? 1),
+            'description' => $snapshot['description'] ?? null,
+            'category' => $snapshot['category'] ?? null,
+            'calculation_type' => $snapshot['calculation_type'] ?? null,
+            'rec_element' => $elementCode,
+            'element_code' => $elementCode,
+            'inputs' => $inputs,
+            'quantity' => (string) ($snapshot['quantity'] ?? $inputs['quantity'] ?? '1'),
+            'unit_value' => $unitRaw,
+            'unit_measurement_value' => $unitRaw,
+            'measurement_value' => $totalRaw,
+            'measurement_unit' => $unitValue,
+            'mode' => $snapshot['mode'] ?? null,
+            'formula_version' => $snapshot['formula_version'] ?? null,
+            'formula_snapshot' => $snapshot,
+            'length' => $inputs['length'] ?? null,
+            'height' => $inputs['height'] ?? null,
+            'width' => $inputs['width'] ?? null,
+            'unit_volume' => $unitRaw,
+            'unit' => $unit?->symbol() ?? $unitValue,
+            'total' => (float) $totalRaw,
+            'total_label' => $this->formatQuantity((float) $totalRaw).' '.($unit?->symbol() ?? $unitValue),
         ];
     }
 
@@ -1094,7 +1200,7 @@ class ViewFirstDemoPresenter
             'severity_rank' => $priority,
             'is_critical' => $priority !== null && $priority <= 2,
             'provisional' => false,
-            'historical' => $assessment->condition === DefectAssessmentCondition::Repaired,
+            'historical' => $assessment->condition === DefectAssessmentCondition::Treated,
         ];
     }
 
@@ -1296,9 +1402,7 @@ class ViewFirstDemoPresenter
 
     private function formatQuantity(float $value, bool $precise = false): string
     {
-        $scale = $precise ? BigDecimal::of((string) $value)->strippedOfTrailingZeros()->getScale() : 2;
-
-        return number_format($value, max(2, min(16, $scale)), ',', '.');
+        return number_format($value, 2, ',', '.');
     }
 
     private function withoutNameSuffix(?string $name): ?string
@@ -1322,9 +1426,15 @@ class ViewFirstDemoPresenter
     ): array {
         $inspection->loadMissing(['organization', 'equipment.client']);
         $overview = $this->inspectionOverview->present($inspection);
-        $mappedAssessmentIds = $inspection->locationMarkers()
-            ->whereHas('map')
-            ->pluck('defect_assessment_id')
+        $mappedAssessmentIds = DefectAssessment::query()
+            ->forOrganization($inspection->organization_id)
+            ->where('inspection_id', $inspection->id)
+            ->whereNotNull('defect_location_map_version_id')
+            ->whereHas('locationMapVersion', fn ($query) => $query
+                ->where('processing_status', 'ready')
+                ->whereNotNull('background_path'))
+            ->whereHas('location', fn ($query) => $query->whereNotNull('confirmed_at'))
+            ->pluck('id')
             ->filter()
             ->map(fn ($id): int => (int) $id)
             ->unique()
@@ -1727,7 +1837,7 @@ class ViewFirstDemoPresenter
             $seen[$previousId] = true;
             $previous = DefectAssessment::query()
                 ->forOrganization($assessment->organization_id)
-                ->with(['inspection', 'quantity', 'photos'])
+                ->with(['inspection', 'quantities', 'photos'])
                 ->where('defect_id', $assessment->defect_id)
                 ->whereKey($previousId)
                 ->first();
@@ -1803,7 +1913,7 @@ class ViewFirstDemoPresenter
     private function historicalAssessmentPayload(DefectAssessment $assessment): array
     {
         $classification = $this->snapshotClassification($assessment);
-        $quantity = $assessment->quantity;
+        $quantity = $this->quantitySnapshot($assessment);
 
         return [
             'id' => $assessment->id,
@@ -1824,12 +1934,17 @@ class ViewFirstDemoPresenter
                 'trend' => $assessment->trend,
                 'score' => $assessment->gut_score,
             ],
-            'quantity' => $quantity === null ? null : [
-                'value' => $quantity->value(),
-                'unit' => $quantity->measurement_unit->value,
-                'unit_label' => $quantity->measurement_unit->label(),
-                'unit_symbol' => $quantity->measurement_unit->symbol(),
-            ],
+            'quantity' => $quantity === null ? null : (function () use ($quantity): array {
+                $unit = MeasurementUnit::tryFrom((string) ($quantity['measurement_unit'] ?? ''));
+
+                return [
+                    'value' => (string) ($quantity['total'] ?? '0'),
+                    'unit' => $unit?->value ?? ($quantity['measurement_unit'] ?? null),
+                    'unit_label' => $unit?->label() ?? ($quantity['measurement_unit'] ?? null),
+                    'unit_symbol' => $unit?->symbol() ?? ($quantity['measurement_unit'] ?? null),
+                    'snapshot' => $quantity,
+                ];
+            })(),
             'location_description' => $assessment->location_description,
             'comment' => $assessment->comment,
             'recommendation' => $assessment->recommendation,

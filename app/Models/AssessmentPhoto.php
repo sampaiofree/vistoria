@@ -10,7 +10,6 @@ use App\Models\Concerns\BelongsToOrganization;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
 
@@ -53,14 +52,6 @@ final class AssessmentPhoto extends Model
     public function uploader(): BelongsTo
     {
         return $this->belongsTo(User::class, 'uploaded_by');
-    }
-
-    public function locationMarkers(): BelongsToMany
-    {
-        return $this->belongsToMany(InspectionLocationMarker::class, 'inspection_location_marker_photos', 'assessment_photo_id', 'inspection_location_marker_id')
-            ->using(InspectionLocationMarkerPhoto::class)
-            ->withPivot(['organization_id', 'inspection_id', 'position', 'created_at'])
-            ->orderByPivot('position');
     }
 
     public function isReady(): bool

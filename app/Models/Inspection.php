@@ -45,7 +45,8 @@ final class Inspection extends Model
         'approved_at', // Data e hora da aprovação da inspeção.
         'report_generated_at', // Data e hora de geração do relatório.
         'report_date', // Data oficial exibida no relatório.
-        'emission_type', //Tipo de emissão
+        'report_revision', // Revisão persistida e sequencial por equipamento.
+        'emission_type', // Tipo de emissão
         'first_page_text_template',
         'released_at', // Data e hora da liberação final da inspeção.
         'canceled_at', // Data e hora do cancelamento, quando aplicável.
@@ -69,6 +70,7 @@ final class Inspection extends Model
             'approved_at' => 'datetime',
             'report_generated_at' => 'datetime',
             'report_date' => 'date',
+            'report_revision' => 'integer',
             'emission_type' => EquipmentRevisionEmissionType::class,
             'released_at' => 'datetime',
             'canceled_at' => 'datetime',
@@ -133,16 +135,6 @@ final class Inspection extends Model
     public function overviewPhotos(): HasMany
     {
         return $this->hasMany(InspectionOverviewPhoto::class)->orderBy('slot');
-    }
-
-    public function locationMaps(): HasMany
-    {
-        return $this->hasMany(InspectionLocationMap::class)->orderBy('position')->orderBy('id');
-    }
-
-    public function locationMarkers(): HasMany
-    {
-        return $this->hasMany(InspectionLocationMarker::class)->orderBy('position')->orderBy('id');
     }
 
     public function hasResponsibility(InspectionResponsibility $responsibility): bool

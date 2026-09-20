@@ -5,8 +5,6 @@ declare(strict_types=1);
 namespace App\Policies;
 
 use App\Enums\DefectStatus;
-use App\Enums\InspectionResponsibility;
-use App\Enums\InspectionStatus;
 use App\Models\Defect;
 use App\Models\Inspection;
 use App\Models\User;

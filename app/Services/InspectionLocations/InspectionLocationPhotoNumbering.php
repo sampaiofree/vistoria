@@ -4,57 +4,43 @@ declare(strict_types=1);
 
 namespace App\Services\InspectionLocations;
 
+use App\Enums\DefectAssessmentStatus;
 use App\Enums\DefectCategory;
 use App\Models\AssessmentPhoto;
 use App\Models\DefectAssessment;
 use App\Models\Inspection;
-use App\Models\InspectionLocationMarker;
 use Illuminate\Support\Collection;
 
 final class InspectionLocationPhotoNumbering
 {
     public function __construct(private readonly InspectionLocationReportCategoryOrder $categoryOrder) {}
 
-    /**
-     * Builds the canonical report index, restarting the sequence for each
-     * defect category. TAC reserves 1-4 for the inspection overview.
-     *
-     * @return array<string, int>
-     */
-    public function buildForReport(Inspection $inspection, ?Collection $loadedMaps = null): array
+    /** @return array<string,int> */
+    public function buildForReport(Inspection $inspection, ?Collection $loadedAssessments = null): array
     {
-        $maps = $loadedMaps ?? $inspection->locationMaps()
-            ->where('organization_id', $inspection->organization_id)
-            ->with(['markers.assessment.defect', 'markers.assessment.photos'])
-            ->orderBy('position')
-            ->orderBy('id')
+        $assessments = $loadedAssessments ?? DefectAssessment::query()
+            ->forOrganization($inspection->organization_id)
+            ->where('inspection_id', $inspection->id)
+            ->where('status', DefectAssessmentStatus::Complete->value)
+            ->with(['defect', 'photos', 'location', 'locationMapVersion'])
             ->get();
-        $categories = $this->categoryOrder->sort(collect(DefectCategory::cases()));
 
         $numbering = [];
+        foreach ($this->categoryOrder->sort(collect(DefectCategory::cases())) as $category) {
+            $nextNumber = $category === DefectCategory::AnticorrosiveTreatment ? 5 : 1;
+            $ordered = $assessments
+                ->filter(fn (DefectAssessment $assessment): bool => $assessment->defect?->category === $category
+                    && ! $assessment->condition->isCanceled()
+                    && $assessment->locationMapVersion?->isReady()
+                    && $assessment->location?->isConfirmed())
+                ->sortBy(fn (DefectAssessment $assessment): array => [
+                    (int) ($assessment->defect?->sequence_number ?? PHP_INT_MAX),
+                    (int) $assessment->id,
+                ]);
 
-        foreach ($categories as $category) {
-            $nextNumber = $this->categoryOrder->priority($category->value, $category->label()) === 0 ? 5 : 1;
-            $seenAssessments = [];
-
-            foreach ($maps->filter(fn ($map): bool => $map->category === $category) as $map) {
-                foreach ($map->markers as $marker) {
-                    $assessment = $marker->assessment;
-
-                    if ($assessment === null
-                        || ! $assessment->isComplete()
-                        || $assessment->defect?->category !== $category
-                        || isset($seenAssessments[$assessment->id])) {
-                        continue;
-                    }
-
-                    $seenAssessments[$assessment->id] = true;
-
-                    foreach ($this->orderedAssessmentPhotos($assessment) as $photo) {
-                        if (! isset($numbering[$photo->public_id])) {
-                            $numbering[$photo->public_id] = $nextNumber++;
-                        }
-                    }
+            foreach ($ordered as $assessment) {
+                foreach ($this->orderedAssessmentPhotos($assessment) as $photo) {
+                    $numbering[$photo->public_id] ??= $nextNumber++;
                 }
             }
         }
@@ -62,21 +48,18 @@ final class InspectionLocationPhotoNumbering
         return $numbering;
     }
 
-    /** @return Collection<int, AssessmentPhoto> */
+    /** @return Collection<int,AssessmentPhoto> */
     private function orderedAssessmentPhotos(DefectAssessment $assessment): Collection
     {
         $assessment->loadMissing('photos');
 
         return $assessment->photos
             ->filter(fn (AssessmentPhoto $photo): bool => $photo->isReady())
-            ->sortBy(fn (AssessmentPhoto $photo): array => [
-                (int) $photo->position,
-                (int) $photo->id,
-            ])
+            ->sortBy(fn (AssessmentPhoto $photo): array => [(int) $photo->position, (int) $photo->id])
             ->values();
     }
 
-    /** @param iterable<string> $orderedPublicIds @return array<string, int> */
+    /** @param iterable<string> $orderedPublicIds @return array<string,int> */
     public function assign(iterable $orderedPublicIds, int $offset = 0): array
     {
         $numbering = [];
@@ -89,41 +72,17 @@ final class InspectionLocationPhotoNumbering
         return $numbering;
     }
 
-    /** @param array<string, int>|null $numbering @return array<int, int> */
-    public function numbersForMarker(InspectionLocationMarker $marker, ?array $numbering = null): array
-    {
-        $numbering ??= $this->buildForReport($marker->inspection);
-
-        return $this->photosForMarker($marker)
-            ->map(fn ($photo): ?int => $numbering[$photo->public_id] ?? null)
-            ->filter()
-            ->values()
-            ->all();
-    }
-
-    /** @param array<string, int> $numbering @return array<int, int> */
+    /** @param array<string,int> $numbering @return array<int,int> */
     public function numbersForAssessment(DefectAssessment $assessment, array $numbering): array
     {
-        $assessment->loadMissing('photos');
-
-        return $assessment->photos
+        return $this->orderedAssessmentPhotos($assessment)
             ->map(fn (AssessmentPhoto $photo): ?int => $numbering[$photo->public_id] ?? null)
             ->filter()
             ->values()
             ->all();
     }
 
-    /** @return Collection<int, AssessmentPhoto> */
-    public function photosForMarker(InspectionLocationMarker $marker): Collection
-    {
-        $marker->loadMissing(['photos', 'assessment.photos']);
-
-        return $marker->photos->isNotEmpty()
-            ? $marker->photos
-            : ($marker->assessment?->photos ?? collect());
-    }
-
-    /** @param array<int, int> $numbers */
+    /** @param array<int,int> $numbers */
     public function format(array $numbers): string
     {
         $numbers = array_values(array_unique(array_map('intval', $numbers)));
@@ -148,14 +107,12 @@ final class InspectionLocationPhotoNumbering
         return implode(', ', $ranges);
     }
 
-    /** @param array<int, int> $numbers */
+    /** @param array<int,int> $numbers */
     public function legend(array $numbers): string
     {
         $formatted = $this->format($numbers);
 
-        return $formatted === '—'
-            ? 'FOTOS: —'
-            : 'FOTOS: '.$formatted;
+        return $formatted === '—' ? 'FOTOS: —' : 'FOTOS: '.$formatted;
     }
 
     private function range(int $start, int $end): string

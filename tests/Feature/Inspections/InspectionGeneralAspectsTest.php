@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Tests\Feature\Inspections;
 
 use App\Enums\InspectionResponsibility;
-use App\Enums\OperationalRole;
 use App\Enums\InspectionStatus;
+use App\Enums\OperationalRole;
 use App\Enums\UserAccountType;
 use App\Models\Equipment;
 use App\Models\Inspection;

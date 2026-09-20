@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Actions\Equipments;
 
+use App\Enums\AssetAbcClass;
 use App\Models\Client;
 use App\Models\User;
 use App\Services\Equipments\EquipmentCsv;
@@ -11,6 +12,7 @@ use App\Services\Tenancy\TenantContext;
 use App\Support\TextNormalizer;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 final class ImportEquipmentsFromCsv
@@ -80,7 +82,7 @@ final class ImportEquipmentsFromCsv
                     'name' => ['required', 'string', 'max:180'],
                     'task_list_group' => ['nullable', 'string', 'max:80'],
                     'task_list_group_counter' => ['nullable', 'string', 'max:80'],
-                    'abc_code' => ['nullable', 'string', 'max:20'],
+                    'abc_code' => ['nullable', Rule::enum(AssetAbcClass::class)],
                     'defect_code_prefix' => ['required', 'string', 'max:80'],
                 ],
                 [],

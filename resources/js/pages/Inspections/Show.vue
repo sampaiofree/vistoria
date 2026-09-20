@@ -71,15 +71,17 @@ const filters = computed(() => props.content?.filters ?? []);
 const filteredDefects = computed(() => defects.value.filter((defect) => {
     switch (activeFilter.value) {
         case 'active':
-            return defect.is_repaired !== true && defect.assessment?.condition !== 'repaired';
+            return defect.is_repaired !== true;
         case 'critical':
             return defect.classification?.is_critical === true;
         case 'pending':
             return defect.is_pending === true || defect.assessment?.status === 'draft';
-        case 'repaired':
-            return defect.is_repaired === true || defect.assessment?.condition === 'repaired';
-        case 'not_inspected':
-            return defect.is_not_inspected === true || defect.assessment?.condition === 'not_inspected';
+        case 'treated':
+            return defect.is_repaired === true || defect.assessment?.condition === 'treated';
+        case 'canceled':
+            return defect.assessment?.condition === 'canceled';
+        case 'canceled_sr':
+            return defect.assessment?.condition === 'canceled_sr';
         default:
             return true;
     }
@@ -270,91 +272,6 @@ async function exportReport(format) {
             <div v-if="filteredDefects.length === 0" class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center text-sm text-slate-500">
                 Nenhuma avaria corresponde a este filtro.
             </div>
-        </div>
-
-        <div v-else-if="active_tab === 'locations'" class="print-hidden mt-6 space-y-6">
-            <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-                <div class="flex flex-wrap items-start justify-between gap-4">
-                    <div>
-                        <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Localização técnica</p>
-                        <h2 class="mt-2 text-xl font-semibold text-slate-950">Mapa de localização das avarias</h2>
-                        <p class="mt-1 text-sm text-slate-500">Planta, croqui ou foto anotada ficam como base estática nesta etapa; o editor gráfico vem depois.</p>
-                    </div>
-                    <div class="flex flex-wrap gap-2 text-xs font-semibold text-slate-600">
-                        <span v-for="item in (content.legend || [])" :key="item.code" class="rounded-full bg-slate-100 px-3 py-1.5">
-                            {{ item.code }} · {{ item.label }}
-                        </span>
-                    </div>
-                </div>
-
-                <div class="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(24rem,0.85fr)]">
-                    <section class="rounded-3xl border border-slate-200 bg-slate-950 p-5 text-white shadow-sm sm:p-6">
-                        <div class="flex flex-wrap items-start justify-between gap-4">
-                            <div>
-                                <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-300">Planta / croqui</p>
-                                <h3 class="mt-2 text-lg font-semibold">Marcadores referenciados ao desenho</h3>
-                                <p class="mt-1 text-sm leading-6 text-slate-300">Desenho {{ content.items?.[0]?.drawing || inspection.drawing || '—' }} · {{ content.items?.length || 0 }} marcador(es) carregados.</p>
-                            </div>
-                            <span class="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-slate-200">
-                                {{ content.items?.[0]?.project || inspection.service_order || '—' }}
-                            </span>
-                        </div>
-                        <div class="mt-6 rounded-3xl border border-white/10 bg-white/5 p-5">
-                            <div class="grid gap-3 sm:grid-cols-2">
-                                <article v-for="item in (content.items || [])" :key="item.id" class="rounded-2xl border border-white/10 bg-slate-900/60 p-3">
-                                    <div class="flex items-start gap-3">
-                                        <span class="inline-flex h-9 min-w-9 items-center justify-center rounded-xl bg-teal-400/20 px-2 text-sm font-bold text-teal-200">
-                                            {{ item.marker }}
-                                        </span>
-                                        <div class="min-w-0">
-                                            <p class="text-sm font-semibold text-white">{{ item.title }}</p>
-                                            <p class="mt-1 text-xs leading-5 text-slate-300">{{ item.location }}</p>
-                                        </div>
-                                    </div>
-                                    <div class="mt-3 flex flex-wrap gap-2 text-[11px] font-semibold text-slate-300">
-                                        <span class="rounded-full bg-white/10 px-2.5 py-1">{{ item.project }}</span>
-                                        <span class="rounded-full bg-white/10 px-2.5 py-1">{{ item.element }}</span>
-                                        <span class="rounded-full bg-white/10 px-2.5 py-1">{{ item.photo_count }} foto(s)</span>
-                                    </div>
-                                </article>
-                            </div>
-                        </div>
-                    </section>
-
-                    <aside class="space-y-4">
-                        <article v-for="item in (content.items || [])" :key="`${item.id}-summary`" class="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-                            <div class="flex flex-wrap items-start justify-between gap-3">
-                                <div>
-                                    <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">{{ item.marker }}</p>
-                                    <h3 class="mt-1 font-semibold text-slate-950">{{ item.title }}</h3>
-                                </div>
-                                <CivilClassificationBadge :code="item.classification?.code" :label="item.classification?.label" :historical="item.classification?.historical" />
-                            </div>
-                            <dl class="mt-4 grid gap-3 text-sm sm:grid-cols-2">
-                                <div>
-                                    <dt class="text-xs font-bold uppercase tracking-wider text-slate-400">Localização</dt>
-                                    <dd class="mt-1 font-medium text-slate-900">{{ item.location }}</dd>
-                                </div>
-                                <div>
-                                    <dt class="text-xs font-bold uppercase tracking-wider text-slate-400">Impacto</dt>
-                                    <dd class="mt-1 font-medium text-slate-900">{{ item.impact?.label || '—' }}</dd>
-                                </div>
-                                <div>
-                                    <dt class="text-xs font-bold uppercase tracking-wider text-slate-400">Notas GUT</dt>
-                                    <dd class="mt-1 font-medium text-slate-900">
-                                        <span v-if="item.gut">G {{ item.gut.severity ?? '—' }} · U {{ item.gut.urgency ?? '—' }} · T {{ item.gut.tendency ?? '—' }}</span>
-                                        <span v-else>—</span>
-                                    </dd>
-                                </div>
-                                <div>
-                                    <dt class="text-xs font-bold uppercase tracking-wider text-slate-400">Fotos</dt>
-                                    <dd class="mt-1 font-medium text-slate-900">{{ item.photo_count }} · {{ item.photo_interval }}</dd>
-                                </div>
-                            </dl>
-                        </article>
-                    </aside>
-                </div>
-            </section>
         </div>
 
         <div v-else-if="active_tab === 'photos'" class="print-hidden mt-6 space-y-6">

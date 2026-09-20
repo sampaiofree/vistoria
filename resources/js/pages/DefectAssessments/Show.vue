@@ -1,28 +1,45 @@
 <script setup>
-import { computed, reactive, ref } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { Link, router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/components/ui/AppLayout.vue';
 import DefectAssessmentStatusBadge from '@/components/domain/defects/DefectAssessmentStatusBadge.vue';
+import GutScoreSelect from '@/components/domain/defects/GutScoreSelect.vue';
 import PhotoGallery from '@/components/domain/view-first/PhotoGallery.vue';
 import AssessmentPhotoUpload from '@/components/domain/defects/AssessmentPhotoUpload.vue';
 import AssessmentHistoryModal from '@/components/domain/defects/AssessmentHistoryModal.vue';
-import { calculateCivilVolume, formatCivilMeasurement } from '@/lib/civilQuantity';
+import {
+    buildNativeQuantityPayload,
+    calculateNativeQuantity,
+    formatNativeMeasurement,
+    nativeUnitSymbol,
+} from '@/lib/nativeQuantity';
+import {
+    buildTechnicalGutPayload,
+    calculateTechnicalGut,
+    MANUAL_OPTION,
+    technicalGutReady,
+    trendOptionsFor,
+} from '@/lib/technicalGut';
 
 const props = defineProps({
     assessment: { type: Object, required: true },
-    quantity: { type: Object, default: null },
+    quantities: { type: Array, default: () => [] },
+    quantity_summary: { type: Object, default: () => ({}) },
     evidence: { type: Array, default: () => [] },
     measurement_units: { type: Array, default: () => [] },
     capabilities: { type: Object, default: () => ({}) },
     gut_classification_ranges: { type: Array, default: () => [] },
     gut_options: { type: Object, default: () => ({ gravity: [], urgency: [], trend: [] }) },
+    gut_definition: { type: Object, default: null },
     gut_snapshot: { type: Object, default: null },
+    quantity_definition: { type: Object, default: null },
     classification: { type: Object, default: null },
     condition_options: { type: Array, default: () => [] },
     origin_type: { type: String, default: 'new' },
     previous_assessment_summary: { type: Object, default: null },
     assessment_history: { type: Array, default: () => [] },
     reinspection_action: { type: Object, default: null },
+    location_map: { type: Object, default: null },
 });
 
 const form = useForm({
@@ -36,37 +53,58 @@ const form = useForm({
     item_description: props.assessment.item_description ?? '',
     project_reference: props.assessment.project_reference ?? '',
     impacts_activity: props.assessment.impacts_activity ?? null,
-    gravity: props.assessment.gravity ?? null,
-    urgency: props.assessment.urgency ?? null,
-    trend: props.assessment.trend ?? null,
 });
 
-const gutForm = useForm({
-    condition: props.assessment.condition,
-    gravity: props.assessment.gravity ?? null,
-    urgency: props.assessment.urgency ?? null,
-    trend: props.assessment.trend ?? null,
-});
+function snapshotCriterion(criterion) {
+    return props.gut_snapshot?.criteria?.[criterion] ?? {};
+}
+
+function gutDefaults() {
+    const gravity = snapshotCriterion('gravity');
+    const urgency = snapshotCriterion('urgency');
+    const trend = snapshotCriterion('trend');
+
+    return {
+        condition: props.assessment.condition,
+        safety_impact_code: gravity.safety_impact?.code ?? '',
+        asset_impact_code: gravity.asset_impact?.code ?? '',
+        urgency_option_code: urgency.mode === 'manual' ? MANUAL_OPTION : (urgency.option?.code ?? ''),
+        urgency_manual_description: urgency.manual?.description ?? '',
+        urgency_manual_score: urgency.manual?.score ?? '',
+        trend_group_code: trend.group?.code ?? '',
+        trend_option_code: trend.option?.code ?? '',
+        trend_manual_description: trend.manual?.description ?? '',
+        trend_manual_score: trend.manual?.score ?? '',
+    };
+}
+
+const gutForm = useForm(gutDefaults());
 
 const editing = reactive({ condition: false, quantity: false, gut: false, narrative: false });
 const historyOpen = ref(false);
 const startingReinspection = ref(false);
+const mapForm = useForm({ file: null });
+const mapPreviewUrl = ref(null);
+let mapProcessingPoll = null;
 
 const quantityForm = useForm({
-    measurement_value: props.quantity?.measurement_value ?? '',
-    measurement_unit: props.quantity?.measurement_unit ?? props.measurement_units[0]?.value ?? 'unit',
-    length: props.quantity?.length ?? '',
-    height: props.quantity?.height ?? '',
-    width: props.quantity?.width ?? '',
-    quantity: props.quantity?.quantity ?? 1,
+    description: '',
+    element: '',
+    area: '',
+    total_weight: '',
+    length: '',
+    height: '',
+    width: '',
+    quantity: 1,
 });
+const editingQuantity = ref(null);
 
 const title = computed(() => props.assessment.defect?.code ?? 'Avaliação da avaria');
 const subtitle = computed(() => `${props.assessment.defect?.equipment?.tag ?? ''} — ${props.assessment.defect?.title ?? ''}`);
 const isPublished = computed(() => props.assessment.status === 'complete');
-const requiresEvidence = computed(() => !['not_located', 'not_inspected'].includes(form.condition));
-const requiresGut = computed(() => !['repaired', 'not_located', 'not_inspected'].includes(form.condition));
-const requiresReason = computed(() => ['not_located', 'not_inspected'].includes(form.condition));
+const requiresEvidence = computed(() => !['canceled', 'canceled_sr'].includes(form.condition));
+const requiresGut = computed(() => ['new', 'reinspected', 'reclassified'].includes(form.condition));
+const requiresReason = computed(() => ['canceled', 'canceled_sr'].includes(form.condition));
 const isInherited = computed(() => props.origin_type === 'inherited');
 const keepPublished = computed(() => Boolean(props.capabilities.keep_published));
 const canMoveToDraft = computed(() => props.capabilities.can_move_to_draft !== false);
@@ -76,38 +114,79 @@ const gutCriteria = [
     { key: 'urgency', label: 'Urgência (U)' },
     { key: 'trend', label: 'Tendência (T)' },
 ];
-const gutConfigured = computed(() => gutCriteria.every((criterion) => props.gut_options[criterion.key]?.length));
-const gutReady = computed(() => gutConfigured.value && gutCriteria.every((criterion) => gutForm[criterion.key] !== null && gutForm[criterion.key] !== ''));
+const defectCategory = computed(() => props.gut_definition?.category?.code
+    ?? props.gut_definition?.category
+    ?? props.quantity_definition?.category?.code
+    ?? props.quantity_definition?.category
+    ?? props.assessment.defect?.category);
+const hasTechnicalGut = computed(() => Boolean(props.gut_definition?.category));
+const gutConfigured = computed(() => hasTechnicalGut.value);
+const technicalGutPreview = computed(() => hasTechnicalGut.value ? calculateTechnicalGut(props.gut_definition, gutForm) : null);
+const gutReady = computed(() => hasTechnicalGut.value && technicalGutReady(props.gut_definition, gutForm));
 const classificationDisplay = computed(() => props.classification ?? {
     code: props.assessment.classification_code,
     label: props.assessment.gut_score === null ? 'Não classificada' : 'Sem classificação para este resultado GUT',
     color: null,
 });
-const quantityUnitLabel = computed(() => props.measurement_units.find((unit) => unit.value === props.quantity?.measurement_unit)?.label ?? props.quantity?.measurement_unit ?? '');
-const isCivil = computed(() => props.assessment.defect?.category === 'CV');
-const civilVolume = computed(() => calculateCivilVolume(quantityForm));
+const quantityUnitLabel = computed(() => nativeUnitSymbol(props.quantity_summary?.unit_value)
+    || props.quantity_summary?.unit
+    || '');
+const isCivil = computed(() => defectCategory.value === 'CV');
+const isTac = computed(() => defectCategory.value === 'TAC');
+const isRec = computed(() => defectCategory.value === 'REC');
 const civilFields = [
     { key: 'length', label: 'Comprimento (m)' },
     { key: 'height', label: 'Altura (m)' },
     { key: 'width', label: 'Largura (m)' },
     { key: 'quantity', label: 'Quantidade' },
 ];
+const recElements = computed(() => props.quantity_definition?.elements ?? []);
+const selectedRecElement = computed(() => recElements.value.find((element) => element.code === quantityForm.element) ?? null);
+const recQuantityFields = computed(() => {
+    const fields = [...(selectedRecElement.value?.fields ?? [])].filter((field) => field.key !== 'quantity' && field.key !== 'total_weight');
+    if (selectedRecElement.value?.mode !== 'manual') fields.push({ key: 'quantity', label: 'Quantidade', unit: null });
+
+    return fields;
+});
+const quantityPreview = computed(() => calculateNativeQuantity(defectCategory.value, quantityForm));
+const quantityReady = computed(() => quantityPreview.value !== null);
+const trendOptions = computed(() => trendOptionsFor(props.gut_definition, gutForm.trend_group_code));
+const urgencyOptions = computed(() => [
+    ...(props.gut_definition?.urgency_options ?? []),
+    ...(props.gut_definition?.urgency_allows_manual ? [{
+        code: MANUAL_OPTION,
+        label: 'Transportadores/Outros (nota manual)',
+    }] : []),
+]);
+function manualScoreOptions(criterion) {
+    return (props.gut_options?.[criterion] ?? []).map((option) => ({
+        ...option,
+        label: 'Nota manual',
+    }));
+}
+const manualUrgencyOptions = computed(() => manualScoreOptions('urgency'));
+const manualTrendOptions = computed(() => manualScoreOptions('trend'));
 const gutDisplay = computed(() => gutCriteria.map((criterion) => {
     const snapshot = props.gut_snapshot?.criteria?.[criterion.key] ?? null;
     const score = props.assessment[criterion.key] ?? snapshot?.score ?? null;
     const option = props.gut_options[criterion.key]?.find((item) => Number(item.score) === Number(score));
 
-    return { ...criterion, score, color: snapshot?.color ?? option?.color ?? null };
+    let details = [];
+    if (criterion.key === 'gravity') details = [snapshot?.safety_impact?.label, snapshot?.asset_impact?.label];
+    if (criterion.key === 'urgency') details = [snapshot?.option?.label, snapshot?.manual?.description, snapshot?.source?.label];
+    if (criterion.key === 'trend') details = [snapshot?.group?.label, snapshot?.option?.label, snapshot?.manual?.description];
+
+    return { ...criterion, score, color: snapshot?.color ?? option?.color ?? null, details: details.filter(Boolean) };
 }));
-const gutScorePreview = computed(() => gutReady.value
-    ? Number(gutForm.gravity) * Number(gutForm.urgency) * Number(gutForm.trend)
-    : null);
+const gutScorePreview = computed(() => technicalGutPreview.value?.score ?? null);
 const previewClassification = computed(() => gutScorePreview.value === null
     ? null
     : props.gut_classification_ranges.find((classification) => Number(classification.lower_limit) <= gutScorePreview.value
         && Number(classification.upper_limit) >= gutScorePreview.value) ?? null);
 
-const inputClass = 'mt-1.5 block min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100 disabled:cursor-not-allowed disabled:bg-slate-100';
+const controlClass = 'block min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100 disabled:cursor-not-allowed disabled:bg-slate-100';
+const inputClass = `mt-1.5 ${controlClass}`;
+const unitInputClass = `${controlClass} pr-12`;
 const labelClass = 'text-sm font-semibold text-slate-700';
 const errorClass = 'mt-1.5 text-xs font-medium text-rose-600';
 
@@ -138,12 +217,12 @@ function saveNarrative() {
 }
 
 function saveCondition() {
-    if (!props.capabilities.update_url || !isInherited.value || isPublished.value) return;
+    if (!props.capabilities.update_url || isPublished.value) return;
 
     form.status = 'draft';
     form.patch(props.capabilities.update_url, {
         preserveScroll: true,
-        only: ['assessment', 'classification', 'gut_snapshot', 'quantity', 'capabilities', 'flash'],
+        only: ['assessment', 'classification', 'gut_snapshot', 'quantities', 'quantity_summary', 'capabilities', 'flash'],
         onSuccess: () => { editing.condition = false; },
     });
 }
@@ -153,81 +232,85 @@ function startReinspectionAssessment() {
 
     startingReinspection.value = true;
     router.post(props.reinspection_action.assessment_store_url, {
-        condition: 'unchanged',
+        condition: 'reinspected',
         assessment_action: 'draft',
     }, {
         onFinish: () => { startingReinspection.value = false; },
     });
 }
 
-function selectGut(criterion, score) {
-    if (props.capabilities.gut_url) gutForm[criterion] = score;
-}
-
-function isGutSelected(criterion, score) {
-    return gutForm[criterion] !== null
-        && gutForm[criterion] !== ''
-        && Number(gutForm[criterion]) === Number(score);
-}
-
 function saveGut() {
     if (!props.capabilities.gut_url || !gutReady.value) return;
-    gutForm.put(props.capabilities.gut_url, {
+    gutForm
+        .transform((data) => buildTechnicalGutPayload(props.gut_definition, data))
+        .put(props.capabilities.gut_url, {
         preserveScroll: true,
-        only: ['assessment', 'classification', 'gut_snapshot', 'gut_options', 'gut_classification_ranges', 'capabilities', 'flash'],
+        only: ['assessment', 'classification', 'gut_definition', 'gut_snapshot', 'gut_options', 'gut_classification_ranges', 'capabilities', 'flash'],
         onSuccess: () => { editing.gut = false; },
     });
 }
 
 function saveQuantity() {
-    if (!props.capabilities.quantity_url) return;
+    const action = editingQuantity.value?.update_url ?? props.capabilities.quantity_store_url;
+    if (!action) return;
 
     quantityForm
         .transform((data) => ({
-            quantity: isCivil.value
-                ? { length: data.length, height: data.height, width: data.width, quantity: data.quantity }
-                : data.measurement_value === '' || data.measurement_value === null
-                    ? null
-                    : { measurement_value: data.measurement_value, measurement_unit: data.measurement_unit },
+            description: data.description || null,
+            quantity: buildNativeQuantityPayload(defectCategory.value, data, props.quantity_definition),
         }))
-        .put(props.capabilities.quantity_url, {
+        .submit(editingQuantity.value ? 'put' : 'post', action, {
             preserveScroll: true,
-            only: ['assessment', 'quantity', 'capabilities', 'flash'],
-            onSuccess: () => { editing.quantity = false; },
+            only: ['assessment', 'quantities', 'quantity_summary', 'capabilities', 'flash'],
+            onSuccess: () => cancelEditing('quantity'),
         });
 }
 
-function removeQuantity() {
-    if (!props.capabilities.quantity_url) return;
+function removeQuantity(item) {
+    if (!item.delete_url) return;
+    router.delete(item.delete_url, {
+        preserveScroll: true,
+        only: ['assessment', 'quantities', 'quantity_summary', 'capabilities', 'flash'],
+        onSuccess: () => {
+            if (editingQuantity.value?.public_id === item.public_id) cancelEditing('quantity');
+        },
+    });
+}
 
-    quantityForm.measurement_value = '';
-    quantityForm
-        .transform(() => ({ quantity: null }))
-        .put(props.capabilities.quantity_url, {
-            preserveScroll: true,
-            only: ['assessment', 'quantity', 'capabilities', 'flash'],
-            onSuccess: () => { editing.quantity = false; },
-        });
+function quantityDefaults(item = null) {
+    const inputs = item?.inputs ?? {};
+    return {
+        description: item?.description ?? '',
+        ...inputs,
+        element: item?.rec_element ?? item?.element_code ?? '',
+        area: inputs.area ?? (isTac.value ? item?.measurement_value ?? '' : ''),
+        total_weight: inputs.total_weight ?? (item?.mode === 'manual' ? item?.measurement_value ?? '' : ''),
+        length: inputs.length ?? '',
+        height: inputs.height ?? '',
+        width: inputs.width ?? '',
+        quantity: item?.quantity ?? inputs.quantity ?? 1,
+    };
+}
+
+function editQuantity(item = null) {
+    editingQuantity.value = item;
+    quantityForm.defaults(quantityDefaults(item));
+    quantityForm.reset();
+    quantityForm.clearErrors();
+    editing.quantity = true;
 }
 
 function startEditing(card) {
     if (card === 'quantity') {
-        quantityForm.defaults({
-            measurement_value: props.quantity?.measurement_value ?? '',
-            measurement_unit: props.quantity?.measurement_unit ?? props.measurement_units[0]?.value ?? 'unit',
-            length: props.quantity?.length ?? '',
-            height: props.quantity?.height ?? '',
-            width: props.quantity?.width ?? '',
-            quantity: props.quantity?.quantity ?? 1,
-        });
-        quantityForm.reset();
+        editQuantity();
+        return;
     }
     if (card === 'gut') {
-        gutForm.defaults({ condition: props.assessment.condition, gravity: props.assessment.gravity ?? null, urgency: props.assessment.urgency ?? null, trend: props.assessment.trend ?? null });
+        gutForm.defaults(gutDefaults());
         gutForm.reset();
     }
     if (card === 'narrative') {
-        form.defaults({ status: props.assessment.status, condition: props.assessment.condition, location_description: props.assessment.location_description ?? '', comment: props.assessment.comment ?? '', recommendation: props.assessment.recommendation ?? '', reason: props.assessment.reason ?? '', internal_notes: props.assessment.internal_notes ?? '', item_description: props.assessment.item_description ?? '', project_reference: props.assessment.project_reference ?? '', impacts_activity: props.assessment.impacts_activity ?? null, gravity: props.assessment.gravity ?? null, urgency: props.assessment.urgency ?? null, trend: props.assessment.trend ?? null });
+        form.defaults({ status: props.assessment.status, condition: props.assessment.condition, location_description: props.assessment.location_description ?? '', comment: props.assessment.comment ?? '', recommendation: props.assessment.recommendation ?? '', reason: props.assessment.reason ?? '', internal_notes: props.assessment.internal_notes ?? '', item_description: props.assessment.item_description ?? '', project_reference: props.assessment.project_reference ?? '', impacts_activity: props.assessment.impacts_activity ?? null });
         form.reset();
     }
     if (card === 'condition') {
@@ -237,13 +320,100 @@ function startEditing(card) {
     editing[card] = true;
 }
 
+function changeTrendGroup() {
+    gutForm.trend_option_code = '';
+}
+
+function changeQuantityElement() {
+    for (const element of recElements.value) {
+        for (const field of element.fields ?? []) quantityForm[field.key] = '';
+    }
+    quantityForm.quantity = 1;
+    quantityForm.total_weight = '';
+}
+
+function quantityElementLabel(item) {
+    const code = item.rec_element ?? item.element_code;
+    return recElements.value.find((element) => element.code === code)?.label ?? code;
+}
+
+const quantityInputLabels = {
+    length: 'Comprimento', height: 'Altura', width: 'Largura', quantity: 'Quantidade', area: 'Área',
+    flange_width: 'Mesa', flange_thickness: 'Espessura da mesa', web_height: 'Alma',
+    web_thickness: 'Espessura da alma', thickness: 'Espessura', fold_width: 'Dobra da mesa',
+    outer_diameter: 'Diâmetro externo', leg_1: 'Aba 1', leg_2: 'Aba 2', side_1: 'Aba 1',
+    side_2: 'Aba 2', total_weight: 'Peso total',
+};
+
+function quantityInputLabel(key) {
+    return quantityInputLabels[key] ?? key;
+}
+
+function civilInputUnit(key) {
+    return isCivil.value && ['length', 'height', 'width'].includes(key) ? 'm' : null;
+}
+
+function blockInvalidNumberKey(event) {
+    if (['e', 'E', '+', '-'].includes(event.key)) event.preventDefault();
+}
+
 function cancelEditing(card) {
     editing[card] = false;
-    if (card === 'quantity') { quantityForm.reset(); quantityForm.clearErrors(); }
+    if (card === 'quantity') {
+        editingQuantity.value = null;
+        quantityForm.defaults(quantityDefaults());
+        quantityForm.reset();
+        quantityForm.clearErrors();
+    }
     if (card === 'gut') { gutForm.reset(); gutForm.clearErrors(); }
     if (card === 'narrative') { form.reset(); form.clearErrors(); }
     if (card === 'condition') { form.reset('condition', 'reason'); form.clearErrors('condition', 'reason'); }
 }
+
+function clearMapPreview() {
+    if (mapPreviewUrl.value) URL.revokeObjectURL(mapPreviewUrl.value);
+    mapPreviewUrl.value = null;
+}
+
+function selectMapFile(event) {
+    clearMapPreview();
+    mapForm.file = event.target.files[0] || null;
+    mapForm.clearErrors();
+    if (mapForm.file) mapPreviewUrl.value = URL.createObjectURL(mapForm.file);
+}
+
+function uploadMap() {
+    if (!props.capabilities.location_map_upload_url || !mapForm.file) return;
+    mapForm.post(props.capabilities.location_map_upload_url, {
+        forceFormData: true,
+        preserveScroll: true,
+        onSuccess: () => {
+            clearMapPreview();
+            mapForm.reset('file');
+        },
+    });
+}
+
+function removeMap() {
+    if (!props.capabilities.location_map_delete_url || !window.confirm('Remover o mapa e a localização desta avaliação?')) return;
+    router.delete(props.capabilities.location_map_delete_url, { preserveScroll: true });
+}
+
+function pollMapProcessing() {
+    if (mapProcessingPoll) window.clearInterval(mapProcessingPoll);
+    mapProcessingPoll = null;
+    if (!['pending', 'processing'].includes(props.location_map?.processing_status)) return;
+    mapProcessingPoll = window.setInterval(() => {
+        router.reload({ only: ['location_map', 'assessment', 'capabilities', 'flash'], preserveScroll: true, preserveState: true });
+    }, 2500);
+}
+
+watch(() => props.location_map?.processing_status, pollMapProcessing);
+onMounted(pollMapProcessing);
+onUnmounted(() => {
+    if (mapProcessingPoll) window.clearInterval(mapProcessingPoll);
+    clearMapPreview();
+});
 </script>
 
 <template>
@@ -352,7 +522,7 @@ function cancelEditing(card) {
                             <template v-else>Esta é a primeira avaliação da avaria.</template>
                         </p>
                     </div>
-                    <button v-if="isInherited && capabilities.update_url && !isPublished && !editing.condition" type="button" class="rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 hover:border-slate-400" @click="startEditing('condition')">Editar</button>
+                    <button v-if="capabilities.update_url && !isPublished && !editing.condition" type="button" class="rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 hover:border-slate-400" @click="startEditing('condition')">Editar</button>
                 </div>
 
                 <div v-if="editing.condition" class="mt-5 space-y-4 border-t border-slate-100 pt-5">
@@ -387,69 +557,138 @@ function cancelEditing(card) {
                 <div class="flex flex-wrap items-start justify-between gap-3">
                     <div>
                         <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">02 · Quantitativo</p>
-                        <h2 class="mt-2 text-xl font-semibold text-slate-950">{{ isCivil ? 'Volume da avaria' : 'Dimensão principal da manifestação' }}</h2>
+                        <h2 class="mt-2 text-xl font-semibold text-slate-950">
+                            {{ isCivil ? 'Volume da avaria' : isTac ? 'Área da avaria' : 'Peso do elemento' }}
+                        </h2>
                         <p class="mt-1 text-sm text-slate-500">
-                            {{ isCivil ? 'Informe as dimensões em metros e a quantidade. O volume será calculado automaticamente.' : 'Valor total observado na avaria.' }}<span v-if="requiresEvidence"> Obrigatório para publicar.</span>
+                            <template v-if="isCivil">Informe as dimensões em metros e a quantidade. O volume será calculado automaticamente.</template>
+                            <template v-else-if="isTac">Informe a área total observada em metros quadrados.</template>
+                            <template v-else>Escolha o elemento e informe suas dimensões. O peso será calculado quando houver fórmula.</template>
+                            <span> Obrigatório para publicar.</span>
                         </p>
                     </div>
-                    <button v-if="capabilities.quantity_url && !editing.quantity" type="button" class="rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 hover:border-slate-400" @click="startEditing('quantity')">Editar</button>
+                    <button v-if="capabilities.quantity_store_url && !editing.quantity" type="button" class="rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 hover:border-slate-400" @click="editQuantity()">Adicionar item</button>
                 </div>
                 <div v-if="editing.quantity" class="mt-5 grid gap-4 border-t border-slate-100 pt-5 sm:grid-cols-2">
+                    <div class="sm:col-span-2">
+                        <p class="text-sm font-semibold text-slate-900">{{ editingQuantity ? `Editar item ${editingQuantity.position}` : 'Novo item' }}</p>
+                    </div>
+                    <label class="block sm:col-span-2">
+                        <span :class="labelClass">Descrição do item <span class="font-normal text-slate-400">(opcional)</span></span>
+                        <input v-model="quantityForm.description" maxlength="180" type="text" :class="inputClass" placeholder="Ex.: Trecho junto ao apoio norte">
+                        <p v-if="quantityForm.errors.description" :class="errorClass">{{ quantityForm.errors.description }}</p>
+                    </label>
                     <template v-if="isCivil">
                         <label v-for="field in civilFields" :key="field.key" class="block">
                             <span :class="labelClass">{{ field.label }}</span>
-                            <input v-model.number="quantityForm[field.key]" :disabled="!capabilities.quantity_url" type="number" min="0.0001" step="0.0001" :class="inputClass">
+                            <div class="relative mt-1.5">
+                                <input v-model="quantityForm[field.key]" type="number" inputmode="decimal" min="0.0001" step="any" :class="unitInputClass" @keydown="blockInvalidNumberKey">
+                                <span class="pointer-events-none absolute inset-y-0 right-0 flex items-center border-l border-slate-200 px-3 text-sm font-semibold text-slate-500">{{ field.key === 'quantity' ? 'un.' : 'm' }}</span>
+                            </div>
                             <p v-if="quantityForm.errors[`quantity.${field.key}`]" :class="errorClass">{{ quantityForm.errors[`quantity.${field.key}`] }}</p>
                         </label>
                         <div class="rounded-xl bg-slate-50 p-4">
                             <p :class="labelClass">M³ UNI.</p>
-                            <p class="mt-1 text-base font-semibold text-slate-900" aria-live="polite">{{ formatCivilMeasurement(civilVolume?.unitVolume) }} m³</p>
+                            <p class="mt-1 text-base font-semibold text-slate-900" aria-live="polite">{{ formatNativeMeasurement(quantityPreview?.unitValue) }} m³</p>
                             <p class="mt-1 text-xs text-slate-500">Comprimento × altura × largura</p>
                         </div>
                         <div class="rounded-xl bg-teal-50 p-4">
                             <p :class="labelClass">M³ TOTAL · Quantitativo</p>
-                            <p class="mt-1 text-base font-semibold text-teal-900" aria-live="polite">{{ formatCivilMeasurement(civilVolume?.totalVolume) }} m³</p>
+                            <p class="mt-1 text-base font-semibold text-teal-900" aria-live="polite">{{ formatNativeMeasurement(quantityPreview?.totalValue) }} m³</p>
                             <p class="mt-1 text-xs text-slate-500">M³ UNI. × quantidade</p>
                         </div>
                     </template>
-                    <template v-else>
+                    <template v-else-if="isTac">
                         <label class="block">
-                            <span :class="labelClass">Valor</span>
-                            <input v-model.number="quantityForm.measurement_value" :disabled="!capabilities.quantity_url" type="number" min="0.0001" step="0.0001" placeholder="Ex.: 1,20" :class="inputClass">
-                            <p v-if="quantityForm.errors['quantity.measurement_value']" :class="errorClass">{{ quantityForm.errors['quantity.measurement_value'] }}</p>
+                            <span :class="labelClass">Área (m²)</span>
+                            <input v-model="quantityForm.area" inputmode="decimal" type="number" min="0.0001" step="any" placeholder="Ex.: 1,20" :class="inputClass">
+                            <p v-if="quantityForm.errors['quantity.area']" :class="errorClass">{{ quantityForm.errors['quantity.area'] }}</p>
                         </label>
-                        <label class="block">
-                            <span :class="labelClass">Unidade</span>
-                            <select v-model="quantityForm.measurement_unit" :disabled="!capabilities.quantity_url" :class="inputClass">
-                                <option v-for="unitOption in measurement_units" :key="unitOption.value" :value="unitOption.value">{{ unitOption.label }}</option>
+                        <div class="rounded-xl bg-teal-50 p-4">
+                            <p :class="labelClass">Área total · Quantitativo</p>
+                            <p class="mt-1 text-base font-semibold text-teal-900" aria-live="polite">{{ formatNativeMeasurement(quantityPreview?.totalValue) }} m²</p>
+                            <p class="mt-1 text-xs text-slate-500">Valor informado manualmente</p>
+                        </div>
+                    </template>
+                    <template v-else-if="isRec">
+                        <label class="block sm:col-span-2">
+                            <span :class="labelClass">Elemento REC</span>
+                            <select v-model="quantityForm.element" :class="inputClass" @change="changeQuantityElement">
+                                <option value="">Selecione o elemento</option>
+                                <option v-for="element in recElements" :key="element.code" :value="element.code">{{ element.label }}</option>
                             </select>
-                            <p v-if="quantityForm.errors['quantity.measurement_unit']" :class="errorClass">{{ quantityForm.errors['quantity.measurement_unit'] }}</p>
+                            <p v-if="quantityForm.errors['quantity.element']" :class="errorClass">{{ quantityForm.errors['quantity.element'] }}</p>
                         </label>
+                        <template v-if="selectedRecElement?.mode === 'manual'">
+                            <label class="block">
+                                <span :class="labelClass">Peso total (kg)</span>
+                                <input v-model="quantityForm.total_weight" type="number" inputmode="decimal" min="0.0001" step="any" :class="inputClass">
+                                <p v-if="quantityForm.errors['quantity.total_weight']" :class="errorClass">{{ quantityForm.errors['quantity.total_weight'] }}</p>
+                            </label>
+                            <div class="rounded-xl bg-amber-50 p-4">
+                                <p :class="labelClass">Modo de cálculo</p>
+                                <p class="mt-1 font-semibold text-amber-900">Peso informado manualmente</p>
+                            </div>
+                        </template>
+                        <template v-else-if="selectedRecElement">
+                            <label v-for="field in recQuantityFields" :key="field.key" class="block">
+                                <span :class="labelClass">{{ field.label }}<template v-if="field.unit"> ({{ field.unit }})</template></span>
+                                <input v-model="quantityForm[field.key]" type="number" inputmode="decimal" min="0.0001" step="any" :class="inputClass">
+                                <p v-if="quantityForm.errors[`quantity.${field.key}`]" :class="errorClass">{{ quantityForm.errors[`quantity.${field.key}`] }}</p>
+                            </label>
+                            <div class="rounded-xl bg-slate-50 p-4">
+                                <p :class="labelClass">Peso unitário</p>
+                                <p class="mt-1 text-base font-semibold text-slate-900" aria-live="polite">{{ formatNativeMeasurement(quantityPreview?.unitValue) }} kg</p>
+                            </div>
+                            <div class="rounded-xl bg-teal-50 p-4">
+                                <p :class="labelClass">Peso total · Quantitativo</p>
+                                <p class="mt-1 text-base font-semibold text-teal-900" aria-live="polite">{{ formatNativeMeasurement(quantityPreview?.totalValue) }} kg</p>
+                            </div>
+                        </template>
                     </template>
                 </div>
                 <p v-if="editing.quantity && quantityForm.errors.quantity" :class="errorClass">{{ quantityForm.errors.quantity }}</p>
-                <div v-if="editing.quantity && capabilities.quantity_url" class="mt-4 flex flex-wrap justify-end gap-3">
-                    <button v-if="quantity" type="button" :disabled="quantityForm.processing" class="rounded-xl border border-rose-200 bg-white px-4 py-2.5 text-sm font-semibold text-rose-700 disabled:opacity-50" @click="removeQuantity">Remover quantitativo</button>
+                <div v-if="editing.quantity && capabilities.quantity_store_url" class="mt-4 flex flex-wrap justify-end gap-3">
                     <button type="button" :disabled="quantityForm.processing" class="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700" @click="cancelEditing('quantity')">Cancelar</button>
-                    <button type="button" :disabled="quantityForm.processing" class="rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50" @click="saveQuantity">Salvar quantitativo</button>
+                    <button type="button" :disabled="quantityForm.processing || !quantityReady" class="rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50" @click="saveQuantity">Salvar item</button>
                 </div>
-                <div v-else class="mt-5 border-t border-slate-100 pt-5">
-                    <div v-if="quantity && isCivil" class="grid gap-4 sm:grid-cols-2">
-                        <div v-for="field in civilFields" :key="field.key">
-                            <p class="text-sm text-slate-500">{{ field.label }}</p>
-                            <p class="mt-1 font-semibold text-slate-900">{{ formatCivilMeasurement(quantity[field.key]) }}</p>
+                <div v-else class="mt-5 space-y-4 border-t border-slate-100 pt-5">
+                    <article v-for="item in quantities" :key="item.public_id ?? item.position" class="rounded-2xl border border-slate-200 p-4">
+                        <div class="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                                <p class="text-xs font-bold uppercase tracking-wide text-slate-500">Item {{ item.position }}</p>
+                                <p class="mt-1 font-semibold text-slate-950">{{ item.description || (isRec ? quantityElementLabel(item) : 'Sem descrição') }}</p>
+                                <p v-if="isRec && item.description" class="mt-1 text-sm text-slate-500">{{ quantityElementLabel(item) }}</p>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <button v-if="item.update_url" type="button" class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700" @click="editQuantity(item)">Editar</button>
+                                <button v-if="item.delete_url" type="button" class="rounded-lg border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-700" @click="removeQuantity(item)">Excluir</button>
+                            </div>
                         </div>
-                        <div>
-                            <p class="text-sm text-slate-500">M³ UNI.</p>
-                            <p class="mt-1 font-semibold text-slate-900">{{ formatCivilMeasurement(quantity.unit_volume) }} m³</p>
-                        </div>
-                        <div>
-                            <p class="text-sm text-teal-700">M³ TOTAL · Quantitativo</p>
-                            <p class="mt-1 text-base font-semibold text-teal-900">{{ formatCivilMeasurement(quantity.measurement_value) }} m³</p>
-                        </div>
+                        <dl class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                            <div v-for="(value, key) in item.inputs" :key="key" class="rounded-xl bg-slate-50 p-3">
+                                <dt class="text-xs text-slate-500">{{ quantityInputLabel(key) }}<span v-if="civilInputUnit(key)"> ({{ civilInputUnit(key) }})</span></dt>
+                                <dd class="mt-1 font-semibold text-slate-900">{{ formatNativeMeasurement(value) }}<span v-if="civilInputUnit(key)"> {{ civilInputUnit(key) }}</span></dd>
+                            </div>
+                            <div v-if="item.mode !== 'manual' || isCivil" class="rounded-xl bg-slate-50 p-3">
+                                <dt class="text-xs text-slate-500">Quantidade</dt>
+                                <dd class="mt-1 font-semibold text-slate-900">{{ formatNativeMeasurement(item.quantity) }}<span v-if="isCivil"> un.</span></dd>
+                            </div>
+                            <div v-if="item.unit_value" class="rounded-xl bg-slate-50 p-3">
+                                <dt class="text-xs text-slate-500">Valor unitário</dt>
+                                <dd class="mt-1 font-semibold text-slate-900">{{ formatNativeMeasurement(item.unit_value) }} {{ item.unit }}</dd>
+                            </div>
+                            <div class="rounded-xl bg-teal-50 p-3">
+                                <dt class="text-xs font-medium text-teal-700">Total do item</dt>
+                                <dd class="mt-1 font-bold text-teal-900">{{ formatNativeMeasurement(item.measurement_value) }} {{ item.unit }}</dd>
+                            </div>
+                        </dl>
+                    </article>
+                    <p v-if="quantities.length === 0" class="text-sm text-slate-500">Nenhum item de quantitativo informado.</p>
+                    <div v-else class="rounded-2xl bg-slate-950 p-5 text-white">
+                        <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-200">Total final · {{ quantities.length }} item(ns)</p>
+                        <p class="mt-2 text-2xl font-bold">{{ formatNativeMeasurement(quantity_summary.total_raw ?? quantity_summary.total) }} {{ quantityUnitLabel }}</p>
                     </div>
-                    <p v-else-if="quantity" class="text-base font-semibold text-slate-900">{{ quantity.measurement_value }} {{ quantityUnitLabel }}</p>
-                    <p v-else class="text-sm text-slate-500">Nenhum quantitativo informado.</p>
                 </div>
             </section>
 
@@ -466,21 +705,155 @@ function cancelEditing(card) {
                     </div>
                 </div>
                 <p v-if="!gutConfigured" class="mt-5 border-t border-slate-100 pt-5 text-sm text-amber-700">As notas GUT não estão disponíveis. Atualize a página para tentar novamente.</p>
-                <div v-else-if="editing.gut" class="mt-5 grid gap-4 border-t border-slate-100 pt-5 md:grid-cols-3">
-                    <div v-for="criterion in gutCriteria" :key="criterion.key" class="rounded-2xl border border-slate-200 p-4">
-                        <h3 class="text-sm font-semibold text-slate-800">{{ criterion.label }}</h3>
-                        <div class="mt-3 flex flex-wrap gap-2" role="group" :aria-label="criterion.label">
-                            <button v-for="option in gut_options[criterion.key]" :key="option.score" type="button" :disabled="gutForm.processing" class="min-w-11 rounded-lg border px-3 py-2 text-sm font-bold transition focus:outline-none focus:ring-2 focus:ring-slate-400 disabled:cursor-not-allowed disabled:opacity-70" :class="isGutSelected(criterion.key, option.score) ? 'ring-2 ring-slate-800 ring-offset-1' : ''" :style="{ borderColor: option.color, backgroundColor: `${option.color}22` }" :aria-pressed="isGutSelected(criterion.key, option.score)" @click="selectGut(criterion.key, option.score)">{{ option.score }}</button>
+                <div v-else-if="editing.gut && hasTechnicalGut" class="mt-5 space-y-5 border-t border-slate-100 pt-5">
+                    <div v-if="isCivil || isRec" class="grid gap-4 md:grid-cols-2">
+                        <div class="rounded-2xl border border-slate-200 p-4">
+                            <span :class="labelClass">Impacto na Segurança</span>
+                            <GutScoreSelect
+                                v-model="gutForm.safety_impact_code"
+                                :options="gut_definition.safety_impact_options"
+                                criterion="G"
+                                aria-label="Impacto na Segurança"
+                                placeholder="Selecione o impacto"
+                            />
+                            <p v-if="gutForm.errors.safety_impact_code" :class="errorClass">{{ gutForm.errors.safety_impact_code }}</p>
                         </div>
-                        <p v-if="gutForm.errors[criterion.key]" :class="errorClass">{{ gutForm.errors[criterion.key] }}</p>
+                        <div class="rounded-2xl border border-slate-200 p-4">
+                            <span :class="labelClass">Impacto no Ativo</span>
+                            <GutScoreSelect
+                                v-model="gutForm.asset_impact_code"
+                                :options="gut_definition.asset_impact_options"
+                                criterion="G"
+                                aria-label="Impacto no Ativo"
+                                placeholder="Selecione o impacto"
+                            />
+                            <p v-if="gutForm.errors.asset_impact_code" :class="errorClass">{{ gutForm.errors.asset_impact_code }}</p>
+                        </div>
+                    </div>
+
+                    <div v-if="isTac" class="grid gap-4 md:grid-cols-2">
+                        <div v-for="criterion in ['gravity', 'urgency']" :key="criterion" class="rounded-2xl border p-4" :class="gut_definition.sources?.[criterion]?.valid ? 'border-slate-200 bg-slate-50' : 'border-amber-300 bg-amber-50'">
+                            <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">{{ criterion === 'gravity' ? 'Gravidade (G) · Código ABC' : 'Urgência (U) · Atmosfera' }}</p>
+                            <p v-if="gut_definition.sources?.[criterion]?.valid" class="mt-2 font-semibold text-slate-900">
+                                {{ gut_definition.sources[criterion].label }} · Nota {{ gut_definition.sources[criterion].score }}
+                            </p>
+                            <p v-else class="mt-2 text-sm font-medium text-amber-800">
+                                {{ gut_definition.sources?.[criterion]?.message || 'Corrija este dado no cadastro de origem para calcular o GUT.' }}
+                            </p>
+                        </div>
+                    </div>
+
+                    <div v-if="isCivil || isRec" class="rounded-2xl border border-slate-200 p-4">
+                        <div>
+                            <span :class="labelClass">{{ isCivil ? 'Função/criticidade do elemento' : 'Função estrutural' }}</span>
+                            <GutScoreSelect
+                                v-model="gutForm.urgency_option_code"
+                                :options="urgencyOptions"
+                                criterion="U"
+                                :aria-label="isCivil ? 'Função ou criticidade do elemento' : 'Função estrutural'"
+                                placeholder="Selecione a função"
+                            />
+                            <p v-if="gutForm.errors.urgency_option_code" :class="errorClass">{{ gutForm.errors.urgency_option_code }}</p>
+                        </div>
+                        <div v-if="gutForm.urgency_option_code === MANUAL_OPTION" class="mt-4 grid gap-4 md:grid-cols-[1fr_10rem]">
+                            <label>
+                                <span :class="labelClass">Descrição técnica da urgência</span>
+                                <textarea v-model="gutForm.urgency_manual_description" rows="3" maxlength="1000" :class="inputClass"></textarea>
+                                <p v-if="gutForm.errors.urgency_manual_description" :class="errorClass">{{ gutForm.errors.urgency_manual_description }}</p>
+                            </label>
+                            <div>
+                                <span :class="labelClass">Nota U</span>
+                                <GutScoreSelect
+                                    :model-value="gutForm.urgency_manual_score"
+                                    :options="manualUrgencyOptions"
+                                    criterion="U"
+                                    aria-label="Nota U"
+                                    placeholder="Selecione a nota"
+                                    value-key="score"
+                                    @update:model-value="gutForm.urgency_manual_score = Number($event)"
+                                />
+                                <p v-if="gutForm.errors.urgency_manual_score" :class="errorClass">{{ gutForm.errors.urgency_manual_score }}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="rounded-2xl border border-slate-200 p-4">
+                        <template v-if="isCivil">
+                            <label class="block">
+                                <span :class="labelClass">Tipo de degradação</span>
+                                <select v-model="gutForm.trend_group_code" :class="inputClass">
+                                    <option value="">Selecione o tipo</option>
+                                    <option v-for="group in gut_definition.trend_groups" :key="group.code" :value="group.code">{{ group.label }}</option>
+                                </select>
+                                <p v-if="gutForm.errors.trend_group_code" :class="errorClass">{{ gutForm.errors.trend_group_code }}</p>
+                            </label>
+                            <div class="mt-4 grid gap-4 md:grid-cols-[1fr_10rem]">
+                                <label>
+                                    <span :class="labelClass">Descrição técnica da condição</span>
+                                    <textarea v-model="gutForm.trend_manual_description" rows="3" maxlength="1000" :class="inputClass"></textarea>
+                                    <p v-if="gutForm.errors.trend_manual_description" :class="errorClass">{{ gutForm.errors.trend_manual_description }}</p>
+                                </label>
+                                <div>
+                                    <span :class="labelClass">Nota T</span>
+                                    <GutScoreSelect
+                                        :model-value="gutForm.trend_manual_score"
+                                        :options="manualTrendOptions"
+                                        criterion="T"
+                                        aria-label="Nota T"
+                                        placeholder="Selecione a nota"
+                                        value-key="score"
+                                        @update:model-value="gutForm.trend_manual_score = Number($event)"
+                                    />
+                                    <p v-if="gutForm.errors.trend_manual_score" :class="errorClass">{{ gutForm.errors.trend_manual_score }}</p>
+                                </div>
+                            </div>
+                        </template>
+                        <template v-else-if="isRec">
+                            <div class="grid gap-4 md:grid-cols-2">
+                                <label>
+                                    <span :class="labelClass">Dano</span>
+                                    <select v-model="gutForm.trend_group_code" :class="inputClass" @change="changeTrendGroup">
+                                        <option value="">Selecione o dano</option>
+                                        <option v-for="group in gut_definition.trend_groups" :key="group.code" :value="group.code">{{ group.label }}</option>
+                                    </select>
+                                    <p v-if="gutForm.errors.trend_group_code" :class="errorClass">{{ gutForm.errors.trend_group_code }}</p>
+                                </label>
+                                <div>
+                                    <span :class="labelClass">Condição do dano</span>
+                                    <GutScoreSelect
+                                        v-model="gutForm.trend_option_code"
+                                        :options="trendOptions"
+                                        criterion="T"
+                                        aria-label="Condição do dano"
+                                        placeholder="Selecione a condição"
+                                        :disabled="!gutForm.trend_group_code"
+                                    />
+                                    <p v-if="gutForm.errors.trend_option_code" :class="errorClass">{{ gutForm.errors.trend_option_code }}</p>
+                                </div>
+                            </div>
+                        </template>
+                        <template v-else>
+                            <div>
+                                <span :class="labelClass">Grau de oxidação ASTM D610</span>
+                                <GutScoreSelect
+                                    v-model="gutForm.trend_option_code"
+                                    :options="gut_definition.trend_options"
+                                    criterion="T"
+                                    aria-label="Grau de oxidação ASTM D610"
+                                    placeholder="Selecione o grau"
+                                />
+                                <p v-if="gutForm.errors.trend_option_code" :class="errorClass">{{ gutForm.errors.trend_option_code }}</p>
+                            </div>
+                        </template>
                     </div>
                 </div>
                 <div v-if="editing.gut" class="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm">
                     <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Resultado automático</p>
                     <p v-if="gutScorePreview !== null" class="mt-1 font-semibold text-slate-900">
+                        <template v-if="technicalGutPreview">G {{ technicalGutPreview.gravity }} × U {{ technicalGutPreview.urgency }} × T {{ technicalGutPreview.trend }} = </template>
                         {{ gutScorePreview }} · {{ previewClassification ? `${previewClassification.code} — ${previewClassification.name}` : 'Sem classificação para este resultado GUT' }}
                     </p>
-                    <p v-else class="mt-1 text-slate-600">Selecione G, U e T para calcular o resultado.</p>
+                    <p v-else class="mt-1 text-slate-600">Preencha os critérios técnicos para calcular o resultado.</p>
                     <p v-if="gutForm.errors.gut" :class="errorClass">{{ gutForm.errors.gut }}</p>
                 </div>
                 <div v-if="editing.gut" class="mt-5 flex justify-end gap-3">
@@ -492,6 +865,9 @@ function cancelEditing(card) {
                         <p class="text-xs font-semibold text-slate-500">{{ item.label }}</p>
                         <span v-if="item.score !== null" class="mt-3 inline-flex min-w-10 items-center justify-center rounded-lg px-3 py-2 text-base font-bold" :style="item.color ? { backgroundColor: item.color, color: '#111827' } : {}" :class="item.color ? '' : 'bg-slate-100 text-slate-700'">{{ item.score }}</span>
                         <p v-else class="mt-3 text-sm text-slate-500">Não definida</p>
+                        <ul v-if="item.details.length" class="mt-3 space-y-1 text-xs text-slate-600">
+                            <li v-for="detail in item.details" :key="detail">{{ detail }}</li>
+                        </ul>
                     </div>
                 </div>
                 <div v-if="gutConfigured && !editing.gut" class="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm">
@@ -523,6 +899,7 @@ function cancelEditing(card) {
                     <label class="block">
                         <span :class="labelClass">Recomendação</span>
                         <textarea v-model="form.recommendation" rows="5" maxlength="10000" :class="inputClass" :disabled="!capabilities.update"></textarea>
+                        <p v-if="requiresEvidence" class="mt-1.5 text-xs text-slate-500">Obrigatória para publicar a avaliação.</p>
                         <p v-if="form.errors.recommendation" :class="errorClass">{{ form.errors.recommendation }}</p>
                     </label>
                 </div>
@@ -545,7 +922,59 @@ function cancelEditing(card) {
             <section v-if="requiresEvidence" class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
                 <div class="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                        <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">05 · Registros fotográficos</p>
+                        <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">05 · Mapa e localização</p>
+                        <h2 class="mt-2 text-xl font-semibold text-slate-950">Localização visual da avaria</h2>
+                        <p class="mt-1 text-sm text-slate-500">Envie o mapa e identifique uma ou mais regiões da mesma avaria. Obrigatório para publicar.</p>
+                    </div>
+                    <span class="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700">
+                        <span class="h-3 w-3 rounded-full border border-black/10" :style="{ backgroundColor: location_map?.color || '#64748B' }"></span>
+                        Cor automática do GUT
+                    </span>
+                </div>
+
+                <div class="mt-5 grid gap-5 border-t border-slate-100 pt-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
+                    <div class="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+                        <div class="aspect-[4/3]">
+                            <img v-if="location_map?.background_url" :src="location_map.background_url" :alt="`Mapa da avaria ${assessment.defect?.code}`" class="h-full w-full object-contain">
+                            <img v-else-if="mapPreviewUrl" :src="mapPreviewUrl" alt="Prévia do mapa selecionado" class="h-full w-full object-contain">
+                            <div v-else class="flex h-full items-center justify-center p-6 text-center text-sm text-slate-500">Nenhuma imagem de mapa enviada.</div>
+                        </div>
+                        <div v-if="location_map" class="border-t border-slate-200 bg-white p-4 text-sm">
+                            <div class="flex flex-wrap items-center justify-between gap-2">
+                                <span class="font-semibold text-slate-900">Versão {{ location_map.version }}</span>
+                                <span class="rounded-full px-2.5 py-1 text-xs font-semibold" :class="location_map.processing_status === 'ready' ? 'bg-emerald-100 text-emerald-800' : location_map.processing_status === 'failed' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800'">
+                                    {{ location_map.processing_status === 'ready' ? 'Disponível' : location_map.processing_status === 'failed' ? 'Falha' : 'Processando' }}
+                                </span>
+                            </div>
+                            <p v-if="location_map.processing_error" class="mt-2 text-xs text-rose-700">{{ location_map.processing_error }}</p>
+                            <p v-if="location_map.location?.confirmed" class="mt-2 text-xs font-semibold text-emerald-700">Localização confirmada.</p>
+                            <p v-else-if="location_map.location" class="mt-2 text-xs font-semibold text-amber-700">Localização herdada; confirme ou ajuste antes de publicar.</p>
+                            <p v-else-if="location_map.processing_status === 'ready'" class="mt-2 text-xs font-semibold text-amber-700">Identifique a localização antes de publicar.</p>
+                        </div>
+                    </div>
+
+                    <div class="space-y-3">
+                        <form v-if="capabilities.location_map_upload_url" class="rounded-2xl border border-slate-200 p-4" @submit.prevent="uploadMap">
+                            <h3 class="text-sm font-semibold text-slate-950">{{ location_map ? 'Substituir imagem' : 'Enviar mapa' }}</h3>
+                            <p class="mt-1 text-xs leading-5 text-slate-500">PNG, JPEG ou WEBP, até 50 MB. Uma substituição preserva as versões usadas em avaliações anteriores.</p>
+                            <input type="file" accept="image/png,image/jpeg,image/webp" class="mt-3 block w-full text-xs" @change="selectMapFile">
+                            <p v-if="mapForm.errors.file" class="mt-2 text-xs font-medium text-rose-700">{{ mapForm.errors.file }}</p>
+                            <button type="submit" :disabled="!mapForm.file || mapForm.processing" class="mt-3 w-full rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
+                                {{ mapForm.processing ? 'Enviando…' : (location_map ? 'Criar nova versão' : 'Enviar mapa') }}
+                            </button>
+                        </form>
+                        <Link v-if="location_map?.editor_url" :href="location_map.editor_url" class="block rounded-xl bg-slate-950 px-4 py-3 text-center text-sm font-semibold text-white hover:bg-teal-700">
+                            {{ location_map.location ? (location_map.location.confirmed ? 'Editar localização' : 'Confirmar localização') : 'Identificar localização' }}
+                        </Link>
+                        <button v-if="capabilities.location_map_delete_url" type="button" class="w-full rounded-xl border border-rose-200 bg-white px-4 py-2.5 text-sm font-semibold text-rose-700" @click="removeMap">Remover desta avaliação</button>
+                    </div>
+                </div>
+            </section>
+
+            <section v-if="requiresEvidence" class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">06 · Registros fotográficos</p>
                         <h2 class="mt-2 text-xl font-semibold text-slate-950">Documentação da avaria</h2>
                     </div>
                     <div class="flex flex-wrap items-center gap-2">

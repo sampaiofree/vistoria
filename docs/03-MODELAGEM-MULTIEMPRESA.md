@@ -65,9 +65,9 @@ O superadministrador acessa `/admin/organizations` para:
 - suspender e reativar empresas.
 
 A criação gera uma senha temporária aleatória para o administrador, exibida apenas
-na resposta da operação. A nova organização recebe automaticamente as categorias,
-classificações e opções GUT padrão descritas em
-[09 — Classificação e GUT](09-CLASSIFICACAO-CIVIL-GUT.md).
+na resposta da operação. Categorias, classificações e critérios GUT são um catálogo
+nativo compartilhado; não são provisionados por organização. As regras estão em
+[09 — Classificação GUT e Quantitativos](09-CLASSIFICACAO-GUT-E-QUANTITATIVOS.md).
 
 Uma empresa suspensa ou inativa não permite operação dos seus usuários. A
 interface global atual reativa empresas suspensas; o status `inactive` existe no

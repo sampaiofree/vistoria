@@ -222,6 +222,64 @@ final class EquipmentCsvImportTest extends TestCase
         $this->assertSame(0, Equipment::count());
     }
 
+    public function test_import_exposes_the_client_creation_action_when_the_client_is_missing(): void
+    {
+        $organization = Organization::factory()->create();
+        $admin = User::factory()->for($organization)->create(['account_type' => UserAccountType::CompanyAdmin->value]);
+
+        $this->actingAs($admin)
+            ->get(route('equipments.import.create'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('client_action.url', route('clients.create'))
+                ->where('client_action.label', 'Cadastrar cliente'));
+    }
+
+    public function test_import_reports_a_missing_client_without_discarding_the_preview(): void
+    {
+        $organization = Organization::factory()->create();
+        $admin = User::factory()->for($organization)->create(['account_type' => UserAccountType::CompanyAdmin->value]);
+        $csv = implode("\n", [
+            'Plano de manutenção;Item manutenção;Campo de ordenação (TAG);Descrição item de manutenção;Local de instalação;Area(usina);Area.nome;Sub-area;sub-area.nome;Denominação do loc.instalação;GrpLisTar.;Numerador de grupos;Código ABC;Prefixo de avaria',
+            '000012;000123;EQ-01;Descrição;LOC-01;U00;Geral;08;Pátio;Bomba;GRP;T5;D;AV-001',
+        ]);
+
+        $preview = $this->actingAs($admin)->post(route('equipments.import.preview'), [
+            'file' => UploadedFile::fake()->createWithContent('ativos.csv', $csv),
+        ]);
+        $previewUrl = $this->redirectLocation($preview);
+
+        $this->post(route('equipments.import.confirm'), [
+            'token' => $this->tokenFromUrl($previewUrl, 'preview'),
+            'mapping' => $this->mapping(),
+        ])->assertSessionHasErrors(['client' => 'Cadastre o cliente em Configurações antes de importar equipamentos.']);
+
+        $this->get($previewUrl)->assertInertia(fn (Assert $page) => $page
+            ->where('preview.total', 1)
+            ->where('client_action.url', route('clients.create')));
+    }
+
+    public function test_import_exposes_the_client_management_action_when_the_client_is_inactive(): void
+    {
+        [$admin, $organization] = $this->context();
+        $client = Client::query()->where('organization_id', $organization->id)->sole();
+        $client->update(['status' => RegistrationStatus::Inactive]);
+
+        $this->actingAs($admin)
+            ->get(route('equipments.import.create'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('client_action.url', route('clients.show', $client))
+                ->where('client_action.label', 'Gerenciar cliente'));
+    }
+
+    public function test_import_has_no_client_action_when_the_client_is_active(): void
+    {
+        [$admin] = $this->context();
+
+        $this->actingAs($admin)
+            ->get(route('equipments.import.create'))
+            ->assertInertia(fn (Assert $page) => $page->where('client_action', null));
+    }
+
     public function test_preview_tokens_expire_and_legacy_preview_url_redirects_to_import_start(): void
     {
         [$admin] = $this->context();

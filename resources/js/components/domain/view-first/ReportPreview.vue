@@ -23,7 +23,7 @@ const photographicBlocks = computed(() => props.content.photographic_documentati
 const evolutionRows = computed(() => props.content.evolution_rows ?? []);
 const reportFindings = computed(() => props.content.findings ?? []);
 const textualFindings = computed(() => reportFindings.value.filter((finding) =>
-    ['not_located', 'not_inspected'].includes(finding.condition),
+    ['canceled', 'canceled_sr'].includes(finding.condition),
 ));
 const generalAspects = computed(() => props.content.general_aspects?.document ?? null);
 const reportOverview = computed(() => props.content.overview ?? { blocks: [] });

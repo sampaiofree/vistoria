@@ -8,10 +8,10 @@ use App\Actions\Classification\SaveDefectAssessmentGut;
 use App\Enums\DefectAssessmentCondition;
 use App\Enums\DefectAssessmentStatus;
 use App\Enums\DefectStatus;
-use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
+use App\Models\DefectAssessmentLocation;
 use App\Models\Inspection;
 use App\Models\User;
 use App\Services\Defects\DefectAssessmentCompletionValidator;
@@ -74,6 +74,12 @@ final class AssessExistingDefect
             $this->validator->ensureConditionAllowed($defect, $inspection, $condition);
 
             $previousAssessment = $this->previousAssessmentResolver->handle($defect, $inspection);
+            $previousAssessment?->loadMissing(['locationMapVersion', 'location']);
+
+            $inheritedMapVersionId = $condition->requiresEvidence()
+                && $previousAssessment?->locationMapVersion?->isReady()
+                ? $previousAssessment->defect_location_map_version_id
+                : null;
 
             $assessment = DefectAssessment::query()->create([
                 'organization_id' => $this->tenant->id(),
@@ -81,6 +87,7 @@ final class AssessExistingDefect
                 'defect_id' => $defect->getKey(),
                 'inspection_id' => $inspection->getKey(),
                 'previous_assessment_id' => $previousAssessment?->getKey(),
+                'defect_location_map_version_id' => $inheritedMapVersionId,
                 'condition' => $condition,
                 'status' => DefectAssessmentStatus::Draft,
                 'location_description' => TextNormalizer::nullableText($data['location_description'] ?? null),
@@ -95,13 +102,23 @@ final class AssessExistingDefect
                 'updated_by' => $actor->getKey(),
             ]);
 
-            if (($data['assessment_action'] ?? DefectAssessmentStatus::Draft->value) === DefectAssessmentStatus::Complete->value) {
-                $assessment = $this->saveGut->handle($actor, $assessment, [
-                    'condition' => $assessment->condition->value,
-                    'gravity' => $data['gravity'] ?? null,
-                    'urgency' => $data['urgency'] ?? null,
-                    'trend' => $data['trend'] ?? null,
+            if ($inheritedMapVersionId !== null && $previousAssessment?->location !== null) {
+                DefectAssessmentLocation::query()->create([
+                    'organization_id' => $assessment->organization_id,
+                    'equipment_id' => $assessment->equipment_id,
+                    'inspection_id' => $assessment->inspection_id,
+                    'defect_assessment_id' => $assessment->id,
+                    'geometry' => $previousAssessment->location->geometry,
+                    'label' => $previousAssessment->location->label,
+                    'confirmed_at' => null,
+                    'confirmed_by' => null,
+                    'created_by' => $actor->id,
+                    'updated_by' => $actor->id,
                 ]);
+            }
+
+            if (($data['assessment_action'] ?? DefectAssessmentStatus::Draft->value) === DefectAssessmentStatus::Complete->value) {
+                $assessment = $this->saveGut->handle($actor, $assessment, $data);
 
                 return $this->completeAssessment->handle($actor, $assessment, $data);
             }

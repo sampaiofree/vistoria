@@ -44,13 +44,14 @@ final class InspectionRoutesTest extends TestCase
                 ->component('Inspections/Create')
                 ->has('selected_equipment', 0)
                 ->where('equipment_search_url', route('inspections.equipment-options'))
-                ->has('inspectors', 1));
+                ->has('inspectors', 1)
+                ->missing('atmospheric_options'));
 
         $response = $this->actingAs($admin)->post(route('inspections.store'), [
             'inspections' => [[
                 'equipment_id' => $equipment->id,
-                'planned_start_on' => '2026-07-30',
-                'planned_end_on' => '2026-07-31',
+                'planned_start_on' => '2026-09-20',
+                'planned_end_on' => '2026-09-22',
                 'inspector_id' => $inspector->id,
             ]],
         ]);
@@ -65,6 +66,7 @@ final class InspectionRoutesTest extends TestCase
         $this->assertSame($equipment->id, $inspection->equipment_id);
         $this->assertSame('planned', $inspection->status->value);
         $this->assertSame('initial', $inspection->inspection_type->value);
+        $this->assertNull($inspection->atmospheric_classification);
         $this->assertNotEmpty($inspection->number);
         $this->assertNotEmpty($inspection->public_id);
         $this->assertSame($equipment->tag, $inspection->context_snapshot['equipment']['tag']);
@@ -89,6 +91,8 @@ final class InspectionRoutesTest extends TestCase
                 ->where('inspection.number', $inspection->number)
                 ->where('inspection.type', 'initial')
                 ->where('inspection.status', 'planned')
+                ->where('inspection.planned_start_on', '20/09/2026')
+                ->where('inspection.planned_end_on', '22/09/2026')
                 ->has('inspection.context_snapshot')
                 ->has('inspection.reference_document_ids')
                 ->has('inspection.history', 1)
@@ -168,6 +172,29 @@ final class InspectionRoutesTest extends TestCase
         $this->assertDatabaseCount('inspections', 0);
     }
 
+    public function test_planning_rejects_an_unknown_atmospheric_classification(): void
+    {
+        $organization = Organization::factory()->create();
+        $planner = User::factory()->for($organization)->create([
+            'account_type' => UserAccountType::CompanyAdmin->value,
+            'operational_role' => OperationalRole::Planner,
+        ]);
+        $equipment = Equipment::factory()->for($organization)->create();
+        $inspector = User::factory()->for($organization)->create(['operational_role' => OperationalRole::Inspector]);
+
+        $this->actingAs($planner)
+            ->from(route('inspections.create'))
+            ->post(route('inspections.store'), ['inspections' => [[
+                'equipment_id' => $equipment->id,
+                'atmospheric_classification' => 'C1',
+                'planned_start_on' => '2026-08-20',
+                'planned_end_on' => '2026-08-20',
+                'inspector_id' => $inspector->id,
+            ]]])
+            ->assertRedirect(route('inspections.create'))
+            ->assertSessionHasErrors('inspections.0.atmospheric_classification');
+    }
+
     public function test_linked_planner_can_edit_only_planning_fields_and_replaces_the_inspector(): void
     {
         $organization = Organization::factory()->create();
@@ -208,6 +235,7 @@ final class InspectionRoutesTest extends TestCase
                 ->where('inspection.planned_start_on_input', '2026-07-30')
                 ->where('inspection.planned_end_on_input', '2026-07-30')
                 ->where('inspection.service_order', 'OS-ANTIGA')
+                ->has('atmospheric_options', 5)
                 ->missing('inspection.general_notes'));
 
         $otherEquipment = Equipment::factory()
@@ -225,6 +253,7 @@ final class InspectionRoutesTest extends TestCase
             'equipment_id' => $otherEquipment->id,
             'inspector_id' => $inspector->id,
             'service_order' => 'OS-NOVA',
+            'atmospheric_classification' => 'c5',
             'planned_start_on' => '2026-08-15',
             'planned_end_on' => '2026-08-20',
             'external_report_number' => 'REL-NOVO',
@@ -234,6 +263,7 @@ final class InspectionRoutesTest extends TestCase
             'equipment_id' => $otherEquipment->id,
             'inspector_id' => $inspector->id,
             'service_order' => 'OS-NOVA',
+            'atmospheric_classification' => 'c5',
             'planned_start_on' => '2026-08-15',
             'planned_end_on' => '2026-08-20',
         ]);
@@ -248,7 +278,7 @@ final class InspectionRoutesTest extends TestCase
         $this->assertSame('OS-NOVA', $inspection->service_order);
         $this->assertSame('REL-ANTIGO', $inspection->external_report_number);
         $this->assertSame('PROC-ANTIGO', $inspection->procedure_number);
-        $this->assertSame('C3', $inspection->atmospheric_classification);
+        $this->assertSame('C5', $inspection->atmospheric_classification);
         $this->assertSame('2026-08-15', $inspection->planned_start_on?->toDateString());
         $this->assertSame('2026-08-20', $inspection->planned_end_on?->toDateString());
         $this->assertSame('Notas antigas', $inspection->general_notes);

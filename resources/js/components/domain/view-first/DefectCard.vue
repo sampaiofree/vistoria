@@ -59,7 +59,7 @@ function startAssessment() {
 
     startingAssessment.value = true;
     router.post(props.defect.assessment_store_url, {
-        condition: props.defect.origin_type === 'inherited' ? 'unchanged' : 'new',
+        condition: props.defect.origin_type === 'inherited' ? 'reinspected' : 'new',
         assessment_action: 'draft',
     }, {
         onFinish: () => { startingAssessment.value = false; },

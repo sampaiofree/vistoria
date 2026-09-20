@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Equipments;
 
+use App\Enums\AssetAbcClass;
 use App\Models\Equipment;
 use App\Support\TextNormalizer;
 use Illuminate\Foundation\Http\FormRequest;
@@ -62,7 +63,7 @@ final class StoreEquipmentRequest extends FormRequest
             'subarea_name' => ['nullable', 'string', 'max:180'],
             'name' => ['required', 'string', 'max:180'],
             'description' => ['nullable', 'string', 'max:10000'],
-            'abc_code' => ['nullable', 'string', 'max:20'],
+            'abc_code' => ['nullable', Rule::enum(AssetAbcClass::class)],
             'installation_location' => ['nullable', 'string', 'max:255'],
         ];
     }

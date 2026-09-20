@@ -45,13 +45,19 @@ final class UpdateDefectAssessmentRequest extends FormRequest
             ))],
             'location_description' => ['nullable', 'string', 'max:500'],
             'comment' => ['nullable', 'string', 'max:10000'],
-            'recommendation' => ['nullable', 'string', 'max:10000'],
+            'recommendation' => [
+                Rule::requiredIf(fn (): bool => $this->input('status') === DefectAssessmentStatus::Complete->value
+                    && DefectAssessmentCondition::tryFrom((string) $this->input('condition'))?->requiresEvidence()),
+                'nullable',
+                'string',
+                'max:10000',
+            ],
             'reason' => [
                 Rule::requiredIf(fn (): bool => in_array(
                     $this->input('condition'),
                     [
-                        DefectAssessmentCondition::NotLocated->value,
-                        DefectAssessmentCondition::NotInspected->value,
+                        DefectAssessmentCondition::Canceled->value,
+                        DefectAssessmentCondition::CanceledWithoutRepair->value,
                     ],
                     true,
                 )),

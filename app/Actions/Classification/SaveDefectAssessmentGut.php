@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Actions\Classification;
 
-use App\Enums\DefectAssessmentCondition;
 use App\Enums\GutCriterion;
 use App\Models\DefectAssessment;
 use App\Models\User;
@@ -32,21 +31,12 @@ final class SaveDefectAssessmentGut
 
             $condition = $assessment->condition;
 
-            if (in_array($condition, [
-                DefectAssessmentCondition::Repaired,
-                DefectAssessmentCondition::NotLocated,
-                DefectAssessmentCondition::NotInspected,
-            ], true)) {
+            if (! $condition->requiresGut()) {
                 return $this->clear($assessment, $actor);
             }
 
             $category = $assessment->defect->category;
-            $values = [
-                GutCriterion::Gravity->value => $data['gravity'] ?? null,
-                GutCriterion::Urgency->value => $data['urgency'] ?? null,
-                GutCriterion::Trend->value => $data['trend'] ?? null,
-            ];
-            $resolved = $this->resolver->resolve($category, $values);
+            $resolved = $this->resolver->resolveTechnical($assessment, $data);
             $classification = $resolved['classification'];
 
             $classificationValues = $classification === null
@@ -88,6 +78,7 @@ final class SaveDefectAssessmentGut
                     'category_name' => $category->label(),
                     'criteria' => $resolved['criteria'],
                     'score' => $resolved['gut_score'],
+                    'classification' => $classification?->toArray(),
                 ],
                 'gut_classified_at' => now(),
                 'gut_classified_by' => $actor->getKey(),

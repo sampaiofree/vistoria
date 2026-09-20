@@ -27,6 +27,7 @@ final class DefectAssessment extends Model
         'defect_id',
         'inspection_id',
         'previous_assessment_id',
+        'defect_location_map_version_id',
         'condition',
         'status',
         'location_description',
@@ -40,6 +41,7 @@ final class DefectAssessment extends Model
         'gut_classified_at', 'gut_classified_by',
         'internal_notes',
         'defect_snapshot',
+        'quantity_snapshot',
         'snapshot_version',
         'assessed_at',
         'created_by',
@@ -52,6 +54,7 @@ final class DefectAssessment extends Model
             'condition' => DefectAssessmentCondition::class,
             'status' => DefectAssessmentStatus::class,
             'defect_snapshot' => 'array',
+            'quantity_snapshot' => 'array',
             'impacts_activity' => 'boolean',
             'gravity' => 'integer',
             'urgency' => 'integer',
@@ -89,6 +92,16 @@ final class DefectAssessment extends Model
         return $this->hasMany(self::class, 'previous_assessment_id');
     }
 
+    public function locationMapVersion(): BelongsTo
+    {
+        return $this->belongsTo(DefectLocationMapVersion::class, 'defect_location_map_version_id');
+    }
+
+    public function location(): HasOne
+    {
+        return $this->hasOne(DefectAssessmentLocation::class, 'defect_assessment_id');
+    }
+
     public function photos(): HasMany
     {
         return $this->hasMany(AssessmentPhoto::class, 'defect_assessment_id')
@@ -96,23 +109,11 @@ final class DefectAssessment extends Model
             ->orderBy('id');
     }
 
-    public function quantity(): HasOne
-    {
-        return $this->hasOne(DefectAssessmentQuantity::class, 'defect_assessment_id');
-    }
-
-    /**
-     * Collection-shaped compatibility for inspection summaries.
-     * The database invariant guarantees at most one item.
-     */
     public function quantities(): HasMany
     {
-        return $this->hasMany(DefectAssessmentQuantity::class, 'defect_assessment_id');
-    }
-
-    public function locationMarkers(): HasMany
-    {
-        return $this->hasMany(InspectionLocationMarker::class, 'defect_assessment_id')->orderBy('position')->orderBy('id');
+        return $this->hasMany(DefectAssessmentQuantity::class, 'defect_assessment_id')
+            ->orderBy('position')
+            ->orderBy('id');
     }
 
     public function creator(): BelongsTo

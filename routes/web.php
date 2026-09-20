@@ -6,16 +6,14 @@ use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DefectAssessmentController;
+use App\Http\Controllers\DefectAssessmentLocationController;
 use App\Http\Controllers\DefectController;
 use App\Http\Controllers\EquipmentController;
 use App\Http\Controllers\EquipmentDocumentController;
 use App\Http\Controllers\EquipmentImportController;
-use App\Http\Controllers\EquipmentRevisionController;
 use App\Http\Controllers\GlobalOrganizationController;
 use App\Http\Controllers\InspectionController;
 use App\Http\Controllers\InspectionLocationMapAssetController;
-use App\Http\Controllers\InspectionLocationMapController;
-use App\Http\Controllers\InspectionLocationMarkerController;
 use App\Http\Controllers\InspectionOverviewController;
 use App\Http\Controllers\InspectionOverviewPhotoController;
 use App\Http\Controllers\InspectionReferenceDocumentController;
@@ -109,21 +107,6 @@ Route::middleware([
             [EquipmentDocumentController::class, 'store'],
         )->name('equipments.documents.store');
 
-        Route::post(
-            'equipments/{equipment}/revisions',
-            [EquipmentRevisionController::class, 'store'],
-        )->name('equipments.revisions.store');
-
-        Route::put(
-            'equipment-revisions/{equipmentRevision}',
-            [EquipmentRevisionController::class, 'update'],
-        )->name('equipment-revisions.update');
-
-        Route::delete(
-            'equipment-revisions/{equipmentRevision}',
-            [EquipmentRevisionController::class, 'destroy'],
-        )->name('equipment-revisions.destroy');
-
         Route::get(
             'equipment-documents/{equipmentDocument}',
             [EquipmentDocumentController::class, 'show'],
@@ -191,40 +174,9 @@ Route::middleware([
         Route::get('inspections/{inspection}/defects/create', [DefectController::class, 'create'])
             ->name('inspections.defects.create');
 
-        Route::get('inspections/{inspection}/locations', [InspectionController::class, 'locations'])
-            ->name('inspections.locations');
-
-        Route::post('inspections/{inspection}/location-maps', [InspectionLocationMapController::class, 'store'])
-            ->name('inspections.location-maps.store');
-        Route::post('inspections/{inspection}/location-maps/copy-previous', [InspectionLocationMapController::class, 'copyPrevious'])
-            ->name('inspections.location-maps.copy-previous');
-        Route::put('inspections/{inspection}/location-maps/order', [InspectionLocationMapController::class, 'reorder'])
-            ->name('inspections.location-maps.reorder');
-        Route::get('inspections/{inspection}/location-maps/create', [InspectionLocationMapController::class, 'create'])
-            ->name('inspections.location-maps.create');
-        Route::get('inspection-location-maps/{map}/edit', [InspectionLocationMapController::class, 'edit'])
-            ->name('inspection-location-maps.edit');
-        Route::get('inspection-location-maps/{map}/editor', [InspectionLocationMapController::class, 'editor'])
-            ->name('inspection-location-maps.editor');
-        Route::post('inspection-location-maps/{map}/markers', [InspectionLocationMarkerController::class, 'store'])
-            ->name('inspection-location-maps.markers.store');
-        Route::put('inspection-location-maps/{map}/markers/order', [InspectionLocationMarkerController::class, 'reorder'])
-            ->name('inspection-location-maps.markers.reorder');
-        Route::put('inspection-location-markers/{marker}', [InspectionLocationMarkerController::class, 'update'])
-            ->name('inspection-location-markers.update');
-        Route::delete('inspection-location-markers/{marker}', [InspectionLocationMarkerController::class, 'destroy'])
-            ->name('inspection-location-markers.destroy');
-        Route::put('inspection-location-markers/{marker}/photos', [InspectionLocationMarkerController::class, 'syncPhotos'])
-            ->name('inspection-location-markers.photos.sync');
-        Route::put('inspection-location-maps/{map}', [InspectionLocationMapController::class, 'update'])
-            ->name('inspection-location-maps.update');
-        Route::delete('inspection-location-maps/{map}', [InspectionLocationMapController::class, 'destroy'])
-            ->name('inspection-location-maps.destroy');
-        Route::post('inspection-location-maps/{map}/source', [InspectionLocationMapController::class, 'source'])
-            ->name('inspection-location-maps.source');
-        Route::get('inspection-location-maps/{map}/background/{variant?}', [InspectionLocationMapAssetController::class, 'background'])
+        Route::get('defect-location-map-versions/{mapVersion}/background/{variant?}', [InspectionLocationMapAssetController::class, 'background'])
             ->where('variant', 'thumbnail')
-            ->name('inspection-location-maps.background');
+            ->name('defect-location-map-versions.background');
 
         Route::get('inspections/{inspection}/photos', [InspectionController::class, 'photos'])
             ->name('inspections.photos');
@@ -253,6 +205,31 @@ Route::middleware([
             [DefectAssessmentController::class, 'storePhoto'],
         )->name('defect-assessments.photos.store');
 
+        Route::post(
+            'defect-assessments/{defectAssessment}/location-map',
+            [DefectAssessmentLocationController::class, 'storeMap'],
+        )->name('defect-assessments.location-map.store');
+
+        Route::delete(
+            'defect-assessments/{defectAssessment}/location-map',
+            [DefectAssessmentLocationController::class, 'destroyMap'],
+        )->name('defect-assessments.location-map.destroy');
+
+        Route::get(
+            'defect-assessments/{defectAssessment}/location/editor',
+            [DefectAssessmentLocationController::class, 'editor'],
+        )->name('defect-assessments.location.editor');
+
+        Route::put(
+            'defect-assessments/{defectAssessment}/location',
+            [DefectAssessmentLocationController::class, 'update'],
+        )->name('defect-assessments.location.update');
+
+        Route::delete(
+            'defect-assessments/{defectAssessment}/location',
+            [DefectAssessmentLocationController::class, 'destroy'],
+        )->name('defect-assessments.location.destroy');
+
         Route::patch(
             'defect-assessments/{defectAssessment}/status',
             [DefectAssessmentController::class, 'changeStatus'],
@@ -263,10 +240,20 @@ Route::middleware([
             [DefectAssessmentController::class, 'updateGut'],
         )->name('defect-assessments.gut.update');
 
+        Route::post(
+            'defect-assessments/{defectAssessment}/quantities',
+            [DefectAssessmentController::class, 'storeQuantity'],
+        )->name('defect-assessments.quantities.store');
+
         Route::put(
-            'defect-assessments/{defectAssessment}/quantity',
+            'defect-assessment-quantities/{defectAssessmentQuantity}',
             [DefectAssessmentController::class, 'updateQuantity'],
-        )->name('defect-assessments.quantity.update');
+        )->name('defect-assessment-quantities.update');
+
+        Route::delete(
+            'defect-assessment-quantities/{defectAssessmentQuantity}',
+            [DefectAssessmentController::class, 'destroyQuantity'],
+        )->name('defect-assessment-quantities.destroy');
 
         Route::patch(
             'defect-assessments/{defectAssessment}/photos/order',
@@ -301,6 +288,9 @@ Route::middleware([
 
         Route::put('inspections/{inspection}/report-metadata', [InspectionController::class, 'updateReportMetadata'])
             ->name('inspections.report-metadata.update');
+
+        Route::put('inspections/{inspection}/report-revision', [InspectionController::class, 'updateReportRevision'])
+            ->name('inspections.report-revision.update');
 
         Route::put('inspections/{inspection}/general-aspects', [InspectionController::class, 'updateGeneralAspects'])
             ->name('inspections.general-aspects.update');

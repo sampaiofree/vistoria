@@ -7,6 +7,7 @@ namespace Tests\Feature\Inspections;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
 use App\Enums\OperationalRole;
+use App\Enums\UserAccountType;
 use App\Models\Equipment;
 use App\Models\Inspection;
 use App\Models\InspectionResponsible;
@@ -171,7 +172,7 @@ final class InspectionTransitionRoutesTest extends TestCase
             'operational_role' => OperationalRole::Inspector,
         ]);
         $admin = User::factory()->for($organization)->create([
-            'account_type' => \App\Enums\UserAccountType::CompanyAdmin,
+            'account_type' => UserAccountType::CompanyAdmin,
             'operational_role' => OperationalRole::Planner,
         ]);
         $unassignedInspector = User::factory()->for($organization)->create([

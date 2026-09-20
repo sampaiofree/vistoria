@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Actions\Defects;
 
-use App\Enums\DefectAssessmentCondition;
 use App\Enums\DefectAssessmentStatus;
 use App\Enums\InspectionStatus;
 use App\Models\Defect;
@@ -50,16 +49,6 @@ final class UpdateDefectAssessment
 
             $wasComplete = $assessment->isComplete();
 
-            if ($wasComplete) {
-                $markerCount = $assessment->locationMarkers()->count();
-
-                if ($markerCount > 0) {
-                    throw ValidationException::withMessages([
-                        'status' => "Esta avaliação possui {$markerCount} marcação(ões). Remova os vínculos na aba Localização antes de movê-la para rascunho.",
-                    ]);
-                }
-            }
-
             $assessment->fill([
                 'condition' => $data['condition'] ?? $assessment->condition,
                 'location_description' => TextNormalizer::nullableText($data['location_description'] ?? $assessment->location_description),
@@ -84,14 +73,11 @@ final class UpdateDefectAssessment
                     'status' => DefectAssessmentStatus::Draft,
                     'assessed_at' => null,
                     'defect_snapshot' => null,
+                    'quantity_snapshot' => null,
                 ]);
             }
 
-            if (in_array($assessment->condition, [
-                DefectAssessmentCondition::Repaired,
-                DefectAssessmentCondition::NotLocated,
-                DefectAssessmentCondition::NotInspected,
-            ], true)) {
+            if (! $assessment->condition->requiresGut()) {
                 $assessment->fill([
                     'gravity' => null,
                     'urgency' => null,
