@@ -1,7 +1,7 @@
 <script setup>
-import { computed, onBeforeUnmount } from 'vue';
+import { computed, onBeforeUnmount, watch } from 'vue';
 import { EditorContent, useEditor } from '@tiptap/vue-3';
-import { Extension } from '@tiptap/core';
+import { Extension, Mark } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import TextAlign from '@tiptap/extension-text-align';
 
@@ -10,6 +10,37 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['update:modelValue']);
+
+const PENDING_TEXT_COLOR = '#DC2626';
+
+const PendingTextColor = Mark.create({
+    name: 'textColor',
+    addAttributes() {
+        return {
+            color: {
+                default: null,
+                renderHTML: (attributes) => attributes.color === PENDING_TEXT_COLOR
+                    ? { style: `color: ${PENDING_TEXT_COLOR}` }
+                    : {},
+            },
+        };
+    },
+    parseHTML() {
+        return [{
+            style: 'color',
+            getAttrs: (element) => {
+                const color = element.style.color.replaceAll(' ', '').toUpperCase();
+
+                return ['#DC2626', 'RGB(220,38,38)'].includes(color)
+                    ? { color: PENDING_TEXT_COLOR }
+                    : false;
+            },
+        }];
+    },
+    renderHTML({ HTMLAttributes }) {
+        return ['span', HTMLAttributes, 0];
+    },
+});
 
 const LayoutAttributes = Extension.create({
     name: 'generalAspectsLayout',
@@ -56,6 +87,7 @@ const editor = useEditor({
         }),
         TextAlign.configure({ types: ['heading', 'paragraph'], alignments: ['left', 'center', 'right', 'justify'] }),
         LayoutAttributes,
+        PendingTextColor,
     ],
     editorProps: {
         attributes: {
@@ -67,6 +99,17 @@ const editor = useEditor({
 });
 
 onBeforeUnmount(() => editor.value?.destroy());
+
+watch(
+    () => props.modelValue,
+    (document) => {
+        const currentEditor = editor.value;
+        if (!currentEditor || JSON.stringify(currentEditor.getJSON()) === JSON.stringify(document)) return;
+
+        currentEditor.commands.setContent(document, { emitUpdate: false });
+    },
+    { deep: true },
+);
 
 const blockType = computed(() => {
     if (editor.value?.isActive('heading')) return 'heading';
@@ -123,6 +166,18 @@ function clearFormatting() {
         .updateAttributes('paragraph', { textAlign: 'left', lineHeight: 1.15, spaceBefore: 0, spaceAfter: 0, indent: 0 })
         .run();
 }
+
+function setPendingTextColor() {
+    editor.value?.chain().focus().setMark('textColor', { color: PENDING_TEXT_COLOR }).run();
+}
+
+function clearTextColor() {
+    editor.value?.chain().focus().unsetMark('textColor').run();
+}
+
+function hasPendingTextColor() {
+    return editor.value?.isActive('textColor', { color: PENDING_TEXT_COLOR }) ?? false;
+}
 </script>
 
 <template>
@@ -134,6 +189,31 @@ function clearFormatting() {
             </select>
             <button type="button" class="editor-tool" :class="{ active: editor.isActive('bold') }" title="Negrito" @click="editor.chain().focus().toggleBold().run()"><strong>N</strong></button>
             <button type="button" class="editor-tool" :class="{ active: editor.isActive('italic') }" title="Itálico" @click="editor.chain().focus().toggleItalic().run()"><em>I</em></button>
+            <div class="editor-color-controls" role="group" aria-label="Cor do texto">
+                <span class="editor-color-label">Cor:</span>
+                <button
+                    type="button"
+                    class="editor-color-tool editor-color-tool-default"
+                    :class="{ active: !hasPendingTextColor() }"
+                    title="Aplicar cor padrão ao texto selecionado"
+                    aria-label="Aplicar cor padrão ao texto selecionado"
+                    @click="clearTextColor"
+                >
+                    <span class="editor-color-letter">A</span>
+                    <span>Padrão</span>
+                </button>
+                <button
+                    type="button"
+                    class="editor-color-tool editor-color-tool-red"
+                    :class="{ active: hasPendingTextColor() }"
+                    title="Destacar o texto selecionado em vermelho"
+                    aria-label="Destacar o texto selecionado em vermelho"
+                    @click="setPendingTextColor"
+                >
+                    <span class="editor-color-letter">A</span>
+                    <span>Vermelho</span>
+                </button>
+            </div>
             <button type="button" class="editor-tool" :class="{ active: editor.isActive('orderedList') }" title="Lista numerada" @click="editor.chain().focus().toggleOrderedList().run()">1.</button>
             <button type="button" class="editor-tool" :class="{ active: editor.isActive('bulletList') }" title="Lista com marcadores" @click="editor.chain().focus().toggleBulletList().run()">•</button>
             <button type="button" class="editor-tool" title="Diminuir recuo" @click="adjustIndent(-1)">←</button>
@@ -173,6 +253,16 @@ function clearFormatting() {
 .editor-tool { display: inline-flex; min-width: 2rem; height: 2rem; align-items: center; justify-content: center; border: 1px solid #cbd5e1; border-radius: .5rem; background: white; color: #334155; font-size: .75rem; }
 .editor-tool:hover, .editor-tool.active { border-color: #0f766e; background: #ccfbf1; color: #115e59; }
 .editor-tool:disabled { cursor: not-allowed; opacity: .4; }
+.editor-color-controls { display: inline-flex; align-items: center; gap: .25rem; border-right: 1px solid #cbd5e1; padding-right: .5rem; }
+.editor-color-label { color: #475569; font-size: .7rem; font-weight: 700; }
+.editor-color-tool { display: inline-flex; height: 2rem; align-items: center; gap: .3rem; border: 1px solid #cbd5e1; border-radius: .5rem; background: white; padding: 0 .55rem; color: #334155; font-size: .72rem; font-weight: 700; }
+.editor-color-tool:hover { background: #f8fafc; }
+.editor-color-letter { font-size: .9rem; font-weight: 800; line-height: 1; }
+.editor-color-tool-default .editor-color-letter { color: #1e293b; text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 2px; }
+.editor-color-tool-default.active { border-color: #0f766e; background: #ccfbf1; color: #115e59; }
+.editor-color-tool-red { border-color: #fca5a5; background: #fff1f2; color: #b91c1c; }
+.editor-color-tool-red .editor-color-letter { color: #dc2626; }
+.editor-color-tool-red:hover, .editor-color-tool-red.active { border-color: #dc2626; background: #fee2e2; color: #991b1b; }
 .editor-select-label { display: inline-flex; align-items: center; gap: .25rem; color: #475569; font-size: .7rem; font-weight: 600; }
 .editor-select-label select { border: 1px solid #cbd5e1; border-radius: .5rem; background: white; padding: .35rem .45rem; font-size: .75rem; }
 .general-aspects-editor-content { min-height: 22rem; padding: 1rem 1.25rem; color: #1e293b; outline: none; }

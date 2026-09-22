@@ -94,7 +94,11 @@ final class InspectionFoundationTest extends TestCase
             ->create();
         $equipment = Equipment::factory()
             ->for($organization)
-            ->create();
+            ->create([
+                'area_name' => 'Área Norte',
+                'subarea_name' => 'Casa de bombas',
+                'description' => 'Bomba de alimentação',
+            ]);
 
         $tenant = app(TenantContext::class);
         $tenant->set($organization);
@@ -104,6 +108,7 @@ final class InspectionFoundationTest extends TestCase
             $equipment,
             [
                 'inspection_type' => InspectionType::Initial->value,
+                'external_report_number' => 'RELATORIO-MANUAL-IGNORADO',
                 'planned_start_on' => '2026-07-30',
                 'planned_end_on' => '2026-07-31',
                 'general_notes' => 'Notas de teste',
@@ -114,6 +119,14 @@ final class InspectionFoundationTest extends TestCase
         $this->assertSame('planned', $inspection->status->value);
         $this->assertSame('initial', $inspection->inspection_type->value);
         $this->assertSame(EquipmentRevisionEmissionType::ForKnowledge, $inspection->emission_type);
+        $this->assertSame($equipment->numero_cliente, $inspection->external_report_number);
+        $this->assertSame(implode("\n", [
+            'UBÚ - Área Norte',
+            'Casa de bombas',
+            'Bomba de alimentação',
+            'INSPEÇÃO DE INTEGRIDADE ESTRUTURAL',
+            'RELATÓRIO DE INSPEÇÃO',
+        ]), $inspection->first_page_text_template);
         $this->assertSame('2026-07-30', $inspection->planned_start_on?->toDateString());
         $this->assertSame('2026-07-31', $inspection->planned_end_on?->toDateString());
         $this->assertSame($equipment->tag, $inspection->context_snapshot['equipment']['tag']);
@@ -121,12 +134,46 @@ final class InspectionFoundationTest extends TestCase
         $this->assertSame('Inspeção criada.', $inspection->statusHistories()->first()->reason);
 
         $originalTag = $inspection->context_snapshot['equipment']['tag'];
-        $equipment->update(['tag' => 'EQ-ALTERADO']);
+        $equipment->update([
+            'tag' => 'EQ-ALTERADO',
+            'area_name' => 'Área Sul',
+            'subarea_name' => 'Pátio',
+            'description' => 'Descrição alterada',
+        ]);
 
         $this->assertSame(
             $originalTag,
             $inspection->refresh()->context_snapshot['equipment']['tag'],
         );
+        $this->assertSame(implode("\n", [
+            'UBÚ - Área Norte',
+            'Casa de bombas',
+            'Bomba de alimentação',
+            'INSPEÇÃO DE INTEGRIDADE ESTRUTURAL',
+            'RELATÓRIO DE INSPEÇÃO',
+        ]), $inspection->first_page_text_template);
+    }
+
+    public function test_creating_inspection_keeps_the_default_title_lines_when_equipment_fields_are_empty(): void
+    {
+        $organization = Organization::factory()->create();
+        $actor = User::factory()->for($organization)->create();
+        $equipment = Equipment::factory()->for($organization)->create();
+
+        app(TenantContext::class)->set($organization);
+
+        $inspection = app(CreateInspection::class)->handle($actor, $equipment, [
+            'planned_start_on' => '2026-07-30',
+            'planned_end_on' => '2026-07-31',
+        ]);
+
+        $this->assertSame(implode("\n", [
+            'UBÚ - ',
+            '',
+            '',
+            'INSPEÇÃO DE INTEGRIDADE ESTRUTURAL',
+            'RELATÓRIO DE INSPEÇÃO',
+        ]), $inspection->first_page_text_template);
     }
 
     private function runCreationWorker(

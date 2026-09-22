@@ -1,7 +1,8 @@
 <script setup>
+import { computed } from 'vue';
 import { Link } from '@inertiajs/vue3';
 
-defineProps({
+const props = defineProps({
     form: {
         type: Object,
         required: true,
@@ -22,6 +23,10 @@ defineProps({
         type: Array,
         default: () => [],
     },
+    identifierContext: {
+        type: Object,
+        default: () => ({ client_name: null, organization_name: null }),
+    },
 });
 
 defineEmits(['submit']);
@@ -29,11 +34,29 @@ defineEmits(['submit']);
 const inputClass = 'mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100';
 const labelClass = 'text-sm font-medium text-slate-700';
 const helpClass = 'mt-1 text-xs text-rose-600';
+const customerNumberLabel = computed(() => props.identifierContext.client_name
+    ? `Número do cliente (${props.identifierContext.client_name})`
+    : 'Número do cliente');
+const internalNumberLabel = computed(() => props.identifierContext.organization_name
+    ? `Número interno (${props.identifierContext.organization_name})`
+    : 'Número interno');
 </script>
 
 <template>
     <form class="space-y-6" @submit.prevent="$emit('submit')">
         <div class="grid gap-4 lg:grid-cols-2">
+            <label class="block">
+                <span :class="labelClass">{{ customerNumberLabel }} <span class="text-rose-600" aria-hidden="true">*</span></span>
+                <input v-model="form.numero_cliente" :class="inputClass" type="text" maxlength="50" autocomplete="off" required>
+                <p v-if="form.errors.numero_cliente" :class="helpClass">{{ form.errors.numero_cliente }}</p>
+            </label>
+
+            <label class="block">
+                <span :class="labelClass">{{ internalNumberLabel }} <span class="text-rose-600" aria-hidden="true">*</span></span>
+                <input v-model="form.numero_interno" :class="inputClass" type="text" maxlength="50" autocomplete="off" required>
+                <p v-if="form.errors.numero_interno" :class="helpClass">{{ form.errors.numero_interno }}</p>
+            </label>
+
             <label class="block">
                 <span :class="labelClass">Plano de manutenção</span>
                 <input v-model="form.maintenance_plan_code" :class="inputClass" type="text" maxlength="80" autocomplete="off">

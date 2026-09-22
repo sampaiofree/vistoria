@@ -1,152 +1,46 @@
-# 05 — Equipamentos, documentos e revisões
+# 05 — Equipamentos e histórico de relatório
 
 ## Equipamento
 
-O equipamento pertence a uma organização e ao cliente único dela, resolvido
-automaticamente no servidor.
+Um equipamento pertence à organização e ao cliente único dela, ambos definidos no
+servidor. Seus atributos operacionais incluem plano e item de manutenção, TAG,
+prefixo de avaria, descrição, código ABC, local de instalação e os campos textuais
+`area_code`, `area_name`, `subarea_code` e `subarea_name`.
 
-Campos principais:
+Também são mantidos grupo e contador da lista de tarefas, status, dados de baixa e
+metadados de auditoria. Área e subárea não possuem cadastro, chave estrangeira ou
+seletor próprio.
 
-- plano e item de manutenção;
-- TAG e prefixo de código de avaria;
-- códigos e nomes de área/subárea como atributos textuais, sem cadastros ou relações;
-- grupo de lista de tarefas e numerador de grupos;
-- nome e descrição;
-- código ABC, localização de instalação e status;
-- metadados de descomissionamento.
+## Identificadores e cadastro
 
-## Identificadores e unicidade
+- `maintenance_item_code` é obrigatório na edição/criação e único por organização;
+- TAG é normalizada para busca e pode se repetir;
+- `defect_code_prefix` é obrigatório, único no tenant e não pode mudar depois da
+  primeira avaria;
+- o equipamento usa `public_id` nas URLs e IDs internos nas relações.
 
-- o item de manutenção é obrigatório ao criar e editar e único por organização, inclusive nos equipamentos excluídos logicamente;
-- a TAG é normalizada para busca, mas pode se repetir;
-- o prefixo de avaria é obrigatório e único na organização; nunca é gerado automaticamente;
-- `public_id` é usado nas URLs;
-- IDs internos continuam sendo usados nos vínculos e constraints.
+A importação CSV mostra prévia de mapeamento e cria apenas novas linhas válidas para
+o cliente ativo. Item de manutenção, TAG, denominação, prefixo de avaria e campos de
+manutenção podem ser mapeados; a importação não atualiza registros existentes.
 
-Alterar a TAG não altera códigos de avarias já criadas. O prefixo é a base para
-novos códigos e a avaria preserva sua identidade permanente. Depois da primeira avaria, o prefixo não pode ser alterado.
-
-## Correspondência com a planilha de ativos
-
-| Coluna da planilha | Campo |
-|---|---|
-| Plano de manutenção | `maintenance_plan_code` |
-| Item manutenção | `maintenance_item_code` |
-| Campo de ordenação (TAG) | `tag` |
-| Descrição item de manutenção | `description` |
-| Local de instalação | `installation_location` |
-| Area(usina) | `area_code` |
-| Area.nome | `area_name` |
-| Sub-area | `subarea_code` |
-| sub-area.nome | `subarea_name` |
-| Denominação do loc.instalação | `name` |
-| GrpLisTar. | `task_list_group` |
-| Numerador de grupos | `task_list_group_counter` |
-| Código ABC | `abc_code` |
-| Prefixo de avaria | `defect_code_prefix` |
-
-Os oito novos campos são anuláveis no banco para preservar os registros anteriores.
-Os novos códigos usam texto de até 80 caracteres; os nomes de área/subárea, até
-180. Zeros à esquerda (`08`) e códigos alfanuméricos (`T5`, ABC `D`) são preservados.
-Campos opcionais vazios são armazenados como `NULL`.
-
-A migração não inventa itens ou prefixos para equipamentos antigos. Ambos devem
-ser informados na próxima edição quando estiverem ausentes. Os novos atributos integram
-os snapshots de novas inspeções; os snapshots históricos não recebem esses campos.
-
-Para aplicar, execute `php artisan migrate`. As migrações anteriores pendentes de
-remoção de áreas, subáreas e unidades descartam esses cadastros e suas chaves nos
-snapshots históricos de forma irreversível; os atributos textuais novos não
-recuperam esses dados.
-
-## Estados
+## Estados e permissões
 
 | Estado | Efeito |
 |---|---|
-| `active` | Pode receber inspeção se toda a estrutura estiver ativa |
-| `inactive` | Preserva histórico e impede nova inspeção |
-| `decommissioned` | Preserva histórico e registra data, usuário e motivo |
+| `active` | Pode receber inspeção se o cliente também estiver ativo. |
+| `inactive` | Preserva histórico e bloqueia novas inspeções. |
+| `decommissioned` | Preserva histórico, data, responsável e motivo de baixa. |
 
-Ativação, inativação e descomissionamento são ações de administrador da empresa.
-Um equipamento descomissionado não é excluído.
+Administradores criam, editam cadastros sem inspeções ou avarias e trocam o status.
+Membros podem consultar. Após existir uma inspeção ou avaria, os dados técnicos do
+cadastro ficam imutáveis; não há rota de exclusão.
 
-Mesmo com status `active`, `canReceiveInspection()` exige que o cliente único esteja
-operacionalmente ativo. Novos equipamentos não aceitam nem exibem `client_id`:
-sem cliente cadastrado, o administrador deve cadastrá-lo em Configurações.
+## Revisões e relatórios
 
-## Importação CSV
+Não existe mais CRUD nem tabela de revisões independentes de equipamento. O
+histórico exibido para o equipamento é composto pelas inspeções. Cada inspeção pode
+guardar `report_revision`, único por organização e equipamento, e os responsáveis
+da inspeção formam a cronologia de revisão exibida no equipamento e no relatório.
 
-Administradores podem importar equipamentos pela listagem. O sistema lê o CSV,
-sugere o mapeamento dos cabeçalhos e mostra uma amostra antes da confirmação.
-Item manutenção, TAG, Denominação do loc.instalação e Prefixo de avaria devem ser
-mapeados. Linhas inválidas — inclusive sem prefixo — são ignoradas e relatadas;
-as válidas são criadas para o cliente único ativo da organização. A importação não
-atualiza equipamentos existentes.
-
-## Permissões
-
-- administradores da empresa criam, editam cadastros sem inspeções ou avarias e alteram status;
-- membros podem listar e visualizar equipamentos do tenant;
-- superadministradores não acessam equipamentos;
-- não existe rota de exclusão do equipamento.
-
-Quando houver pelo menos uma inspeção ou avaria, o cadastro técnico do equipamento
-fica imutável para preservar a rastreabilidade. A mudança de status continua sendo
-uma ação administrativa separada.
-
-## Documentos
-
-Documentos pertencem ao equipamento e são privados. Tipos aceitos:
-
-- desenho geral, de montagem ou técnico;
-- manual;
-- ficha técnica;
-- procedimento;
-- relatório anterior;
-- memorial;
-- outro.
-
-O upload aceita PDF, XLSX, XLSM, DOC, DOCX, PNG, JPEG e WEBP, com até 25 MB. São
-armazenados nome original, MIME, extensão, tamanho, checksum, número, revisão,
-data de emissão, descrição, tipo, status e usuário do upload.
-
-O download e a visualização passam por Policy e Controller; o caminho privado não
-é exposto diretamente.
-
-### Versionamento de arquivos
-
-`document_group` reúne versões do mesmo documento. Quando não informado, recebe
-um ULID. `is_current` indica a versão corrente; a ação correspondente mantém a
-escolha dentro do equipamento e da organização. O status do arquivo é `active` ou
-`inactive`.
-
-Um documento referenciado por uma inspeção ou por dados históricos continua
-preservado. A interface não oferece exclusão destrutiva de documentos.
-
-## Histórico de revisões do equipamento
-
-As revisões são registros estruturados separados dos arquivos. Cada uma contém:
-
-- tipo de emissão (`A`, `B`, `C`, `D`, `E`, `F`, `G`, `H` ou `L`);
-- data da revisão;
-- nomes de preparador, verificador, aprovador e liberador;
-- autores técnicos da criação e última atualização do registro.
-
-Os nomes são snapshots textuais e não vínculos atuais com usuários. O histórico é
-ordenado por data e ID, pode ser criado, editado ou removido por administradores e
-alimenta a cronologia exibida no equipamento e no relatório.
-
-## Relação com inspeções
-
-- apenas um equipamento apto pode receber uma nova inspeção;
-- a criação da inspeção captura um snapshot da estrutura e dos dados relevantes;
-- documentos do mesmo equipamento, inclusive versões inativas preservadas no
-  histórico, podem ser selecionados como referências da inspeção;
-- inspeções liberadas compõem o histórico do equipamento;
-- mapas, avarias e revisões permanecem associados ao equipamento original.
-
-## Cobertura automatizada
-
-Os testes verificam CRUD, unicidade, hierarquia, transições de status, documentos
-privados, versão corrente, revisões, isolamento entre tenants e bloqueio para
-perfis sem permissão.
+Novas inspeções capturam snapshot de equipamento e cliente; inspeções liberadas
+permanecem no histórico do ativo.

@@ -10,7 +10,6 @@ use App\Models\Defect;
 use App\Models\DefectAssessment;
 use App\Models\DefectAssessmentQuantity;
 use App\Models\Equipment;
-use App\Models\EquipmentDocument;
 use App\Models\Inspection;
 use App\Models\Organization;
 use App\Models\User;
@@ -29,7 +28,6 @@ final class NativeDefectCatalogMigrationTest extends TestCase
         $this->onPreviousSchema(function (Organization $organization): void {
             $user = User::factory()->for($organization)->create();
             $equipment = Equipment::factory()->for($organization)->create();
-            $document = EquipmentDocument::factory()->forEquipment($equipment)->create();
             $inspection = Inspection::factory()->forEquipment($equipment)->create();
             $categoryId = DB::table('defect_categories')->where('organization_id', $organization->id)->where('code', 'CV')->value('id');
             $classificationId = DB::table('defect_classifications')->where('defect_category_id', $categoryId)->where('code', 'CV-1')->value('id');
@@ -55,7 +53,6 @@ final class NativeDefectCatalogMigrationTest extends TestCase
                 'public_id' => (string) Str::ulid(), 'organization_id' => $organization->id,
                 'equipment_id' => $equipment->id, 'inspection_id' => $inspection->id,
                 'defect_category_id' => $categoryId, 'title' => 'Mapa de desenvolvimento',
-                'equipment_document_id' => $document->id,
             ]);
             $markerId = DB::table('inspection_location_markers')->insertGetId([
                 'public_id' => (string) Str::ulid(), 'organization_id' => $organization->id,
@@ -84,7 +81,6 @@ final class NativeDefectCatalogMigrationTest extends TestCase
             $this->assertSame($organization->id, $organization->refresh()->id);
             $this->assertSame($user->id, $user->refresh()->id);
             $this->assertSame($equipment->id, $equipment->refresh()->id);
-            $this->assertSame($document->id, $document->refresh()->id);
             $this->assertSame($inspection->id, $inspection->refresh()->id);
             $this->assertSame($nextInspection->id, $nextInspection->refresh()->id);
             Storage::disk('inspection_photos')->assertMissing([

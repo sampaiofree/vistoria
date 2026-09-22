@@ -9,14 +9,14 @@ use App\Http\Controllers\DefectAssessmentController;
 use App\Http\Controllers\DefectAssessmentLocationController;
 use App\Http\Controllers\DefectController;
 use App\Http\Controllers\EquipmentController;
-use App\Http\Controllers\EquipmentDocumentController;
 use App\Http\Controllers\EquipmentImportController;
 use App\Http\Controllers\GlobalOrganizationController;
+use App\Http\Controllers\GeneralAspectsTemplateController;
 use App\Http\Controllers\InspectionController;
+use App\Http\Controllers\InspectionCorrectionRequestController;
 use App\Http\Controllers\InspectionLocationMapAssetController;
 use App\Http\Controllers\InspectionOverviewController;
 use App\Http\Controllers\InspectionOverviewPhotoController;
-use App\Http\Controllers\InspectionReferenceDocumentController;
 use App\Http\Controllers\InspectionResponsibleController;
 use App\Http\Controllers\InspectionTransitionController;
 use App\Http\Controllers\NotificationController;
@@ -85,6 +85,11 @@ Route::middleware([
         Route::patch('/settings/users/{user}/status', [UserSettingsController::class, 'updateStatus'])->name('settings.users.status');
         Route::post('/settings/users/{user}/temporary-password', [UserSettingsController::class, 'resetPassword'])->name('settings.users.reset-password');
 
+        Route::resource('settings/inspection-report/general-aspects', GeneralAspectsTemplateController::class)
+            ->parameters(['general-aspects' => 'generalAspectsTemplate'])
+            ->names('settings.inspection-report.general-aspects')
+            ->except(['show']);
+
         Route::get('equipments/import', [EquipmentImportController::class, 'create'])
             ->name('equipments.import.create');
         Route::get('equipments/import/preview', [EquipmentImportController::class, 'legacyPreview'])
@@ -102,31 +107,6 @@ Route::middleware([
             [EquipmentController::class, 'updateStatus'],
         )->name('equipments.status');
 
-        Route::post(
-            'equipments/{equipment}/documents',
-            [EquipmentDocumentController::class, 'store'],
-        )->name('equipments.documents.store');
-
-        Route::get(
-            'equipment-documents/{equipmentDocument}',
-            [EquipmentDocumentController::class, 'show'],
-        )->name('equipment-documents.show');
-
-        Route::get(
-            'equipment-documents/{equipmentDocument}/download',
-            [EquipmentDocumentController::class, 'download'],
-        )->name('equipment-documents.download');
-
-        Route::patch(
-            'equipment-documents/{equipmentDocument}/status',
-            [EquipmentDocumentController::class, 'updateStatus'],
-        )->name('equipment-documents.status');
-
-        Route::patch(
-            'equipment-documents/{equipmentDocument}/current',
-            [EquipmentDocumentController::class, 'updateCurrent'],
-        )->name('equipment-documents.current');
-
         Route::get('inspections', [InspectionController::class, 'index'])
             ->name('inspections.index');
 
@@ -138,9 +118,6 @@ Route::middleware([
 
         Route::post('inspections', [InspectionController::class, 'store'])
             ->name('inspections.store');
-
-        Route::post('inspections/confirm', [InspectionController::class, 'confirm'])
-            ->name('inspections.confirm');
 
         Route::get('inspections/{inspection}', [InspectionController::class, 'show'])
             ->name('inspections.show');
@@ -181,14 +158,14 @@ Route::middleware([
         Route::get('inspections/{inspection}/photos', [InspectionController::class, 'photos'])
             ->name('inspections.photos');
 
-        Route::get('inspections/{inspection}/documents', [InspectionController::class, 'documents'])
-            ->name('inspections.documents');
-
         Route::get('inspections/{inspection}/history', [InspectionController::class, 'history'])
             ->name('inspections.history');
 
         Route::get('inspections/{inspection}/report-preview', [InspectionController::class, 'reportPreview'])
             ->name('inspections.report-preview');
+
+        Route::put('inspections/{inspection}/classification-m2-links', [InspectionController::class, 'updateClassificationM2Links'])
+            ->name('inspections.classification-m2-links.update');
 
         Route::post(
             'inspections/{inspection}/defects',
@@ -239,6 +216,11 @@ Route::middleware([
             'defect-assessments/{defectAssessment}/gut',
             [DefectAssessmentController::class, 'updateGut'],
         )->name('defect-assessments.gut.update');
+
+        Route::put(
+            'defect-assessments/{defectAssessment}/tel',
+            [DefectAssessmentController::class, 'updateTel'],
+        )->name('defect-assessments.tel.update');
 
         Route::post(
             'defect-assessments/{defectAssessment}/quantities',
@@ -313,16 +295,6 @@ Route::middleware([
             [InspectionResponsibleController::class, 'destroy'],
         )->name('inspections.responsibles.destroy');
 
-        Route::put(
-            'inspections/{inspection}/reference-documents',
-            [InspectionReferenceDocumentController::class, 'update'],
-        )->name('inspections.reference-documents.update');
-
-        Route::delete(
-            'inspections/{inspection}/reference-documents/{referenceDocument}',
-            [InspectionReferenceDocumentController::class, 'destroy'],
-        )->name('inspections.reference-documents.destroy');
-
         Route::post(
             'inspections/{inspection}/start',
             [InspectionTransitionController::class, 'start'],
@@ -380,6 +352,46 @@ Route::middleware([
             'defect-assessments/{defectAssessment}/complete',
             [DefectAssessmentController::class, 'complete'],
         )->name('defect-assessments.complete');
+
+        Route::post(
+            'defect-assessments/{defectAssessment}/correction-requests',
+            [InspectionCorrectionRequestController::class, 'store'],
+        )->name('defect-assessment-correction-requests.store');
+
+        Route::patch(
+            'inspection-correction-requests/{correctionRequest}',
+            [InspectionCorrectionRequestController::class, 'update'],
+        )->name('inspection-correction-requests.update');
+
+        Route::delete(
+            'inspection-correction-requests/{correctionRequest}',
+            [InspectionCorrectionRequestController::class, 'destroy'],
+        )->name('inspection-correction-requests.destroy');
+
+        Route::patch(
+            'inspection-correction-requests/{correctionRequest}/address',
+            [InspectionCorrectionRequestController::class, 'address'],
+        )->name('inspection-correction-requests.address');
+
+        Route::patch(
+            'inspection-correction-requests/{correctionRequest}/mark-pending',
+            [InspectionCorrectionRequestController::class, 'markPending'],
+        )->name('inspection-correction-requests.mark-pending');
+
+        Route::patch(
+            'inspection-correction-requests/{correctionRequest}/close',
+            [InspectionCorrectionRequestController::class, 'close'],
+        )->name('inspection-correction-requests.close');
+
+        Route::post(
+            'inspection-correction-requests/{correctionRequest}/replace',
+            [InspectionCorrectionRequestController::class, 'replace'],
+        )->name('inspection-correction-requests.replace');
+
+        Route::post(
+            'inspection-correction-requests/{correctionRequest}/children',
+            [InspectionCorrectionRequestController::class, 'storeChild'],
+        )->name('inspection-correction-requests.children.store');
 
         Route::resource('clients', ClientController::class)
             ->except(['destroy']);

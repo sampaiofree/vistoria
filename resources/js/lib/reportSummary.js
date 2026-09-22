@@ -101,6 +101,15 @@ export function buildReportSummaryEntries(contentPages, summaryPageCount, overvi
             });
         }
 
+        if (page.type === 'classification-summary') {
+            entries.push({
+                key: 'classification-summary',
+                title: 'RESUMO DA CLASSIFICAÇÃO DO EQUIPAMENTO – GUT',
+                page: pageNumber,
+                kind: 'section',
+            });
+        }
+
         if (page.type === 'textual-findings' && !page.continuation) {
             entries.push({
                 key: 'textual-findings',

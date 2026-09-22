@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace App\Actions\Inspections;
 
-use App\Enums\InspectionStatus;
-use App\Enums\OperationalRole;
 use App\Models\Equipment;
 use App\Models\Inspection;
 use App\Models\User;
@@ -36,12 +34,10 @@ final class UpdateInspectionReportRevision
 
             if (! $actor->isActive()
                 || $actor->isSuperAdmin()
-                || $actor->operational_role !== OperationalRole::Inspector
                 || ! $actor->belongsToOrganization($this->tenant->id())
-                || ! in_array($inspection->status, [InspectionStatus::InProgress, InspectionStatus::InCorrection], true)
-                || ! $inspection->hasAnyResponsibilityForUser($actor, ...\App\Enums\InspectionResponsibility::cases())) {
+                || ! $actor->can('updateReportRevision', $inspection)) {
                 throw ValidationException::withMessages([
-                    'report_revision' => 'Apenas o Inspetor responsável pode alterar a revisão durante a inspeção ou correção.',
+                    'report_revision' => 'Apenas o responsável pela etapa atual pode alterar a revisão da inspeção.',
                 ]);
             }
 

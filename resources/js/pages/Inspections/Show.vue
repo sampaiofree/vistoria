@@ -1,13 +1,14 @@
 <script setup>
 import { computed, ref } from 'vue';
-import { Link, router } from '@inertiajs/vue3';
+import { Link, router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/components/ui/AppLayout.vue';
 import ReportMetadataPanel from '@/components/domain/inspections/ReportMetadataPanel.vue';
+import InspectionRevisionPanel from '@/components/domain/inspections/InspectionRevisionPanel.vue';
 import GeneralAspectsPanel from '@/components/domain/inspections/GeneralAspectsPanel.vue';
 import InspectionStatusBadge from '@/components/domain/inspections/InspectionStatusBadge.vue';
 import InspectionTimeline from '@/components/domain/inspections/InspectionTimeline.vue';
-import ReferenceDocumentsForm from '@/components/domain/inspections/ReferenceDocumentsForm.vue';
 import TransitionForm from '@/components/domain/inspections/TransitionForm.vue';
+import CorrectionRequestsPanel from '@/components/domain/inspections/CorrectionRequestsPanel.vue';
 import AssessmentProgress from '@/components/domain/view-first/AssessmentProgress.vue';
 import CivilClassificationBadge from '@/components/domain/view-first/CivilClassificationBadge.vue';
 import DefectCard from '@/components/domain/view-first/DefectCard.vue';
@@ -34,7 +35,6 @@ const props = defineProps({
     general_aspects: { type: Object, default: () => ({}) },
     emission_options: { type: Array, default: () => [] },
     assignment_options: { type: Object, default: () => ({ users: [], roles: [] }) },
-    available_documents: { type: Array, default: () => [] },
     transitions: { type: Array, default: () => [] },
     index_url: { type: String, required: true },
 });
@@ -56,7 +56,6 @@ const sectionTitles = {
     overview: 'Visão geral',
     defects: 'Avarias',
     photos: 'Fotografias',
-    documents: 'Documentos',
     history: 'Histórico',
     report: 'Relatório',
 };
@@ -67,6 +66,7 @@ const pageSubtitle = computed(() => `${inspectionContextNumber.value} · ${props
 
 const defects = computed(() => props.content?.items ?? []);
 const filters = computed(() => props.content?.filters ?? []);
+const generalCorrectionRequests = computed(() => props.content?.general_correction_requests ?? { history: [] });
 
 const filteredDefects = computed(() => defects.value.filter((defect) => {
     switch (activeFilter.value) {
@@ -98,11 +98,23 @@ function setView(view) {
 const reportSections = computed(() => props.content?.sections ?? []);
 const reportEvidence = computed(() => reportSections.value.find((section) => section.key === 'evidence')?.items ?? []);
 const reportResponsibles = computed(() => reportSections.value.find((section) => section.key === 'responsibles')?.items ?? []);
-const reportDocuments = computed(() => reportSections.value.find((section) => section.key === 'documents')?.items ?? []);
 const reportLocations = computed(() => props.content?.locations ?? []);
 const reportQuantities = computed(() => props.content?.quantities ?? {});
 const reportValidation = computed(() => props.content?.validation ?? {});
 const reportFindings = computed(() => props.content?.findings ?? []);
+const classificationSummary = computed(() => props.content?.classification_summary ?? { categories: [] });
+const m2Form = useForm({
+    links: (props.content?.classification_summary?.categories ?? []).flatMap((category) => category.rows.filter((row) => row.defect_count > 0).map((row) => ({
+        category: category.code,
+        classification_code: row.classification_code,
+        sap_number: row.sap_m2_number ?? '',
+    }))),
+});
+
+function saveM2Links() {
+    if (!classificationSummary.value.can_edit_m2 || !classificationSummary.value.m2_update_url) return;
+    m2Form.put(classificationSummary.value.m2_update_url, { preserveScroll: true });
+}
 
 const photoStatusLabels = {
     ready: 'Disponíveis',
@@ -193,6 +205,7 @@ async function exportReport(format) {
                 :emission-options="emission_options"
                 :capability="capabilities.manage_report_metadata"
             />
+            <InspectionRevisionPanel :inspection="inspection" :capability="capabilities.update_report_revision" />
 
             <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
                 <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Planejamento</p>
@@ -209,6 +222,13 @@ async function exportReport(format) {
             </section>
 
             <GeneralAspectsPanel :aspects="general_aspects" />
+
+            <CorrectionRequestsPanel
+                v-if="generalCorrectionRequests.items?.length || generalCorrectionRequests.history?.length"
+                :correction="generalCorrectionRequests"
+                title="Solicitações gerais de correção"
+                empty_label="Nenhuma solicitação geral registrada."
+            />
 
             <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
                 <div>
@@ -294,43 +314,6 @@ async function exportReport(format) {
             </section>
         </div>
 
-        <div v-else-if="active_tab === 'documents'" class="print-hidden mt-6 space-y-6">
-            <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-                <div>
-                    <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Base técnica</p>
-                    <h2 class="mt-2 text-xl font-semibold text-slate-950">Documentos de referência</h2>
-                    <p class="mt-1 text-sm text-slate-500">Arquivos congelados para o contexto desta inspeção.</p>
-                </div>
-                <div class="mt-6 grid gap-4 lg:grid-cols-2">
-                    <article v-for="item in (content.items || [])" :key="item.id" class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                        <p class="text-xs font-bold uppercase tracking-wider text-slate-400">{{ item.document.document_type_label }}</p>
-                        <h3 class="mt-2 font-semibold text-slate-950">{{ item.document.title }}</h3>
-                        <p class="mt-1 text-sm text-slate-500">Revisão {{ item.document.revision || '—' }} · {{ item.document.status_label }}</p>
-                        <div class="mt-4 flex gap-3">
-                            <Link :href="item.document.show_url" class="text-sm font-semibold text-teal-700">Abrir</Link>
-                            <Link :href="item.document.download_url" class="text-sm font-semibold text-slate-700">Baixar</Link>
-                        </div>
-                    </article>
-                </div>
-                <p v-if="!(content.items || []).length" class="mt-6 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-500">
-                    {{ content.empty_message }}
-                </p>
-            </section>
-            <details v-if="capabilities.manage_references" class="group rounded-3xl border border-slate-200 bg-white shadow-sm">
-                <summary class="flex cursor-pointer list-none items-center justify-between p-5">
-                    <span class="font-semibold text-slate-950">Gerenciar documentos vinculados</span>
-                    <span class="text-xl text-slate-400 transition group-open:rotate-45">+</span>
-                </summary>
-                <div class="border-t border-slate-200 p-5">
-                    <ReferenceDocumentsForm
-                        :action="capabilities.manage_references.action"
-                        :documents="available_documents"
-                        :selected-document-ids="content.reference_document_ids || []"
-                    />
-                </div>
-            </details>
-        </div>
-
         <div v-else-if="active_tab === 'history'" class="print-hidden mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.3fr)_minmax(20rem,0.7fr)]">
             <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
                 <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Rastreabilidade</p>
@@ -410,6 +393,19 @@ async function exportReport(format) {
                 </div>
             </div>
 
+            <section v-if="classificationSummary.categories?.length" class="print-hidden mx-auto mb-6 max-w-6xl rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                <div class="flex items-start justify-between gap-4">
+                    <div><p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Resumo técnico</p><h2 class="mt-2 text-xl font-semibold text-slate-950">Classificação do equipamento e Nota M2</h2></div>
+                    <button v-if="classificationSummary.can_edit_m2" type="button" class="rounded-xl bg-teal-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" :disabled="m2Form.processing" @click="saveM2Links">Salvar Notas M2</button>
+                </div>
+                <div class="mt-4 grid gap-3 text-sm sm:grid-cols-3"><p><span class="text-slate-500">Área:</span> {{ classificationSummary.equipment?.area }}</p><p><span class="text-slate-500">Equipamento:</span> {{ classificationSummary.equipment?.name }}</p><p><span class="text-slate-500">TAG:</span> {{ classificationSummary.equipment?.tag }}</p></div>
+                <div v-for="category in classificationSummary.categories" :key="category.code" class="mt-5 overflow-x-auto rounded-2xl border border-slate-200">
+                    <table class="min-w-full text-sm"><thead class="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th class="px-3 py-2">{{ category.name }}</th><th class="px-3 py-2">Avarias</th><th class="px-3 py-2">Quantitativo</th><th class="px-3 py-2">Nota M2</th></tr></thead><tbody>
+                        <tr v-for="row in category.rows" :key="row.classification_code" class="border-t border-slate-100"><td class="px-3 py-2 font-medium">{{ row.classification_code }}</td><td class="px-3 py-2">{{ row.defect_count || '—' }}</td><td class="px-3 py-2">{{ row.quantity.label }}</td><td class="px-3 py-2"><input v-if="classificationSummary.can_edit_m2 && row.defect_count > 0" v-model="m2Form.links.find((link) => link.category === category.code && link.classification_code === row.classification_code).sap_number" class="w-full rounded-lg border border-slate-300 px-2 py-1" maxlength="100"><span v-else>{{ row.sap_m2_number || '—' }}</span></td></tr>
+                        <tr class="border-t-2 border-slate-200 bg-slate-50 font-semibold"><td class="px-3 py-2">Total · mais crítica {{ category.most_critical || '—' }}</td><td></td><td class="px-3 py-2">{{ category.total.label }}</td><td></td></tr>
+                    </tbody></table>
+                </div>
+            </section>
             <ReportPreview ref="reportPreview" :content="content" @layout-ready="reportLayoutReady = $event" />
         </div>
 
@@ -573,24 +569,14 @@ async function exportReport(format) {
                         </div>
                     </ReportSection>
 
-                    <section class="grid gap-8 sm:grid-cols-2">
-                        <ReportSection index="06" title="Responsabilidade técnica" content-class="mt-4">
-                            <ul class="space-y-3">
-                                <li v-for="item in reportResponsibles" :key="`${item.user.id}-${item.responsibility}`">
-                                    <p class="font-medium text-slate-900">{{ item.user.name }}</p>
-                                    <p class="text-sm text-slate-500">{{ item.responsibility_label }}</p>
-                                </li>
-                            </ul>
-                        </ReportSection>
-                        <ReportSection index="07" title="Documentos de referência" content-class="mt-4">
-                            <ul class="space-y-3">
-                                <li v-for="item in reportDocuments" :key="item.id">
-                                    <p class="font-medium text-slate-900">{{ item.document.title }}</p>
-                                    <p class="text-sm text-slate-500">Revisão {{ item.document.revision || '—' }}</p>
-                                </li>
-                            </ul>
-                        </ReportSection>
-                    </section>
+                    <ReportSection index="06" title="Responsabilidade técnica" content-class="mt-4">
+                        <ul class="space-y-3">
+                            <li v-for="item in reportResponsibles" :key="`${item.user.id}-${item.responsibility}`">
+                                <p class="font-medium text-slate-900">{{ item.user.name }}</p>
+                                <p class="text-sm text-slate-500">{{ item.responsibility_label }}</p>
+                            </li>
+                        </ul>
+                    </ReportSection>
                 </div>
 
                 <footer class="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-6 py-5 text-xs text-slate-500 sm:px-10">

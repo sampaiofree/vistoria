@@ -3,6 +3,7 @@ import { computed, ref } from 'vue';
 import { Link, router } from '@inertiajs/vue3';
 import DefectConditionBadge from '@/components/domain/defects/DefectConditionBadge.vue';
 import DefectAssessmentStatusBadge from '@/components/domain/defects/DefectAssessmentStatusBadge.vue';
+import CorrectionRequestsPanel from '@/components/domain/inspections/CorrectionRequestsPanel.vue';
 import CivilClassificationBadge from './CivilClassificationBadge.vue';
 
 const props = defineProps({
@@ -53,6 +54,7 @@ const publicationLabel = computed(() => assessment.value.status_label
     ?? (status.value === 'draft' ? 'Rascunho' : status.value === 'complete' ? 'Publicada' : null));
 const actionUrl = computed(() => props.defect.assessment_url ?? props.defect.show_url ?? null);
 const canStartAssessment = computed(() => !props.defect.assessment && Boolean(props.defect.assessment_store_url));
+const correction = computed(() => props.defect.correction_requests ?? null);
 
 function startAssessment() {
     if (!canStartAssessment.value || startingAssessment.value) return;
@@ -127,6 +129,13 @@ const element = computed(() => {
                 </Link>
             </div>
         </div>
+        <CorrectionRequestsPanel
+            v-if="correction"
+            class="mt-4"
+            :correction="correction"
+            title="Correção desta avaria"
+            empty_label="Nenhuma correção solicitada para esta avaria."
+        />
     </article>
 
     <article v-else class="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-slate-300 hover:shadow-md">
@@ -197,5 +206,12 @@ const element = computed(() => {
                 <span class="ml-2" aria-hidden="true">→</span>
             </Link>
         </div>
+        <CorrectionRequestsPanel
+            v-if="correction"
+            class="mt-4"
+            :correction="correction"
+            title="Correção desta avaria"
+            empty_label="Nenhuma correção solicitada para esta avaria."
+        />
     </article>
 </template>

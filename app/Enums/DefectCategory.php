@@ -9,6 +9,7 @@ enum DefectCategory: string
     case Civil = 'CV';
     case AnticorrosiveTreatment = 'TAC';
     case StructuralRecovery = 'REC';
+    case RoofCladding = 'TEL';
 
     public function label(): string
     {
@@ -16,6 +17,7 @@ enum DefectCategory: string
             self::Civil => 'CIVIL',
             self::AnticorrosiveTreatment => 'TAC',
             self::StructuralRecovery => 'REC',
+            self::RoofCladding => 'Telhado/Tapamento',
         };
     }
 
@@ -30,6 +32,7 @@ enum DefectCategory: string
             self::Civil => 'Avarias relacionadas aos elementos civis.',
             self::AnticorrosiveTreatment => 'Avarias relacionadas ao tratamento anticorrosivo.',
             self::StructuralRecovery => 'Avarias relacionadas à recuperação estrutural.',
+            self::RoofCladding => 'Avarias relacionadas a telhados e tapamentos laterais.',
         };
     }
 
@@ -39,6 +42,7 @@ enum DefectCategory: string
             self::Civil => 1,
             self::AnticorrosiveTreatment => 2,
             self::StructuralRecovery => 3,
+            self::RoofCladding => 4,
         };
     }
 

@@ -6,9 +6,12 @@ namespace App\Actions\Inspections;
 
 use App\Actions\Inspections\Concerns\ValidatesInspectionTransition;
 use App\Enums\InspectionResponsibility;
+use App\Enums\InspectionCorrectionRequestFlow;
+use App\Enums\InspectionCorrectionRequestStatus;
 use App\Enums\InspectionStatus;
 use App\Enums\OperationalRole;
 use App\Models\Inspection;
+use App\Models\InspectionCorrectionRequest;
 use App\Models\User;
 use Illuminate\Validation\ValidationException;
 
@@ -30,6 +33,23 @@ final class ReleaseInspection
         if ($inspection->status !== InspectionStatus::AwaitingRelease) {
             throw ValidationException::withMessages([
                 'status' => 'A inspeção não está aguardando liberação.',
+            ]);
+        }
+
+        $openRequests = InspectionCorrectionRequest::query()
+            ->forOrganization($inspection->organization_id)
+            ->where('inspection_id', $inspection->id)
+            ->where('flow', InspectionCorrectionRequestFlow::ReleaserToReviewer->value)
+            ->whereIn('status', [
+                InspectionCorrectionRequestStatus::Marked,
+                InspectionCorrectionRequestStatus::Requested,
+                InspectionCorrectionRequestStatus::Addressed,
+            ])
+            ->count();
+
+        if ($openRequests > 0) {
+            throw ValidationException::withMessages([
+                'inspection' => sprintf('Existem %d apontamento(s) do Liberador que precisam ser encerrados antes da liberação.', $openRequests),
             ]);
         }
 

@@ -16,8 +16,17 @@ final class ReturnInspectionForReviewRequest extends FormRequest
         return $inspection instanceof Inspection && ($this->user()?->can('returnForReview', $inspection) ?? false);
     }
 
+    protected function prepareForValidation(): void
+    {
+        $this->merge([
+            'justification' => is_string($this->input('justification'))
+                ? (trim($this->input('justification')) ?: null)
+                : $this->input('justification'),
+        ]);
+    }
+
     public function rules(): array
     {
-        return ['justification' => ['required', 'string', 'min:10', 'max:5000']];
+        return ['justification' => ['nullable', 'string', 'min:10', 'max:5000']];
     }
 }

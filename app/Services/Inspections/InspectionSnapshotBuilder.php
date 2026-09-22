@@ -32,6 +32,8 @@ final class InspectionSnapshotBuilder
             ],
             'equipment' => [
                 'public_id' => $equipment->public_id,
+                'numero_cliente' => $equipment->numero_cliente,
+                'numero_interno' => $equipment->numero_interno,
                 'maintenance_plan_code' => $equipment->maintenance_plan_code,
                 'maintenance_item_code' => $equipment->maintenance_item_code,
                 'area_code' => $equipment->area_code,

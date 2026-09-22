@@ -99,6 +99,33 @@ final class InspectionReportOverviewTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_assigned_reviewer_can_edit_overview_only_while_the_inspection_is_in_review(): void
+    {
+        [$organization, , $inspection] = $this->scenario();
+        $reviewer = User::factory()->for($organization)->create([
+            'operational_role' => OperationalRole::Reviewer,
+        ]);
+        $inspector = User::factory()->for($organization)->create([
+            'operational_role' => OperationalRole::Inspector,
+        ]);
+        InspectionResponsible::factory()->forInspection($inspection, $reviewer)->create([
+            'responsibility' => InspectionResponsibility::Approver,
+        ]);
+        InspectionResponsible::factory()->forInspection($inspection, $inspector)->create([
+            'responsibility' => InspectionResponsibility::Reviewer,
+        ]);
+        $inspection->update(['status' => InspectionStatus::InReview]);
+        $payload = ['comment' => 'Revisado', 'recommendation' => 'Liberar'];
+
+        $this->actingAs($reviewer)
+            ->put(route('inspections.report-overview.blocks.update', [$inspection, 1]), $payload)
+            ->assertRedirect();
+
+        $this->actingAs($inspector)
+            ->put(route('inspections.report-overview.blocks.update', [$inspection, 1]), $payload)
+            ->assertForbidden();
+    }
+
     public function test_upload_uses_fixed_slot_replaces_previous_photo_and_remains_private(): void
     {
         Storage::fake('inspection_photos');
@@ -219,7 +246,6 @@ final class InspectionReportOverviewTest extends TestCase
     {
         $organization = Organization::factory()->create();
         $admin = User::factory()->for($organization)->create([
-            'account_type' => UserAccountType::CompanyAdmin->value,
             'operational_role' => OperationalRole::Inspector,
         ]);
         $inspection = Inspection::factory()

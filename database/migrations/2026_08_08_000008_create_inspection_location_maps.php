@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 use App\Enums\InspectionLocationMapProcessingStatus;
-use App\Enums\InspectionLocationMapSourceKind;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -33,7 +32,7 @@ return new class extends Migration
             $table->unsignedBigInteger('equipment_document_id')->nullable();
             $table->string('title', 200);
             $table->text('description')->nullable();
-            $table->string('source_kind', 30)->default(InspectionLocationMapSourceKind::Upload->value);
+            $table->string('source_kind', 30)->default('upload');
             $table->unsignedInteger('source_page')->nullable();
             $table->json('source_crop')->nullable();
             $table->json('reference_snapshot')->nullable();

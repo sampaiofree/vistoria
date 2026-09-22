@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Defects;
 
 use App\Enums\DefectAssessmentCondition;
+use App\Enums\DefectCategory;
 use App\Enums\InspectionLocationMapProcessingStatus;
 use App\Enums\PhotoProcessingStatus;
 use App\Models\Defect;
@@ -42,13 +43,13 @@ final class DefectAssessmentCompletionValidator
         }
 
         if ($assessment->condition->requiresEvidence()) {
-            if ($assessment->recommendation === null) {
+            if (blank($assessment->recommendation)) {
                 $errors['recommendation'] = 'Informe uma recomendação para publicar a avaliação.';
             }
 
             $assessment->loadMissing(['quantities', 'locationMapVersion', 'location']);
 
-            if ($assessment->quantities->isEmpty()) {
+            if ($assessment->defect->category !== DefectCategory::RoofCladding && $assessment->quantities->isEmpty()) {
                 $errors['quantity'] = 'Informe o quantitativo antes de publicar a avaliação.';
             }
 

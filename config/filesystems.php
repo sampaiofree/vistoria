@@ -47,12 +47,6 @@ return [
             'report' => false,
         ],
 
-        'equipment_documents' => [
-            'driver' => 'local',
-            'root' => env('EQUIPMENT_DOCUMENTS_ROOT', storage_path('app/private/equipment-documents')),
-            'throw' => true,
-        ],
-
         'inspection_photos' => [
             'driver' => 'local',
             'root' => env('INSPECTION_PHOTOS_ROOT', storage_path('app/private/inspection-photos')),

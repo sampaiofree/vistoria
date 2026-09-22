@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
 use App\Actions\Classification\CreateDefectAssessmentQuantity;
 use App\Actions\Classification\DeleteDefectAssessmentQuantity;
 use App\Actions\Classification\SaveDefectAssessmentGut;
+use App\Actions\Classification\SaveDefectAssessmentTelClassification;
 use App\Actions\Classification\UpdateDefectAssessmentQuantity;
 use App\Actions\Defects\AssessExistingDefect;
 use App\Actions\Defects\CompleteDefectAssessment;
@@ -17,10 +18,12 @@ use App\Actions\Photos\StoreAssessmentPhoto;
 use App\Enums\DefectAssessmentStatus;
 use App\Http\Controllers\Concerns\ResolvesTenantStructure;
 use App\Http\Requests\AssessmentPhotos\StoreAssessmentPhotoRequest;
+use App\Http\Requests\Defects\ChangeDefectAssessmentStatusRequest;
 use App\Http\Requests\Defects\CompleteDefectAssessmentRequest;
 use App\Http\Requests\Defects\StoreExistingDefectAssessmentRequest;
 use App\Http\Requests\Defects\UpdateDefectAssessmentGutRequest;
 use App\Http\Requests\Defects\UpdateDefectAssessmentQuantityRequest;
+use App\Http\Requests\Defects\UpdateDefectAssessmentTelRequest;
 use App\Http\Requests\Defects\UpdateDefectAssessmentRequest;
 use App\Models\AssessmentPhoto;
 use App\Models\Defect;
@@ -101,7 +104,7 @@ final class DefectAssessmentController extends Controller
     }
 
     public function changeStatus(
-        UpdateDefectAssessmentRequest $request,
+        ChangeDefectAssessmentStatusRequest $request,
         TenantContext $tenant,
         DefectAssessment $defectAssessment,
         UpdateDefectAssessment $update,
@@ -110,23 +113,24 @@ final class DefectAssessmentController extends Controller
         $defectAssessment = $this->tenantDefectAssessment($tenant, $defectAssessment);
         $defectAssessment->loadMissing(['defect', 'inspection']);
 
-        $this->authorize('update', $defectAssessment);
+        $this->authorize('changeStatus', $defectAssessment);
 
-        $data = $request->validated();
-        $status = $data['status'] ?? DefectAssessmentStatus::Draft->value;
+        $status = $request->validated('status');
         $wasPublished = $defectAssessment->isComplete();
-        unset($data['status']);
 
-        if ($status === DefectAssessmentStatus::Complete->value) {
-            $publish->handle($request->user(), $defectAssessment, $data);
-        } else {
-            $update->handle($request->user(), $defectAssessment, $data);
+        if ($status === DefectAssessmentStatus::Draft->value) {
+            // Status changes intentionally ignore submitted content: a published
+            // assessment must be explicitly reopened before it can be edited.
+            $update->handle($request->user(), $defectAssessment, []);
+        } elseif (! $wasPublished) {
+            // A draft may be published using the values already saved on it.
+            $publish->handle($request->user(), $defectAssessment);
         }
 
         return redirect()
             ->route('defect-assessments.show', $defectAssessment)
             ->with('success', match (true) {
-                $status === DefectAssessmentStatus::Complete->value && $wasPublished => 'Avaliação republicada.',
+                $status === DefectAssessmentStatus::Complete->value && $wasPublished => 'Avaliação já está publicada.',
                 $status === DefectAssessmentStatus::Complete->value => 'Avaliação publicada.',
                 default => 'Avaliação movida para rascunho.',
             });
@@ -151,15 +155,22 @@ final class DefectAssessmentController extends Controller
         DefectAssessment $defectAssessment,
         CompleteDefectAssessment $action,
         SaveDefectAssessmentGut $gut,
+        SaveDefectAssessmentTelClassification $tel,
     ): RedirectResponse {
         $defectAssessment = $this->tenantDefectAssessment($tenant, $defectAssessment);
         $defectAssessment->loadMissing(['defect', 'inspection']);
 
         $this->authorize('complete', $defectAssessment);
 
-        if (collect(UpdateDefectAssessmentGutRequest::technicalFieldNames())
+        if ($defectAssessment->defect->category !== \App\Enums\DefectCategory::RoofCladding
+            && collect(UpdateDefectAssessmentGutRequest::technicalFieldNames())
             ->contains(fn (string $field): bool => $request->exists($field))) {
             $gut->handle($request->user(), $defectAssessment, $request->validated());
+        }
+        if ($defectAssessment->defect->category === \App\Enums\DefectCategory::RoofCladding
+            && collect(UpdateDefectAssessmentTelRequest::technicalFieldNames())
+                ->contains(fn (string $field): bool => $request->exists($field))) {
+            $tel->handle($request->user(), $defectAssessment, $request->validated());
         }
 
         $action->handle(
@@ -184,6 +195,19 @@ final class DefectAssessmentController extends Controller
         $action->handle($request->user(), $defectAssessment, $request->validated());
 
         return back()->with('success', 'Classificação GUT atualizada.');
+    }
+
+    public function updateTel(
+        UpdateDefectAssessmentTelRequest $request,
+        TenantContext $tenant,
+        DefectAssessment $defectAssessment,
+        SaveDefectAssessmentTelClassification $action,
+    ): RedirectResponse {
+        $defectAssessment = $this->tenantDefectAssessment($tenant, $defectAssessment);
+        $this->authorize('update', $defectAssessment);
+        $action->handle($request->user(), $defectAssessment, $request->validated());
+
+        return back()->with('success', 'Classificação TEL atualizada.');
     }
 
     public function storeQuantity(

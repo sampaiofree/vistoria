@@ -7,13 +7,19 @@ namespace Tests\Feature\Inspections;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
 use App\Enums\OperationalRole;
+use App\Enums\PhotoProcessingStatus;
 use App\Enums\UserAccountType;
+use App\Models\Defect;
+use App\Models\DefectAssessment;
 use App\Models\Equipment;
 use App\Models\Inspection;
+use App\Models\InspectionOverviewBlock;
+use App\Models\InspectionOverviewPhoto;
 use App\Models\InspectionResponsible;
 use App\Models\Organization;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 final class InspectionTransitionRoutesTest extends TestCase
@@ -48,6 +54,8 @@ final class InspectionTransitionRoutesTest extends TestCase
         $this->assertNotNull($inspection->started_at);
         $this->assertNotNull($inspection->inspected_on);
 
+        $this->completeOverview($inspection);
+
         $this->actingAs($inspector)
             ->post(route('inspections.submit-for-review', $inspection))
             ->assertRedirect();
@@ -62,6 +70,14 @@ final class InspectionTransitionRoutesTest extends TestCase
 
         $inspection->refresh();
         $this->assertSame(InspectionStatus::InReview, $inspection->status);
+
+        $this->actingAs($reviewer)
+            ->get(route('inspections.show', $inspection))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('transitions', fn ($transitions): bool => collect($transitions)->contains(
+                    fn (array $transition): bool => $transition['key'] === 'approve'
+                        && $transition['label'] === 'Enviar para liberação',
+                )));
 
         $this->actingAs($reviewer)
             ->post(route('inspections.approve', $inspection))
@@ -112,6 +128,50 @@ final class InspectionTransitionRoutesTest extends TestCase
         $this->actingAs($actor)
             ->post(route('inspections.start', $inspectionWithInactiveEquipment))
             ->assertForbidden();
+    }
+
+    public function test_reviewer_cannot_send_for_release_when_review_has_an_incomplete_assessment(): void
+    {
+        $organization = Organization::factory()->create();
+        $reviewer = User::factory()->for($organization)->create([
+            'operational_role' => OperationalRole::Reviewer,
+        ]);
+        $equipment = Equipment::factory()->for($organization)->create();
+        $inspection = Inspection::factory()->forEquipment($equipment)->create([
+            'status' => InspectionStatus::InReview,
+        ]);
+        $defect = Defect::factory()->forEquipment($equipment, $inspection)->create();
+        DefectAssessment::factory()->forDefect($defect, $inspection)->draft()->create();
+        $this->assignResponsibility($inspection, $reviewer, InspectionResponsibility::Approver);
+
+        $this->actingAs($reviewer)
+            ->post(route('inspections.approve', $inspection))
+            ->assertSessionHasErrors('inspection');
+
+        $inspection->refresh();
+        $this->assertSame(InspectionStatus::InReview, $inspection->status);
+        $this->assertNull($inspection->approved_at);
+    }
+
+    public function test_reviewer_cannot_send_for_release_when_review_has_missing_photo_coverage(): void
+    {
+        $organization = Organization::factory()->create();
+        $reviewer = User::factory()->for($organization)->create([
+            'operational_role' => OperationalRole::Reviewer,
+        ]);
+        $equipment = Equipment::factory()->for($organization)->create();
+        $inspection = Inspection::factory()->forEquipment($equipment)->create([
+            'status' => InspectionStatus::InReview,
+        ]);
+        $defect = Defect::factory()->forEquipment($equipment, $inspection)->create();
+        DefectAssessment::factory()->forDefect($defect, $inspection)->complete()->create();
+        $this->assignResponsibility($inspection, $reviewer, InspectionResponsibility::Approver);
+
+        $this->actingAs($reviewer)
+            ->post(route('inspections.approve', $inspection))
+            ->assertSessionHasErrors('inspection');
+
+        $this->assertSame(InspectionStatus::InReview, $inspection->fresh()->status);
     }
 
     public function test_assigned_inspector_can_start_regardless_of_technical_responsibility(): void
@@ -194,6 +254,8 @@ final class InspectionTransitionRoutesTest extends TestCase
                 ->assertForbidden();
         }
 
+        $this->completeOverview($inspection);
+
         $this->actingAs($inspector)
             ->post(route('inspections.submit-for-review', $inspection))
             ->assertRedirect();
@@ -210,6 +272,79 @@ final class InspectionTransitionRoutesTest extends TestCase
             ->post(route('inspections.cancel', $inspection), ['justification' => 'Cancelamento necessário.'])
             ->assertRedirect();
         $this->assertSame(InspectionStatus::Canceled, $inspection->fresh()->status);
+    }
+
+    public function test_inspector_cannot_submit_for_review_without_all_overview_photos(): void
+    {
+        $organization = Organization::factory()->create();
+        $inspector = User::factory()->for($organization)->create([
+            'operational_role' => OperationalRole::Inspector,
+        ]);
+        $inspection = Inspection::factory()
+            ->forEquipment(Equipment::factory()->for($organization)->create())
+            ->create(['status' => InspectionStatus::InProgress]);
+
+        $this->assignResponsibility($inspection, $inspector, InspectionResponsibility::Preparer);
+
+        $this->actingAs($inspector)
+            ->post(route('inspections.submit-for-review', $inspection))
+            ->assertSessionHasErrors([
+                'inspection' => 'Adicione as fotografias da Vista geral nos slots: 1, 2, 3, 4.',
+            ]);
+
+        $this->assertSame(InspectionStatus::InProgress, $inspection->fresh()->status);
+    }
+
+    public function test_inspector_cannot_submit_for_review_with_pending_processing_or_failed_overview_photo(): void
+    {
+        foreach ([PhotoProcessingStatus::Pending, PhotoProcessingStatus::Processing, PhotoProcessingStatus::Failed] as $status) {
+            [$inspection, $inspector] = $this->inspectionReadyForOverviewValidation();
+            $this->completeOverview($inspection, unreadyPhoto: 3, unreadyStatus: $status);
+
+            $this->actingAs($inspector)
+                ->post(route('inspections.submit-for-review', $inspection))
+                ->assertSessionHasErrors([
+                    'inspection' => 'Aguarde o processamento ou substitua as fotografias da Vista geral nos slots: 3.',
+                ]);
+
+            $this->assertSame(InspectionStatus::InProgress, $inspection->fresh()->status);
+        }
+    }
+
+    public function test_inspector_cannot_submit_for_review_without_overview_texts(): void
+    {
+        foreach (['comment' => 'comentário', 'recommendation' => 'recomendação'] as $field => $label) {
+            [$inspection, $inspector] = $this->inspectionReadyForOverviewValidation();
+            $this->completeOverview($inspection, blankTextInBlock: 2, blankTextField: $field);
+
+            $this->actingAs($inspector)
+                ->post(route('inspections.submit-for-review', $inspection))
+                ->assertSessionHasErrors([
+                    'inspection' => "Preencha os seguintes campos da Vista geral: {$label} do bloco 2.",
+                ]);
+
+            $this->assertSame(InspectionStatus::InProgress, $inspection->fresh()->status);
+        }
+    }
+
+    public function test_inspector_can_resubmit_for_review_with_complete_overview(): void
+    {
+        $organization = Organization::factory()->create();
+        $inspector = User::factory()->for($organization)->create([
+            'operational_role' => OperationalRole::Inspector,
+        ]);
+        $inspection = Inspection::factory()
+            ->forEquipment(Equipment::factory()->for($organization)->create())
+            ->create(['status' => InspectionStatus::InCorrection]);
+
+        $this->assignResponsibility($inspection, $inspector, InspectionResponsibility::Preparer);
+        $this->completeOverview($inspection);
+
+        $this->actingAs($inspector)
+            ->post(route('inspections.submit-for-review', $inspection))
+            ->assertRedirect();
+
+        $this->assertSame(InspectionStatus::AwaitingReview, $inspection->fresh()->status);
     }
 
     public function test_return_and_cancel_require_justification(): void
@@ -295,5 +430,47 @@ final class InspectionTransitionRoutesTest extends TestCase
                 'responsibility' => $responsibility,
                 'is_primary' => $isPrimary,
             ]);
+    }
+
+    /** @return array{Inspection, User} */
+    private function inspectionReadyForOverviewValidation(): array
+    {
+        $organization = Organization::factory()->create();
+        $inspector = User::factory()->for($organization)->create([
+            'operational_role' => OperationalRole::Inspector,
+        ]);
+        $inspection = Inspection::factory()
+            ->forEquipment(Equipment::factory()->for($organization)->create())
+            ->create(['status' => InspectionStatus::InProgress]);
+
+        $this->assignResponsibility($inspection, $inspector, InspectionResponsibility::Preparer);
+
+        return [$inspection, $inspector];
+    }
+
+    private function completeOverview(
+        Inspection $inspection,
+        ?int $unreadyPhoto = null,
+        ?PhotoProcessingStatus $unreadyStatus = null,
+        ?int $blankTextInBlock = null,
+        ?string $blankTextField = null,
+    ): void
+    {
+        foreach ([1, 2] as $position) {
+            $block = InspectionOverviewBlock::factory()->forInspection($inspection, $position)->create([
+                'comment' => $blankTextInBlock === $position && $blankTextField === 'comment' ? null : "Comentário {$position}",
+                'recommendation' => $blankTextInBlock === $position && $blankTextField === 'recommendation' ? null : "Recomendação {$position}",
+            ]);
+
+            foreach ([1, 2] as $slot) {
+                $number = (($position - 1) * 2) + $slot;
+                $factory = InspectionOverviewPhoto::factory()->forBlock($block, $slot);
+
+                ($unreadyPhoto === $number
+                    ? $factory->state(['processing_status' => $unreadyStatus])
+                    : $factory->ready())
+                    ->create();
+            }
+        }
     }
 }

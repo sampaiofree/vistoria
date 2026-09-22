@@ -14,11 +14,11 @@ const props = defineProps({
         type: Object,
         required: true,
     },
-    history_entries: {
-        type: Array,
-        default: () => [],
+    identifier_context: {
+        type: Object,
+        required: true,
     },
-    revision_emission_types: {
+    history_entries: {
         type: Array,
         default: () => [],
     },
@@ -34,13 +34,15 @@ const props = defineProps({
         type: String,
         required: true,
     },
-    revision_store_url: {
-        type: String,
-        required: true,
-    },
 });
 
-const assetFields = {
+const assetFields = computed(() => ({
+    "numero_cliente": props.identifier_context.client_name
+        ? `Número do cliente (${props.identifier_context.client_name})`
+        : 'Número do cliente',
+    "numero_interno": props.identifier_context.organization_name
+        ? `Número interno (${props.identifier_context.organization_name})`
+        : 'Número interno',
     "maintenance_plan_code": "Plano de manutenção",
     "maintenance_item_code": "Item manutenção",
     "defect_code_prefix": "Prefixo de avaria",
@@ -55,7 +57,7 @@ const assetFields = {
     "task_list_group": "GrpLisTar.",
     "task_list_group_counter": "Numerador de grupos",
     "abc_code": "Código ABC"
-};
+}));
 
 const subtitle = computed(() => `${props.client.name} · Item manutenção ${props.equipment.maintenance_item_code || 'Não informado'} · TAG ${props.equipment.tag}`);
 </script>
@@ -97,9 +99,6 @@ const subtitle = computed(() => `${props.client.name} · Item manutenção ${pro
             </section>
             <EquipmentHistory
                 :entries="history_entries"
-                :emission-types="revision_emission_types"
-                :can-manage="can.manage_revisions"
-                :store-url="revision_store_url"
             />
         </div>
     </AppLayout>

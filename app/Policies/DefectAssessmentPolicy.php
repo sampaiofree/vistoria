@@ -21,7 +21,11 @@ final class DefectAssessmentPolicy
 
     public function create(User $user, Inspection $inspection, Defect $defect): bool
     {
-        if (in_array($inspection->status, [InspectionStatus::InProgress, InspectionStatus::InCorrection], true)) {
+        if (in_array($inspection->status, [
+            InspectionStatus::InProgress,
+            InspectionStatus::InCorrection,
+            InspectionStatus::InReview,
+        ], true)) {
             return $user->can('manageFieldContent', $inspection)
                 && $this->sameOrganizationDefect($user, $defect)
                 && $inspection->equipment_id === $defect->equipment_id
@@ -32,6 +36,16 @@ final class DefectAssessmentPolicy
     }
 
     public function update(User $user, DefectAssessment $assessment): bool
+    {
+        return $assessment->isDraft()
+            && $user->can('manageFieldContent', $assessment->inspection);
+    }
+
+    /**
+     * Allows an authorized field user to move an assessment between draft and published.
+     * Published assessments remain read-only until they are explicitly returned to draft.
+     */
+    public function changeStatus(User $user, DefectAssessment $assessment): bool
     {
         return $user->can('manageFieldContent', $assessment->inspection);
     }

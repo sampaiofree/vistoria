@@ -1,5 +1,3 @@
-export const MANUAL_OPTION = '__manual__';
-
 function categoryCode(definition) {
     return definition?.category?.code ?? definition?.category ?? null;
 }
@@ -26,6 +24,36 @@ export function trendOptionsFor(definition, groupCode) {
         ?.options ?? [];
 }
 
+export function urgencyMatricesFor(definition) {
+    return definition?.urgency_matrices ?? [];
+}
+
+export function urgencyContextsFor(definition) {
+    return definition?.urgency_contexts ?? [];
+}
+
+export function transporterTypesFor(definition, matrixCode) {
+    return urgencyMatricesFor(definition)
+        .find((matrix) => optionCode(matrix) === matrixCode)
+        ?.transporter_types ?? [];
+}
+
+export function urgencyOptionsFor(definition, matrixCode, transporterTypeCode) {
+    if (categoryCode(definition) === 'CV') {
+        return urgencyContextsFor(definition)
+            .find((context) => optionCode(context) === matrixCode)
+            ?.options ?? [];
+    }
+
+    const matrix = urgencyMatricesFor(definition).find((item) => optionCode(item) === matrixCode);
+    if (!matrix) return [];
+    if (matrix.code === 'structural_function') return matrix.options ?? [];
+
+    return transporterTypesFor(definition, matrixCode)
+        .find((type) => optionCode(type) === transporterTypeCode)
+        ?.options ?? [];
+}
+
 export function calculateTechnicalGut(definition, values) {
     const category = categoryCode(definition);
     let gravity = null;
@@ -45,18 +73,20 @@ export function calculateTechnicalGut(definition, values) {
         const asset = scoreOf(findOption(definition?.asset_impact_options, values.asset_impact_code)?.score);
 
         gravity = safety !== null && asset !== null ? Math.max(safety, asset) : null;
-        urgency = values.urgency_option_code === MANUAL_OPTION && definition?.urgency_allows_manual
-            ? scoreOf(values.urgency_manual_score)
-            : scoreOf(findOption(definition?.urgency_options, values.urgency_option_code)?.score);
-
-        if (category === 'CV') {
-            trend = scoreOf(values.trend_manual_score);
-        } else {
-            trend = scoreOf(findOption(
-                trendOptionsFor(definition, values.trend_group_code),
-                values.trend_option_code,
+        urgency = category === 'REC'
+            ? scoreOf(findOption(
+                urgencyOptionsFor(definition, values.urgency_matrix_code, values.transporter_type_code),
+                values.urgency_option_code,
+            )?.score)
+            : scoreOf(findOption(
+                urgencyOptionsFor(definition, values.urgency_context_code),
+                values.urgency_option_code,
             )?.score);
-        }
+
+        trend = scoreOf(findOption(
+            trendOptionsFor(definition, values.trend_group_code),
+            values.trend_option_code,
+        )?.score);
     }
 
     if (gravity === null || urgency === null || trend === null) return null;
@@ -79,21 +109,17 @@ export function buildTechnicalGutPayload(definition, values) {
     payload.safety_impact_code = values.safety_impact_code;
     payload.asset_impact_code = values.asset_impact_code;
 
-    if (values.urgency_option_code === MANUAL_OPTION && definition?.urgency_allows_manual) {
-        payload.urgency_manual_description = values.urgency_manual_description;
-        payload.urgency_manual_score = values.urgency_manual_score;
-    } else {
-        payload.urgency_option_code = values.urgency_option_code;
+    if (category === 'REC') {
+        payload.urgency_matrix_code = values.urgency_matrix_code;
+        if (values.urgency_matrix_code === 'patio_port_transporter') {
+            payload.transporter_type_code = values.transporter_type_code;
+        }
     }
+    if (category === 'CV') payload.urgency_context_code = values.urgency_context_code;
+    payload.urgency_option_code = values.urgency_option_code;
 
     payload.trend_group_code = values.trend_group_code;
-
-    if (category === 'CV') {
-        payload.trend_manual_description = values.trend_manual_description;
-        payload.trend_manual_score = values.trend_manual_score;
-    } else {
-        payload.trend_option_code = values.trend_option_code;
-    }
+    payload.trend_option_code = values.trend_option_code;
 
     return payload;
 }
@@ -106,15 +132,15 @@ export function technicalGutReady(definition, values) {
     if (category === 'TAC') return Boolean(values.trend_option_code);
     if (!values.safety_impact_code || !values.asset_impact_code) return false;
 
-    if (values.urgency_option_code === MANUAL_OPTION
-        && !String(values.urgency_manual_description ?? '').trim()) return false;
-
     if (category === 'CV') {
-        return Boolean(values.trend_group_code)
-            && Boolean(String(values.trend_manual_description ?? '').trim());
+        return Boolean(values.urgency_context_code && values.urgency_option_code
+            && values.trend_group_code && values.trend_option_code);
     }
 
-    return Boolean(values.trend_group_code && values.trend_option_code);
+    return category === 'REC'
+        && values.urgency_matrix_code === 'patio_port_transporter'
+        ? Boolean(values.transporter_type_code && values.trend_group_code && values.trend_option_code)
+        : Boolean(values.urgency_option_code && values.trend_group_code && values.trend_option_code);
 }
 
 export function technicalOptionLabel(option, criterion = null) {

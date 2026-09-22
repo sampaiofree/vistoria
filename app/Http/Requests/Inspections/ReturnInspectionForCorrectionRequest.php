@@ -21,7 +21,7 @@ final class ReturnInspectionForCorrectionRequest extends FormRequest
     {
         $this->merge([
             'justification' => is_string($this->input('justification'))
-                ? trim($this->input('justification'))
+                ? (trim($this->input('justification')) ?: null)
                 : $this->input('justification'),
         ]);
     }
@@ -29,7 +29,7 @@ final class ReturnInspectionForCorrectionRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'justification' => ['required', 'string', 'min:10', 'max:5000'],
+            'justification' => ['nullable', 'string', 'min:10', 'max:5000'],
         ];
     }
 }

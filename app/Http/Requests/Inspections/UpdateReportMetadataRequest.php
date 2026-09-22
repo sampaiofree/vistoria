@@ -59,7 +59,6 @@ final class UpdateReportMetadataRequest extends FormRequest
             'report_designer' => ['sometimes', 'required', 'string', 'max:100'],
             'designer_i_report_number' => ['sometimes', 'nullable', 'string', 'max:100'],
             'first_page_text_template' => ['required', 'nullable', 'string', 'max:5000'],
-            'confirm_revision_reorder' => ['nullable', 'boolean'],
         ];
     }
 }

@@ -7,7 +7,6 @@ namespace Tests\Feature\ViewFirst;
 use App\Enums\DefectAssessmentCondition;
 use App\Enums\DefectAssessmentStatus;
 use App\Enums\DefectCategory;
-use App\Enums\EquipmentRevisionEmissionType;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
 use App\Enums\InspectionType;
@@ -17,7 +16,6 @@ use App\Models\AssessmentPhoto;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
 use App\Models\Equipment;
-use App\Models\EquipmentRevision;
 use App\Models\Inspection;
 use App\Models\InspectionOverviewBlock;
 use App\Models\InspectionOverviewPhoto;
@@ -43,7 +41,6 @@ final class ViewFirstReadModelTest extends TestCase
             route('inspections.report-overview', $inspection),
             route('inspections.defects', $inspection),
             route('inspections.photos', $inspection),
-            route('inspections.documents', $inspection),
             route('inspections.history', $inspection),
             route('inspections.report-preview', $inspection),
             route('defect-assessments.show', $assessment),
@@ -61,7 +58,6 @@ final class ViewFirstReadModelTest extends TestCase
             'report_overview' => route('inspections.report-overview', $inspection),
             'defects' => route('inspections.defects', $inspection),
             'photos' => route('inspections.photos', $inspection),
-            'documents' => route('inspections.documents', $inspection),
             'history' => route('inspections.history', $inspection),
             'report' => route('inspections.report-preview', $inspection),
         ];
@@ -75,7 +71,7 @@ final class ViewFirstReadModelTest extends TestCase
                         ->component('Inspections/ReportOverview')
                         ->where('active_tab', 'report_overview')
                         ->has('overview.blocks', 2)
-                        ->has('tabs', 7));
+                        ->has('tabs', 6));
 
                 continue;
             }
@@ -90,7 +86,6 @@ final class ViewFirstReadModelTest extends TestCase
                     ->has('inspection.defects_url')
                     ->missing('inspection.locations_url')
                     ->has('inspection.photos_url')
-                    ->has('inspection.documents_url')
                     ->has('inspection.history_url')
                     ->has('inspection.report_url')
                     ->has('summary.total')
@@ -99,7 +94,7 @@ final class ViewFirstReadModelTest extends TestCase
                     ->has('summary.criticality.code')
                     ->has('summary.condition_breakdown')
                     ->has('summary.classification_breakdown')
-                    ->has('tabs', 7)
+                    ->has('tabs', 6)
                     ->where('tabs', fn ($tabs): bool => collect($tabs)->doesntContain('key', 'locations'))
                     ->has('content')
                     ->missing('demo'));
@@ -143,7 +138,7 @@ final class ViewFirstReadModelTest extends TestCase
                 ->where('content.external_report_number', 'U0306VT-G-6RI002')
                 ->where('content.report_designer', 'PROJETISTA II')
                 ->where('content.designer_i_report_number', 'SM-IIE-1717')
-                ->where('content.revision', 'Prévia')
+                ->where('content.revision', '0')
                 ->where('content.print_enabled', false)
                 ->where('content.validation.blocked', true)
                 ->where('content.cover.provider', $organization->name)
@@ -163,7 +158,7 @@ final class ViewFirstReadModelTest extends TestCase
                 ->where('content.location_source', 'inspection_maps')
                 ->has('content.locations', 0)
                 ->has('content.findings', 1)
-                ->has('content.sections', 4));
+                ->has('content.sections', 3));
     }
 
     public function test_report_header_payload_exposes_client_and_provider_logos(): void
@@ -187,37 +182,7 @@ final class ViewFirstReadModelTest extends TestCase
                 ->where('content.cover.external_report_number', 'U0306VT-G-6RI002')
                 ->where('content.cover.report_designer', 'PROJETISTA II')
                 ->where('content.cover.designer_i_report_number', 'SM-IIE-1717')
-                ->where('content.cover.current_revision', '1'));
-    }
-
-    public function test_report_cover_shows_full_free_text_names_for_manual_revisions_and_initials_for_system_rows(): void
-    {
-        [$organization, $admin, $equipment, $inspection] = $this->viewFirstScenario();
-        $admin->update(['name' => 'Ana Maria da Silva']);
-
-        EquipmentRevision::query()->create([
-            'organization_id' => $organization->id,
-            'equipment_id' => $equipment->id,
-            'emission_type' => EquipmentRevisionEmissionType::ForKnowledge,
-            'revision_date' => '2026-07-01',
-            'preparer_name' => 'João Pedro de Oliveira',
-            'reviewer_name' => 'Maria das Graças Souza',
-            'approver_name' => 'Carlos Eduardo Lima',
-            'releaser_name' => 'Fernanda Alves da Costa',
-            'created_by' => $admin->id,
-            'updated_by' => $admin->id,
-        ]);
-
-        $this->actingAs($admin)
-            ->get(route('inspections.report-preview', $inspection))
-            ->assertOk()
-            ->assertInertia(fn (Assert $page) => $page
-                ->where('content.cover.revision_history.0.compact_responsibles.preparer', 'AMS')
-                ->where('content.cover.revision_history.1.source', 'manual')
-                ->where('content.cover.revision_history.1.compact_responsibles.preparer', 'João Pedro de Oliveira')
-                ->where('content.cover.revision_history.1.compact_responsibles.reviewer', 'Maria das Graças Souza')
-                ->where('content.cover.revision_history.1.compact_responsibles.approver', 'Carlos Eduardo Lima')
-                ->where('content.cover.revision_history.1.compact_responsibles.releaser', 'Fernanda Alves da Costa'));
+                ->where('content.cover.current_revision', '0'));
     }
 
     public function test_report_export_is_disabled_when_external_report_number_is_missing(): void
@@ -399,10 +364,10 @@ final class ViewFirstReadModelTest extends TestCase
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->where('evidence.0.id', $photo->public_id)
-                ->where('evidence.0.reorder_url', route('defect-assessments.photos.reorder', $assessment))
+                ->where('evidence.0.reorder_url', null)
                 ->where('evidence.0.report_number', 1)
                 ->where('evidence.0.report_category', 'CV')
-                ->where('evidence.0.delete_url', route('assessment-photos.destroy', $photo)));
+                ->where('evidence.0.delete_url', null));
 
         $viewer = User::factory()->for($inspection->organization)->create([
             'account_type' => UserAccountType::Member,
@@ -489,7 +454,6 @@ final class ViewFirstReadModelTest extends TestCase
         $admin = User::factory()
             ->for($organization)
             ->create([
-                'account_type' => UserAccountType::CompanyAdmin->value,
                 'operational_role' => OperationalRole::Inspector->value,
             ]);
         $equipment = Equipment::factory()
@@ -498,6 +462,9 @@ final class ViewFirstReadModelTest extends TestCase
         $inspection = Inspection::factory()
             ->forEquipment($equipment)
             ->create(['status' => InspectionStatus::InProgress]);
+        InspectionResponsible::factory()->forInspection($inspection, $admin)->create([
+            'responsibility' => InspectionResponsibility::Preparer,
+        ]);
 
         $this->assertSame(
             ['criticality' => null],
@@ -545,7 +512,6 @@ final class ViewFirstReadModelTest extends TestCase
     {
         $this->markTestSkipped('O cenário demonstrativo foi removido; os dados operacionais são criados por factories.');
 
-        Storage::fake('equipment_documents');
         Storage::fake('inspection_photos');
         Storage::fake('inspection_maps');
         $this->seed(ViewFirstDemoSeeder::class);
@@ -683,7 +649,6 @@ final class ViewFirstReadModelTest extends TestCase
             route('inspections.show', $inspection),
             route('inspections.defects', $inspection),
             route('inspections.photos', $inspection),
-            route('inspections.documents', $inspection),
             route('inspections.history', $inspection),
             route('inspections.report-preview', $inspection),
             route('defect-assessments.show', $assessment),
@@ -747,10 +712,10 @@ final class ViewFirstReadModelTest extends TestCase
                 'internal_notes' => 'Confirmar tratamento com a engenharia.',
                 'safety_impact_code' => 'primary_above_2m',
                 'asset_impact_code' => 'primary_general_high_criticality',
+                'urgency_context_code' => 'function',
                 'urgency_option_code' => 'building_support_column',
                 'trend_group_code' => 'cracking',
-                'trend_manual_description' => 'Fissura ativa com progressão confirmada.',
-                'trend_manual_score' => 5,
+                'trend_option_code' => 'prestressed_or_structural_mechanism',
             ])
             ->assertRedirect(route('defect-assessments.show', $assessment));
 
@@ -772,7 +737,6 @@ final class ViewFirstReadModelTest extends TestCase
         $admin = User::factory()
             ->for($organization)
             ->create([
-                'account_type' => UserAccountType::CompanyAdmin->value,
                 'operational_role' => OperationalRole::Inspector->value,
             ]);
         $equipment = Equipment::factory()
@@ -789,6 +753,7 @@ final class ViewFirstReadModelTest extends TestCase
                 'planned_start_on' => '2026-08-04',
                 'planned_end_on' => '2026-08-04',
                 'inspected_on' => '2026-08-04',
+                'report_revision' => 0,
             ]);
 
         InspectionResponsible::factory()

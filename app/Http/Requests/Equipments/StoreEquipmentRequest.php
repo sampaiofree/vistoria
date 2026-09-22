@@ -18,6 +18,8 @@ final class StoreEquipmentRequest extends FormRequest
     protected function prepareForValidation(): void
     {
         $this->merge([
+            'numero_cliente' => TextNormalizer::technicalCode($this->input('numero_cliente')),
+            'numero_interno' => TextNormalizer::technicalCode($this->input('numero_interno')),
             'maintenance_plan_code' => TextNormalizer::technicalCode($this->input('maintenance_plan_code')),
             'maintenance_item_code' => TextNormalizer::technicalCode($this->input('maintenance_item_code')),
             'area_code' => TextNormalizer::technicalCode($this->input('area_code')),
@@ -40,6 +42,16 @@ final class StoreEquipmentRequest extends FormRequest
         $organizationId = $this->user()?->organization_id;
 
         return [
+            'numero_cliente' => [
+                'required', 'string', 'max:50',
+                Rule::unique('equipments', 'numero_cliente')
+                    ->where(fn ($query) => $query->where('organization_id', $organizationId)),
+            ],
+            'numero_interno' => [
+                'required', 'string', 'max:50',
+                Rule::unique('equipments', 'numero_interno')
+                    ->where(fn ($query) => $query->where('organization_id', $organizationId)),
+            ],
             'tag' => ['required', 'string', 'max:120'],
             'maintenance_item_code' => [
                 'required', 'string', 'max:80',

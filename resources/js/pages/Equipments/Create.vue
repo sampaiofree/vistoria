@@ -16,9 +16,15 @@ const props = defineProps({
         type: Array,
         default: () => [],
     },
+    identifier_context: {
+        type: Object,
+        required: true,
+    },
 });
 
 const form = useForm({
+    numero_cliente: '',
+    numero_interno: '',
     maintenance_plan_code: '',
     maintenance_item_code: '',
     area_code: '',
@@ -51,6 +57,7 @@ function submit() {
             <EquipmentForm
                 :form="form"
                 :abc-options="abc_options"
+                :identifier-context="identifier_context"
                 :cancel-url="cancel_url"
                 submit-label="Criar equipamento"
                 @submit="submit"

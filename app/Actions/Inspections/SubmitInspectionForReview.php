@@ -6,12 +6,16 @@ namespace App\Actions\Inspections;
 
 use App\Actions\Inspections\Concerns\ValidatesInspectionTransition;
 use App\Enums\InspectionResponsibility;
+use App\Enums\InspectionCorrectionRequestFlow;
+use App\Enums\InspectionCorrectionRequestStatus;
 use App\Enums\InspectionStatus;
 use App\Enums\OperationalRole;
 use App\Models\Inspection;
+use App\Models\InspectionCorrectionRequest;
 use App\Models\User;
 use App\Services\Defects\AssessmentPhotoCoverageValidator;
 use App\Services\Defects\ReinspectionCoverageValidator;
+use App\Services\Inspections\InspectionOverviewCoverageValidator;
 use Illuminate\Validation\ValidationException;
 
 final class SubmitInspectionForReview
@@ -22,6 +26,7 @@ final class SubmitInspectionForReview
         private readonly TransitionInspection $transition,
         private readonly ReinspectionCoverageValidator $coverageValidator,
         private readonly AssessmentPhotoCoverageValidator $photoCoverageValidator,
+        private readonly InspectionOverviewCoverageValidator $overviewCoverageValidator,
     ) {}
 
     public function handle(Inspection $inspection, User $actor): Inspection
@@ -45,8 +50,24 @@ final class SubmitInspectionForReview
             ]);
         }
 
+        if ($inspection->status === InspectionStatus::InCorrection) {
+            $pending = InspectionCorrectionRequest::query()
+                ->forOrganization($inspection->organization_id)
+                ->where('inspection_id', $inspection->id)
+                ->where('flow', InspectionCorrectionRequestFlow::ReviewerToInspector->value)
+                ->where('status', InspectionCorrectionRequestStatus::Requested)
+                ->count();
+
+            if ($pending > 0) {
+                throw ValidationException::withMessages([
+                    'inspection' => sprintf('Existem %d solicitação(ões) de correção ainda não atendida(s).', $pending),
+                ]);
+            }
+        }
+
         $this->coverageValidator->validate($inspection);
         $this->photoCoverageValidator->validate($inspection);
+        $this->overviewCoverageValidator->validate($inspection);
 
         $attributes = [];
 

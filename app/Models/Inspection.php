@@ -104,12 +104,6 @@ final class Inspection extends Model
             ->orderBy('created_at');
     }
 
-    public function referenceDocuments(): HasMany
-    {
-        return $this->hasMany(InspectionReferenceDocument::class)
-            ->orderByDesc('created_at');
-    }
-
     public function statusHistories(): HasMany
     {
         return $this->hasMany(InspectionStatusHistory::class)
@@ -135,6 +129,16 @@ final class Inspection extends Model
     public function overviewPhotos(): HasMany
     {
         return $this->hasMany(InspectionOverviewPhoto::class)->orderBy('slot');
+    }
+
+    public function classificationM2Links(): HasMany
+    {
+        return $this->hasMany(InspectionClassificationM2Link::class);
+    }
+
+    public function correctionRequests(): HasMany
+    {
+        return $this->hasMany(InspectionCorrectionRequest::class)->orderBy('created_at')->orderBy('id');
     }
 
     public function hasResponsibility(InspectionResponsibility $responsibility): bool

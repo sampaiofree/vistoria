@@ -3,11 +3,7 @@ import AppLayout from '@/components/ui/AppLayout.vue';
 import InspectionBatchForm from '@/components/domain/inspections/InspectionBatchForm.vue';
 
 defineProps({
-    preview_action: {
-        type: String,
-        required: true,
-    },
-    confirm_action: {
+    create_action: {
         type: String,
         required: true,
     },
@@ -27,10 +23,6 @@ defineProps({
         type: Array,
         required: true,
     },
-    preview: {
-        type: Object,
-        default: null,
-    },
 });
 </script>
 
@@ -41,13 +33,11 @@ defineProps({
     >
         <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <InspectionBatchForm
-                :preview-action="preview_action"
-                :confirm-action="confirm_action"
+                :create-action="create_action"
                 :cancel-url="cancel_url"
                 :equipment-search-url="equipment_search_url"
                 :selected-equipment="selected_equipment"
                 :inspectors="inspectors"
-                :preview="preview"
             />
         </section>
     </AppLayout>

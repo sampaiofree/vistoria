@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace App\Actions\Defects;
 
 use App\Actions\Classification\SaveDefectAssessmentGut;
+use App\Actions\Classification\SaveDefectAssessmentTelClassification;
 use App\Enums\DefectAssessmentCondition;
 use App\Enums\DefectAssessmentStatus;
+use App\Enums\DefectCategory;
 use App\Enums\DefectStatus;
 use App\Enums\InspectionStatus;
 use App\Models\Defect;
@@ -29,6 +31,7 @@ final class AssessExistingDefect
         private readonly DefectAssessmentCompletionValidator $validator,
         private readonly CompleteDefectAssessment $completeAssessment,
         private readonly SaveDefectAssessmentGut $saveGut,
+        private readonly SaveDefectAssessmentTelClassification $saveTel,
     ) {}
 
     public function handle(User $actor, Inspection $inspection, Defect $defect, array $data): DefectAssessment
@@ -118,7 +121,10 @@ final class AssessExistingDefect
             }
 
             if (($data['assessment_action'] ?? DefectAssessmentStatus::Draft->value) === DefectAssessmentStatus::Complete->value) {
-                $assessment = $this->saveGut->handle($actor, $assessment, $data);
+                $assessment = match ($defect->category) {
+                    DefectCategory::RoofCladding => $this->saveTel->handle($actor, $assessment, $data),
+                    default => $this->saveGut->handle($actor, $assessment, $data),
+                };
 
                 return $this->completeAssessment->handle($actor, $assessment, $data);
             }
@@ -144,6 +150,7 @@ final class AssessExistingDefect
         if (! in_array($inspection->status, [
             InspectionStatus::InProgress,
             InspectionStatus::InCorrection,
+            InspectionStatus::InReview,
         ], true)) {
             throw ValidationException::withMessages([
                 'inspection' => 'A inspeção não está em estado editável.',

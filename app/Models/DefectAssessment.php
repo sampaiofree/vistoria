@@ -36,6 +36,7 @@ final class DefectAssessment extends Model
         'reason',
         'item_description', 'project_reference', 'impacts_activity',
         'gravity', 'urgency', 'trend', 'gut_score', 'classification_code',
+        'tel_score', 'tel_snapshot', 'tel_classified_at', 'tel_classified_by',
         'classification_priority', 'deadline_months', 'recommended_due_date',
         'classification_snapshot', 'gut_snapshot', 'classified_at', 'classified_by',
         'gut_classified_at', 'gut_classified_by',
@@ -60,13 +61,16 @@ final class DefectAssessment extends Model
             'urgency' => 'integer',
             'trend' => 'integer',
             'gut_score' => 'integer',
+            'tel_score' => 'integer',
             'classification_priority' => 'integer',
             'deadline_months' => 'integer',
             'recommended_due_date' => 'date',
             'classification_snapshot' => 'array',
             'gut_snapshot' => 'array',
+            'tel_snapshot' => 'array',
             'classified_at' => 'datetime',
             'gut_classified_at' => 'datetime',
+            'tel_classified_at' => 'datetime',
             'snapshot_version' => 'integer',
             'assessed_at' => 'datetime',
         ];
@@ -114,6 +118,11 @@ final class DefectAssessment extends Model
         return $this->hasMany(DefectAssessmentQuantity::class, 'defect_assessment_id')
             ->orderBy('position')
             ->orderBy('id');
+    }
+
+    public function correctionRequests(): HasMany
+    {
+        return $this->hasMany(InspectionCorrectionRequest::class)->orderBy('created_at')->orderBy('id');
     }
 
     public function creator(): BelongsTo

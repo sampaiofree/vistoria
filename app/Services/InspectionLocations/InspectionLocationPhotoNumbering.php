@@ -82,6 +82,18 @@ final class InspectionLocationPhotoNumbering
             ->all();
     }
 
+    /** @param array<string,int> $numbering */
+    public function displayLegendForAssessment(DefectAssessment $assessment, array $numbering): string
+    {
+        if ($assessment->isComplete()) {
+            return $this->legend($this->numbersForAssessment($assessment, $numbering));
+        }
+
+        $count = $this->orderedAssessmentPhotos($assessment)->count();
+
+        return $count === 1 ? '1 FOTO PRONTA' : "{$count} FOTOS PRONTAS";
+    }
+
     /** @param array<int,int> $numbers */
     public function format(array $numbers): string
     {

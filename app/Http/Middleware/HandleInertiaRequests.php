@@ -125,7 +125,7 @@ final class HandleInertiaRequests extends Middleware
                 'label' => 'Itens de Manutenção',
                 'href' => route('equipments.index'),
                 'icon' => 'equipments',
-                'active' => $request->routeIs('equipments.*', 'equipment-documents.*'),
+                'active' => $request->routeIs('equipments.*'),
             ];
             $navigation[] = [
                 'label' => 'Configurações',
@@ -147,6 +147,17 @@ final class HandleInertiaRequests extends Middleware
                         'label' => 'Cliente',
                         'href' => route('clients.index'),
                         'active' => $request->routeIs('clients.*'),
+                    ],
+                    [
+                        'label' => 'Relatório de inspeção',
+                        'active' => $request->routeIs('settings.inspection-report.*'),
+                        'children' => [
+                            [
+                                'label' => 'Aspectos gerais',
+                                'href' => route('settings.inspection-report.general-aspects.index'),
+                                'active' => $request->routeIs('settings.inspection-report.general-aspects.*'),
+                            ],
+                        ],
                     ],
                 ],
             ];

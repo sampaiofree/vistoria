@@ -7,6 +7,8 @@ namespace App\Services\Demo;
 use App\Enums\DefectAssessmentCondition;
 use App\Enums\DefectAssessmentStatus;
 use App\Enums\InspectionResponsibility;
+use App\Enums\InspectionCorrectionRequestFlow;
+use App\Enums\InspectionCorrectionRequestStatus;
 use App\Enums\InspectionStatus;
 use App\Enums\MeasurementUnit;
 use App\Models\AssessmentPhoto;
@@ -14,6 +16,7 @@ use App\Models\Defect;
 use App\Models\DefectAssessment;
 use App\Models\Equipment;
 use App\Models\Inspection;
+use App\Models\InspectionCorrectionRequest;
 use App\Models\User;
 use App\Services\Classification\NativeDefectCatalog;
 use App\Services\Defects\DefectAssessmentQuantitySnapshot;
@@ -117,7 +120,20 @@ class ViewFirstDemoPresenter
         array $inspectionPayload,
         string $activeTab,
     ): array {
-        $inspection->loadMissing('organization');
+        $inspection->loadMissing([
+            'organization',
+            'correctionRequests.creator',
+            'correctionRequests.sender',
+            'correctionRequests.addressedBy',
+            'correctionRequests.closedBy',
+            'correctionRequests.previousRequest',
+            'correctionRequests.parentRequest',
+            'correctionRequests.children.creator',
+            'correctionRequests.children.sender',
+            'correctionRequests.children.addressedBy',
+            'correctionRequests.children.closedBy',
+            'correctionRequests.children.previousRequest',
+        ]);
 
         $defects = $this->defectsForInspection($inspection);
 
@@ -137,14 +153,21 @@ class ViewFirstDemoPresenter
             'summary' => $summary,
             'tabs' => $this->tabs($inspection, $summary, count($photos)),
             'active_tab' => $activeTab,
-            'content' => $this->content(
+            'content' => [
+                ...$this->content(
                 $activeTab,
                 $inspection,
                 $items,
                 $photos,
                 $summary,
                 $inspectionPayload,
-            ),
+                ),
+                'general_correction_requests' => $this->correctionRequestsPayload(
+                    $inspection->correctionRequests->whereNull('defect_assessment_id')->whereNull('parent_request_id'),
+                    $inspection,
+                    $user,
+                ),
+            ],
         ];
     }
 
@@ -159,6 +182,17 @@ class ViewFirstDemoPresenter
             'inspection.equipment.defects.assessments.creator',
             'inspection.equipment.defects.assessments.photos',
             'inspection.equipment.defects.assessments.quantities',
+            'inspection.equipment.defects.assessments.correctionRequests.creator',
+            'inspection.equipment.defects.assessments.correctionRequests.sender',
+            'inspection.equipment.defects.assessments.correctionRequests.addressedBy',
+            'inspection.equipment.defects.assessments.correctionRequests.closedBy',
+            'inspection.equipment.defects.assessments.correctionRequests.previousRequest',
+            'inspection.equipment.defects.assessments.correctionRequests.parentRequest',
+            'inspection.equipment.defects.assessments.correctionRequests.children.creator',
+            'inspection.equipment.defects.assessments.correctionRequests.children.sender',
+            'inspection.equipment.defects.assessments.correctionRequests.children.addressedBy',
+            'inspection.equipment.defects.assessments.correctionRequests.children.closedBy',
+            'inspection.equipment.defects.assessments.correctionRequests.children.previousRequest',
             'inspection.equipment',
             'inspection.equipment.defects.firstInspection',
             'photos',
@@ -168,6 +202,17 @@ class ViewFirstDemoPresenter
             'previousAssessment.inspection',
             'previousAssessment.creator',
             'creator',
+            'correctionRequests.creator',
+            'correctionRequests.sender',
+            'correctionRequests.addressedBy',
+            'correctionRequests.closedBy',
+            'correctionRequests.previousRequest',
+            'correctionRequests.parentRequest',
+            'correctionRequests.children.creator',
+            'correctionRequests.children.sender',
+            'correctionRequests.children.addressedBy',
+            'correctionRequests.children.closedBy',
+            'correctionRequests.children.previousRequest',
         ]);
 
         $technical = $this->technicalData($assessment->defect, $assessment);
@@ -181,7 +226,7 @@ class ViewFirstDemoPresenter
         $canUpdate = $user->can('update', $assessment);
         $keepPublished = $assessment->isComplete();
         $canEdit = $canUpdate;
-        $canChangeStatus = $canUpdate;
+        $canChangeStatus = $user->can('changeStatus', $assessment);
         $category = $assessment->defect->category;
         $classification = $technical['classification'];
         $quantities = collect($technical['quantities'])
@@ -221,11 +266,25 @@ class ViewFirstDemoPresenter
             'previous_assessment_summary' => $assessmentHistory[0] ?? null,
             'assessment_history' => $assessmentHistory,
             'reinspection_action' => $this->reinspectionAction($assessment, $user),
+            'correction_requests' => $this->correctionRequestsPayload(
+                $assessment->correctionRequests,
+                $assessment->inspection,
+                $user,
+                $assessment,
+            ),
             'classification' => $classification,
             'gut' => $technical['gut'],
+            'tel' => $technical['tel'],
             'gut_options' => NativeDefectCatalog::gutOptions(),
             'gut_definition' => $gutDefinition,
             'gut_snapshot' => $assessment->gut_snapshot,
+            'tel_definition' => $category === \App\Enums\DefectCategory::RoofCladding
+                ? NativeDefectCatalog::telTechnicalDefinition()
+                : null,
+            'tel_snapshot' => $assessment->tel_snapshot,
+            'tel_classification_ranges' => $category === \App\Enums\DefectCategory::RoofCladding
+                ? NativeDefectCatalog::classifications($category)->map(fn ($classification): array => $classification->toArray())->all()
+                : [],
             'quantity_snapshot' => $assessment->quantity_snapshot,
             'gut_classification_ranges' => NativeDefectCatalog::classifications($category)
                 ->map(fn ($classification): array => $classification->toArray())->all(),
@@ -246,7 +305,7 @@ class ViewFirstDemoPresenter
             'photo_interval' => $technical['photo_interval'] ?? null,
             'occurrence' => $technical['occurrence'] ?? null,
             'evidence' => $this->evidenceForDefect($assessment->defect, $technical, $assessment, $canEdit, $reportNumbering),
-            'location_map' => $this->assessmentLocationMapPayload($assessment, $canEdit),
+            'location_map' => $this->assessmentLocationMapPayload($assessment, $canEdit, $reportNumbering),
             'photos' => $assessment->photos->map(fn ($photo): array => [
                 'id' => $photo->public_id,
                 'title' => $photo->original_name,
@@ -278,7 +337,7 @@ class ViewFirstDemoPresenter
             'measurement_units' => MeasurementUnit::options(),
             'capabilities' => [
                 'update' => $canEdit,
-                'complete' => $canChangeStatus,
+                'complete' => $canEdit,
                 'keep_published' => $keepPublished,
                 'can_move_to_draft' => true,
                 'location_marker_count' => $assessment->location === null ? 0 : 1,
@@ -288,16 +347,21 @@ class ViewFirstDemoPresenter
                 'update_url' => $canEdit
                     ? route('defect-assessments.update', $assessment)
                     : null,
-                'complete_url' => $canChangeStatus
+                'complete_url' => $canEdit
                     ? route('defect-assessments.complete', $assessment)
                     : null,
                 'photo_upload_url' => $canEdit
                     ? route('defect-assessments.photos.store', $assessment)
                     : null,
                 'gut_url' => $canEdit
+                    && $category !== \App\Enums\DefectCategory::RoofCladding
                     ? route('defect-assessments.gut.update', $assessment)
                     : null,
+                'tel_url' => $canEdit && $category === \App\Enums\DefectCategory::RoofCladding
+                    ? route('defect-assessments.tel.update', $assessment)
+                    : null,
                 'quantity_store_url' => $canEdit
+                    && $category !== \App\Enums\DefectCategory::RoofCladding
                     ? route('defect-assessments.quantities.store', $assessment)
                     : null,
                 'location_map_upload_url' => $canEdit
@@ -310,8 +374,35 @@ class ViewFirstDemoPresenter
         ];
     }
 
-    /** @return array<string,mixed>|null */
-    private function assessmentLocationMapPayload(DefectAssessment $assessment, bool $canEdit): ?array
+    /** @return array<string, mixed> */
+    public function generalCorrectionRequests(Inspection $inspection, User $user): array
+    {
+        $inspection->loadMissing([
+            'correctionRequests.creator',
+            'correctionRequests.sender',
+            'correctionRequests.addressedBy',
+            'correctionRequests.closedBy',
+            'correctionRequests.previousRequest',
+            'correctionRequests.parentRequest',
+            'correctionRequests.children.creator',
+            'correctionRequests.children.sender',
+            'correctionRequests.children.addressedBy',
+            'correctionRequests.children.closedBy',
+            'correctionRequests.children.previousRequest',
+        ]);
+
+        return $this->correctionRequestsPayload(
+            $inspection->correctionRequests->whereNull('defect_assessment_id')->whereNull('parent_request_id'),
+            $inspection,
+            $user,
+        );
+    }
+
+    /**
+     * @param  array<string,int>  $reportNumbering
+     * @return array<string,mixed>|null
+     */
+    private function assessmentLocationMapPayload(DefectAssessment $assessment, bool $canEdit, array $reportNumbering): ?array
     {
         $version = $assessment->locationMapVersion;
         if ($version === null) {
@@ -331,7 +422,11 @@ class ViewFirstDemoPresenter
                     'v' => $version->background_checksum,
                 ])
                 : null,
+            'background_width' => $version->background_width,
+            'background_height' => $version->background_height,
             'color' => $this->defectLocationColor->forAssessment($assessment),
+            'style' => $this->defectLocationColor->styleForAssessment($assessment),
+            'photo_legend' => $this->photoNumbering->displayLegendForAssessment($assessment, $reportNumbering),
             'location' => $assessment->location === null ? null : [
                 'public_id' => $assessment->location->public_id,
                 'geometry' => $assessment->location->geometry,
@@ -343,6 +438,19 @@ class ViewFirstDemoPresenter
             'editor_url' => $canEdit && $version->isReady()
                 ? route('defect-assessments.location.editor', $assessment)
                 : null,
+            'editor' => $canEdit && $version->isReady() ? [
+                'version' => $version->version,
+                'background_url' => route('defect-location-map-versions.background', [
+                    'mapVersion' => $version,
+                    'v' => $version->background_checksum,
+                ]),
+                'background_width' => $version->background_width,
+                'background_height' => $version->background_height,
+                'update_url' => route('defect-assessments.location.update', $assessment),
+                'delete_url' => $assessment->location === null
+                    ? null
+                    : route('defect-assessments.location.destroy', $assessment),
+            ] : null,
         ];
     }
 
@@ -356,7 +464,6 @@ class ViewFirstDemoPresenter
             'report_overview_url' => route('inspections.report-overview', $inspection),
             'defects_url' => route('inspections.defects', $inspection),
             'photos_url' => route('inspections.photos', $inspection),
-            'documents_url' => route('inspections.documents', $inspection),
             'history_url' => route('inspections.history', $inspection),
             'report_url' => route('inspections.report-preview', $inspection),
             'reinspection_checklist_url' => route('inspections.reinspection-checklist', $inspection),
@@ -374,7 +481,6 @@ class ViewFirstDemoPresenter
             ['key' => 'report_overview', 'label' => 'Vista geral', 'url' => route('inspections.report-overview', $inspection)],
             ['key' => 'defects', 'label' => 'Avarias', 'url' => route('inspections.defects', $inspection), 'count' => $summary['total']],
             ['key' => 'photos', 'label' => 'Fotografias', 'url' => route('inspections.photos', $inspection), 'count' => $photoCount],
-            ['key' => 'documents', 'label' => 'Documentos', 'url' => route('inspections.documents', $inspection), 'count' => $inspection->referenceDocuments->count()],
             ['key' => 'history', 'label' => 'Histórico', 'url' => route('inspections.history', $inspection), 'count' => $inspection->statusHistories->count()],
             ['key' => 'report', 'label' => 'Relatório', 'url' => route('inspections.report-preview', $inspection)],
         ];
@@ -426,11 +532,6 @@ class ViewFirstDemoPresenter
                     ])
                     ->values()
                     ->all(),
-            ],
-            'documents' => [
-                'items' => $inspectionPayload['reference_documents'] ?? [],
-                'reference_document_ids' => $inspectionPayload['reference_document_ids'] ?? [],
-                'empty_message' => 'Nenhum documento técnico foi vinculado a esta inspeção.',
             ],
             'history' => [
                 'items' => $inspectionPayload['history'] ?? [],
@@ -660,6 +761,7 @@ class ViewFirstDemoPresenter
             'is_canceled' => $assessment?->condition->isCanceled() ?? false,
             'classification' => $classification,
             'gut' => $technical['gut'],
+            'tel' => $technical['tel'],
             'characterization' => $technical['characterization'],
             'quantities' => $technical['quantities'],
             'quantity_summary' => $technical['quantity_summary'] ?? null,
@@ -684,6 +786,9 @@ class ViewFirstDemoPresenter
                 ? route('inspections.defects.assessments.store', [$inspection, $defect])
                 : null,
             'show_url' => route('defects.show', $defect),
+            'correction_requests' => $assessment === null
+                ? null
+                : $this->correctionRequestsPayload($assessment->correctionRequests, $inspection, $user, $assessment),
         ];
     }
 
@@ -714,6 +819,9 @@ class ViewFirstDemoPresenter
             'gut_score' => $assessment->gut_score,
             'gut_snapshot' => $assessment->gut_snapshot,
             'gut_classified_at' => $assessment->gut_classified_at?->format('d/m/Y H:i'),
+            'tel_score' => $assessment->tel_score,
+            'tel_snapshot' => $assessment->tel_snapshot,
+            'tel_classified_at' => $assessment->tel_classified_at?->format('d/m/Y H:i'),
             'classification_code' => $assessment->classification_code,
             'classification_snapshot' => $assessment->classification_snapshot,
             'classification_priority' => $assessment->classification_priority,
@@ -994,6 +1102,7 @@ class ViewFirstDemoPresenter
             || $assessment->project_reference !== null
             || $assessment->impacts_activity !== null
             || $assessment->gravity !== null
+            || $assessment->tel_score !== null
             || $assessment->quantities->isNotEmpty()
             || $assessment->photos->isNotEmpty();
     }
@@ -1041,6 +1150,17 @@ class ViewFirstDemoPresenter
                 'snapshot' => $assessment->gut_snapshot,
             ]
             : null;
+        $tel = $assessment !== null && $assessment->tel_score !== null && is_array($assessment->tel_snapshot)
+            ? [
+                'height_m' => data_get($assessment->tel_snapshot, 'height_m'),
+                'impact' => data_get($assessment->tel_snapshot, 'impact'),
+                'damage_group' => data_get($assessment->tel_snapshot, 'damage_group'),
+                'damage_option' => data_get($assessment->tel_snapshot, 'damage_option'),
+                'fall_risk' => data_get($assessment->tel_snapshot, 'fall_risk'),
+                'score' => $assessment->tel_score,
+                'snapshot' => $assessment->tel_snapshot,
+            ]
+            : null;
         $impact = ($assessment?->impacts_activity ?? false)
             ? ['code' => 'IMP. ATIV.', 'label' => 'Impacto na atividade', 'description' => 'A avaliação registra impacto na atividade.']
             : ['code' => '-', 'label' => 'Sem impacto informado', 'description' => 'Nenhum impacto na atividade foi registrado.'];
@@ -1075,6 +1195,7 @@ class ViewFirstDemoPresenter
             'impact' => $impact,
             'classification' => $classification,
             'gut' => $gut,
+            'tel' => $tel,
             'characterization' => $characterization,
             'quantities' => $quantities->values()->all(),
             'quantity_summary' => [
@@ -1110,6 +1231,7 @@ class ViewFirstDemoPresenter
                 ],
                 'classification' => $classification,
                 'gut' => $gut,
+                'tel' => $tel,
             ],
         ];
     }
@@ -1387,6 +1509,7 @@ class ViewFirstDemoPresenter
                     'impact' => $occurrence['impact'] ?? $item['impact'] ?? ['code' => '-', 'label' => 'Sem impacto direto'],
                     'classification' => $item['classification'] ?? [],
                     'gut' => $item['gut'] ?? [],
+                    'tel' => $item['tel'] ?? null,
                     'photo_interval' => $occurrence['photo_interval'] ?? $item['photo_interval'] ?? '—',
                     'photo_count' => count($item['photos'] ?? []),
                     'quantity_summary' => $item['quantity_summary'] ?? [],
@@ -1464,7 +1587,6 @@ class ViewFirstDemoPresenter
             ->flatMap(fn (array $block): array => $block['photos'])
             ->values()
             ->all();
-        $referenceDocument = (array) data_get($inspectionPayload, 'reference_documents.0.document', []);
         $externalReportNumber = filled($inspection->external_report_number)
             ? (string) $inspection->external_report_number
             : null;
@@ -1475,9 +1597,7 @@ class ViewFirstDemoPresenter
         $revisionHistory = $this->revisionChronology->forInspectionReport($inspection);
         $currentRevision = $revisionHistory['current']['revision_number'] ?? null;
         $coverRevision = $currentRevision === null ? 'Prévia' : (string) $currentRevision;
-        // Keep the top-level compatibility field stable; all visible report
-        // headers and footers consume the calculated cover revision below.
-        $revision = $referenceDocument['revision'] ?? 'Prévia';
+        $revision = $coverRevision;
         $procedure = $inspection->procedure_number ?: '—';
         $drawing = collect($items)
             ->pluck('drawing')
@@ -1601,7 +1721,6 @@ class ViewFirstDemoPresenter
             'title_lines' => $titleLines,
             'revision_history' => $revisionHistory['rows'],
             'revision_density' => $revisionHistory['density'],
-            'emission_types' => $this->revisionChronology->emissionLegend(),
             'generated_label' => 'Prévia técnica da inspeção',
             'cover' => [
                 'eyebrow' => 'Relatório técnico de inspeção',
@@ -1633,7 +1752,6 @@ class ViewFirstDemoPresenter
                 'title_lines' => $titleLines,
                 'revision_history' => $revisionHistory['rows'],
                 'revision_density' => $revisionHistory['density'],
-                'emission_types' => $this->revisionChronology->emissionLegend(),
             ],
             'general_aspects' => $this->generalAspectsDocuments->fromStored($inspection->general_notes),
             'overview' => array_merge($overview, [
@@ -1685,6 +1803,7 @@ class ViewFirstDemoPresenter
                         'current_classification' => $item['classification'],
                         'classification' => $item['classification'],
                         'gut' => $item['gut'],
+                        'tel' => $item['tel'] ?? null,
                         'location' => $assessment['location_description'] ?? $occurrence['location'] ?? '—',
                         'project' => $occurrence['project'] ?? $item['project'] ?? '—',
                         'drawing' => $occurrence['drawing'] ?? $item['drawing'] ?? null,
@@ -1748,11 +1867,6 @@ class ViewFirstDemoPresenter
                     'title' => 'Responsabilidade técnica',
                     'items' => $inspectionPayload['responsibles'] ?? [],
                 ],
-                [
-                    'key' => 'documents',
-                    'title' => 'Documentos de referência',
-                    'items' => $inspectionPayload['reference_documents'] ?? [],
-                ],
             ],
             'validation' => [
                 'blocked' => $blocked,
@@ -1805,6 +1919,149 @@ class ViewFirstDemoPresenter
     }
 
     /**
+     * @param Collection<int, InspectionCorrectionRequest> $requests
+     * @return array{items:array<int,array<string,mixed>>, history:array<int,array<string,mixed>>, counts:array<string,int>, create_url:?string}
+     */
+    private function correctionRequestsPayload(
+        Collection $requests,
+        Inspection $inspection,
+        User $user,
+        ?DefectAssessment $assessment = null,
+    ): array {
+        $ordered = $requests
+            ->whereNull('parent_request_id')
+            ->sortBy('created_at')
+            ->values();
+        $assessmentOptions = $this->defectsForInspection($inspection)
+            ->map(function (Defect $defect) use ($inspection): ?array {
+                $assessment = $defect->assessments->firstWhere('inspection_id', $inspection->id);
+
+                return $assessment === null ? null : [
+                    'id' => $assessment->id,
+                    'label' => sprintf('%s — %s', $defect->code, $defect->title),
+                ];
+            })
+            ->filter()
+            ->values()
+            ->all();
+        $creationFlow = $this->correctionCreationFlow($inspection, $user);
+        $hasOpenRoot = $creationFlow !== null && $ordered->contains(
+            fn (InspectionCorrectionRequest $request): bool => $request->flow === $creationFlow && $request->status->isOpen(),
+        );
+
+        $open = $ordered
+            ->filter(fn (InspectionCorrectionRequest $request): bool => $request->status->isOpen())
+            ->values();
+        $history = $ordered
+            ->reject(fn (InspectionCorrectionRequest $request): bool => $request->status->isOpen())
+            ->values();
+
+        return [
+            'items' => $open
+                ->map(fn (InspectionCorrectionRequest $request): array => $this->correctionRequestPayload($request, $inspection, $user))
+                ->all(),
+            'history' => $history
+                ->map(fn (InspectionCorrectionRequest $request): array => $this->correctionRequestPayload($request, $inspection, $user))
+                ->all(),
+            'counts' => [
+                ...$ordered
+                    ->countBy(fn (InspectionCorrectionRequest $request): string => $request->status->value)
+                    ->all(),
+                'open' => $open->count(),
+                'history' => $history->count(),
+            ],
+            'create_url' => $assessment !== null && $creationFlow !== null && ! $hasOpenRoot
+                ? route('defect-assessment-correction-requests.store', $assessment)
+                : null,
+            'assessment_options' => $assessmentOptions,
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function correctionRequestPayload(
+        InspectionCorrectionRequest $request,
+        Inspection $inspection,
+        User $user,
+    ): array {
+        $isMarked = $request->status === InspectionCorrectionRequestStatus::Marked;
+        $isRequested = $request->status === InspectionCorrectionRequestStatus::Requested;
+        $isAddressed = $request->status === InspectionCorrectionRequestStatus::Addressed;
+
+        return [
+            'id' => $request->id,
+            'public_id' => $request->public_id,
+            'status' => $request->status->value,
+            'status_label' => $request->status->label(),
+            'flow' => $request->flow->value,
+            'requester_label' => $request->flow->requesterLabel(),
+            'responder_label' => $request->flow->responderLabel(),
+            'request_message' => $request->request_message,
+            'response_message' => $request->response_message,
+            'created_at' => $request->created_at?->format('d/m/Y H:i'),
+            'sent_at' => $request->sent_at?->format('d/m/Y H:i'),
+            'addressed_at' => $request->addressed_at?->format('d/m/Y H:i'),
+            'closed_at' => $request->closed_at?->format('d/m/Y H:i'),
+            'previous_request_id' => $request->previousRequest?->public_id,
+            'parent' => $request->parentRequest === null ? null : [
+                'public_id' => $request->parentRequest->public_id,
+                'requester_label' => $request->parentRequest->flow->requesterLabel(),
+                'request_message' => $request->parentRequest->request_message,
+            ],
+            'creator' => $this->correctionRequestUserPayload($request->creator),
+            'sender' => $this->correctionRequestUserPayload($request->sender),
+            'addressed_by' => $this->correctionRequestUserPayload($request->addressedBy),
+            'closed_by' => $this->correctionRequestUserPayload($request->closedBy),
+            'update_url' => $user->can('update', $request) && $isMarked
+                ? route('inspection-correction-requests.update', $request)
+                : null,
+            'delete_url' => $user->can('delete', $request) && $isMarked
+                ? route('inspection-correction-requests.destroy', $request)
+                : null,
+            'address_url' => $user->can('address', $request) && $isRequested
+                ? route('inspection-correction-requests.address', $request)
+                : null,
+            'mark_pending_url' => $user->can('markPending', $request) && $isAddressed
+                ? route('inspection-correction-requests.mark-pending', $request)
+                : null,
+            'close_url' => $user->can('close', $request) && $isAddressed
+                ? route('inspection-correction-requests.close', $request)
+                : null,
+            'replace_url' => $user->can('replace', $request) && $isAddressed
+                ? route('inspection-correction-requests.replace', $request)
+                : null,
+            'create_child_url' => $user->can('createChild', $request)
+                ? route('inspection-correction-requests.children.store', $request)
+                : null,
+            'children' => $request->children
+                ->map(fn (InspectionCorrectionRequest $child): array => $this->correctionRequestPayload($child, $inspection, $user))
+                ->all(),
+        ];
+    }
+
+    private function correctionCreationFlow(Inspection $inspection, User $user): ?InspectionCorrectionRequestFlow
+    {
+        if (! $user->can('createCorrectionRequests', $inspection)) {
+            return null;
+        }
+
+        return match ($inspection->status) {
+            InspectionStatus::InReview => InspectionCorrectionRequestFlow::ReviewerToInspector,
+            InspectionStatus::AwaitingRelease => InspectionCorrectionRequestFlow::ReleaserToReviewer,
+            default => null,
+        };
+    }
+
+    /** @return array{id:int,public_id:string,name:string}|null */
+    private function correctionRequestUserPayload(?User $user): ?array
+    {
+        return $user === null ? null : [
+            'id' => $user->id,
+            'public_id' => $user->public_id,
+            'name' => $user->name,
+        ];
+    }
+
+    /**
      * Excludes defects introduced only in a later inspection while retaining
      * existing defects that still need an assessment in an open inspection.
      *
@@ -1818,6 +2075,17 @@ class ViewFirstDemoPresenter
             'equipment.defects.assessments.creator',
             'equipment.defects.assessments.photos',
             'equipment.defects.assessments.quantities',
+            'equipment.defects.assessments.correctionRequests.creator',
+            'equipment.defects.assessments.correctionRequests.sender',
+            'equipment.defects.assessments.correctionRequests.addressedBy',
+            'equipment.defects.assessments.correctionRequests.closedBy',
+            'equipment.defects.assessments.correctionRequests.previousRequest',
+            'equipment.defects.assessments.correctionRequests.parentRequest',
+            'equipment.defects.assessments.correctionRequests.children.creator',
+            'equipment.defects.assessments.correctionRequests.children.sender',
+            'equipment.defects.assessments.correctionRequests.children.addressedBy',
+            'equipment.defects.assessments.correctionRequests.children.closedBy',
+            'equipment.defects.assessments.correctionRequests.children.previousRequest',
         ]);
 
         return $this->inspectionDefectScope->handle($inspection);
@@ -1928,12 +2196,15 @@ class ViewFirstDemoPresenter
             'condition_label' => $assessment->condition->label(),
             'assessed_at' => $assessment->assessed_at?->format('d/m/Y H:i'),
             'classification' => $classification,
-            'gut' => [
+            'gut' => $assessment->defect->category === \App\Enums\DefectCategory::RoofCladding ? null : [
                 'gravity' => $assessment->gravity,
                 'urgency' => $assessment->urgency,
                 'trend' => $assessment->trend,
                 'score' => $assessment->gut_score,
             ],
+            'tel' => $assessment->defect->category === \App\Enums\DefectCategory::RoofCladding
+                ? $assessment->tel_snapshot
+                : null,
             'quantity' => $quantity === null ? null : (function () use ($quantity): array {
                 $unit = MeasurementUnit::tryFrom((string) ($quantity['measurement_unit'] ?? ''));
 

@@ -74,7 +74,7 @@ onBeforeUnmount(() => {
                             v-model="form.search"
                             type="search"
                             class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
-                            placeholder="Buscar por item, TAG, prefixo, descrição, área ou subárea"
+                            placeholder="Buscar por número, item, TAG, prefixo, descrição, área ou subárea"
                         >
                     </label>
                 </div>
@@ -110,6 +110,8 @@ onBeforeUnmount(() => {
                 <table class="min-w-full divide-y divide-slate-200">
                     <thead class="bg-slate-50">
                         <tr class="text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            <th class="px-5 py-3">Nº cliente</th>
+                            <th class="px-5 py-3">Nº interno</th>
                             <th class="px-5 py-3">Item manutenção</th>
                             <th class="px-5 py-3">TAG</th>
                             <th class="px-5 py-3">Prefixo de avaria</th>
@@ -121,6 +123,12 @@ onBeforeUnmount(() => {
                     </thead>
                     <tbody class="divide-y divide-slate-200 bg-white">
                         <tr v-for="equipment in equipments.data" :key="equipment.public_id">
+                            <td class="px-5 py-4 font-semibold text-slate-900">
+                                {{ equipment.numero_cliente || '—' }}
+                            </td>
+                            <td class="px-5 py-4 font-semibold text-slate-900">
+                                {{ equipment.numero_interno || '—' }}
+                            </td>
                             <td class="px-5 py-4 font-semibold text-slate-900">
                                 {{ equipment.maintenance_item_code || '—' }}
                             </td>
@@ -170,7 +178,7 @@ onBeforeUnmount(() => {
                             </td>
                         </tr>
                         <tr v-if="equipments.data.length === 0">
-                            <td colspan="7" class="px-5 py-10 text-center text-sm text-slate-500">
+                            <td colspan="9" class="px-5 py-10 text-center text-sm text-slate-500">
                                 Nenhum equipamento encontrado.
                             </td>
                         </tr>

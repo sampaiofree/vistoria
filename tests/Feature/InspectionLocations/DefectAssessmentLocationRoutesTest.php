@@ -67,7 +67,7 @@ final class DefectAssessmentLocationRoutesTest extends TestCase
         $this->assertSame(1, DefectLocationMapVersion::query()->count(), 'A versão substituída sem referência deve ser eliminada.');
     }
 
-    public function test_replacing_a_published_map_demotes_the_assessment_and_invalidates_confirmation_but_keeps_historical_version(): void
+    public function test_published_assessment_must_be_reopened_before_replacing_its_map(): void
     {
         Storage::fake('inspection_maps');
         Queue::fake();
@@ -82,6 +82,19 @@ final class DefectAssessmentLocationRoutesTest extends TestCase
             'assessed_at' => now(),
             'defect_snapshot' => ['historical' => true],
         ]);
+
+        $this->actingAs($user)
+            ->post(route('defect-assessments.location-map.store', $assessment), [
+                'file' => UploadedFile::fake()->image('substituto.png', 900, 600),
+            ])
+            ->assertForbidden();
+
+        $this->actingAs($user)
+            ->patch(route('defect-assessments.status.update', $assessment), [
+                'status' => DefectAssessmentStatus::Draft->value,
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
 
         $this->actingAs($user)
             ->post(route('defect-assessments.location-map.store', $assessment), [

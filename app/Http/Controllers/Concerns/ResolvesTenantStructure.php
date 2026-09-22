@@ -7,9 +7,7 @@ use App\Models\Defect;
 use App\Models\DefectAssessment;
 use App\Models\DefectAssessmentQuantity;
 use App\Models\Equipment;
-use App\Models\EquipmentDocument;
 use App\Models\Inspection;
-use App\Models\InspectionReferenceDocument;
 use App\Models\InspectionResponsible;
 use App\Services\Tenancy\TenantContext;
 
@@ -28,16 +26,6 @@ trait ResolvesTenantStructure
         return Equipment::query()
             ->forOrganization($tenant->id())
             ->whereKey($equipment->getKey())
-            ->firstOrFail();
-    }
-
-    protected function tenantEquipmentDocument(
-        TenantContext $tenant,
-        EquipmentDocument $document,
-    ): EquipmentDocument {
-        return EquipmentDocument::query()
-            ->forOrganization($tenant->id())
-            ->whereKey($document->getKey())
             ->firstOrFail();
     }
 
@@ -93,15 +81,4 @@ trait ResolvesTenantStructure
             ->firstOrFail();
     }
 
-    protected function tenantInspectionReferenceDocument(
-        TenantContext $tenant,
-        Inspection $inspection,
-        InspectionReferenceDocument $referenceDocument,
-    ): InspectionReferenceDocument {
-        return InspectionReferenceDocument::query()
-            ->forOrganization($tenant->id())
-            ->whereKey($referenceDocument->getKey())
-            ->where('inspection_id', $inspection->getKey())
-            ->firstOrFail();
-    }
 }

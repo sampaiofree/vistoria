@@ -30,12 +30,6 @@ final class UpdateDefectAssessmentGutRequest extends FormRequest
             }
         }
 
-        foreach (['urgency_manual_description', 'trend_manual_description'] as $field) {
-            if ($this->exists($field)) {
-                $normalized[$field] = TextNormalizer::nullableText($this->input($field));
-            }
-        }
-
         $this->merge($normalized);
     }
 
@@ -57,13 +51,16 @@ final class UpdateDefectAssessmentGutRequest extends FormRequest
             'classification_code' => ['prohibited'],
             'safety_impact_code' => ['nullable', 'string', 'max:120'],
             'asset_impact_code' => ['nullable', 'string', 'max:120'],
+            'urgency_context_code' => ['nullable', 'string', 'max:120'],
+            'urgency_matrix_code' => ['nullable', 'string', 'max:120'],
+            'transporter_type_code' => ['nullable', 'string', 'max:120'],
             'urgency_option_code' => ['nullable', 'string', 'max:120'],
-            'urgency_manual_description' => ['nullable', 'string', 'max:1000'],
-            'urgency_manual_score' => ['nullable', 'integer', 'min:1', 'max:5'],
+            'urgency_manual_description' => ['prohibited'],
+            'urgency_manual_score' => ['prohibited'],
             'trend_group_code' => ['nullable', 'string', 'max:120'],
             'trend_option_code' => ['nullable', 'string', 'max:120'],
-            'trend_manual_description' => ['nullable', 'string', 'max:1000'],
-            'trend_manual_score' => ['nullable', 'integer', 'min:1', 'max:5'],
+            'trend_manual_description' => ['prohibited'],
+            'trend_manual_score' => ['prohibited'],
         ];
     }
 
@@ -73,13 +70,12 @@ final class UpdateDefectAssessmentGutRequest extends FormRequest
         return [
             'safety_impact_code',
             'asset_impact_code',
+            'urgency_context_code',
+            'urgency_matrix_code',
+            'transporter_type_code',
             'urgency_option_code',
-            'urgency_manual_description',
-            'urgency_manual_score',
             'trend_group_code',
             'trend_option_code',
-            'trend_manual_description',
-            'trend_manual_score',
         ];
     }
 
@@ -89,6 +85,9 @@ final class UpdateDefectAssessmentGutRequest extends FormRequest
         return [
             'safety_impact_code',
             'asset_impact_code',
+            'urgency_context_code',
+            'urgency_matrix_code',
+            'transporter_type_code',
             'urgency_option_code',
             'trend_group_code',
             'trend_option_code',

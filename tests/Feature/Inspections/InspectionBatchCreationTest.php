@@ -22,7 +22,7 @@ final class InspectionBatchCreationTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_active_planner_previews_and_confirms_a_batch_with_the_expected_responsibles(): void
+    public function test_active_planner_creates_a_batch_with_the_expected_responsibles(): void
     {
         $organization = Organization::factory()->create();
         $planner = User::factory()->for($organization)->create([
@@ -32,8 +32,16 @@ final class InspectionBatchCreationTest extends TestCase
         $inspector = User::factory()->for($organization)->create([
             'operational_role' => OperationalRole::Inspector,
         ]);
-        $firstEquipment = Equipment::factory()->for($organization)->create();
-        $secondEquipment = Equipment::factory()->for($organization)->create();
+        $firstEquipment = Equipment::factory()->for($organization)->create([
+            'area_name' => 'Área 1',
+            'subarea_name' => 'Subárea 1',
+            'description' => 'Equipamento 1',
+        ]);
+        $secondEquipment = Equipment::factory()->for($organization)->create([
+            'area_name' => 'Área 2',
+            'subarea_name' => 'Subárea 2',
+            'description' => 'Equipamento 2',
+        ]);
 
         $response = $this->actingAs($planner)->post(route('inspections.store'), [
             'inspections' => [
@@ -42,24 +50,7 @@ final class InspectionBatchCreationTest extends TestCase
             ],
         ]);
 
-        $response->assertRedirect();
-        parse_str((string) parse_url((string) $response->headers->get('Location'), PHP_URL_QUERY), $query);
-        $token = $query['preview'] ?? null;
-        $this->assertIsString($token);
-
-        $this->actingAs($planner)
-            ->get(route('inspections.create', ['preview' => $token]))
-            ->assertOk()
-            ->assertInertia(fn (Assert $page) => $page
-                ->component('Inspections/Create')
-                ->where('preview.token', $token)
-                ->has('preview.inspections', 2)
-                ->has('inspectors', 1)
-                ->where('inspectors.0.id', $inspector->id));
-
-        $this->actingAs($planner)
-            ->post(route('inspections.confirm'), ['token' => $token])
-            ->assertRedirect(route('inspections.index'));
+        $response->assertRedirect(route('inspections.index'));
 
         $this->actingAs($planner)
             ->get(route('inspections.index'))
@@ -75,6 +66,14 @@ final class InspectionBatchCreationTest extends TestCase
         $this->assertDatabaseCount('inspections', 2);
         $inspection = Inspection::query()->where('equipment_id', $firstEquipment->id)->firstOrFail();
         $this->assertSame(InspectionStatus::Planned, $inspection->status);
+        $this->assertSame(0, $inspection->report_revision);
+        $this->assertSame(implode("\n", [
+            'UBÚ - Área 1',
+            'Subárea 1',
+            'Equipamento 1',
+            'INSPEÇÃO DE INTEGRIDADE ESTRUTURAL',
+            'RELATÓRIO DE INSPEÇÃO',
+        ]), $inspection->first_page_text_template);
         $this->assertSame('OS-001', $inspection->service_order);
         $this->assertNull($inspection->atmospheric_classification);
         $this->assertSame('2026-10-10', $inspection->planned_start_on?->toDateString());
@@ -85,6 +84,14 @@ final class InspectionBatchCreationTest extends TestCase
             'responsibility' => InspectionResponsibility::Preparer->value,
             'is_primary' => true,
         ]);
+        $secondInspection = Inspection::query()->where('equipment_id', $secondEquipment->id)->firstOrFail();
+        $this->assertSame(implode("\n", [
+            'UBÚ - Área 2',
+            'Subárea 2',
+            'Equipamento 2',
+            'INSPEÇÃO DE INTEGRIDADE ESTRUTURAL',
+            'RELATÓRIO DE INSPEÇÃO',
+        ]), $secondInspection->first_page_text_template);
         $this->assertDatabaseHas('inspection_responsibles', [
             'inspection_id' => $inspection->id,
             'user_id' => $inspector->id,
@@ -132,7 +139,8 @@ final class InspectionBatchCreationTest extends TestCase
             ->assertRedirect(route('inspections.create'))
             ->assertSessionHasErrors([
                 'inspections.1.equipment_id',
-            ]);
+            ])
+            ->assertSessionHasInput('inspections.1.service_order', 'OS-002');
 
         $this->assertDatabaseCount('inspections', 0);
     }
@@ -183,7 +191,10 @@ final class InspectionBatchCreationTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Inspections/Create')
                 ->has('selected_equipment', 0)
+                ->where('create_action', route('inspections.store'))
                 ->where('equipment_search_url', route('inspections.equipment-options'))
+                ->missing('preview')
+                ->missing('confirm_action')
                 ->missing('equipment'));
     }
 

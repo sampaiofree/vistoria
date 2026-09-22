@@ -23,7 +23,7 @@ final class InspectionGeneralAspectsTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_admin_can_update_and_clear_structured_general_aspects_in_any_status(): void
+    public function test_admin_cannot_update_structured_general_aspects_in_any_status(): void
     {
         $organization = Organization::factory()->create();
         $admin = User::factory()->for($organization)->create([
@@ -44,12 +44,9 @@ final class InspectionGeneralAspectsTest extends TestCase
                     'schema_version' => 1,
                     'document' => $document,
                 ])
-                ->assertRedirect(route('inspections.show', $inspection));
+                ->assertForbidden();
 
-            $stored = json_decode((string) $inspection->refresh()->general_notes, true, flags: JSON_THROW_ON_ERROR);
-            $this->assertSame(1, $stored['schema_version']);
-            $this->assertSame('Descrição técnica', $stored['document']['content'][0]['content'][0]['text']);
-            $this->assertSame($admin->id, $inspection->updated_by);
+            $this->assertNull($inspection->refresh()->general_notes);
             $this->assertSame($workflowTimestamps, $inspection->only(['report_generated_at', 'released_at', 'canceled_at']));
         }
 
@@ -58,7 +55,7 @@ final class InspectionGeneralAspectsTest extends TestCase
                 'schema_version' => 1,
                 'document' => ['type' => 'doc', 'content' => [['type' => 'paragraph']]],
             ])
-            ->assertRedirect();
+            ->assertForbidden();
 
         $this->assertNull($inspection->refresh()->general_notes);
     }
@@ -66,12 +63,11 @@ final class InspectionGeneralAspectsTest extends TestCase
     public function test_saving_general_aspects_flattens_legacy_heading_levels(): void
     {
         $organization = Organization::factory()->create();
-        $admin = User::factory()->for($organization)->create([
-            'account_type' => UserAccountType::CompanyAdmin->value,
-        ]);
+        $admin = User::factory()->for($organization)->create(['operational_role' => OperationalRole::Reviewer]);
         $inspection = Inspection::factory()
             ->forEquipment(Equipment::factory()->for($organization)->create())
-            ->create(['status' => InspectionStatus::AwaitingReview]);
+            ->create(['status' => InspectionStatus::InReview]);
+        InspectionResponsible::factory()->forInspection($inspection, $admin)->create(['responsibility' => InspectionResponsibility::Approver]);
 
         $this->actingAs($admin)
             ->put(route('inspections.general-aspects.update', $inspection), [
@@ -125,12 +121,11 @@ final class InspectionGeneralAspectsTest extends TestCase
     public function test_general_aspects_reject_invalid_schema_unsupported_content_and_limits(): void
     {
         $organization = Organization::factory()->create();
-        $admin = User::factory()->for($organization)->create([
-            'account_type' => UserAccountType::CompanyAdmin->value,
-        ]);
+        $admin = User::factory()->for($organization)->create(['operational_role' => OperationalRole::Reviewer]);
         $inspection = Inspection::factory()
             ->forEquipment(Equipment::factory()->for($organization)->create())
-            ->create(['status' => InspectionStatus::AwaitingReview]);
+            ->create(['status' => InspectionStatus::InReview]);
+        InspectionResponsible::factory()->forInspection($inspection, $admin)->create(['responsibility' => InspectionResponsibility::Approver]);
 
         $invalidDocuments = [
             ['schema_version' => 2, 'document' => $this->document()],
@@ -148,6 +143,50 @@ final class InspectionGeneralAspectsTest extends TestCase
         }
 
         $this->assertNull($inspection->refresh()->general_notes);
+    }
+
+    public function test_general_aspects_cannot_be_saved_with_red_text(): void
+    {
+        $organization = Organization::factory()->create();
+        $admin = User::factory()->for($organization)->create(['operational_role' => OperationalRole::Reviewer]);
+        $inspection = Inspection::factory()
+            ->forEquipment(Equipment::factory()->for($organization)->create())
+            ->create(['status' => InspectionStatus::InReview]);
+        InspectionResponsible::factory()->forInspection($inspection, $admin)->create(['responsibility' => InspectionResponsibility::Approver]);
+        $redDocument = [
+            'type' => 'doc',
+            'content' => [[
+                'type' => 'paragraph',
+                'content' => [[
+                    'type' => 'text',
+                    'text' => 'Preencha este trecho',
+                    'marks' => [['type' => 'textColor', 'attrs' => ['color' => '#DC2626']]],
+                ]],
+            ]],
+        ];
+
+        $this->actingAs($admin)
+            ->put(route('inspections.general-aspects.update', $inspection), [
+                'schema_version' => 1,
+                'document' => $redDocument,
+            ])
+            ->assertSessionHasErrors([
+                'document' => 'Conclua todos os trechos destacados em vermelho antes de salvar os aspectos gerais.',
+            ]);
+
+        $this->assertNull($inspection->refresh()->general_notes);
+
+        $redDocument['content'][0]['content'][0]['marks'] = [];
+
+        $this->actingAs($admin)
+            ->put(route('inspections.general-aspects.update', $inspection), [
+                'schema_version' => 1,
+                'document' => $redDocument,
+            ])
+            ->assertRedirect(route('inspections.show', $inspection));
+
+        $stored = json_decode((string) $inspection->refresh()->general_notes, true, flags: JSON_THROW_ON_ERROR);
+        $this->assertArrayNotHasKey('marks', $stored['document']['content'][0]['content'][0]);
     }
 
     public function test_overview_and_report_expose_the_structured_document_with_correct_permissions(): void

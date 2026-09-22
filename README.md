@@ -66,9 +66,9 @@ As credenciais previsíveis do `DevelopmentSeeder` são criadas somente nos ambi
 
 O provisionamento de Redis, Horizon, Supervisor, cron, storage privado, backup e
 testes de aceite está documentado em
-[`docs/13-DEPLOY-HETZNER.md`](docs/13-DEPLOY-HETZNER.md). O roteiro operacional
+[`docs/14-DEPLOY-HETZNER.md`](docs/14-DEPLOY-HETZNER.md). O roteiro operacional
 completo para repasse está em
-[`docs/13A-PASSO-A-PASSO-DEPLOY-PRODUCAO.md`](docs/13A-PASSO-A-PASSO-DEPLOY-PRODUCAO.md).
+[`docs/14A-PASSO-A-PASSO-DEPLOY-PRODUCAO.md`](docs/14A-PASSO-A-PASSO-DEPLOY-PRODUCAO.md).
 
 ## Demonstração View First
 

@@ -120,11 +120,19 @@ defineProps({
                             : 'A avaliação está publicada; salvar como rascunho permite novos ajustes.'"
                 />
 
-                <PreviousAssessmentCard
-                    v-else
-                    :assessment="defect.latest_assessment"
-                    title="Avaliação atual"
-                />
+                <div v-else>
+                    <p
+                        v-if="(defect.current_assessment || defect.latest_assessment)?.status === 'complete'"
+                        class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900"
+                    >
+                        Este documento só pode ser editado no modo rascunho.
+                    </p>
+                    <PreviousAssessmentCard
+                        :class="(defect.current_assessment || defect.latest_assessment)?.status === 'complete' ? 'mt-4' : ''"
+                        :assessment="defect.latest_assessment"
+                        title="Avaliação atual"
+                    />
+                </div>
             </div>
 
             <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">

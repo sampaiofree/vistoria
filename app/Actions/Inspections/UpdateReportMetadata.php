@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Actions\Inspections;
 
-use App\Enums\InspectionStatus;
 use App\Enums\OperationalRole;
 use App\Models\Inspection;
 use App\Models\User;
@@ -57,14 +56,6 @@ final class UpdateReportMetadata
                 if ($errors !== []) {
                     throw ValidationException::withMessages($errors);
                 }
-            }
-
-            $currentDate = $inspection->report_date?->toDateString();
-            $dateChanged = $currentDate !== $reportDate;
-            if ($inspection->status === InspectionStatus::Released && $dateChanged && ! ($data['confirm_revision_reorder'] ?? false)) {
-                throw ValidationException::withMessages([
-                    'confirm_revision_reorder' => 'Confirme a alteração da data, pois a cronologia do equipamento poderá ser renumerada.',
-                ]);
             }
 
             $attributes = [

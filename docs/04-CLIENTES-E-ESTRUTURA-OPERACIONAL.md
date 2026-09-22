@@ -1,80 +1,42 @@
-# 04 — Clientes e estrutura operacional
+# 04 — Cliente e estrutura operacional
 
-## Hierarquia
+## Modelo atual
+
+Cada organização tem zero ou um `Client`, inclusive quando existem registros
+excluídos logicamente. Não há unidades, áreas ou subáreas como entidades do
+domínio. Dados de área e subárea usados na operação são atributos textuais do
+equipamento.
 
 ```text
 Organization
-└── Client
+└── Client (0..1)
+    └── Equipments (N)
 ```
 
-O cliente carrega `organization_id`, `public_id`, status e soft delete. As
-relações de banco incluem o tenant para impedir que um filho seja associado a um
-pai de outra empresa.
+O cliente contém nome, razão social, documento opcional normalizado, e-mail,
+telefone, logotipo, observações e status `active` ou `inactive`.
 
-## Permissões
+## Acesso e operação
 
-| Operação | Administrador da empresa | Membro | Superadministrador |
-|---|---:|---:|---:|
-| Listar e visualizar | Sim | Não | Não |
-| Criar e editar | Sim | Não | Não |
-| Ativar ou inativar | Sim | Não | Não |
-| Excluir pela interface | Não | Não | Não |
+O cadastro fica em **Configurações → Cliente**. Somente administradores da empresa
+podem criar, editar ou alterar seu status; membros não o acessam e
+superadministradores não entram no tenant operacional. Não há exclusão pela
+interface.
 
-Todas as operações são limitadas à organização autenticada. Recursos de outro
-tenant são rejeitados antes da escrita e não aparecem em listas ou opções.
+O servidor associa o cliente único ativo aos novos equipamentos. Formulários de
+equipamento e inspeção não selecionam cliente. Sem um cliente ativo, não é possível
+criar equipamento nem iniciar uma nova inspeção para seus equipamentos.
 
-## Cliente
+## Arquivo de logotipo
 
-Cada organização possui zero ou um único cliente, inclusive considerando registros
-excluídos logicamente. O cadastro fica em **Configurações → Cliente** e somente
-administradores da empresa podem acessá-lo. Quando ainda não houver cliente, o
-administrador poderá cadastrá-lo; depois disso, apenas poderá editá-lo ou alterar
-seu status.
+O logotipo é alterado na edição do cliente, aceita JPEG, PNG ou WEBP de até 2 MB e
+fica no disco público segregado pela organização. Sua substituição remove o arquivo
+anterior; ele pode ser usado na capa do relatório.
 
-Campos funcionais principais:
+## Integridade
 
-- nome e razão social;
-- documento normalizado, opcional e único dentro da organização;
-- e-mail e telefone;
-- logotipo;
-- observações;
-- status `active` ou `inactive`.
-
-O logotipo é aceito apenas na edição, nos formatos JPEG, PNG ou WEBP, com até
-2 MB. Ele é armazenado no disco público sob a organização e substitui o arquivo
-anterior. O logotipo pode ser usado na capa do relatório.
-
-## Estado operacional
-
-O status não é propagado automaticamente aos descendentes. Inativar um cliente,
-por exemplo, não altera fisicamente o status de equipamentos.
-
-A validade operacional é calculada pela cadeia:
-
-- equipamento só recebe nova inspeção se estiver ativo e o cliente estiver operacionalmente ativo.
-
-Isso preserva o histórico enquanto impede novas operações sobre uma estrutura
-inativa.
-
-## Rotas e navegação
-
-As URLs de cliente são preservadas, mas a navegação é:
-
-```text
-Configurações → Cliente
-```
-
-## Integridade e normalização
-
-- espaços e caixa são normalizados antes da validação;
-- documentos armazenam somente a forma normalizada usada para unicidade;
-- Actions derivam `organization_id` e os pais do contexto autenticado;
-- o cliente único ativo é associado automaticamente a novos equipamentos;
-- não há seleção ou filtro de cliente no cadastro de equipamentos e inspeções;
-- cliente inativo impede novos vínculos operacionais;
-- não há cascade de inativação nem exclusão destrutiva na interface.
-
-## Cobertura automatizada
-
-Os testes verificam unicidade por organização, autorização exclusiva de
-administradores, tenant, status e associação automática em operações operacionais.
+- a organização vem do tenant autenticado, nunca do payload;
+- relações e consultas mantêm `organization_id` para bloquear mistura de tenants;
+- documento é normalizado antes da unicidade;
+- inativar o cliente preserva os equipamentos e o histórico, mas impede novas
+  inspeções enquanto a cadeia operacional estiver inativa.

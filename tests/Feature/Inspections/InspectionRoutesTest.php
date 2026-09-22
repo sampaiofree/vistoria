@@ -56,9 +56,7 @@ final class InspectionRoutesTest extends TestCase
             ]],
         ]);
 
-        $response->assertRedirect();
-        parse_str((string) parse_url((string) $response->headers->get('Location'), PHP_URL_QUERY), $query);
-        $this->actingAs($admin)->post(route('inspections.confirm'), ['token' => $query['preview']])->assertRedirect();
+        $response->assertRedirect(route('inspections.index'));
 
         $inspection = Inspection::query()->firstOrFail();
 
@@ -67,6 +65,7 @@ final class InspectionRoutesTest extends TestCase
         $this->assertSame('planned', $inspection->status->value);
         $this->assertSame('initial', $inspection->inspection_type->value);
         $this->assertNull($inspection->atmospheric_classification);
+        $this->assertSame($equipment->numero_cliente, $inspection->external_report_number);
         $this->assertNotEmpty($inspection->number);
         $this->assertNotEmpty($inspection->public_id);
         $this->assertSame($equipment->tag, $inspection->context_snapshot['equipment']['tag']);
@@ -93,12 +92,11 @@ final class InspectionRoutesTest extends TestCase
                 ->where('inspection.status', 'planned')
                 ->where('inspection.planned_start_on', '20/09/2026')
                 ->where('inspection.planned_end_on', '22/09/2026')
+                ->where('report_metadata.external_report_number', $equipment->numero_cliente)
                 ->has('inspection.context_snapshot')
-                ->has('inspection.reference_document_ids')
                 ->has('inspection.history', 1)
                 ->has('capabilities.update_planned.action')
                 ->where('capabilities.assign_responsibles', false)
-                ->where('capabilities.manage_references', false)
                 ->where('capabilities.transition', true)
                 ->has('transitions', 1)
                 ->where('transitions.0.key', 'cancel'));
@@ -363,9 +361,7 @@ final class InspectionRoutesTest extends TestCase
                 'inspector_id' => $inspector->id,
             ]],
         ]);
-        $response->assertRedirect();
-        parse_str((string) parse_url((string) $response->headers->get('Location'), PHP_URL_QUERY), $query);
-        $this->actingAs($admin)->post(route('inspections.confirm'), ['token' => $query['preview']])->assertRedirect();
+        $response->assertRedirect(route('inspections.index'));
 
         $reinspection = Inspection::query()
             ->where('organization_id', $organization->id)
@@ -414,9 +410,7 @@ final class InspectionRoutesTest extends TestCase
                 'inspector_id' => $inspector->id,
             ]],
         ]);
-        $response->assertRedirect();
-        parse_str((string) parse_url((string) $response->headers->get('Location'), PHP_URL_QUERY), $query);
-        $this->actingAs($admin)->post(route('inspections.confirm'), ['token' => $query['preview']])->assertRedirect();
+        $response->assertRedirect(route('inspections.index'));
 
         $inspection = Inspection::query()
             ->where('equipment_id', $equipment->id)

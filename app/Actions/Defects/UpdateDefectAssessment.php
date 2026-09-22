@@ -86,6 +86,10 @@ final class UpdateDefectAssessment
                     'gut_snapshot' => null,
                     'gut_classified_at' => null,
                     'gut_classified_by' => null,
+                    'tel_score' => null,
+                    'tel_snapshot' => null,
+                    'tel_classified_at' => null,
+                    'tel_classified_by' => null,
                     'classification_code' => null,
                     'classification_priority' => null,
                     'deadline_months' => null,
@@ -123,6 +127,7 @@ final class UpdateDefectAssessment
         if (! in_array($inspection->status, [
             InspectionStatus::InProgress,
             InspectionStatus::InCorrection,
+            InspectionStatus::InReview,
         ], true)) {
             throw ValidationException::withMessages([
                 'inspection' => 'A inspeção não está em estado editável.',

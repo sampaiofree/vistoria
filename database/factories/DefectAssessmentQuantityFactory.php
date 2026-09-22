@@ -48,6 +48,7 @@ final class DefectAssessmentQuantityFactory extends Factory
             DefectCategory::Civil => MeasurementUnit::CubicMeter,
             DefectCategory::AnticorrosiveTreatment => MeasurementUnit::SquareMeter,
             DefectCategory::StructuralRecovery => MeasurementUnit::Kilogram,
+            DefectCategory::RoofCladding => MeasurementUnit::Other,
         };
 
         $native = [
@@ -56,6 +57,7 @@ final class DefectAssessmentQuantityFactory extends Factory
                 DefectCategory::Civil => QuantityCalculationType::CivilVolume,
                 DefectCategory::AnticorrosiveTreatment => QuantityCalculationType::TacArea,
                 DefectCategory::StructuralRecovery => QuantityCalculationType::StructuralRecoveryWeight,
+                DefectCategory::RoofCladding => QuantityCalculationType::RoofCladdingNotApplicable,
             },
             'inputs' => [],
             'measurement_unit' => $unit,

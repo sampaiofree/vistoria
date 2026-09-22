@@ -100,17 +100,15 @@ final class InspectionPagesTest extends TestCase
                 'context_snapshot' => ['equipment' => ['tag' => 'EQ-01', 'name' => 'Bomba']],
                 'snapshot_version' => 1,
                 'responsibles' => [],
-                'reference_documents' => [],
                 'next_inspections' => [],
                 'history' => [['id' => 1, 'to_status' => 'awaiting_review', 'created_at' => '29/07/2026', 'user' => ['name' => 'Ana']]],
             ],
             'capabilities' => [
                 'update_planned' => ['action' => '/edit'],
                 'assign_responsibles' => ['action' => '/assign'],
-                'manage_references' => false,
                 'transition' => true,
             ],
-            'assignment_options' => ['users' => [], 'roles' => []], 'available_documents' => [],
+            'assignment_options' => ['users' => [], 'roles' => []],
             'transitions' => [['key' => 'return_for_correction', 'label' => 'Solicitar correção', 'action' => '/correct', 'requires_justification' => true]],
             'index_url' => '/inspections',
         ]));
@@ -121,11 +119,9 @@ final class InspectionPagesTest extends TestCase
             ->has('inspection.context_snapshot')
             ->has('inspection.history', 1)
             ->has('inspection.responsibles')
-            ->has('inspection.reference_documents')
             ->has('inspection.next_inspections')
             ->has('capabilities.update_planned.action')
             ->has('capabilities.assign_responsibles.action')
-            ->where('capabilities.manage_references', false)
             ->where('capabilities.transition', true)
             ->where('transitions.0.key', 'return_for_correction')
             ->where('transitions.0.requires_justification', true));
@@ -183,6 +179,10 @@ final class InspectionPagesTest extends TestCase
 
         $this->assertStringContainsString('requires_justification === true', $source);
         $this->assertStringContainsString('required rows="3"', $source);
+        $this->assertStringContainsString('const errorMessages = computed', $source);
+        $this->assertStringContainsString('v-if="errorMessages.length"', $source);
+        $this->assertStringContainsString('role="alert"', $source);
+        $this->assertStringContainsString('v-for="message in errorMessages"', $source);
     }
 
     public function test_index_uses_compact_filters_and_status_milestones_instead_of_date_columns(): void

@@ -8,6 +8,7 @@ use App\Actions\Inspections\UpdateGeneralAspects;
 use App\Actions\Inspections\UpdatePlannedInspection;
 use App\Actions\Inspections\UpdateReportMetadata;
 use App\Actions\Inspections\UpdateInspectionReportRevision;
+use App\Actions\Inspections\UpdateInspectionClassificationM2Links;
 use App\Enums\AtmosphericCorrosivity;
 use App\Enums\DefectCategory;
 use App\Enums\EquipmentRevisionEmissionType;
@@ -19,23 +20,23 @@ use App\Enums\OperationalRole;
 use App\Enums\RegistrationStatus;
 use App\Enums\UserStatus;
 use App\Http\Controllers\Concerns\ResolvesTenantStructure;
-use App\Http\Requests\Inspections\ConfirmInspectionBatchRequest;
-use App\Http\Requests\Inspections\PreviewInspectionBatchRequest;
+use App\Http\Requests\Inspections\CreateInspectionBatchRequest;
 use App\Http\Requests\Inspections\UpdateGeneralAspectsRequest;
 use App\Http\Requests\Inspections\UpdatePlannedInspectionRequest;
 use App\Http\Requests\Inspections\UpdateReportMetadataRequest;
 use App\Http\Requests\Inspections\UpdateInspectionReportRevisionRequest;
+use App\Http\Requests\Inspections\UpdateInspectionClassificationM2LinksRequest;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
 use App\Models\Equipment;
-use App\Models\EquipmentDocument;
+use App\Models\GeneralAspectsTemplate;
 use App\Models\Inspection;
-use App\Models\InspectionReferenceDocument;
 use App\Models\InspectionResponsible;
 use App\Models\InspectionStatusHistory;
 use App\Models\User;
 use App\Services\InspectionLocations\InspectionLocationReportComposer;
 use App\Services\InspectionLocations\InspectionLocationReportSequenceComposer;
+use App\Services\Reports\BuildInspectionClassificationSummary;
 use App\Services\Inspections\InspectionReadModelPresenter;
 use App\Services\Reports\GeneralAspectsDocument;
 use App\Services\Tenancy\TenantContext;
@@ -44,9 +45,7 @@ use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
-use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 
@@ -145,45 +144,16 @@ final class InspectionController extends Controller
         ]);
     }
 
-    public function create(Request $request, TenantContext $tenant): InertiaResponse|RedirectResponse
+    public function create(Request $request, TenantContext $tenant): InertiaResponse
     {
         $this->authorizePlanningCreation($request->user());
 
-        $preview = null;
-        $token = trim((string) $request->string('preview'));
-
-        if ($token !== '') {
-            $cachedPreview = Cache::get($this->batchPreviewCacheKey($token));
-
-            if (! is_array($cachedPreview)
-                || ($cachedPreview['user_id'] ?? null) !== $request->user()->getKey()
-                || ($cachedPreview['organization_id'] ?? null) !== $tenant->id()) {
-                return redirect()
-                    ->route('inspections.create')
-                    ->with('error', 'A prévia expirou ou não está disponível. Revise e envie o planejamento novamente.');
-            }
-
-            $preview = [
-                'token' => $token,
-                'inspections' => $cachedPreview['inspections'],
-            ];
-        }
-
         return Inertia::render('Inspections/Create', [
-            'preview_action' => route('inspections.store'),
-            'confirm_action' => route('inspections.confirm'),
+            'create_action' => route('inspections.store'),
             'cancel_url' => route('inspections.index'),
             'equipment_search_url' => route('inspections.equipment-options'),
-            'selected_equipment' => $this->availableEquipmentOptions(
-                $tenant,
-                equipmentIds: collect($preview['inspections'] ?? [])
-                    ->pluck('equipment_id')
-                    ->filter()
-                    ->map(fn (mixed $id): int => (int) $id)
-                    ->all(),
-            ),
+            'selected_equipment' => [],
             'inspectors' => $this->inspectorOptions($tenant),
-            'preview' => $preview,
         ]);
     }
 
@@ -203,46 +173,14 @@ final class InspectionController extends Controller
     }
 
     public function store(
-        PreviewInspectionBatchRequest $request,
+        CreateInspectionBatchRequest $request,
         TenantContext $tenant,
         CreateInspectionBatch $action,
     ): RedirectResponse {
         $this->authorizePlanningCreation($request->user());
 
         $inspections = array_values($request->validated('inspections'));
-        $action->preview($request->user(), $inspections);
-        $token = (string) Str::uuid();
-
-        Cache::put($this->batchPreviewCacheKey($token), [
-            'user_id' => $request->user()->getKey(),
-            'organization_id' => $tenant->id(),
-            'inspections' => $inspections,
-        ], now()->addMinutes(30));
-
-        return redirect()
-            ->route('inspections.create', ['preview' => $token]);
-    }
-
-    public function confirm(
-        ConfirmInspectionBatchRequest $request,
-        TenantContext $tenant,
-        CreateInspectionBatch $action,
-    ): RedirectResponse {
-        $this->authorizePlanningCreation($request->user());
-
-        $token = $request->validated('token');
-        $cachedPreview = Cache::get($this->batchPreviewCacheKey($token));
-
-        if (! is_array($cachedPreview)
-            || ($cachedPreview['user_id'] ?? null) !== $request->user()->getKey()
-            || ($cachedPreview['organization_id'] ?? null) !== $tenant->id()) {
-            throw ValidationException::withMessages([
-                'token' => 'A prévia expirou ou não está disponível. Revise e envie o planejamento novamente.',
-            ]);
-        }
-
-        $inspections = $action->handle($request->user(), $cachedPreview['inspections']);
-        Cache::forget($this->batchPreviewCacheKey($token));
+        $inspections = $action->handle($request->user(), $inspections);
 
         return redirect()
             ->route('inspections.index')
@@ -261,8 +199,6 @@ final class InspectionController extends Controller
             'equipment.client',
             'previousInspection',
             'responsibles.user',
-            'referenceDocuments.document.uploader',
-            'referenceDocuments.actor',
             'statusHistories.actor',
             'updatedBy',
         ]);
@@ -294,14 +230,12 @@ final class InspectionController extends Controller
                 'report_overview_url' => route('inspections.report-overview', $inspection),
                 'defects_url' => route('inspections.defects', $inspection),
                 'photos_url' => route('inspections.photos', $inspection),
-                'documents_url' => route('inspections.documents', $inspection),
                 'history_url' => route('inspections.history', $inspection),
                 'report_url' => route('inspections.report-preview', $inspection),
                 'report_revision' => $inspection->report_revision,
                 'equipment' => $this->inspectionEquipmentPayload($inspection->equipment),
                 // Mantidos para compatibilidade com consumidores legados do payload; a Visão geral não os renderiza.
                 'context_snapshot' => $inspection->context_snapshot,
-                'reference_document_ids' => $inspection->referenceDocuments->pluck('equipment_document_id')->map(fn ($id): int => (int) $id)->values()->all(),
                 'history' => $inspection->statusHistories->map(fn (InspectionStatusHistory $history): array => $this->inspectionHistoryPayload($history))->values()->all(),
             ],
             'summary' => [
@@ -316,7 +250,11 @@ final class InspectionController extends Controller
             'tabs' => $this->inspectionTabs($inspection),
             'active_tab' => 'overview',
             // Compatibilidade do contrato legado; a nova Visão geral não renderiza estes resumos.
-            'content' => ['highlights' => [], 'metrics' => []],
+            'content' => [
+                'highlights' => [],
+                'metrics' => [],
+                'general_correction_requests' => $presenter->generalCorrectionRequests($inspection, $request->user()),
+            ],
             'capabilities' => [
                 'update_planned' => $request->user()->can('updatePlanned', $inspection)
                     ? ['action' => route('inspections.edit', $inspection)]
@@ -332,9 +270,6 @@ final class InspectionController extends Controller
                     : false,
                 'assign_responsibles' => $request->user()->can('assignResponsibles', $inspection)
                     ? ['action' => route('inspections.responsibles.store', $inspection)]
-                    : false,
-                'manage_references' => $request->user()->can('manageReferences', $inspection)
-                    ? ['action' => route('inspections.reference-documents.update', $inspection)]
                     : false,
                 'transition' => $this->availableTransitions($request, $inspection) !== [],
             ],
@@ -391,7 +326,6 @@ final class InspectionController extends Controller
                 ['key' => 'defects', 'label' => 'Avarias', 'url' => route('inspections.defects', $inspection)],
                 ['key' => 'team', 'label' => 'Equipe', 'url' => route('inspections.team', $inspection), 'count' => $inspection->responsibles->count()],
                 ['key' => 'photos', 'label' => 'Fotografias', 'url' => route('inspections.photos', $inspection)],
-                ['key' => 'documents', 'label' => 'Documentos', 'url' => route('inspections.documents', $inspection)],
                 ['key' => 'history', 'label' => 'Histórico', 'url' => route('inspections.history', $inspection)],
                 ['key' => 'report', 'label' => 'Relatório', 'url' => route('inspections.report-preview', $inspection)],
             ],
@@ -416,15 +350,6 @@ final class InspectionController extends Controller
         InspectionReadModelPresenter $presenter,
     ): InertiaResponse {
         return $this->renderHub($tenant, $request, $inspection, $presenter, 'photos');
-    }
-
-    public function documents(
-        TenantContext $tenant,
-        Request $request,
-        Inspection $inspection,
-        InspectionReadModelPresenter $presenter,
-    ): InertiaResponse {
-        return $this->renderHub($tenant, $request, $inspection, $presenter, 'documents');
     }
 
     public function history(
@@ -457,6 +382,19 @@ final class InspectionController extends Controller
         );
     }
 
+    public function updateClassificationM2Links(
+        UpdateInspectionClassificationM2LinksRequest $request,
+        TenantContext $tenant,
+        Inspection $inspection,
+        UpdateInspectionClassificationM2Links $action,
+    ): RedirectResponse {
+        $inspection = $this->tenantInspection($tenant, $inspection);
+        $this->authorize('manageClassificationM2', $inspection);
+        $action->handle($request->user(), $inspection, $request->validated());
+
+        return back()->with('success', 'Notas M2 atualizadas.');
+    }
+
     private function renderHub(
         TenantContext $tenant,
         Request $request,
@@ -486,13 +424,10 @@ final class InspectionController extends Controller
             'nextInspections.equipment',
             'responsibles.user',
             'updatedBy',
-            'referenceDocuments.document.uploader',
-            'referenceDocuments.actor',
             'statusHistories.actor',
         ]);
 
         $canAssignResponsibles = $request->user()->can('assignResponsibles', $inspection);
-        $canManageReferences = $request->user()->can('manageReferences', $inspection);
         $canUpdatePlanned = $request->user()->can('updatePlanned', $inspection);
         $canManageReportMetadata = $request->user()->can('manageReportMetadata', $inspection);
         $canManageGeneralAspects = $request->user()->can('manageGeneralAspects', $inspection);
@@ -515,6 +450,14 @@ final class InspectionController extends Controller
                 $locationReport['sheets'],
                 $viewFirstPayload['content']['photographic_documentation']['blocks'] ?? [],
             );
+            $classificationSummary = app(BuildInspectionClassificationSummary::class)->build($inspection);
+            $viewFirstPayload['content']['classification_summary'] = [
+                ...$classificationSummary,
+                'can_edit_m2' => $request->user()->can('manageClassificationM2', $inspection),
+                'm2_update_url' => $request->user()->can('manageClassificationM2', $inspection)
+                    ? route('inspections.classification-m2-links.update', $inspection)
+                    : null,
+            ];
         }
 
         return Inertia::render('Inspections/Show', array_merge($viewFirstPayload, [
@@ -527,17 +470,15 @@ final class InspectionController extends Controller
                 'manage_report_metadata' => $canManageReportMetadata
                     ? ['action' => route('inspections.report-metadata.update', $inspection)]
                     : false,
+                'update_report_revision' => $request->user()->can('updateReportRevision', $inspection)
+                    ? ['action' => route('inspections.report-revision.update', $inspection)]
+                    : false,
                 'manage_general_aspects' => $canManageGeneralAspects
                     ? ['action' => route('inspections.general-aspects.update', $inspection)]
                     : false,
                 'assign_responsibles' => $canAssignResponsibles
                     ? [
                         'action' => route('inspections.responsibles.store', $inspection),
-                    ]
-                    : false,
-                'manage_references' => $canManageReferences
-                    ? [
-                        'action' => route('inspections.reference-documents.update', $inspection),
                     ]
                     : false,
                 'defects' => $canCreateDefects
@@ -554,9 +495,6 @@ final class InspectionController extends Controller
                 'users' => $this->responsibleAssignmentOptions($tenant),
                 'roles' => InspectionResponsibility::options(),
             ],
-            'available_documents' => $canManageReferences
-                ? $this->availableReferenceDocumentOptions($tenant, $inspection)
-                : [],
             'transitions' => $transitions,
             'report_metadata' => $this->reportMetadataPayload(
                 $inspection,
@@ -787,11 +725,6 @@ final class InspectionController extends Controller
             ->all();
     }
 
-    private function batchPreviewCacheKey(string $token): string
-    {
-        return 'inspection-batch-preview:'.$token;
-    }
-
     private function authorizePlanningCreation(User $user): void
     {
         if (! $user->can('create', Inspection::class)) {
@@ -828,7 +761,6 @@ final class InspectionController extends Controller
             ['key' => 'report_overview', 'label' => 'Vista geral', 'url' => route('inspections.report-overview', $inspection)],
             ['key' => 'defects', 'label' => 'Avarias', 'url' => route('inspections.defects', $inspection)],
             ['key' => 'photos', 'label' => 'Fotografias', 'url' => route('inspections.photos', $inspection)],
-            ['key' => 'documents', 'label' => 'Documentos', 'url' => route('inspections.documents', $inspection)],
             ['key' => 'history', 'label' => 'Histórico', 'url' => route('inspections.history', $inspection)],
             ['key' => 'report', 'label' => 'Relatório', 'url' => route('inspections.report-preview', $inspection)],
         ];
@@ -906,15 +838,6 @@ final class InspectionController extends Controller
                 ->map(fn (InspectionResponsible $responsible): array => $this->inspectionResponsiblePayload($inspection, $responsible))
                 ->values()
                 ->all(),
-            'reference_documents' => $inspection->referenceDocuments
-                ->map(fn (InspectionReferenceDocument $referenceDocument): array => $this->inspectionReferenceDocumentPayload($inspection, $referenceDocument))
-                ->values()
-                ->all(),
-            'reference_document_ids' => $inspection->referenceDocuments
-                ->pluck('equipment_document_id')
-                ->map(fn ($documentId): int => (int) $documentId)
-                ->values()
-                ->all(),
             'history' => $inspection->statusHistories
                 ->map(fn (InspectionStatusHistory $history): array => $this->inspectionHistoryPayload($history))
                 ->values()
@@ -964,6 +887,19 @@ final class InspectionController extends Controller
             'has_content' => $stored !== null,
             'can_edit' => $canEdit,
             'update_url' => $canEdit ? route('inspections.general-aspects.update', $inspection) : null,
+            'templates' => $canEdit
+                ? GeneralAspectsTemplate::query()
+                    ->forOrganization((int) $inspection->organization_id)
+                    ->orderBy('name')
+                    ->get(['public_id', 'name', 'document'])
+                    ->map(fn (GeneralAspectsTemplate $template): array => [
+                        'public_id' => $template->public_id,
+                        'name' => $template->name,
+                        'document' => $template->document,
+                    ])
+                    ->values()
+                    ->all()
+                : [],
         ];
     }
 
@@ -1199,83 +1135,7 @@ final class InspectionController extends Controller
     }
 
     /**
-     * @return array{id:int, created_at:string, document:array{id:int, public_id:string, document_group:string, document_type:string, document_type_label:string, title:string, document_number:?string, revision:?string, description:?string, original_name:string, mime_type:string, extension:?string, size:int, checksum:string, is_current:bool, status:string, status_label:string, issued_at:?string, created_at:?string, updated_at:?string, download_url:string, show_url:string, uploaded_by:?array{id:int, public_id:string, name:string}}, added_by:?array{id:int, public_id:string, name:string}, delete_url:string}
-     */
-    private function inspectionReferenceDocumentPayload(
-        Inspection $inspection,
-        InspectionReferenceDocument $referenceDocument,
-    ): array {
-        return [
-            'id' => $referenceDocument->id,
-            'created_at' => $referenceDocument->created_at?->format('d/m/Y H:i'),
-            'document' => $this->equipmentDocumentPayload($referenceDocument->document),
-            'added_by' => $referenceDocument->actor === null
-                ? null
-                : [
-                    'id' => $referenceDocument->actor->id,
-                    'public_id' => $referenceDocument->actor->public_id,
-                    'name' => $referenceDocument->actor->name,
-                ],
-            'delete_url' => route('inspections.reference-documents.destroy', [$inspection, $referenceDocument]),
-        ];
-    }
-
-    /**
-     * @return array<int, array{id:int, public_id:string, document_group:string, document_type:string, document_type_label:string, title:string, document_number:?string, revision:?string, description:?string, original_name:string, mime_type:string, extension:?string, size:int, checksum:string, is_current:bool, status:string, status_label:string, issued_at:?string, created_at:?string, updated_at:?string, download_url:string, show_url:string, uploaded_by:?array{id:int, public_id:string, name:string}}>
-     */
-    private function availableReferenceDocumentOptions(TenantContext $tenant, Inspection $inspection): array
-    {
-        return EquipmentDocument::query()
-            ->forOrganization($tenant->id())
-            ->where('equipment_id', $inspection->equipment_id)
-            ->with('uploader')
-            ->orderByDesc('created_at')
-            ->get()
-            ->map(fn (EquipmentDocument $document): array => $this->equipmentDocumentPayload($document))
-            ->values()
-            ->all();
-    }
-
-    /**
-     * @return array{id:int, public_id:string, document_group:string, document_type:string, document_type_label:string, title:string, document_number:?string, revision:?string, description:?string, original_name:string, mime_type:string, extension:?string, size:int, checksum:string, is_current:bool, status:string, status_label:string, issued_at:?string, created_at:?string, updated_at:?string, download_url:string, show_url:string, uploaded_by:?array{id:int, public_id:string, name:string}}
-     */
-    private function equipmentDocumentPayload(EquipmentDocument $document): array
-    {
-        return [
-            'id' => $document->id,
-            'public_id' => $document->public_id,
-            'document_group' => $document->document_group,
-            'document_type' => $document->document_type->value,
-            'document_type_label' => $document->document_type->label(),
-            'title' => $document->title,
-            'document_number' => $document->document_number,
-            'revision' => $document->revision,
-            'description' => $document->description,
-            'original_name' => $document->original_name,
-            'mime_type' => $document->mime_type,
-            'extension' => $document->extension,
-            'size' => (int) $document->size,
-            'checksum' => $document->checksum,
-            'is_current' => (bool) $document->is_current,
-            'status' => $document->status->value,
-            'status_label' => $document->status->label(),
-            'issued_at' => $document->issued_at?->toDateString(),
-            'created_at' => $document->created_at?->toDateTimeString(),
-            'updated_at' => $document->updated_at?->toDateTimeString(),
-            'download_url' => route('equipment-documents.download', $document),
-            'show_url' => route('equipment-documents.show', $document),
-            'uploaded_by' => $document->uploader === null
-                ? null
-                : [
-                    'id' => $document->uploader->id,
-                    'public_id' => $document->uploader->public_id,
-                    'name' => $document->uploader->name,
-                ],
-        ];
-    }
-
-    /**
-     * @return array<int, array{key:string, label:string, description:?string, action:string, requires_justification:bool}>
+     * @return array<int, array{key:string, label:string, description:?string, action:string, requires_justification:bool, correction_message?:bool}>
      */
     private function availableTransitions(Request $request, Inspection $inspection): array
     {
@@ -1309,9 +1169,10 @@ final class InspectionController extends Controller
             $transitions[] = [
                 'key' => 'return_for_correction',
                 'label' => 'Enviar para correção',
-                'description' => 'Retorna a inspeção ao Inspetor para ajustes.',
+                'description' => 'Retorna a inspeção ao Inspetor. Marque avarias ou informe uma mensagem geral.',
                 'action' => route('inspections.return-for-correction', $inspection),
-                'requires_justification' => true,
+                'requires_justification' => false,
+                'correction_message' => true,
             ];
         }
 
@@ -1328,8 +1189,8 @@ final class InspectionController extends Controller
         if ($request->user()->can('approve', $inspection)) {
             $transitions[] = [
                 'key' => 'approve',
-                'label' => 'Aprovar inspeção',
-                'description' => 'Registra a aprovação técnica da inspeção.',
+                'label' => 'Enviar para liberação',
+                'description' => 'Conclui a revisão e envia a inspeção ao Liberador.',
                 'action' => route('inspections.approve', $inspection),
                 'requires_justification' => false,
             ];
@@ -1349,9 +1210,11 @@ final class InspectionController extends Controller
             $transitions[] = [
                 'key' => 'return_for_review',
                 'label' => 'Devolver para revisão',
-                'description' => 'Retorna a inspeção para uma nova revisão.',
+                'description' => 'Retorna a inspeção ao Revisor. Marque avarias ou informe uma mensagem geral.',
                 'action' => route('inspections.return-for-review', $inspection),
-                'requires_justification' => true,
+                'requires_justification' => false,
+                'correction_message' => true,
+                'correction_recipient' => 'Revisor',
             ];
         }
 

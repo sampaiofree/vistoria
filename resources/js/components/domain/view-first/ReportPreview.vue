@@ -27,6 +27,7 @@ const textualFindings = computed(() => reportFindings.value.filter((finding) =>
 ));
 const generalAspects = computed(() => props.content.general_aspects?.document ?? null);
 const reportOverview = computed(() => props.content.overview ?? { blocks: [] });
+const classificationSummary = computed(() => props.content.classification_summary ?? null);
 const locationSequence = computed(() => props.content.location_sequence ?? []);
 const numberedGeneralAspects = computed(() => numberGeneralAspectsDocument(generalAspects.value));
 const generalAspectsPages = ref([]);
@@ -57,6 +58,10 @@ function updateGeneralAspectsPages(value) {
 
 function mapObservation(map) {
     return String(map?.observations ?? map?.description ?? '');
+}
+
+function mapUsesTel(map) {
+    return (map?.damage_rows ?? []).some((row) => row?.tel);
 }
 
 function defaultObservationLayout(map) {
@@ -227,6 +232,7 @@ const reportContentPages = computed(() => {
             items,
             continuation: index > 0,
         })),
+        ...(classificationSummary.value ? [{ type: 'classification-summary', key: 'classification-summary' }] : []),
         { type: 'overview', key: 'report-overview' },
         ...(locationSequence.value.length ? sequencedLocationPages() : legacyLocationPages()),
         ...chunks(textualFindings.value, 2).map((items, index) => ({
@@ -478,6 +484,17 @@ function visualClass(photo) {
                 </div>
             </template>
 
+            <template v-else-if="page.type === 'classification-summary'">
+                <div class="report-general-aspects-page">
+                    <h2 class="report-general-aspects-title">RESUMO DA CLASSIFICAÇÃO DO EQUIPAMENTO – GUT</h2>
+                    <div class="report-classification-summary-meta">{{ classificationSummary.equipment?.area }} · {{ classificationSummary.equipment?.name }} · {{ classificationSummary.equipment?.tag }}</div>
+                    <section v-for="category in classificationSummary.categories" :key="category.code" class="report-classification-summary-category">
+                        <h3>{{ category.name }}</h3>
+                        <table><thead><tr><th>CLASSE</th><th>QTDE.</th><th>QUANT.</th><th>NOTA M2</th></tr></thead><tbody><tr v-for="row in category.rows" :key="row.classification_code"><td>{{ row.classification_code }}</td><td>{{ row.defect_count || '—' }}</td><td>{{ row.quantity.label }}</td><td>{{ row.sap_m2_number || '—' }}</td></tr><tr class="report-classification-summary-total"><td colspan="2">Mais crítica: {{ category.most_critical || '—' }}</td><td>{{ category.total.label }}</td><td></td></tr></tbody></table>
+                    </section>
+                </div>
+            </template>
+
             <template v-else-if="page.type === 'overview'">
                 <div class="report-overview-page">
                     <h2 class="report-general-aspects-title report-overview-heading">
@@ -563,7 +580,34 @@ function visualClass(photo) {
 
                         <div class="report-map-footer">
                             <div class="report-map-classification-layout">
-                                <table class="report-map-damage-table">
+                                <table v-if="mapUsesTel(page.map)" class="report-map-damage-table">
+                                    <colgroup>
+                                        <col class="report-map-damage-photos">
+                                        <col class="report-map-damage-gut">
+                                        <col class="report-map-damage-gut">
+                                        <col class="report-map-damage-gut">
+                                        <col class="report-map-damage-classification">
+                                    </colgroup>
+                                    <thead>
+                                        <tr><th colspan="5" class="report-map-table-title">CLASSIFICAÇÃO TEL</th></tr>
+                                        <tr><th>FOTOS</th><th>IMPACTO</th><th>RISCO</th><th>PONT. TEL</th><th>CLASSE</th></tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr
+                                            v-for="(row, rowIndex) in (page.map.damage_rows || [])"
+                                            :key="row.assessment?.public_id || row.defect?.public_id || rowIndex"
+                                        >
+                                            <td>{{ row.photo_interval || '—' }}</td>
+                                            <td>{{ row.tel?.impact?.score ?? '—' }}</td>
+                                            <td :style="damageColorStyle(row.tel?.fall_risk?.color)">{{ row.tel?.fall_risk?.score ?? '—' }}</td>
+                                            <td>{{ row.tel?.score ?? '—' }}</td>
+                                            <td :style="damageColorStyle(row.classification?.color)">{{ row.classification?.code || '—' }}</td>
+                                        </tr>
+                                        <tr v-if="!(page.map.damage_rows || []).length"><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+                                    </tbody>
+                                </table>
+
+                                <table v-else class="report-map-damage-table">
                                     <colgroup>
                                         <col class="report-map-damage-photos">
                                         <col class="report-map-damage-quantity">
@@ -742,10 +786,10 @@ function visualClass(photo) {
 .report-cover-layout { position: relative; display: flex; min-height: 0; flex: 1; flex-direction: column; }
 .report-cover-rule { position: relative; z-index: 1; height: 1px; flex: none; margin: 4mm 0 0; background: #111827; }
 .report-cover-title-stage { display: flex; min-height: 0; flex: 1; align-items: center; }
-.report-cover-title { display: grid; width: 100%; gap: 4mm; padding: 0 12mm; text-align: left; font-family: Georgia, serif; font-size: 15pt; font-weight: 700; line-height: 1.15; text-transform: uppercase; }
+.report-cover-title { display: grid; width: 100%; gap: 4mm; padding: 0 12mm; text-align: left; font-family: Georgia, serif; font-size: 14pt; font-weight: 700; line-height: 1.15; text-transform: uppercase; }
 .report-cover-title p { margin: 0; }
 .report-cover-title-compact { gap: 2.5mm; }
-.report-cover-title-dense { gap: 1.5mm; padding: 0 8mm; font-size: 12pt; }
+.report-cover-title-dense { gap: 1.5mm; padding: 0 8mm; }
 .report-cover-bottom { position: relative; z-index: 1; flex: none; background: #fff; }
 .report-cover-history { display: grid; grid-template-columns: 13mm minmax(0, 1fr); border-top: 1px solid #111827; border-bottom: 1px solid #111827; font-family: Arial, sans-serif; }
 .report-cover-history-label { display: flex; align-items: center; justify-content: center; border-right: 1px solid #111827; font-size: 10pt; line-height: 1.05; text-align: center; }
@@ -803,6 +847,13 @@ function visualClass(photo) {
 .report-map-visual :deep(svg) { width: 100%; height: 100%; max-height: 100%; }
 .report-map-footer { flex: none; margin-top: 3mm; font-family: Georgia, 'Times New Roman', serif; }
 .report-map-classification-layout { display: grid; grid-template-columns: minmax(0, 1fr) 36mm; align-items: start; gap: 1.5mm; }
+.report-classification-summary-meta { margin: 0 0 5mm; font-family: Georgia, serif; font-size: 9pt; }
+.report-classification-summary-category { margin: 0 0 5mm; font-family: Georgia, serif; }
+.report-classification-summary-category h3 { margin: 0; padding: 1.5mm 2mm; background: #062b68; color: #fff; font-size: 9pt; }
+.report-classification-summary-category table { width: 100%; border-collapse: collapse; font-size: 8pt; }
+.report-classification-summary-category th, .report-classification-summary-category td { border: 1px solid #64748b; padding: 1.2mm 1.5mm; text-align: left; }
+.report-classification-summary-category th { background: #e2e8f0; font-size: 7.5pt; }
+.report-classification-summary-total td { font-weight: 700; background: #f8fafc; }
 .report-map-damage-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 7pt; }
 .report-map-damage-table th,
 .report-map-damage-table td { height: 5.5mm; padding: .7mm 1.5mm; border: 1px solid #111827; line-height: 1.05; text-align: center; vertical-align: middle; }

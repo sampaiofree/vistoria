@@ -23,13 +23,6 @@ final class CreateInspectionBatch
         private readonly TenantContext $tenant,
     ) {}
 
-    /** @param array<int, array{equipment_id:int,service_order:?string,planned_start_on:string,planned_end_on:string,inspector_id:int}> $records */
-    public function preview(User $actor, array $records): void
-    {
-        $this->validateActor($actor);
-        $this->validateRecords($records);
-    }
-
     /**
      * @param  array<int, array{equipment_id:int,service_order:?string,planned_start_on:string,planned_end_on:string,inspector_id:int}>  $records
      * @return Collection<int, Inspection>

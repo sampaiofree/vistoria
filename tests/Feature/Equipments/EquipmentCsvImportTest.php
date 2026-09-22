@@ -25,9 +25,9 @@ final class EquipmentCsvImportTest extends TestCase
     {
         [$admin, $organization] = $this->context();
         $csv = implode("\n", [
-            'Plano de manutenção;Item manutenção;Campo de ordenação (TAG);Descrição item de manutenção;Local de instalação;Area(usina);Area.nome;Sub-area;sub-area.nome;Denominação do loc.instalação;GrpLisTar.;Numerador de grupos;Código ABC;Prefixo de avaria',
-            '000012;000123;EQ-01;Descrição;LOC-01;U00;Geral;08;Pátio;Bomba;GRP;T5;D;AV-001',
-            '000013;000124;;Descrição;LOC-02;U00;Geral;08;Pátio;Motor;GRP;T6;C;AV-002',
+            'Plano de manutenção;Item manutenção;Campo de ordenação (TAG);Descrição item de manutenção;Local de instalação;Area(usina);Area.nome;Sub-area;sub-area.nome;Denominação do loc.instalação;GrpLisTar.;Numerador de grupos;Código ABC;Prefixo de avaria;Número do cliente;Número interno',
+            '000012;000123;EQ-01;Descrição;LOC-01;U00;Geral;08;Pátio;Bomba;GRP;T5;D;AV-001;SAM-001;SEND-001',
+            '000013;000124;;Descrição;LOC-02;U00;Geral;08;Pátio;Motor;GRP;T6;C;AV-002;SAM-002;SEND-002',
         ]);
 
         $preview = $this->actingAs($admin)->post(route('equipments.import.preview'), [
@@ -37,7 +37,9 @@ final class EquipmentCsvImportTest extends TestCase
 
         $this->get($previewUrl)->assertInertia(fn (Assert $page) => $page
             ->where('preview.total', 2)
-            ->where('preview.mapping.defect_code_prefix', 'column_13'));
+            ->where('preview.mapping.defect_code_prefix', 'column_13')
+            ->where('preview.mapping.numero_cliente', 'column_14')
+            ->where('preview.mapping.numero_interno', 'column_15'));
 
         $token = $this->tokenFromUrl($previewUrl, 'preview');
 
@@ -59,6 +61,8 @@ final class EquipmentCsvImportTest extends TestCase
         $this->assertDatabaseHas('equipments', [
             'maintenance_item_code' => '000123',
             'defect_code_prefix' => 'AV-001',
+            'numero_cliente' => 'SAM-001',
+            'numero_interno' => 'SEND-001',
             'tag' => 'EQ-01',
         ]);
         $this->assertDatabaseMissing('equipments', ['maintenance_item_code' => '000124']);
@@ -94,12 +98,12 @@ final class EquipmentCsvImportTest extends TestCase
     {
         [$admin] = $this->context();
         $csv = implode("\n", [
-            'Plano de manutenção;Item manutenção;Campo de ordenação (TAG);Descrição item de manutenção;Local de instalação;Area(usina);Area.nome;Sub-area;sub-area.nome;Denominação do loc.instalação;GrpLisTar.;Numerador de grupos;Código ABC;Prefixo de avaria',
-            '000012;;EQ-01;Descrição;LOC-01;U00;Geral;08;Pátio;Bomba;GRP;T5;D;AV-001',
-            '000012;000124;;Descrição;LOC-01;U00;Geral;08;Pátio;Bomba;GRP;T5;D;AV-002',
-            '000012;000125;EQ-03;Descrição;LOC-01;U00;Geral;08;Pátio;;GRP;T5;D;AV-003',
-            '000012;000126;EQ-04;Descrição;LOC-01;U00;Geral;08;Pátio;Bomba;GRP;T5;D;',
-            '000012;000127;'.str_repeat('T', 121).';Descrição;LOC-01;U00;Geral;08;Pátio;Bomba;GRP;T5;D;AV-005',
+            'Plano de manutenção;Item manutenção;Campo de ordenação (TAG);Descrição item de manutenção;Local de instalação;Area(usina);Area.nome;Sub-area;sub-area.nome;Denominação do loc.instalação;GrpLisTar.;Numerador de grupos;Código ABC;Prefixo de avaria;Número do cliente;Número interno',
+            '000012;;EQ-01;Descrição;LOC-01;U00;Geral;08;Pátio;Bomba;GRP;T5;D;AV-001;SAM-001;SEND-001',
+            '000012;000124;;Descrição;LOC-01;U00;Geral;08;Pátio;Bomba;GRP;T5;D;AV-002;SAM-002;SEND-002',
+            '000012;000125;EQ-03;Descrição;LOC-01;U00;Geral;08;Pátio;;GRP;T5;D;AV-003;SAM-003;SEND-003',
+            '000012;000126;EQ-04;Descrição;LOC-01;U00;Geral;08;Pátio;Bomba;GRP;T5;D;;SAM-004;SEND-004',
+            '000012;000127;'.str_repeat('T', 121).';Descrição;LOC-01;U00;Geral;08;Pátio;Bomba;GRP;T5;D;AV-005;SAM-005;SEND-005',
         ]);
 
         $preview = $this->actingAs($admin)->post(route('equipments.import.preview'), [
@@ -167,10 +171,10 @@ final class EquipmentCsvImportTest extends TestCase
     {
         [$admin] = $this->context();
         $csv = implode("\n", [
-            'Plano de manutenção;Item manutenção;Campo de ordenação (TAG);Descrição item de manutenção;Local de instalação;Area(usina);Area.nome;Sub-area;sub-area.nome;Denominação do loc.instalação;GrpLisTar.;Numerador de grupos;Código ABC;Prefixo de avaria',
-            '000012;000123;EQ-01;Descrição;LOC-01;U00;Geral;08;Pátio;Bomba;GRP;T5;D;AV-001',
-            '000012;000123;EQ-02;Descrição;LOC-02;U00;Geral;08;Pátio;Bomba reserva;GRP;T5;D;AV-002',
-            '000013;000124;EQ-03;Descrição;LOC-03;U00;Geral;08;Pátio;Motor;GRP;T6;C;AV-003',
+            'Plano de manutenção;Item manutenção;Campo de ordenação (TAG);Descrição item de manutenção;Local de instalação;Area(usina);Area.nome;Sub-area;sub-area.nome;Denominação do loc.instalação;GrpLisTar.;Numerador de grupos;Código ABC;Prefixo de avaria;Número do cliente;Número interno',
+            '000012;000123;EQ-01;Descrição;LOC-01;U00;Geral;08;Pátio;Bomba;GRP;T5;D;AV-001;SAM-001;SEND-001',
+            '000012;000123;EQ-02;Descrição;LOC-02;U00;Geral;08;Pátio;Bomba reserva;GRP;T5;D;AV-002;SAM-001;SEND-002',
+            '000013;000124;EQ-03;Descrição;LOC-03;U00;Geral;08;Pátio;Motor;GRP;T6;C;AV-003;SAM-003;SEND-003',
         ]);
 
         $preview = $this->actingAs($admin)->post(route('equipments.import.preview'), [
@@ -196,6 +200,8 @@ final class EquipmentCsvImportTest extends TestCase
         [$admin] = $this->context();
 
         $this->actingAs($admin)->post(route('equipments.store'), [
+            'numero_cliente' => 'SAM-001',
+            'numero_interno' => 'SEND-001',
             'maintenance_item_code' => '000123',
             'tag' => 'EQ-01',
             'name' => 'Bomba',
@@ -207,8 +213,8 @@ final class EquipmentCsvImportTest extends TestCase
         [$admin, $organization] = $this->context();
         Client::query()->where('organization_id', $organization->id)->sole()->update(['status' => RegistrationStatus::Inactive]);
         $csv = implode("\n", [
-            'Plano de manutenção;Item manutenção;Campo de ordenação (TAG);Descrição item de manutenção;Local de instalação;Area(usina);Area.nome;Sub-area;sub-area.nome;Denominação do loc.instalação;GrpLisTar.;Numerador de grupos;Código ABC;Prefixo de avaria',
-            '000012;000123;EQ-01;Descrição;LOC-01;U00;Geral;08;Pátio;Bomba;GRP;T5;D;AV-001',
+            'Plano de manutenção;Item manutenção;Campo de ordenação (TAG);Descrição item de manutenção;Local de instalação;Area(usina);Area.nome;Sub-area;sub-area.nome;Denominação do loc.instalação;GrpLisTar.;Numerador de grupos;Código ABC;Prefixo de avaria;Número do cliente;Número interno',
+            '000012;000123;EQ-01;Descrição;LOC-01;U00;Geral;08;Pátio;Bomba;GRP;T5;D;AV-001;SAM-001;SEND-001',
         ]);
         $preview = $this->actingAs($admin)->post(route('equipments.import.preview'), [
             'file' => UploadedFile::fake()->createWithContent('ativos.csv', $csv),
@@ -239,8 +245,8 @@ final class EquipmentCsvImportTest extends TestCase
         $organization = Organization::factory()->create();
         $admin = User::factory()->for($organization)->create(['account_type' => UserAccountType::CompanyAdmin->value]);
         $csv = implode("\n", [
-            'Plano de manutenção;Item manutenção;Campo de ordenação (TAG);Descrição item de manutenção;Local de instalação;Area(usina);Area.nome;Sub-area;sub-area.nome;Denominação do loc.instalação;GrpLisTar.;Numerador de grupos;Código ABC;Prefixo de avaria',
-            '000012;000123;EQ-01;Descrição;LOC-01;U00;Geral;08;Pátio;Bomba;GRP;T5;D;AV-001',
+            'Plano de manutenção;Item manutenção;Campo de ordenação (TAG);Descrição item de manutenção;Local de instalação;Area(usina);Area.nome;Sub-area;sub-area.nome;Denominação do loc.instalação;GrpLisTar.;Numerador de grupos;Código ABC;Prefixo de avaria;Número do cliente;Número interno',
+            '000012;000123;EQ-01;Descrição;LOC-01;U00;Geral;08;Pátio;Bomba;GRP;T5;D;AV-001;SAM-001;SEND-001',
         ]);
 
         $preview = $this->actingAs($admin)->post(route('equipments.import.preview'), [
@@ -284,8 +290,8 @@ final class EquipmentCsvImportTest extends TestCase
     {
         [$admin] = $this->context();
         $csv = implode("\n", [
-            'Plano de manutenção;Item manutenção;Campo de ordenação (TAG);Descrição item de manutenção;Local de instalação;Area(usina);Area.nome;Sub-area;sub-area.nome;Denominação do loc.instalação;GrpLisTar.;Numerador de grupos;Código ABC;Prefixo de avaria',
-            '000012;000123;EQ-01;Descrição;LOC-01;U00;Geral;08;Pátio;Bomba;GRP;T5;D;AV-001',
+            'Plano de manutenção;Item manutenção;Campo de ordenação (TAG);Descrição item de manutenção;Local de instalação;Area(usina);Area.nome;Sub-area;sub-area.nome;Denominação do loc.instalação;GrpLisTar.;Numerador de grupos;Código ABC;Prefixo de avaria;Número do cliente;Número interno',
+            '000012;000123;EQ-01;Descrição;LOC-01;U00;Geral;08;Pátio;Bomba;GRP;T5;D;AV-001;SAM-001;SEND-001',
         ]);
         $preview = $this->actingAs($admin)->post(route('equipments.import.preview'), [
             'file' => UploadedFile::fake()->createWithContent('ativos.csv', $csv),
@@ -336,6 +342,8 @@ final class EquipmentCsvImportTest extends TestCase
             'task_list_group_counter' => 'column_11',
             'abc_code' => 'column_12',
             'defect_code_prefix' => 'column_13',
+            'numero_cliente' => 'column_14',
+            'numero_interno' => 'column_15',
         ], $overrides);
     }
 

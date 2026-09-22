@@ -126,11 +126,14 @@ final class InspectionLocationReportComposer
                 'photo_numbers' => $numbers,
                 'photo_interval' => $this->photoNumbering->format($numbers),
                 'quantity' => $this->quantityPayload($quantitySnapshot),
-                'gut' => [
+                'gut' => $assessment->defect->category === DefectCategory::RoofCladding ? null : [
                     'gravity' => $this->gutCriterionPayload($assessment, 'gravity'),
                     'urgency' => $this->gutCriterionPayload($assessment, 'urgency'),
                     'trend' => $this->gutCriterionPayload($assessment, 'trend'),
                 ],
+                'tel' => $assessment->defect->category === DefectCategory::RoofCladding
+                    ? $assessment->tel_snapshot
+                    : null,
                 'classification' => [
                     'code' => data_get($assessment->classification_snapshot, 'code') ?? $assessment->classification_code,
                     'color' => $this->colors->forAssessment($assessment),

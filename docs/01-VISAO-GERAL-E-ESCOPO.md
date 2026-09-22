@@ -2,127 +2,66 @@
 
 ## Objetivo do produto
 
-O Vistoria centraliza a execução e a rastreabilidade de inspeções técnicas em uma
-aplicação web responsiva. Cada empresa opera em um tenant próprio e mantém sua
-estrutura operacional, equipamentos, equipe, taxonomia, inspeções e arquivos.
+O Vistoria gerencia inspeções técnicas por organização: cadastro do ativo,
+planejamento, trabalho de campo, revisão, liberação e prévia de relatório. O
+sistema preserva o contexto da inspeção e das avaliações em snapshots para
+rastreabilidade dentro do tenant.
 
 ## Perfis de acesso
 
-### Superadministrador global
-
-- não pertence a uma organização;
-- administra empresas em `/admin/organizations`;
-- cria cada empresa junto com seu primeiro administrador;
-- pode editar dados cadastrais e suspender ou reativar empresas;
-- acessa o Horizon quando está ativo e já trocou a senha temporária;
-- não acessa módulos operacionais e não impersona organizações.
-
-### Administrador da empresa
-
-- pertence a uma única organização;
-- administra usuários, identidade visual e cadastros do tenant;
-- cria e mantém clientes, estrutura, equipamentos, documentos e inspeções;
-- configura categorias, classificações, faixas e opções GUT;
-- gerencia metadados do relatório, aspectos gerais, referências e responsáveis;
-- também pode assumir funções técnicas quando for atribuído à inspeção.
-
-### Membro
-
-- pertence a uma única organização;
-- consulta dados operacionais do tenant;
-- atua em uma inspeção conforme as responsabilidades recebidas;
-- não administra empresas, usuários, estrutura, equipamentos ou taxonomia.
-
-Contas inativas ou suspensas têm a sessão encerrada. Empresas que não estejam
-ativas também bloqueiam os usuários do tenant. Contas criadas ou redefinidas com
-senha temporária são direcionadas para a troca de senha antes das demais rotas.
+| Perfil | Alcance |
+|---|---|
+| Superadministrador global | Cria e administra organizações; não acessa módulos operacionais. |
+| Administrador da empresa | Mantém configurações, usuários, cliente, equipamentos e conteúdo permitido pelo estado. |
+| Membro | Consulta recursos autorizados do tenant. |
+| Papel operacional | Planejador, Inspetor, Revisor ou Liberador; combinado à responsabilidade da inspeção para executar transições. |
 
 ## Estrutura do domínio
 
 ```text
-Organização
-├── usuários
-├── clientes
-│   └── unidades
-│       └── áreas
-│           └── subáreas (opcionais para o equipamento)
-├── categorias de avaria
-│   ├── classificações
-│   └── opções GUT
-└── equipamentos
-    ├── documentos
-    ├── revisões
-    ├── avarias permanentes
-    └── inspeções
-        ├── responsáveis e histórico de status
-        ├── avaliações das avarias
-        ├── fotografias
-        ├── vista geral do relatório
-        └── versões de mapa e localização por avaliação
+Organization
+├── Users
+├── Client (zero ou um)
+└── Equipments
+    ├── Inspections
+    │   ├── responsáveis, aspectos gerais e revisão do relatório
+    │   └── vínculos de classificação para Nota M2
+    └── Defects
+        └── DefectAssessments
+            ├── itens de quantitativo e fotografias
+            └── localização em versão de mapa
 ```
 
-## Fluxo principal
+Área, subárea e seus códigos pertencem ao equipamento como campos textuais. Não
+existem cadastros de unidades, áreas ou subáreas, nem relações para essas entidades.
 
-1. O superadministrador cria uma empresa e seu administrador inicial.
-2. O administrador da empresa configura usuários, identidade visual e estrutura
-   operacional.
-3. Um equipamento ativo é vinculado a cliente, unidade, área e, opcionalmente,
-   subárea ativas.
-4. O administrador cria uma inspeção planejada e define responsáveis técnicos.
-5. Um preparador inicia a inspeção, registra ou reavalia avarias, classifica por
-   GUT, informa o quantitativo, envia fotos, faz upload do mapa e identifica uma
-   ou várias regiões da avaria. Não existe seleção manual de avaria ou cor.
-   Condições que exigem evidência só podem ser publicadas com ao menos um item de quantitativo e
-   duas fotografias prontas, mapa processado e localização confirmada.
-6. A inspeção passa por verificação e aprovação conforme as responsabilidades.
-7. A prévia A4 pode ser impressa ou exportada no navegador quando seus requisitos
-   próprios estão completos.
-8. O administrador registra a geração do relatório no workflow; o liberador então
-   pode liberar a inspeção.
+## Fluxo principal implementado
 
-O fluxo de estados e suas pré-condições estão detalhados em
-[06 — Inspeções e fluxo](06-INSPECOES-E-FLUXO.md).
+1. Um administrador configura organização, usuários e o cliente único.
+2. O administrador cadastra ou importa equipamento ativo com item de manutenção,
+   TAG e prefixo de avaria.
+3. O Planejador cria uma ou mais inspeções e atribui um Inspetor.
+4. O Inspetor executa a inspeção, registra avaliações, fotos, quantitativos, mapa,
+   classificação técnica e conteúdo do relatório.
+5. Revisor e Liberador conduzem as transições até a liberação.
+6. A prévia reúne a documentação e permite exportação local de PDF ou DOCX.
 
-## Escopo implementado
+## Capacidades entregues
 
-- autenticação por sessão e troca obrigatória de senha temporária;
-- administração global e isolamento multiempresa;
-- configurações de empresa e usuários;
-- estrutura operacional e equipamentos;
-- inspeções iniciais e reinspeções;
-- avarias permanentes, relações e avaliações históricas;
-- classificação GUT configurável por categoria;
-- fotos privadas, mapas de localização e notificações de falha;
-- dashboard operacional e navegação contextual;
-- prévia de relatório, impressão e exportação PDF/DOCX no cliente;
-- filas Redis monitoradas pelo Horizon.
+- multiempresa, autenticação, senha temporária, notificações e Horizon;
+- cliente único e equipamentos com atributos textuais;
+- inspeções iniciais/reinspeções, responsáveis, estados, referências e aspectos
+  gerais reutilizáveis por template;
+- avarias por categoria CIVIL, TAC, REC e TEL, avaliações e relações históricas;
+- GUT, classificação TEL, quantitativos por itens, fotos e localização;
+- resumo por classificação e vínculo manual de Nota M2 para grupos publicados;
+- prévia A4 renderizada no navegador.
 
-## Limites de escopo
+## Fora do escopo ou incompleto
 
-Não existem atualmente:
-
-- seleção ou impersonação de tenant pelo superadministrador;
-- exclusão definitiva pela interface dos principais cadastros operacionais;
-- API pública ou integração automática com sistemas externos;
-- armazenamento de um PDF/DOCX oficial no backend;
-- retry manual de imagens que atingiram falha definitiva;
-- dados fictícios criados por seed;
-- aplicativo nativo, modo offline, IA ou faturamento SaaS.
-
-As categorias TAC e REC são provisionadas junto com CIVIL e podem ser configuradas,
-mas isso não significa que todos os layouts e processos especializados dessas
-disciplinas estejam implementados.
-
-## Requisitos operacionais
-
-- PHP 8.3 ou superior;
-- Laravel 13, Inertia 3 e Vue 3;
-- Node compatível com `.nvmrc` e `package.json`;
-- MySQL no ambiente alvo;
-- Redis e Horizon para processamento assíncrono;
-- Imagick; ImageMagick e Ghostscript são necessários quando origens históricas em
-  PDF precisarem ser processadas;
-- storage privado persistente para documentos, fotografias e mapas.
-
-Consulte [02 — Arquitetura e padrões](02-ARQUITETURA-E-PADROES.md) e
-[13 — Deploy](13-DEPLOY-HETZNER.md) para detalhes técnicos.
+- API pública, integração SAP, arquivo de relatório persistido, aplicativo nativo
+  e uso offline não existem.
+- Exportar não altera o fluxo nem substitui a liberação da inspeção.
+- Imutabilidade append-only de avaliações publicadas, resumo independente do
+  catálogo, precisão decimal em string no contrato e cabeçalho completo do resumo
+  ainda não estão entregues; consulte o documento 17.

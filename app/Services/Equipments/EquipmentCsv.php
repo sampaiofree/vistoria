@@ -26,10 +26,14 @@ final class EquipmentCsv
         'task_list_group_counter' => 'Numerador de grupos',
         'abc_code' => 'Código ABC',
         'defect_code_prefix' => 'Prefixo de avaria',
+        'numero_cliente' => 'Número do cliente',
+        'numero_interno' => 'Número interno',
     ];
 
     /** @var array<int, string> */
     public const REQUIRED_FIELDS = [
+        'numero_cliente',
+        'numero_interno',
         'maintenance_item_code',
         'tag',
         'name',

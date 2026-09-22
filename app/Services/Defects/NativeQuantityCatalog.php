@@ -98,6 +98,13 @@ final class NativeQuantityCatalog
                     StructuralRecoveryElement::cases(),
                 ),
             ],
+            DefectCategory::RoofCladding => [
+                'category' => $category->value,
+                'available' => false,
+                'mode' => null,
+                'unit' => null,
+                'fields' => [],
+            ],
         };
     }
 

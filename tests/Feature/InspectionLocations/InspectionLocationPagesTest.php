@@ -8,6 +8,7 @@ use App\Enums\DefectCategory;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
 use App\Enums\OperationalRole;
+use App\Models\AssessmentPhoto;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
 use App\Models\Equipment;
@@ -50,6 +51,47 @@ final class InspectionLocationPagesTest extends TestCase
                 ->has('update_url')
                 ->missing('assessments')
                 ->missing('store_marker_url'));
+    }
+
+    public function test_assessment_exposes_inline_location_editor_data_and_a_draft_ready_photo_count(): void
+    {
+        [$user, $inspection] = $this->context();
+        $assessment = $this->assessment($inspection, DefectCategory::Civil, 'VT-CV-001', 1);
+        $this->locateAssessment($assessment);
+
+        $this->actingAs($user)
+            ->get(route('defect-assessments.show', $assessment))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('location_map.location.confirmed', true)
+                ->where('location_map.photo_legend', '0 FOTOS PRONTAS')
+                ->where('location_map.background_width', 1600)
+                ->where('location_map.background_height', 900)
+                ->where('location_map.style.fill', '#64748B')
+                ->where('location_map.editor.version', 1)
+                ->has('location_map.editor.background_url')
+                ->where('location_map.editor.background_width', 1600)
+                ->where('location_map.editor.background_height', 900)
+                ->where('location_map.editor.update_url', route('defect-assessments.location.update', $assessment))
+                ->where('location_map.editor.delete_url', route('defect-assessments.location.destroy', $assessment)));
+
+        AssessmentPhoto::factory()->ready()->create([
+            'organization_id' => $assessment->organization_id,
+            'inspection_id' => $assessment->inspection_id,
+            'defect_assessment_id' => $assessment->id,
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('defect-assessments.show', $assessment))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('location_map.photo_legend', '1 FOTO PRONTA'));
+
+        $source = file_get_contents(resource_path('js/pages/DefectAssessments/Show.vue'));
+
+        $this->assertStringContainsString("import InspectionLocationReportMap", $source);
+        $this->assertStringContainsString('const locationPreviewMap = computed', $source);
+        $this->assertStringContainsString('<InspectionLocationReportMap v-if="locationPreviewMap" :map="locationPreviewMap"', $source);
     }
 
     /** @return array{User,Inspection} */

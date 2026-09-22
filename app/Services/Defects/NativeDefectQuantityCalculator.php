@@ -33,12 +33,19 @@ final class NativeDefectQuantityCalculator
             ),
             DefectCategory::AnticorrosiveTreatment => self::rulesForFields(['area'], ['area']),
             DefectCategory::StructuralRecovery => self::structuralRecoveryRules($element),
+            DefectCategory::RoofCladding => ['quantity' => ['prohibited']],
         };
     }
 
     /** @return array<string, mixed> */
     public function calculate(DefectCategory $category, array $data): array
     {
+        if ($category === DefectCategory::RoofCladding) {
+            throw ValidationException::withMessages([
+                'quantity' => 'A categoria Telhado/Tapamento não possui quantitativo nesta etapa.',
+            ]);
+        }
+
         if ($data === []) {
             throw ValidationException::withMessages([
                 'quantity' => 'Informe os campos do quantitativo.',
@@ -55,6 +62,7 @@ final class NativeDefectQuantityCalculator
             DefectCategory::Civil => $this->civil($data),
             DefectCategory::AnticorrosiveTreatment => $this->tac($data),
             DefectCategory::StructuralRecovery => $this->structuralRecovery($data),
+            DefectCategory::RoofCladding => throw new \LogicException('TEL não possui quantitativo.'),
         };
     }
 

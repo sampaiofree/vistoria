@@ -15,6 +15,8 @@ final class GeneralAspectsDocument
 
     public const MAX_JSON_BYTES = 1_048_576;
 
+    public const PENDING_TEXT_COLOR = '#DC2626';
+
     /** @var array<int, string> */
     private const BLOCK_NODES = ['paragraph', 'heading', 'bulletList', 'orderedList'];
 
@@ -98,7 +100,7 @@ final class GeneralAspectsDocument
      * @param  array<string, mixed>|null  $document
      * @return array{schema_version:int, document:array<string, mixed>}|null
      */
-    public function normalize(int $schemaVersion, ?array $document): ?array
+    public function normalize(int $schemaVersion, ?array $document, bool $allowPendingTextColor = false): ?array
     {
         if ($schemaVersion !== self::SCHEMA_VERSION) {
             throw new InvalidArgumentException('A versão do documento de aspectos gerais não é suportada.');
@@ -127,7 +129,7 @@ final class GeneralAspectsDocument
                 throw new InvalidArgumentException('Um dos blocos do documento é inválido.');
             }
 
-            $normalizedBlocks[] = $this->normalizeBlock($block, $visibleCharacters, 0);
+            $normalizedBlocks[] = $this->normalizeBlock($block, $visibleCharacters, 0, $allowPendingTextColor);
         }
 
         if ($visibleCharacters > self::MAX_VISIBLE_CHARACTERS) {
@@ -185,7 +187,7 @@ final class GeneralAspectsDocument
     }
 
     /** @param array<string, mixed> $node */
-    private function normalizeBlock(array $node, int &$visibleCharacters, int $listDepth): array
+    private function normalizeBlock(array $node, int &$visibleCharacters, int $listDepth, bool $allowPendingTextColor): array
     {
         $type = $node['type'] ?? null;
         if (! is_string($type) || ! in_array($type, self::BLOCK_NODES, true)) {
@@ -193,14 +195,14 @@ final class GeneralAspectsDocument
         }
 
         return match ($type) {
-            'paragraph' => $this->normalizeTextBlock($node, $visibleCharacters, false),
-            'heading' => $this->normalizeTextBlock($node, $visibleCharacters, true),
-            'bulletList', 'orderedList' => $this->normalizeList($node, $visibleCharacters, $listDepth),
+            'paragraph' => $this->normalizeTextBlock($node, $visibleCharacters, false, $allowPendingTextColor),
+            'heading' => $this->normalizeTextBlock($node, $visibleCharacters, true, $allowPendingTextColor),
+            'bulletList', 'orderedList' => $this->normalizeList($node, $visibleCharacters, $listDepth, $allowPendingTextColor),
         };
     }
 
     /** @param array<string, mixed> $node */
-    private function normalizeTextBlock(array $node, int &$visibleCharacters, bool $heading): array
+    private function normalizeTextBlock(array $node, int &$visibleCharacters, bool $heading, bool $allowPendingTextColor): array
     {
         $this->assertOnlyKeys($node, ['type', 'attrs', 'content']);
         $attributes = $this->normalizeLayoutAttributes($node['attrs'] ?? [], $heading);
@@ -220,7 +222,7 @@ final class GeneralAspectsDocument
                 throw new InvalidArgumentException('O documento contém texto inválido.');
             }
 
-            $normalizedContent[] = $this->normalizeInlineNode($inlineNode, $visibleCharacters);
+            $normalizedContent[] = $this->normalizeInlineNode($inlineNode, $visibleCharacters, $allowPendingTextColor);
         }
 
         if ($normalizedContent !== []) {
@@ -231,7 +233,7 @@ final class GeneralAspectsDocument
     }
 
     /** @param array<string, mixed> $node */
-    private function normalizeList(array $node, int &$visibleCharacters, int $listDepth): array
+    private function normalizeList(array $node, int &$visibleCharacters, int $listDepth, bool $allowPendingTextColor): array
     {
         if ($listDepth >= 6) {
             throw new InvalidArgumentException('As listas podem ter no máximo seis níveis.');
@@ -288,7 +290,7 @@ final class GeneralAspectsDocument
                     throw new InvalidArgumentException('Um item da lista deve começar por um parágrafo.');
                 }
 
-                $normalizedChildren[] = $this->normalizeBlock($child, $visibleCharacters, $listDepth + 1);
+                $normalizedChildren[] = $this->normalizeBlock($child, $visibleCharacters, $listDepth + 1, $allowPendingTextColor);
             }
 
             $normalized['content'][] = ['type' => 'listItem', 'content' => $normalizedChildren];
@@ -298,7 +300,7 @@ final class GeneralAspectsDocument
     }
 
     /** @param array<string, mixed> $node */
-    private function normalizeInlineNode(array $node, int &$visibleCharacters): array
+    private function normalizeInlineNode(array $node, int &$visibleCharacters, bool $allowPendingTextColor): array
     {
         $type = $node['type'] ?? null;
         if ($type === 'hardBreak') {
@@ -321,11 +323,39 @@ final class GeneralAspectsDocument
 
         $normalizedMarks = [];
         foreach ($marks as $mark) {
-            if (! is_array($mark) || ! in_array($mark['type'] ?? null, ['bold', 'italic'], true)) {
+            if (! is_array($mark)) {
                 throw new InvalidArgumentException('O documento contém uma formatação não permitida.');
             }
-            $this->assertOnlyKeys($mark, ['type']);
-            $normalizedMarks[] = ['type' => $mark['type']];
+
+            if (in_array($mark['type'] ?? null, ['bold', 'italic'], true)) {
+                $this->assertOnlyKeys($mark, ['type']);
+                $normalizedMarks[] = ['type' => $mark['type']];
+
+                continue;
+            }
+
+            if (($mark['type'] ?? null) !== 'textColor') {
+                throw new InvalidArgumentException('O documento contém uma formatação não permitida.');
+            }
+
+            $this->assertOnlyKeys($mark, ['type', 'attrs']);
+            $attributes = $mark['attrs'] ?? null;
+            if (! is_array($attributes)) {
+                throw new InvalidArgumentException('A cor do texto é inválida.');
+            }
+            $this->assertOnlyKeys($attributes, ['color']);
+
+            if (($attributes['color'] ?? null) !== self::PENDING_TEXT_COLOR) {
+                throw new InvalidArgumentException('Apenas a cor vermelha é permitida nos modelos de aspectos gerais.');
+            }
+            if (! $allowPendingTextColor) {
+                throw new InvalidArgumentException('Conclua todos os trechos destacados em vermelho antes de salvar os aspectos gerais.');
+            }
+
+            $normalizedMarks[] = [
+                'type' => 'textColor',
+                'attrs' => ['color' => self::PENDING_TEXT_COLOR],
+            ];
         }
 
         if ($normalizedMarks !== []) {

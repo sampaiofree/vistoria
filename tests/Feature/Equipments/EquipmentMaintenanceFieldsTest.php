@@ -12,7 +12,6 @@ use App\Enums\UserAccountType;
 use App\Models\Client;
 use App\Models\Defect;
 use App\Models\Equipment;
-use App\Models\EquipmentDocument;
 use App\Models\Inspection;
 use App\Models\Organization;
 use App\Models\User;
@@ -41,6 +40,8 @@ final class EquipmentMaintenanceFieldsTest extends TestCase
     {
         return array_replace([
             'client_id' => $client->id,
+            'numero_cliente' => 'SAM-000123',
+            'numero_interno' => 'SEND-000123',
             'maintenance_plan_code' => '000000001234',
             'maintenance_item_code' => '000123',
             'defect_code_prefix' => 'PF-000123',
@@ -69,6 +70,8 @@ final class EquipmentMaintenanceFieldsTest extends TestCase
         foreach (['edit', 'show'] as $page) {
             $this->get(route('equipments.'.$page, $equipment))->assertInertia(fn (Assert $page) => $page
                 ->where('equipment.maintenance_item_code', '000123')
+                ->where('equipment.numero_cliente', 'SAM-000123')
+                ->where('equipment.numero_interno', 'SEND-000123')
                 ->where('equipment.subarea_code', '08')
                 ->where('equipment.task_list_group_counter', 'T5')
                 ->where('equipment.abc_code', 'D')
@@ -82,6 +85,8 @@ final class EquipmentMaintenanceFieldsTest extends TestCase
         $this->get(route('equipments.index', ['search' => '000123']))->assertInertia(fn (Assert $page) => $page
             ->has('equipments.data', 1)
             ->where('equipments.data.0.maintenance_item_code', '000123')
+            ->where('equipments.data.0.numero_cliente', 'SAM-000123')
+            ->where('equipments.data.0.numero_interno', 'SEND-000123')
             ->where('equipments.data.0.defect_code_prefix', 'PF-000123')
             ->where('equipments.data.0.description', 'Descrição de manutenção')
             ->where('equipments.data.0.area_name', 'Área da usina')
@@ -117,9 +122,9 @@ final class EquipmentMaintenanceFieldsTest extends TestCase
     {
         [$organization, $admin, $client] = $this->context();
         $this->actingAs($admin)->post(route('equipments.store'), $this->payload($client))->assertSessionHasNoErrors();
-        $this->post(route('equipments.store'), $this->payload($client, ['maintenance_item_code' => '000124', 'defect_code_prefix' => 'PF-000124']))->assertSessionHasNoErrors();
+        $this->post(route('equipments.store'), $this->payload($client, ['numero_cliente' => 'SAM-000124', 'numero_interno' => 'SEND-000124', 'maintenance_item_code' => '000124', 'defect_code_prefix' => 'PF-000124']))->assertSessionHasNoErrors();
         $equipment = Equipment::where('maintenance_item_code', '000124')->sole();
-        $this->put(route('equipments.update', $equipment), $this->payload($client, ['maintenance_item_code' => '000124', 'defect_code_prefix' => 'PF-000124']))->assertSessionHasNoErrors();
+        $this->put(route('equipments.update', $equipment), $this->payload($client, ['numero_cliente' => 'SAM-000124', 'numero_interno' => 'SEND-000124', 'maintenance_item_code' => '000124', 'defect_code_prefix' => 'PF-000124']))->assertSessionHasNoErrors();
         $this->assertSame(2, Equipment::where('normalized_tag', 'PRÉDIO')->count());
     }
 
@@ -138,6 +143,63 @@ final class EquipmentMaintenanceFieldsTest extends TestCase
         Equipment::factory()->create(['maintenance_item_code' => '000123']);
         $this->actingAs($admin)->post(route('equipments.store'), $this->payload($client))->assertSessionHasNoErrors();
         $this->assertSame(2, Equipment::where('maintenance_item_code', '000123')->count());
+    }
+
+    public function test_customer_and_internal_numbers_are_required_unique_per_organization_and_normalized(): void
+    {
+        [$organization, $admin, $client] = $this->context();
+        Equipment::factory()->inStructure($client)->create([
+            'numero_cliente' => 'SAM-000123',
+            'numero_interno' => 'SEND-000123',
+        ]);
+
+        $this->actingAs($admin)
+            ->post(route('equipments.store'), $this->payload($client))
+            ->assertSessionHasErrors(['numero_cliente', 'numero_interno']);
+
+        $this->post(route('equipments.store'), $this->payload($client, [
+            'numero_cliente' => '',
+            'numero_interno' => '',
+            'maintenance_item_code' => '000124',
+            'defect_code_prefix' => 'PF-000124',
+        ]))->assertSessionHasErrors(['numero_cliente', 'numero_interno']);
+
+        $this->post(route('equipments.store'), $this->payload($client, [
+            'numero_cliente' => str_repeat('C', 51),
+            'numero_interno' => str_repeat('I', 51),
+            'maintenance_item_code' => '000125',
+            'defect_code_prefix' => 'PF-000125',
+        ]))->assertSessionHasErrors(['numero_cliente', 'numero_interno']);
+
+        $otherOrganization = Organization::factory()->create();
+        $otherAdmin = User::factory()->for($otherOrganization)->create(['account_type' => UserAccountType::CompanyAdmin->value]);
+        $otherClient = Client::factory()->for($otherOrganization)->create();
+
+        $this->actingAs($otherAdmin)
+            ->post(route('equipments.store'), $this->payload($otherClient, [
+                'numero_cliente' => ' sam-000123 ',
+                'numero_interno' => ' send-000123 ',
+            ]))
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('equipments', [
+            'organization_id' => $otherOrganization->id,
+            'numero_cliente' => 'SAM-000123',
+            'numero_interno' => 'SEND-000123',
+        ]);
+    }
+
+    public function test_customer_and_internal_numbers_cannot_be_reused_after_soft_deletion(): void
+    {
+        [$organization, $admin, $client] = $this->context();
+        Equipment::factory()->inStructure($client)->create([
+            'numero_cliente' => 'SAM-000123',
+            'numero_interno' => 'SEND-000123',
+        ])->delete();
+
+        $this->actingAs($admin)
+            ->post(route('equipments.store'), $this->payload($client))
+            ->assertSessionHasErrors(['numero_cliente', 'numero_interno']);
     }
 
     public function test_update_accepts_own_item_preserves_prefix_and_persists_changed_fields(): void
@@ -202,7 +264,7 @@ final class EquipmentMaintenanceFieldsTest extends TestCase
             'planned_start_on' => '2026-09-24',
             'planned_end_on' => '2026-09-24',
         ]);
-        foreach (['maintenance_plan_code', 'maintenance_item_code', 'area_code', 'area_name', 'subarea_code', 'subarea_name', 'task_list_group', 'task_list_group_counter'] as $field) {
+        foreach (['numero_cliente', 'numero_interno', 'maintenance_plan_code', 'maintenance_item_code', 'area_code', 'area_name', 'subarea_code', 'subarea_name', 'task_list_group', 'task_list_group_counter'] as $field) {
             $this->assertSame($equipment->$field, $inspection->context_snapshot['equipment'][$field]);
         }
         $this->assertSame(['organization', 'client', 'equipment'], array_keys($inspection->context_snapshot));
@@ -276,7 +338,6 @@ final class EquipmentMaintenanceFieldsTest extends TestCase
         [$organization, $admin, $client] = $this->context();
         $equipment = Equipment::factory()->inStructure($client)->create(['maintenance_item_code' => null, 'defect_code_prefix' => 'LEGADO']);
         $inspection = Inspection::factory()->forEquipment($equipment)->create(['context_snapshot' => ['equipment' => ['tag' => $equipment->tag]]]);
-        $document = EquipmentDocument::factory()->forEquipment($equipment)->create();
         $snapshot = $inspection->context_snapshot;
         $migration = require database_path('migrations/2026_09_16_000042_add_maintenance_fields_to_equipments.php');
         $migration->down();
@@ -286,7 +347,6 @@ final class EquipmentMaintenanceFieldsTest extends TestCase
             $this->assertNull($equipment->refresh()->$field);
         }
         $this->assertSame('LEGADO', $equipment->defect_code_prefix);
-        $this->assertSame($equipment->id, $document->refresh()->equipment_id);
         $this->assertSame($equipment->id, $inspection->refresh()->equipment_id);
         $this->assertSame($snapshot, $inspection->context_snapshot);
         Equipment::factory()->inStructure($client)->create(['tag' => $equipment->tag, 'normalized_tag' => $equipment->normalized_tag]);

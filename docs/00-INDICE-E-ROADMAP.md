@@ -1,96 +1,80 @@
-# Projeto Vistoria — índice e estado atual
+# Projeto Vistoria — índice e estado verificado
 
-## Propósito desta documentação
+## Como ler esta pasta
 
-Esta pasta descreve o comportamento existente da aplicação Vistoria. O código da
-branch atual é a fonte de verdade; propostas antigas, comandos de scaffolding e
-listas de implementação não fazem parte da documentação viva.
+Esta pasta documenta a árvore de trabalho atual do Vistoria. Código, migrations,
+rotas, policies e testes são a fonte de verdade para comportamento entregue. Uma
+regra técnica, uma pauta ou um plano pendente nunca deve ser lido como capacidade
+implementada apenas por estar descrito aqui.
 
-Última reconciliação: **19/09/2026**.
+Última reconciliação: **20/09/2026**.
 
 ## Visão rápida
 
 O Vistoria é uma aplicação web multiempresa para planejar, executar, revisar,
-aprovar e liberar inspeções técnicas. O sistema atual inclui:
+aprovar e liberar inspeções técnicas. O estado atual inclui:
 
-- administração global de empresas e administradores iniciais;
-- usuários, identidade visual e configurações por organização;
-- clientes, unidades, áreas, subáreas e equipamentos;
-- documentos e histórico de revisões de equipamentos;
-- inspeções iniciais e reinspeções com responsáveis e histórico de estados;
-- avarias permanentes e avaliações históricas;
-- catálogo técnico nativo de categorias, classificações e critérios GUT;
-- fotografias privadas processadas de forma assíncrona;
-- mapa versionado e uma localização por avaliação de avaria;
-- prévia paginada em A4 e exportação no navegador para PDF e DOCX;
-- dashboard, notificações e painel protegido do Horizon.
+- administração global, organizações, usuários e identidade visual por tenant;
+- um cliente operacional por organização e equipamentos vinculados a ele;
+- equipamentos com atributos textuais de área e subárea e
+  campos de manutenção;
+- inspeções iniciais e reinspeções, responsáveis, histórico de estados, revisão
+  do relatório e aspectos gerais;
+- avarias permanentes, avaliações, quantitativos por itens, fotos e mapa
+  versionado por avaria;
+- catálogo técnico nativo de CIVIL, TAC, REC e TEL;
+- resumo de classificação, vínculos de Nota M2 e prévia A4 no navegador;
+- notificações para falhas de imagem e Horizon protegido.
 
 ## Índice
 
 | Documento | Conteúdo |
 |---|---|
-| [01 — Visão geral e escopo](01-VISAO-GERAL-E-ESCOPO.md) | Produto, perfis, fluxo principal e limites atuais |
-| [02 — Arquitetura e padrões](02-ARQUITETURA-E-PADROES.md) | Stack, camadas, segurança, arquivos, filas e testes |
-| [03 — Modelagem multiempresa](03-MODELAGEM-MULTIEMPRESA.md) | Organizações, usuários, tenant, configurações e notificações |
-| [04 — Clientes e estrutura operacional](04-CLIENTES-E-ESTRUTURA-OPERACIONAL.md) | Cliente, unidade, área e subárea |
-| [05 — Equipamentos e documentos](05-EQUIPAMENTOS-E-DOCUMENTOS.md) | Equipamentos, documentos e revisões |
-| [06 — Inspeções e fluxo](06-INSPECOES-E-FLUXO.md) | Dashboard, inspeções, estados, responsáveis e relatório |
-| [07 — Avarias e reinspeções](07-AVARIAS-E-REINSPECOES.md) | Avarias, avaliações, relações e cobertura histórica |
-| [08 — Fotos e armazenamento](08-FOTOS-E-ARMAZENAMENTO.md) | Upload, processamento, acesso e falhas |
-| [08A — Mapas e localização](08A-MAPAS-E-LOCALIZACAO-DA-INSPECAO.md) | Mapa por avaria, versões, localização, cobertura e relatório |
-| [09 — Classificação GUT e Quantitativos](09-CLASSIFICACAO-GUT-E-QUANTITATIVOS.md) | Catálogo técnico nativo, cálculo GUT e quantitativos por categoria |
-| [13 — Deploy](13-DEPLOY-HETZNER.md) | Requisitos e checklist de produção |
-| [13A — Passo a passo de produção](13A-PASSO-A-PASSO-DEPLOY-PRODUCAO.md) | Runbook do primeiro deploy e atualizações |
+| [01 — Visão geral e escopo](01-VISAO-GERAL-E-ESCOPO.md) | Produto, papéis e limites atuais |
+| [02 — Arquitetura e padrões](02-ARQUITETURA-E-PADROES.md) | Stack, camadas, segurança e filas |
+| [03 — Modelagem multiempresa](03-MODELAGEM-MULTIEMPRESA.md) | Organizações, usuários e tenant |
+| [04 — Clientes](04-CLIENTES-E-ESTRUTURA-OPERACIONAL.md) | Cliente único por organização |
+| [05 — Equipamentos e documentos](05-EQUIPAMENTOS-E-DOCUMENTOS.md) | Cadastro, manutenção e arquivos privados |
+| [06 — Inspeções e fluxo](06-INSPECOES-E-FLUXO.md) | Fluxo, responsabilidades e relatório |
+| [07 — Avarias e reinspeções](07-AVARIAS-E-REINSPECOES.md) | Avaliações, quantitativos e histórico |
+| [08 — Fotos e armazenamento](08-FOTOS-E-ARMAZENAMENTO.md) | Fotos privadas e processamento assíncrono |
+| [08A — Mapas e localização](08A-MAPAS-E-LOCALIZACAO-DA-INSPECAO.md) | Mapa versionado e geometria por avaliação |
+| [09 — Classificações e quantitativos](09-CLASSIFICACOES-TECNICAS-E-QUANTITATIVOS.md) | Regras transversais e limites atuais |
+| [10 — REC](10-CLASSIFICACAO-REC-E-QUANTITATIVOS.md) | Matriz técnica e quantitativos REC |
+| [11 — CIVIL](11-CLASSIFICACAO-CIVIL-E-QUANTITATIVOS.md) | Matriz técnica e quantitativos CIVIL |
+| [12 — TEL](12-CLASSIFICACAO-TELHADO-TAPAMENTO.md) | Matriz TEL implementada |
+| [13 — Resumo e Nota M2](13-RESUMO-CLASSIFICACAO-EQUIPAMENTO-E-NOTA-M2.md) | Contrato atual e regras de negócio abertas |
+| [14 — Deploy](14-DEPLOY-HETZNER.md) | Checklist derivado do repositório |
+| [14A — Produção](14A-PASSO-A-PASSO-DEPLOY-PRODUCAO.md) | Runbook de referência |
+| [15 — Padrão visual](15-PADRAO-VISUAL-E-LAYOUT-DO-RELATORIO.md) | Referência visual e itens não entregues |
+| [16 — Pauta SEND](16-PAUTA-SEND-QUANTITATIVOS-REC.md) | Perguntas de negócio pendentes |
+| [17 — Pendências verificadas](17-AJUSTES-FINAIS-DOCUMENTOS-09-A-13.md) | Lacunas conhecidas dos documentos 09 a 13 |
 
-## Estado funcional
+## Limites verificados
 
-Os módulos listados acima possuem rotas, persistência, autorização e cobertura
-automatizada no repositório. Isso não equivale a declarar que um ambiente de
-produção específico foi provisionado ou homologado.
+- Não há API pública, operação offline, aplicativo nativo, integração SAP ou
+  cobrança SaaS.
+- PDF e DOCX são gerados no navegador a partir da prévia; nenhum arquivo oficial
+  é persistido no servidor e a exportação não muda o status da inspeção.
+- O catálogo técnico é nativo e compartilhado; não há configuração por tenant.
+- Uma avaliação `complete` ainda pode ser modificada enquanto a inspeção está em
+  estado editável. A revisão append-only é pendência, não comportamento atual.
+- O resumo usa o catálogo nativo atual para formar suas linhas; dados históricos
+  removidos do catálogo não são preservados como linhas independentes.
+- O scheduler registra apenas o snapshot do Horizon; não há limpeza periódica de
+  arquivos.
 
-Na reconciliação desta documentação foram verificados:
+## Evidência de qualidade desta reconciliação
 
-- `php artisan route:list`: 148 rotas da aplicação;
-- `php artisan schedule:list`: somente `horizon:snapshot`, a cada cinco minutos;
-- `php artisan test`: suíte aprovada, com testes ambientais ou históricos
-  explicitamente ignorados;
-- `npm run test:js`: suíte JavaScript aprovada;
-- `composer validate --strict --no-check-publish`: manifesto válido.
-
-As contagens são deliberadamente omitidas deste documento porque mudam com a
-evolução da suíte. Consulte a execução mais recente no ambiente de trabalho ou no
-CI.
-
-## Limites conhecidos
-
-- Não há seed operacional ou cenário de demonstração. Dados são criados pela
-  aplicação; factories são usadas nos testes.
-- A exportação para PDF e DOCX acontece no navegador a partir da prévia A4 e não
-  altera o status nem persiste um arquivo de relatório no servidor.
-- O upload do mapa ocorre na avaliação e recebe PNG, JPEG ou WEBP. Cada upload
-  cria uma versão histórica do mapa lógico da avaria.
-- Não existem ações HTTP de retry manual para imagens. Cada Job tenta três vezes;
-  uma falha definitiva exige substituir ou reenviar o arquivo.
-- O scheduler da aplicação não executa limpeza periódica de arquivos. Somente as
-  métricas do Horizon estão agendadas.
-- O catálogo nativo inclui CV, TAC e REC. A configuração dessas categorias e de
-  suas classificações exige alteração versionada no código.
-- Operação offline, aplicativo nativo, inteligência artificial, cobrança SaaS e
-  API pública não estão implementados.
-- O provisionamento e a homologação do VPS continuam sendo atividades do ambiente
-  de produção, descritas nos documentos 13 e 13A.
+Em 20/09/2026, `npm run test:js` passou com 27 testes. `php artisan test --compact`
+teve 353 testes aprovados, 1 falho e 4 ignorados; a falha observada foi
+`ClientCrudTest::test_client_navigation_is_nested_in_administrator_settings_only`.
+Essa fotografia não é uma propriedade permanente do projeto nem é corrigida por
+esta atualização documental.
 
 ## Regra de manutenção
 
-Toda alteração funcional deve atualizar o documento correspondente no mesmo
-conjunto de mudanças. Documente apenas comportamento verificável e prefira citar
-o arquivo fonte a copiar grandes trechos de código.
-
-Antes de concluir uma atualização documental:
-
-1. confira rotas, enums, policies, requests e configurações relevantes;
-2. valide os links relativos;
-3. remova referências a classes ou comandos inexistentes;
-4. execute as verificações automatizadas proporcionais à mudança;
-5. confirme que fatos ambientais estão identificados como evidência datada, não
-   como propriedade permanente do produto.
+Atualize o documento de domínio no mesmo conjunto de mudanças de qualquer alteração
+funcional. Antes de concluir, confira os contratos de rotas e requests, permissões,
+migrations e links relativos. Marque propostas como tal, em vez de antecipar na
+documentação um comportamento ainda não entregue.

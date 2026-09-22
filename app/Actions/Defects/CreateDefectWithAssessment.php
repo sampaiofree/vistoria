@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Actions\Defects;
 
 use App\Actions\Classification\SaveDefectAssessmentGut;
+use App\Actions\Classification\SaveDefectAssessmentTelClassification;
 use App\Enums\DefectAssessmentCondition;
 use App\Enums\DefectAssessmentStatus;
 use App\Enums\DefectCategory;
@@ -28,6 +29,7 @@ final class CreateDefectWithAssessment
         private readonly DefectCodeGenerator $codeGenerator,
         private readonly CompleteDefectAssessment $completeAssessment,
         private readonly SaveDefectAssessmentGut $saveGut,
+        private readonly SaveDefectAssessmentTelClassification $saveTel,
     ) {}
 
     public function handle(User $actor, Inspection $inspection, array $data): Defect
@@ -44,6 +46,7 @@ final class CreateDefectWithAssessment
             if (! in_array($inspection->status, [
                 InspectionStatus::InProgress,
                 InspectionStatus::InCorrection,
+                InspectionStatus::InReview,
             ], true)) {
                 throw ValidationException::withMessages([
                     'inspection' => 'A inspeção não está em estado editável para criar avarias.',
@@ -104,7 +107,10 @@ final class CreateDefectWithAssessment
             ]);
 
             if (($data['assessment_action'] ?? DefectAssessmentStatus::Draft->value) === DefectAssessmentStatus::Complete->value) {
-                $assessment = $this->saveGut->handle($actor, $assessment, $data);
+                $assessment = match ($category) {
+                    DefectCategory::RoofCladding => $this->saveTel->handle($actor, $assessment, $data),
+                    default => $this->saveGut->handle($actor, $assessment, $data),
+                };
 
                 $assessment = $this->completeAssessment->handle($actor, $assessment, $data);
             }

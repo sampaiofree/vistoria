@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
-import { Link, router, useForm } from '@inertiajs/vue3';
+import { Link, useForm } from '@inertiajs/vue3';
 import {
     Combobox,
     ComboboxButton,
@@ -10,13 +10,11 @@ import {
 } from '@headlessui/vue';
 
 const props = defineProps({
-    previewAction: { type: String, required: true },
-    confirmAction: { type: String, required: true },
+    createAction: { type: String, required: true },
     cancelUrl: { type: String, required: true },
     equipmentSearchUrl: { type: String, required: true },
     selectedEquipment: { type: Array, default: () => [] },
     inspectors: { type: Array, default: () => [] },
-    preview: { type: Object, default: null },
 });
 
 let nextInspectionKey = 0;
@@ -33,35 +31,15 @@ function blankInspection() {
     };
 }
 
-function hydrateInspection(inspection) {
-    return {
-        ...blankInspection(),
-        ...inspection,
-    };
-}
-
 const form = useForm({
-    inspections: props.preview?.inspections?.map(hydrateInspection) ?? [blankInspection()],
+    inspections: [blankInspection()],
 });
-const confirming = ref(false);
-const previewToken = computed(() => props.preview?.token ?? null);
 const knownEquipment = ref({});
 const equipmentOptionsByRow = ref({});
 const loadingEquipmentByRow = ref({});
 const equipmentSearchCache = new Map();
 const equipmentSearchTimers = new Map();
 const equipmentSearchControllers = new Map();
-
-watch(
-    () => props.preview?.token,
-    () => {
-        const inspections = props.preview?.inspections?.map(hydrateInspection) ?? [blankInspection()];
-
-        form.inspections = inspections;
-        form.defaults({ inspections });
-        form.clearErrors();
-    },
-);
 
 watch(
     () => props.selectedEquipment,
@@ -210,39 +188,38 @@ function fieldError(index, field) {
     return form.errors[`inspections.${index}.${field}`];
 }
 
-function previewBatch() {
-    form.post(props.previewAction, {
-        preserveScroll: true,
-    });
+function hasRowErrors(index) {
+    return Object.keys(form.errors).some((key) => key.startsWith(`inspections.${index}.`));
 }
 
-function confirmBatch() {
-    if (!previewToken.value || form.isDirty) {
-        return;
-    }
+const invalidRowCount = computed(() => new Set(
+    Object.keys(form.errors)
+        .map((key) => key.match(/^inspections\.(\d+)\./)?.[1])
+        .filter((index) => index !== undefined),
+).size);
+const creationLabel = computed(() => `Criar ${form.inspections.length} inspeç${form.inspections.length === 1 ? 'ão' : 'ões'}`);
 
-    confirming.value = true;
-    router.post(props.confirmAction, { token: previewToken.value }, {
+function createBatch() {
+    form.post(props.createAction, {
         preserveScroll: true,
-        onFinish: () => {
-            confirming.value = false;
-        },
+        preserveState: true,
     });
 }
 </script>
 
 <template>
-    <form class="space-y-5" @submit.prevent="previewBatch">
-        <div v-if="previewToken" class="rounded-xl border border-teal-200 bg-teal-50 p-4 text-sm text-teal-900">
-            <p class="font-semibold">Prévia pronta para confirmação</p>
-            <p class="mt-1">Confira os registros abaixo. Se fizer alterações, atualize a prévia antes de confirmar.</p>
+    <form class="space-y-5" novalidate @submit.prevent="createBatch">
+        <div v-if="invalidRowCount > 0" class="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900" role="alert">
+            <p class="font-semibold">Encontramos problemas em {{ invalidRowCount }} registro{{ invalidRowCount === 1 ? '' : 's' }}.</p>
+            <p class="mt-1">Corrija os campos destacados e tente criar as inspeções novamente.</p>
         </div>
 
         <div class="space-y-4">
             <section
                 v-for="(inspection, index) in form.inspections"
                 :key="index"
-                class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+                class="rounded-2xl border p-4 shadow-sm"
+                :class="hasRowErrors(index) ? 'border-rose-300 bg-rose-50/30' : 'border-slate-200 bg-white'"
             >
                 <div class="mb-4 flex items-center justify-between gap-3 xl:hidden">
                     <p class="text-sm font-semibold text-slate-900">Inspeção {{ index + 1 }}</p>
@@ -265,7 +242,7 @@ function confirmBatch() {
                             @update:model-value="selectEquipment(inspection, $event)"
                         >
                             <div class="relative">
-                                <ComboboxButton class="flex w-full items-center justify-between gap-3 rounded-lg border border-slate-300 bg-white px-3 py-2 text-left text-slate-700">
+                                <ComboboxButton class="flex w-full items-center justify-between gap-3 rounded-lg border bg-white px-3 py-2 text-left text-slate-700" :class="fieldError(index, 'equipment_id') ? 'border-rose-500' : 'border-slate-300'">
                                     <span class="truncate">{{ selectedEquipment(inspection) ? equipmentLabel(selectedEquipment(inspection)) : 'Selecione o equipamento' }}</span>
                                     <span aria-hidden="true" class="text-slate-400">⌄</span>
                                 </ComboboxButton>
@@ -308,25 +285,25 @@ function confirmBatch() {
 
                     <label class="space-y-1.5 text-sm font-medium text-slate-700">
                         <span>Ordem de serviço</span>
-                        <input v-model="inspection.service_order" type="text" maxlength="100" placeholder="OS" class="w-full rounded-lg border border-slate-300 px-3 py-2">
+                        <input v-model="inspection.service_order" type="text" maxlength="100" placeholder="OS" class="w-full rounded-lg border px-3 py-2" :class="fieldError(index, 'service_order') ? 'border-rose-500' : 'border-slate-300'">
                         <span v-if="fieldError(index, 'service_order')" class="block text-xs font-normal text-rose-600">{{ fieldError(index, 'service_order') }}</span>
                     </label>
 
                     <label class="space-y-1.5 text-sm font-medium text-slate-700">
                         <span>Data inicial</span>
-                        <input v-model="inspection.planned_start_on" type="date" required class="w-full rounded-lg border border-slate-300 px-3 py-2">
+                        <input v-model="inspection.planned_start_on" type="date" required class="w-full rounded-lg border px-3 py-2" :class="fieldError(index, 'planned_start_on') ? 'border-rose-500' : 'border-slate-300'">
                         <span v-if="fieldError(index, 'planned_start_on')" class="block text-xs font-normal text-rose-600">{{ fieldError(index, 'planned_start_on') }}</span>
                     </label>
 
                     <label class="space-y-1.5 text-sm font-medium text-slate-700">
                         <span>Prazo final</span>
-                        <input v-model="inspection.planned_end_on" type="date" required class="w-full rounded-lg border border-slate-300 px-3 py-2">
+                        <input v-model="inspection.planned_end_on" type="date" required class="w-full rounded-lg border px-3 py-2" :class="fieldError(index, 'planned_end_on') ? 'border-rose-500' : 'border-slate-300'">
                         <span v-if="fieldError(index, 'planned_end_on')" class="block text-xs font-normal text-rose-600">{{ fieldError(index, 'planned_end_on') }}</span>
                     </label>
 
                     <label class="space-y-1.5 text-sm font-medium text-slate-700">
                         <span>Inspetor</span>
-                        <select v-model="inspection.inspector_id" required class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2">
+                        <select v-model="inspection.inspector_id" required class="w-full rounded-lg border bg-white px-3 py-2" :class="fieldError(index, 'inspector_id') ? 'border-rose-500' : 'border-slate-300'">
                             <option value="" disabled>Selecione o Inspetor</option>
                             <option v-for="inspector in inspectors" :key="inspector.id" :value="inspector.id">{{ inspector.name }}</option>
                         </select>
@@ -354,21 +331,10 @@ function confirmBatch() {
 
         <p v-if="form.errors.inspections" class="text-sm text-rose-600">{{ form.errors.inspections }}</p>
         <p v-if="form.errors.actor" class="text-sm text-rose-600">{{ form.errors.actor }}</p>
-        <p v-if="form.errors.token" class="text-sm text-rose-600">{{ form.errors.token }}</p>
-
         <div class="flex flex-wrap justify-end gap-3 border-t border-slate-200 pt-5">
             <Link :href="cancelUrl" class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700">Cancelar</Link>
             <button :disabled="form.processing" class="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
-                {{ previewToken ? 'Atualizar prévia' : 'Revisar registros' }}
-            </button>
-            <button
-                v-if="previewToken"
-                type="button"
-                :disabled="form.isDirty || confirming"
-                class="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
-                @click="confirmBatch"
-            >
-                Confirmar registros
+                {{ form.processing ? 'Criando inspeções…' : creationLabel }}
             </button>
         </div>
     </form>

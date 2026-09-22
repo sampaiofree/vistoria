@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Defects;
 
 use App\Enums\DefectAssessmentStatus;
+use App\Enums\DefectCategory;
 use App\Models\DefectAssessment;
 use App\Models\User;
 
@@ -20,16 +21,15 @@ final class RefreshDefectAssessmentQuantityState
         $assessment->load(['defect', 'quantities', 'locationMapVersion', 'location']);
 
         if ($wasComplete) {
-            $keepPublished = $assessment->quantities->isNotEmpty()
+            $keepPublished = ($assessment->defect->category === DefectCategory::RoofCladding || $assessment->quantities->isNotEmpty())
                 && $assessment->locationMapVersion?->isReady()
                 && $assessment->location?->isConfirmed();
 
             if ($keepPublished) {
                 $assessment->assessed_at = now();
-                $assessment->quantity_snapshot = $this->snapshot->build(
-                    $assessment->defect->category,
-                    $assessment->quantities,
-                );
+                $assessment->quantity_snapshot = $assessment->defect->category === DefectCategory::RoofCladding
+                    ? null
+                    : $this->snapshot->build($assessment->defect->category, $assessment->quantities);
             } else {
                 $assessment->fill([
                     'status' => DefectAssessmentStatus::Draft,

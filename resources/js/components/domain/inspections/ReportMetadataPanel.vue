@@ -20,7 +20,6 @@ const form = useForm({
     report_designer: props.metadata.report_designer ?? 'PROJETISTA II',
     designer_i_report_number: props.metadata.designer_i_report_number ?? '',
     first_page_text_template: props.metadata.first_page_text_template ?? '',
-    confirm_revision_reorder: false,
 });
 
 const canEdit = computed(() => props.metadata.can_edit === true && Boolean(props.metadata.update_url));
@@ -40,7 +39,6 @@ function syncForm() {
         report_designer: props.metadata.report_designer ?? 'PROJETISTA II',
         designer_i_report_number: props.metadata.designer_i_report_number ?? '',
         first_page_text_template: props.metadata.first_page_text_template ?? '',
-        confirm_revision_reorder: false,
     });
     form.reset();
 }
@@ -59,14 +57,6 @@ function cancelEditing() {
 }
 
 function submit() {
-    const dateChanged = (props.metadata.report_date || '') !== (form.report_date || '');
-    if (props.inspection.status === 'released' && dateChanged) {
-        if (! window.confirm('A alteração pode renumerar a cronologia do equipamento. Deseja continuar?')) {
-            return;
-        }
-        form.confirm_revision_reorder = true;
-    }
-
     form.put(props.metadata.update_url, {
         preserveScroll: true,
         only: ['inspection', 'report_metadata', 'emission_options', 'capabilities', 'transitions', 'flash'],
@@ -147,12 +137,12 @@ async function insertPlaceholder() {
                 </label>
                 <label class="space-y-1.5 text-sm font-medium text-slate-700 md:col-span-2">
                     <span>Título da primeira página</span>
-                    <div class="flex flex-wrap gap-2">
+                    <!--<div class="flex flex-wrap gap-2">
                         <button type="button" class="rounded-lg border border-teal-200 bg-teal-50 px-2.5 py-1.5 text-xs font-semibold text-teal-800 hover:bg-teal-100" @click="insertPlaceholder">
                             Inserir nome do equipamento
                         </button>
                         <span class="self-center text-xs font-normal text-slate-500">Use [nome do equipamento] para inserir o nome atual.</span>
-                    </div>
+                    </div>-->
                     <textarea ref="textarea" v-model="form.first_page_text_template" rows="6" maxlength="5000" class="w-full rounded-xl border border-slate-300 px-3 py-2.5"></textarea>
                     <span v-if="form.errors.first_page_text_template" class="block text-xs text-rose-600">{{ form.errors.first_page_text_template }}</span>
                 </label>

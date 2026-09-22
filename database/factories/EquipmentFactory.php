@@ -8,6 +8,7 @@ use App\Models\Equipment;
 use App\Models\Organization;
 use App\Support\TextNormalizer;
 use Illuminate\Database\Eloquent\Factories\Factory;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * @extends Factory<Equipment>
@@ -19,6 +20,13 @@ class EquipmentFactory extends Factory
     public function definition(): array
     {
         $tag = fake()->unique()->bothify('EQ-####');
+
+        $identifiers = Schema::hasColumns('equipments', ['numero_cliente', 'numero_interno'])
+            ? [
+                'numero_cliente' => fake()->unique()->numerify('##########'),
+                'numero_interno' => fake()->unique()->numerify('##########'),
+            ]
+            : [];
 
         return [
             'organization_id' => Organization::factory(),
@@ -53,7 +61,7 @@ class EquipmentFactory extends Factory
             'notes' => null,
             'created_by' => null,
             'updated_by' => null,
-        ];
+        ] + $identifiers;
     }
 
     public function inStructure(

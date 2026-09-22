@@ -142,7 +142,7 @@ final class DefectAssessmentQuantityTest extends TestCase
         DefectAssessmentQuantity::factory()->forAssessment($assessment)->create(['position' => 2]);
     }
 
-    public function test_published_assessment_rebuilds_aggregate_snapshot_after_item_changes(): void
+    public function test_published_assessment_must_be_reopened_before_items_change(): void
     {
         [$actor, $assessment] = $this->scenario(DefectCategory::Civil);
         $this->store($actor, $assessment, ['quantity' => ['length' => 2, 'height' => 0.5, 'width' => 0.3, 'quantity' => 2]]);
@@ -154,19 +154,23 @@ final class DefectAssessmentQuantityTest extends TestCase
             'quantity_snapshot' => ['legacy' => true],
         ]);
 
+        $this->actingAs($actor)->post(route('defect-assessments.quantities.store', $assessment), [
+            'quantity' => ['length' => 1, 'height' => 0.4, 'width' => 0.2, 'quantity' => 3],
+        ])
+            ->assertForbidden();
+
+        $this->reopen($actor, $assessment);
         $this->store($actor, $assessment, ['quantity' => ['length' => 1, 'height' => 0.4, 'width' => 0.2, 'quantity' => 3]])
             ->assertSessionHasNoErrors();
 
-        $snapshot = $assessment->refresh()->quantity_snapshot;
-        $this->assertSame(DefectAssessmentStatus::Complete, $assessment->status);
-        $this->assertSame(2, $snapshot['snapshot_version']);
-        $this->assertSame(2, $snapshot['item_count']);
-        $this->assertSame('0.8400000000000000', $snapshot['total']);
-        $this->assertCount(2, $snapshot['items']);
-        $this->assertSame(1, $snapshot['items'][0]['position']);
+        $assessment->refresh();
+        $this->assertSame(DefectAssessmentStatus::Draft, $assessment->status);
+        $this->assertNull($assessment->quantity_snapshot);
+        $this->assertNull($assessment->defect_snapshot);
+        $this->assertSame(2, $assessment->quantities()->count());
     }
 
-    public function test_deleting_the_last_item_reopens_a_published_assessment(): void
+    public function test_published_assessment_must_be_reopened_before_deleting_items(): void
     {
         [$actor, $assessment] = $this->scenario();
         $this->store($actor, $assessment, ['quantity' => ['area' => 2]]);
@@ -178,6 +182,11 @@ final class DefectAssessmentQuantityTest extends TestCase
             'quantity_snapshot' => ['total' => '2', 'measurement_unit' => 'm2'],
         ]);
         $item = $assessment->quantities()->firstOrFail();
+
+        $this->actingAs($actor)->delete(route('defect-assessment-quantities.destroy', $item))
+            ->assertForbidden();
+
+        $this->reopen($actor, $assessment);
 
         $this->actingAs($actor)->delete(route('defect-assessment-quantities.destroy', $item))
             ->assertSessionHasNoErrors();
@@ -276,6 +285,16 @@ final class DefectAssessmentQuantityTest extends TestCase
             route('defect-assessments.quantities.store', $assessment),
             $data,
         )->assertRedirect();
+    }
+
+    private function reopen(User $actor, DefectAssessment $assessment): void
+    {
+        $this->actingAs($actor)
+            ->patch(route('defect-assessments.status.update', $assessment), [
+                'status' => DefectAssessmentStatus::Draft->value,
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
     }
 
     /** @return array{User, DefectAssessment} */

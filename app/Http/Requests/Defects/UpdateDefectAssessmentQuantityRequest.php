@@ -6,6 +6,7 @@ namespace App\Http\Requests\Defects;
 
 use App\Models\DefectAssessment;
 use App\Models\DefectAssessmentQuantity;
+use App\Enums\DefectCategory;
 use App\Services\Defects\NativeDefectQuantityCalculator;
 use Illuminate\Foundation\Http\FormRequest;
 
@@ -28,6 +29,9 @@ final class UpdateDefectAssessmentQuantityRequest extends FormRequest
             $assessment->defect->category,
             $this->input('quantity.element'),
         );
+        if ($assessment->defect->category === DefectCategory::RoofCladding) {
+            return $rules;
+        }
         $rules['quantity'] = collect($rules['quantity'])
             ->reject(fn (mixed $rule): bool => $rule === 'nullable')
             ->prepend('required')

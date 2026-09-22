@@ -16,6 +16,8 @@ use App\Models\Defect;
 use App\Models\DefectAssessment;
 use App\Models\Equipment;
 use App\Models\Inspection;
+use App\Models\InspectionOverviewBlock;
+use App\Models\InspectionOverviewPhoto;
 use App\Models\InspectionResponsible;
 use App\Models\Organization;
 use App\Models\User;
@@ -48,10 +50,12 @@ final class DefectAssessmentGutTest extends TestCase
         $this->assertSame('#FFFF00', $assessment->classification_snapshot['color']);
         $this->assertSame([16, 35], [$assessment->classification_snapshot['lower_limit'], $assessment->classification_snapshot['upper_limit']]);
         $this->assertSame('native_catalog', $assessment->gut_snapshot['source']);
-        $this->assertSame(2, $assessment->gut_snapshot['catalog_version']);
-        $this->assertSame(2, $assessment->classification_snapshot['catalog_version']);
+        $this->assertSame(4, $assessment->gut_snapshot['catalog_version']);
+        $this->assertSame(4, $assessment->classification_snapshot['catalog_version']);
         $this->assertSame('calculated', $assessment->gut_snapshot['criteria']['gravity']['mode']);
         $this->assertSame('catalog', $assessment->gut_snapshot['criteria']['urgency']['mode']);
+        $this->assertSame('structural_function', $assessment->gut_snapshot['criteria']['urgency']['matrix']['code']);
+        $this->assertNull($assessment->gut_snapshot['criteria']['urgency']['transporter_type']);
         $this->assertSame('catalog', $assessment->gut_snapshot['criteria']['trend']['mode']);
         $this->assertArrayNotHasKey('classification_id', $assessment->classification_snapshot);
         $this->assertArrayNotHasKey('category_id', $assessment->gut_snapshot);
@@ -61,12 +65,12 @@ final class DefectAssessmentGutTest extends TestCase
                 ->has('gut_options.gravity', 5)
                 ->where('gut_options.gravity.0.score', 1)
                 ->where('gut_options.gravity.0.color', '#00AEEF')
-                ->where('gut_definition.catalog_version', 2)
+                ->where('gut_definition.catalog_version', 4)
                 ->where('gut_definition.category.code', 'REC')
                 ->where('gut_definition.safety_impact_options.0.score', 1)
                 ->where('gut_definition.safety_impact_options.0.color', '#00AEEF')
-                ->where('gut_definition.urgency_options.0.score', 1)
-                ->where('gut_definition.urgency_options.0.color', '#00AEEF')
+                ->where('gut_definition.urgency_matrices.0.code', 'structural_function')
+                ->where('gut_definition.urgency_matrices.1.transporter_types.0.code', 'elevated_gallery')
                 ->where('classification.code', 'IE-3')
                 ->where('classification.color', '#FFFF00')
                 ->where('classification.label', 'Média')
@@ -163,24 +167,18 @@ final class DefectAssessmentGutTest extends TestCase
         }
     }
 
-    public function test_manual_and_dependent_technical_inputs_are_validated(): void
+    public function test_rec_urgency_requires_its_technical_matrix_and_rejects_manual_scores(): void
     {
         [$actor, $recovery] = $this->scenario(DefectCategory::StructuralRecovery);
         $payload = $this->technicalGutPayload(DefectCategory::StructuralRecovery);
-        unset($payload['urgency_option_code']);
         $payload['urgency_manual_score'] = 3;
 
         try {
             app(SaveDefectAssessmentGut::class)->handle($actor, $recovery, $payload);
-            $this->fail('A urgência manual sem descrição deveria ser rejeitada.');
+            $this->fail('A urgência manual REC deveria ser rejeitada.');
         } catch (ValidationException $exception) {
-            $this->assertArrayHasKey('urgency_manual_description', $exception->errors());
+            $this->assertArrayHasKey('urgency_manual_score', $exception->errors());
         }
-
-        $payload['urgency_manual_description'] = 'Elemento sem correspondência na matriz nativa.';
-        $saved = app(SaveDefectAssessmentGut::class)->handle($actor, $recovery, $payload);
-        $this->assertSame('manual', $saved->gut_snapshot['criteria']['urgency']['mode']);
-        $this->assertSame(3, $saved->urgency);
 
         [$recActor, $recoveryWithInvalidTrend] = $this->scenario(DefectCategory::StructuralRecovery);
         $invalidDependentOption = $this->technicalGutPayload(DefectCategory::StructuralRecovery);
@@ -192,6 +190,170 @@ final class DefectAssessmentGutTest extends TestCase
         } catch (ValidationException $exception) {
             $this->assertArrayHasKey('trend_option_code', $exception->errors());
         }
+    }
+
+    public function test_every_rec_urgency_matrix_option_resolves_its_documented_score(): void
+    {
+        [, $assessment] = $this->scenario(DefectCategory::StructuralRecovery);
+        $resolver = app(\App\Services\Classification\GutClassificationResolver::class);
+        $base = $this->technicalGutPayload(DefectCategory::StructuralRecovery);
+
+        foreach (\App\Services\Classification\NativeDefectCatalog::recUrgencyMatrices() as $matrix) {
+            $sources = $matrix['code'] === 'structural_function'
+                ? [['type' => null, 'options' => $matrix['options']]]
+                : array_map(fn (array $type): array => ['type' => $type['code'], 'options' => $type['options']], $matrix['transporter_types']);
+
+            foreach ($sources as $source) {
+                foreach ($source['options'] as $option) {
+                    $resolved = $resolver->resolveTechnical($assessment, [
+                        ...$base,
+                        'urgency_matrix_code' => $matrix['code'],
+                        'transporter_type_code' => $source['type'],
+                        'urgency_option_code' => $option['code'],
+                    ]);
+                    $urgency = $resolved['criteria']['urgency'];
+
+                    $this->assertSame($option['score'], $urgency['score']);
+                    $this->assertSame($matrix['code'], $urgency['matrix']['code']);
+                    $this->assertSame($source['type'], $urgency['transporter_type']['code'] ?? null);
+                    $this->assertSame($option['code'], $urgency['option']['code']);
+                }
+            }
+        }
+    }
+
+    public function test_rec_transporter_snapshot_preserves_matrix_type_option_and_score(): void
+    {
+        [$actor, $assessment] = $this->scenario(DefectCategory::StructuralRecovery);
+        $saved = app(SaveDefectAssessmentGut::class)->handle($actor, $assessment, [
+            ...$this->technicalGutPayload(DefectCategory::StructuralRecovery),
+            'urgency_matrix_code' => 'patio_port_transporter',
+            'transporter_type_code' => 'elevated_truss_bridge',
+            'urgency_option_code' => 'diagonal_or_post',
+        ]);
+
+        $urgency = $saved->gut_snapshot['criteria']['urgency'];
+        $this->assertSame(3, $urgency['score']);
+        $this->assertSame('patio_port_transporter', $urgency['matrix']['code']);
+        $this->assertSame('elevated_truss_bridge', $urgency['transporter_type']['code']);
+        $this->assertSame('Diagonal / Montante', $urgency['option']['label']);
+        $this->assertSame('#FFFF00', $urgency['color']);
+    }
+
+    public function test_rec_urgency_rejects_crossed_matrix_and_transporter_combinations(): void
+    {
+        [$actor, $assessment] = $this->scenario(DefectCategory::StructuralRecovery);
+        $base = $this->technicalGutPayload(DefectCategory::StructuralRecovery);
+
+        foreach ([
+            [...$base, 'urgency_matrix_code' => 'patio_port_transporter', 'transporter_type_code' => null],
+            [...$base, 'urgency_matrix_code' => 'structural_function', 'transporter_type_code' => 'elevated_gallery'],
+            [...$base, 'urgency_matrix_code' => 'patio_port_transporter', 'transporter_type_code' => 'elevated_gallery', 'urgency_option_code' => 'walkway_profile'],
+        ] as $payload) {
+            try {
+                app(SaveDefectAssessmentGut::class)->handle($actor, $assessment, $payload);
+                $this->fail('Combinações entre matrizes REC deveriam ser rejeitadas.');
+            } catch (ValidationException $exception) {
+                $this->assertNotEmpty($exception->errors());
+            }
+        }
+
+        $this->actingAs($actor)->put(route('defect-assessments.gut.update', $assessment), [
+            'condition' => 'new', ...$base, 'urgency_manual_score' => 4,
+        ])->assertSessionHasErrors('urgency_manual_score');
+    }
+
+    public function test_every_civil_urgency_context_and_trend_condition_resolves_its_documented_score(): void
+    {
+        [, $assessment] = $this->scenario(DefectCategory::Civil);
+        $resolver = app(\App\Services\Classification\GutClassificationResolver::class);
+        $base = $this->technicalGutPayload(DefectCategory::Civil);
+
+        foreach (\App\Services\Classification\NativeDefectCatalog::civilUrgencyContexts() as $context) {
+            foreach ($context['options'] as $option) {
+                $resolved = $resolver->resolveTechnical($assessment, [
+                    ...$base,
+                    'urgency_context_code' => $context['code'],
+                    'urgency_option_code' => $option['code'],
+                ]);
+
+                $urgency = $resolved['criteria']['urgency'];
+                $this->assertSame($option['score'], $urgency['score']);
+                $this->assertSame($context['code'], $urgency['context']['code']);
+                $this->assertSame($option['code'], $urgency['option']['code']);
+            }
+        }
+
+        $definition = \App\Services\Classification\NativeDefectCatalog::technicalDefinition(DefectCategory::Civil);
+        $this->assertCount(16, $definition['trend_groups']);
+        foreach ($definition['trend_groups'] as $group) {
+            foreach ($group['options'] as $option) {
+                $resolved = $resolver->resolveTechnical($assessment, [
+                    ...$base,
+                    'trend_group_code' => $group['code'],
+                    'trend_option_code' => $option['code'],
+                ]);
+
+                $trend = $resolved['criteria']['trend'];
+                $this->assertSame($option['score'], $trend['score']);
+                $this->assertSame($group['code'], $trend['group']['code']);
+                $this->assertSame($option['code'], $trend['option']['code']);
+            }
+        }
+
+        foreach (['chemical_effects', 'rail_wear', 'rail_fixing', 'sleepers'] as $groupCode) {
+            $group = collect($definition['trend_groups'])->firstWhere('code', $groupCode);
+            $this->assertSame([1, 2, 3], array_column($group['options'], 'score'));
+        }
+        $railJoint = collect($definition['trend_groups'])->firstWhere('code', 'rail_joint');
+        $this->assertSame([1, 2], array_column($railJoint['options'], 'score'));
+    }
+
+    public function test_civil_requires_compatible_contextual_choices_and_rejects_manual_notes(): void
+    {
+        [$actor, $assessment] = $this->scenario(DefectCategory::Civil);
+        $base = $this->technicalGutPayload(DefectCategory::Civil);
+
+        foreach ([
+            [...$base, 'urgency_context_code' => null],
+            [...$base, 'urgency_context_code' => 'function', 'urgency_option_code' => 'running_rail'],
+            [...$base, 'urgency_context_code' => 'machine_running_path', 'urgency_option_code' => 'building_support_column'],
+            [...$base, 'urgency_matrix_code' => 'structural_function'],
+            [...$base, 'trend_group_code' => 'chemical_effects', 'trend_option_code' => 'prestressed_or_structural_mechanism'],
+        ] as $payload) {
+            try {
+                app(SaveDefectAssessmentGut::class)->handle($actor, $assessment, $payload);
+                $this->fail('Combinações CIVIL incompatíveis deveriam ser rejeitadas.');
+            } catch (ValidationException $exception) {
+                $this->assertNotEmpty($exception->errors());
+            }
+        }
+
+        $this->actingAs($actor)->put(route('defect-assessments.gut.update', $assessment), [
+            'condition' => 'new', ...$base,
+            'gravity' => 5,
+            'urgency_manual_score' => 4,
+            'trend_manual_score' => 3,
+        ])->assertSessionHasErrors(['gravity', 'urgency_manual_score', 'trend_manual_score']);
+    }
+
+    public function test_civil_snapshot_preserves_context_and_technical_trend_without_manual_notes(): void
+    {
+        [$actor, $assessment] = $this->scenario(DefectCategory::Civil);
+        $saved = app(SaveDefectAssessmentGut::class)->handle($actor, $assessment, [
+            ...$this->technicalGutPayload(DefectCategory::Civil),
+            'urgency_context_code' => 'machine_running_path',
+            'urgency_option_code' => 'rail_joint',
+            'trend_group_code' => 'rail_joint',
+            'trend_option_code' => 'joint_alignment',
+        ]);
+
+        $this->assertSame(4, $saved->gut_snapshot['catalog_version']);
+        $this->assertSame('machine_running_path', $saved->gut_snapshot['criteria']['urgency']['context']['code']);
+        $this->assertSame('rail_joint', $saved->gut_snapshot['criteria']['urgency']['option']['code']);
+        $this->assertSame('rail_joint', $saved->gut_snapshot['criteria']['trend']['group']['code']);
+        $this->assertSame('joint_alignment', $saved->gut_snapshot['criteria']['trend']['option']['code']);
+        $this->assertArrayNotHasKey('manual', $saved->gut_snapshot['criteria']['trend']);
     }
 
     public function test_conditions_without_gut_clear_the_current_result_and_keep_previous_snapshots(): void
@@ -227,11 +389,12 @@ final class DefectAssessmentGutTest extends TestCase
 
     public function test_native_categories_require_location_evidence_before_submitting_an_inspection(): void
     {
-        foreach (DefectCategory::cases() as $category) {
+        foreach ([DefectCategory::Civil, DefectCategory::AnticorrosiveTreatment, DefectCategory::StructuralRecovery] as $category) {
             [$actor, $assessment] = $this->scenario($category);
             $saved = app(SaveDefectAssessmentGut::class)->handle($actor, $assessment, $this->technicalGutPayload($category));
             $this->satisfyAssessmentPublicationRequirements($saved);
             app(CompleteDefectAssessment::class)->handle($actor, $saved);
+            $this->completeOverview($assessment->inspection);
             $submitted = app(SubmitInspectionForReview::class)->handle($assessment->inspection, $actor);
             $this->assertSame(InspectionStatus::AwaitingReview, $submitted->status);
             $this->assertSame(1, $submitted->defectAssessments()->whereNotNull('defect_location_map_version_id')->count());
@@ -258,6 +421,17 @@ final class DefectAssessmentGutTest extends TestCase
         return [$actor, $assessment];
     }
 
+    private function completeOverview(Inspection $inspection): void
+    {
+        foreach ([1, 2] as $position) {
+            $block = InspectionOverviewBlock::factory()->forInspection($inspection, $position)->create();
+
+            foreach ([1, 2] as $slot) {
+                InspectionOverviewPhoto::factory()->forBlock($block, $slot)->ready()->create();
+            }
+        }
+    }
+
     /** @return array<string, mixed> */
     private function technicalGutPayload(DefectCategory $category): array
     {
@@ -265,14 +439,15 @@ final class DefectAssessmentGutTest extends TestCase
             DefectCategory::Civil => [
                 'safety_impact_code' => 'primary_above_2m',
                 'asset_impact_code' => 'secondary_without_asset_impact',
+                'urgency_context_code' => 'function',
                 'urgency_option_code' => 'building_support_column',
                 'trend_group_code' => 'cracking',
-                'trend_manual_description' => 'Fissuração ativa observada em campo.',
-                'trend_manual_score' => 5,
+                'trend_option_code' => 'prestressed_or_structural_mechanism',
             ],
             DefectCategory::StructuralRecovery => [
                 'safety_impact_code' => 'secondary_up_to_2m',
                 'asset_impact_code' => 'secondary_without_asset_impact',
+                'urgency_matrix_code' => 'structural_function',
                 'urgency_option_code' => 'guardrail',
                 'trend_group_code' => 'discontinuity',
                 'trend_option_code' => 'visible_crack_or_insufficient_weld',

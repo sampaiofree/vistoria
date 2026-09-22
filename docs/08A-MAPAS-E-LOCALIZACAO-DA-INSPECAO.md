@@ -40,8 +40,9 @@ avaria. Seus links levam à avaliação ou ao editor e não existe botão **Novo
 ## Cor automática
 
 O cliente nunca envia nem persiste estilo editável. Avaliações com classificação
-GUT usam `classification_snapshot.color`. Avaliações tratadas e rascunhos ainda
-sem classificação usam `#64748B`. Alterar o GUT muda a cor automaticamente.
+usam `classification_snapshot.color`, inclusive TEL. Avaliações tratadas e rascunhos
+ainda sem classificação usam `#64748B`. Alterar a classificação muda a cor
+automaticamente.
 
 ## Publicação e reinspeção
 
@@ -54,9 +55,9 @@ geometria e legenda. A cópia começa sem `confirmed_at`: o Inspetor precisa
 confirmá-la explicitamente antes de publicar.
 
 Substituir a imagem cria nova versão e mantém a geometria como prévia, mas invalida
-sua confirmação. Se a avaliação estava publicada, volta a rascunho e limpa os
-snapshots de publicação. Avaliações anteriores continuam apontando para a versão
-histórica.
+sua confirmação. Se a avaliação estava publicada, ela volta a rascunho e limpa os
+snapshots de publicação; a mesma linha é reutilizada, não uma revisão append-only.
+Avaliações de inspeções anteriores continuam apontando para a versão histórica.
 
 ## Upload, processamento e segurança
 

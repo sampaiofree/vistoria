@@ -26,7 +26,6 @@ Usuários:
 
 - `active`;
 - `inactive`;
-- `suspended`.
 
 Tipos de conta:
 
@@ -67,7 +66,7 @@ O superadministrador acessa `/admin/organizations` para:
 A criação gera uma senha temporária aleatória para o administrador, exibida apenas
 na resposta da operação. Categorias, classificações e critérios GUT são um catálogo
 nativo compartilhado; não são provisionados por organização. As regras estão em
-[09 — Classificação GUT e Quantitativos](09-CLASSIFICACAO-GUT-E-QUANTITATIVOS.md).
+[09 — Classificações Técnicas e Quantitativos](09-CLASSIFICACOES-TECNICAS-E-QUANTITATIVOS.md).
 
 Uma empresa suspensa ou inativa não permite operação dos seus usuários. A
 interface global atual reativa empresas suspensas; o status `inactive` existe no
@@ -103,7 +102,7 @@ middleware libera apenas as rotas de senha e logout até a troca ser concluída.
 
 - login e logout usam a sessão web do Laravel;
 - login atualiza o último acesso;
-- usuário inativo ou suspenso é desconectado;
+- usuário inativo é desconectado;
 - organização não ativa desconecta usuários comuns;
 - superadministrador ativo pode abrir a dashboard global e o Horizon;
 - o Horizon também exige senha definitiva e ausência de organização.

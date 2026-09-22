@@ -20,6 +20,8 @@ use App\Models\Defect;
 use App\Models\DefectAssessment;
 use App\Models\Equipment;
 use App\Models\Inspection;
+use App\Models\InspectionOverviewBlock;
+use App\Models\InspectionOverviewPhoto;
 use App\Models\InspectionResponsible;
 use App\Models\Organization;
 use App\Models\User;
@@ -158,7 +160,6 @@ final class DefectRoutesTest extends TestCase
         $otherAdmin = User::factory()
             ->for($otherOrganization)
             ->create([
-                'account_type' => UserAccountType::CompanyAdmin->value,
                 'operational_role' => OperationalRole::Inspector->value,
             ]);
         $otherEquipment = Equipment::factory()
@@ -272,7 +273,6 @@ final class DefectRoutesTest extends TestCase
         $admin = User::factory()
             ->for($organization)
             ->create([
-                'account_type' => UserAccountType::CompanyAdmin->value,
                 'operational_role' => OperationalRole::Inspector->value,
             ]);
         $equipment = Equipment::factory()
@@ -411,6 +411,9 @@ final class DefectRoutesTest extends TestCase
 
         $this->actingAs($admin)->patch(route('defect-assessments.status.update', $secondAssessment), [
             'status' => DefectAssessmentStatus::Draft->value,
+        ])->assertRedirect(route('defect-assessments.show', $secondAssessment));
+
+        $this->actingAs($admin)->patch(route('defect-assessments.update', $secondAssessment), [
             'condition' => DefectAssessmentCondition::Reinspected->value,
             'location_description' => 'Parte inferior',
             'comment' => 'Reaberto para ajuste.',
@@ -426,14 +429,17 @@ final class DefectRoutesTest extends TestCase
         $this->assertSame(DefectAssessmentStatus::Draft->value, $secondAssessment->status->value);
         $this->assertSame(DefectStatus::Active->value, $defect->status->value);
 
-        $this->actingAs($admin)->patch(route('defect-assessments.status.update', $secondAssessment), [
-            'status' => DefectAssessmentStatus::Complete->value,
+        $this->actingAs($admin)->patch(route('defect-assessments.update', $secondAssessment), [
             'condition' => DefectAssessmentCondition::Treated->value,
             'location_description' => 'Parte inferior',
             'comment' => 'Reparo confirmado.',
             'recommendation' => 'Manter monitoramento.',
             'reason' => null,
             'internal_notes' => 'Concluída após revisão.',
+        ])->assertRedirect(route('defect-assessments.show', $secondAssessment));
+
+        $this->actingAs($admin)->patch(route('defect-assessments.status.update', $secondAssessment), [
+            'status' => DefectAssessmentStatus::Complete->value,
         ])->assertRedirect(route('defect-assessments.show', $secondAssessment));
 
         $secondAssessment->refresh();
@@ -551,20 +557,24 @@ final class DefectRoutesTest extends TestCase
         ];
 
         $this->actingAs($admin)->patch(route('defect-assessments.status.update', $assessment), [
-            ...$payload,
             'status' => DefectAssessmentStatus::Draft->value,
+            'comment' => 'Este conteúdo não pode ser alterado ao mover o status.',
         ])->assertRedirect(route('defect-assessments.show', $assessment))
             ->assertSessionHasNoErrors();
 
         $assessment->refresh();
         $this->assertSame(DefectAssessmentStatus::Draft, $assessment->status);
-        $this->assertSame('Texto revisado para republicação.', $assessment->comment);
+        $this->assertSame('Avaliação publicada originalmente.', $assessment->comment);
 
-        $this->actingAs($admin)->patch(route('defect-assessments.status.update', $assessment), [
+        $this->actingAs($admin)->patch(route('defect-assessments.update', $assessment), [
             ...$payload,
-            'status' => DefectAssessmentStatus::Complete->value,
             'condition' => DefectAssessmentCondition::Canceled->value,
             'reason' => 'Ponto não localizado durante a revisão.',
+        ])->assertRedirect(route('defect-assessments.show', $assessment))
+            ->assertSessionHasNoErrors();
+
+        $this->actingAs($admin)->patch(route('defect-assessments.status.update', $assessment), [
+            'status' => DefectAssessmentStatus::Complete->value,
         ])->assertRedirect(route('defect-assessments.show', $assessment))
             ->assertSessionHasNoErrors();
 
@@ -588,7 +598,89 @@ final class DefectRoutesTest extends TestCase
                 ->where('capabilities.keep_published', true)
                 ->where('capabilities.can_move_to_draft', true)
                 ->where('capabilities.location_marker_count', 1)
-                ->where('capabilities.update', true));
+                ->where('capabilities.update', false)
+                ->where('capabilities.update_url', null)
+                ->where('capabilities.gut_url', null)
+                ->where('capabilities.quantity_store_url', null)
+                ->where('capabilities.photo_upload_url', null));
+
+        $this->assertStringContainsString(
+            'Este documento só pode ser editado no modo rascunho.',
+            (string) file_get_contents(resource_path('js/pages/DefectAssessments/Show.vue')),
+        );
+    }
+
+    public function test_published_assessment_rejects_every_content_mutation_route(): void
+    {
+        [, $admin, , $inspection] = $this->createInspectionReadyForDefects();
+        $defect = $this->createAndPublishDefect($admin, $inspection, [
+            'title' => 'Avaria protegida após publicação',
+            'comment' => 'Avaliação publicada para teste de permissões.',
+        ]);
+        $assessment = $defect->latestAssessment;
+        $quantity = $assessment->quantities()->firstOrFail();
+        $photo = $assessment->photos()->firstOrFail();
+
+        $this->actingAs($admin)->patch(route('defect-assessments.update', $assessment), [])->assertForbidden();
+        $this->actingAs($admin)->post(route('defect-assessments.complete', $assessment), [])->assertForbidden();
+        $this->actingAs($admin)->put(route('defect-assessments.gut.update', $assessment), [])->assertForbidden();
+        $this->actingAs($admin)->put(route('defect-assessments.tel.update', $assessment), [])->assertForbidden();
+        $this->actingAs($admin)->post(route('defect-assessments.quantities.store', $assessment), [])->assertForbidden();
+        $this->actingAs($admin)->put(route('defect-assessment-quantities.update', $quantity), [])->assertForbidden();
+        $this->actingAs($admin)->delete(route('defect-assessment-quantities.destroy', $quantity))->assertForbidden();
+        $this->actingAs($admin)->post(route('defect-assessments.photos.store', $assessment), [])->assertForbidden();
+        $this->actingAs($admin)->patch(route('defect-assessments.photos.reorder', $assessment), [])->assertForbidden();
+        $this->actingAs($admin)->delete(route('assessment-photos.destroy', $photo))->assertForbidden();
+        $this->actingAs($admin)->post(route('defect-assessments.location-map.store', $assessment), [])->assertForbidden();
+        $this->actingAs($admin)->delete(route('defect-assessments.location-map.destroy', $assessment))->assertForbidden();
+        $this->actingAs($admin)->get(route('defect-assessments.location.editor', $assessment))->assertForbidden();
+        $this->actingAs($admin)->put(route('defect-assessments.location.update', $assessment), [])->assertForbidden();
+        $this->actingAs($admin)->delete(route('defect-assessments.location.destroy', $assessment))->assertForbidden();
+
+        $assessment->refresh();
+        $this->assertSame(DefectAssessmentStatus::Complete, $assessment->status);
+        $this->assertSame(1, $assessment->quantities()->count());
+        $this->assertCount(2, $assessment->photos);
+    }
+
+    public function test_only_the_assigned_role_for_the_inspection_state_can_reopen_a_published_assessment(): void
+    {
+        $organization = Organization::factory()->create();
+        $reviewer = User::factory()->for($organization)->create([
+            'operational_role' => OperationalRole::Reviewer,
+        ]);
+        $inspector = User::factory()->for($organization)->create([
+            'operational_role' => OperationalRole::Inspector,
+        ]);
+        $companyAdmin = User::factory()->for($organization)->create([
+            'account_type' => UserAccountType::CompanyAdmin,
+            'operational_role' => OperationalRole::Inspector,
+        ]);
+        $equipment = Equipment::factory()->for($organization)->create();
+        $inspection = Inspection::factory()->forEquipment($equipment)->create([
+            'status' => InspectionStatus::InReview,
+        ]);
+        InspectionResponsible::factory()->forInspection($inspection, $reviewer)->create([
+            'responsibility' => InspectionResponsibility::Reviewer,
+            'is_primary' => true,
+        ]);
+        InspectionResponsible::factory()->forInspection($inspection, $inspector)->create([
+            'responsibility' => InspectionResponsibility::Preparer,
+        ]);
+        $defect = Defect::factory()->forEquipment($equipment, $inspection)->create();
+        $assessment = DefectAssessment::factory()->forDefect($defect, $inspection)->complete()->create();
+
+        $this->actingAs($inspector)
+            ->patch(route('defect-assessments.status.update', $assessment), ['status' => 'draft'])
+            ->assertForbidden();
+        $this->actingAs($companyAdmin)
+            ->patch(route('defect-assessments.status.update', $assessment), ['status' => 'draft'])
+            ->assertForbidden();
+        $this->actingAs($reviewer)
+            ->patch(route('defect-assessments.status.update', $assessment), ['status' => 'draft'])
+            ->assertRedirect(route('defect-assessments.show', $assessment));
+
+        $this->assertSame(DefectAssessmentStatus::Draft, $assessment->refresh()->status);
     }
 
     public function test_completing_assessment_requires_comment(): void
@@ -1001,6 +1093,7 @@ final class DefectRoutesTest extends TestCase
             ->post(route('defect-assessments.complete', $assessment), [
                 'condition' => DefectAssessmentCondition::New->value,
                 'comment' => 'Registro inicial.',
+                'recommendation' => 'Acompanhar conforme programação técnica.',
                 ...$this->gutScores(),
             ])
             ->assertSessionHasErrors(['quantity', 'photos', 'location_map', 'location']);
@@ -1032,6 +1125,7 @@ final class DefectRoutesTest extends TestCase
             ->post(route('defect-assessments.complete', $assessment), [
                 'condition' => DefectAssessmentCondition::New->value,
                 'comment' => 'Registro inicial.',
+                'recommendation' => 'Acompanhar conforme programação técnica.',
             ])
             ->assertSessionHasErrors('photos');
 
@@ -1054,6 +1148,7 @@ final class DefectRoutesTest extends TestCase
             ->post(route('defect-assessments.complete', $assessment), [
                 'condition' => DefectAssessmentCondition::New->value,
                 'comment' => 'Registro inicial.',
+                'recommendation' => 'Acompanhar conforme programação técnica.',
             ])
             ->assertSessionHasErrors('photos');
         $this->assertSame(InspectionStatus::InProgress, $inspection->refresh()->status);
@@ -1071,6 +1166,7 @@ final class DefectRoutesTest extends TestCase
             ->post(route('defect-assessments.complete', $assessment), [
                 'condition' => DefectAssessmentCondition::New->value,
                 'comment' => 'Registro inicial.',
+                'recommendation' => 'Acompanhar conforme programação técnica.',
             ])
             ->assertRedirect(route('defect-assessments.show', $assessment))
             ->assertSessionHasNoErrors();
@@ -1080,6 +1176,8 @@ final class DefectRoutesTest extends TestCase
         $this->assertSame(1, $quantitySnapshot['item_count']);
         $this->assertSame('1.5000000000000000', $quantitySnapshot['total']);
         $this->assertCount(1, $quantitySnapshot['items']);
+
+        $this->completeOverview($inspection);
 
         $this->actingAs($admin)
             ->post(route('inspections.submit-for-review', $inspection))
@@ -1148,7 +1246,6 @@ final class DefectRoutesTest extends TestCase
         $admin = User::factory()
             ->for($organization)
             ->create([
-                'account_type' => UserAccountType::CompanyAdmin->value,
                 'operational_role' => OperationalRole::Inspector->value,
             ]);
         $equipment = Equipment::factory()
@@ -1179,6 +1276,17 @@ final class DefectRoutesTest extends TestCase
         return [$organization, $admin, $equipment, $inspection];
     }
 
+    private function completeOverview(Inspection $inspection): void
+    {
+        foreach ([1, 2] as $position) {
+            $block = InspectionOverviewBlock::factory()->forInspection($inspection, $position)->create();
+
+            foreach ([1, 2] as $slot) {
+                InspectionOverviewPhoto::factory()->forBlock($block, $slot)->ready()->create();
+            }
+        }
+    }
+
     /** @param array<string, mixed> $data */
     private function createAndPublishDefect(User $actor, Inspection $inspection, array $data): Defect
     {
@@ -1200,7 +1308,7 @@ final class DefectRoutesTest extends TestCase
             'condition' => $assessment->condition->value,
             'location_description' => $data['location_description'] ?? null,
             'comment' => $data['comment'] ?? null,
-            'recommendation' => $data['recommendation'] ?? null,
+            'recommendation' => $data['recommendation'] ?? 'Acompanhar conforme programação técnica.',
             'reason' => $data['reason'] ?? null,
             'internal_notes' => $data['internal_notes'] ?? null,
             ...$this->gutScores(),
@@ -1215,10 +1323,10 @@ final class DefectRoutesTest extends TestCase
         return [
             'safety_impact_code' => 'no_accident_risk',
             'asset_impact_code' => 'secondary_without_asset_impact',
+            'urgency_context_code' => 'function',
             'urgency_option_code' => 'non_structural_masonry_wall',
             'trend_group_code' => 'cracking',
-            'trend_manual_description' => 'Condição estável observada em campo.',
-            'trend_manual_score' => 1,
+            'trend_option_code' => 'superficial_without_limit_state',
         ];
     }
 }

@@ -68,7 +68,11 @@ final class GutClassificationResolver
     public function resolveTechnical(DefectAssessment $assessment, array $input): array
     {
         $forbiddenScores = array_values(array_filter(
-            ['gravity', 'urgency', 'trend'],
+            [
+                'gravity', 'urgency', 'trend',
+                'urgency_manual_description', 'urgency_manual_score',
+                'trend_manual_description', 'trend_manual_score',
+            ],
             fn (string $field): bool => array_key_exists($field, $input),
         ));
 
@@ -81,6 +85,11 @@ final class GutClassificationResolver
 
         $assessment->loadMissing(['defect', 'inspection.equipment']);
         $category = $assessment->defect->category;
+        if ($category === DefectCategory::RoofCladding) {
+            throw ValidationException::withMessages([
+                'category' => 'A categoria Telhado/Tapamento utiliza a classificação TEL, não GUT.',
+            ]);
+        }
         $criteria = match ($category) {
             DefectCategory::Civil => $this->resolveCivil($input),
             DefectCategory::StructuralRecovery => $this->resolveStructuralRecovery($input),
@@ -103,8 +112,19 @@ final class GutClassificationResolver
     /** @param array<string, mixed> $input @return array<string, array<string, mixed>> */
     private function resolveCivil(array $input): array
     {
+        $foreignUrgencyFields = array_values(array_filter(
+            ['urgency_matrix_code', 'transporter_type_code'],
+            fn (string $field): bool => $this->string($input, $field) !== null,
+        ));
+        if ($foreignUrgencyFields !== []) {
+            throw ValidationException::withMessages(array_fill_keys(
+                $foreignUrgencyFields,
+                'Este campo não é utilizado na matriz de Urgência CIVIL.',
+            ));
+        }
+
         $gravity = $this->resolveImpactGravity($input);
-        $urgency = $this->resolveCatalogOrManualUrgency(DefectCategory::Civil, $input);
+        $urgency = $this->resolveCivilUrgency($input);
         $group = NativeDefectCatalog::trendGroup(DefectCategory::Civil, $this->string($input, 'trend_group_code'));
 
         if ($group === null) {
@@ -113,13 +133,25 @@ final class GutClassificationResolver
             ]);
         }
 
-        $trend = $this->manualCriterion(
-            input: $input,
-            descriptionField: 'trend_manual_description',
-            scoreField: 'trend_manual_score',
-            mode: 'manual',
+        $option = NativeDefectCatalog::trend(
+            DefectCategory::Civil,
+            $group['code'],
+            $this->string($input, 'trend_option_code'),
         );
-        $trend['group'] = ['code' => $group['code'], 'label' => $group['label']];
+
+        if ($option === null) {
+            throw ValidationException::withMessages([
+                'trend_option_code' => 'Escolha uma condição válida para o tipo de degradação CIVIL informado.',
+            ]);
+        }
+
+        $trend = [
+            'score' => $option['score'],
+            'color' => $option['color'],
+            'mode' => 'catalog',
+            'group' => ['code' => $group['code'], 'label' => $group['label']],
+            'option' => $option,
+        ];
 
         return [
             GutCriterion::Gravity->value => $gravity,
@@ -132,7 +164,7 @@ final class GutClassificationResolver
     private function resolveStructuralRecovery(array $input): array
     {
         $gravity = $this->resolveImpactGravity($input);
-        $urgency = $this->resolveCatalogOrManualUrgency(DefectCategory::StructuralRecovery, $input);
+        $urgency = $this->resolveStructuralRecoveryUrgency($input);
         $group = NativeDefectCatalog::trendGroup(DefectCategory::StructuralRecovery, $this->string($input, 'trend_group_code'));
 
         if ($group === null) {
@@ -251,78 +283,111 @@ final class GutClassificationResolver
     }
 
     /** @param array<string, mixed> $input @return array<string, mixed> */
-    private function resolveCatalogOrManualUrgency(DefectCategory $category, array $input): array
+    private function resolveCatalogUrgency(DefectCategory $category, array $input): array
     {
         $optionCode = $this->string($input, 'urgency_option_code');
-        $manualDescription = $this->string($input, 'urgency_manual_description');
-        $manualScore = $input['urgency_manual_score'] ?? null;
-
-        if ($optionCode !== null) {
-            if ($manualDescription !== null || $manualScore !== null) {
-                throw ValidationException::withMessages([
-                    'urgency_manual_description' => 'Use a opção de catálogo ou o preenchimento manual, nunca os dois.',
-                    'urgency_manual_score' => 'Use a opção de catálogo ou o preenchimento manual, nunca os dois.',
-                ]);
-            }
-
-            $option = NativeDefectCatalog::urgency($category, $optionCode);
-            if ($option === null) {
-                throw ValidationException::withMessages([
-                    'urgency_option_code' => 'Escolha uma função ou criticidade válida para esta categoria.',
-                ]);
-            }
-
-            return [
-                'score' => $option['score'],
-                'color' => $option['color'],
-                'mode' => 'catalog',
-                'option' => $option,
-            ];
-        }
-
-        if ($category !== DefectCategory::StructuralRecovery) {
+        $option = NativeDefectCatalog::urgency($category, $optionCode);
+        if ($option === null) {
             throw ValidationException::withMessages([
                 'urgency_option_code' => 'Escolha uma função ou criticidade válida para esta categoria.',
             ]);
         }
 
-        return $this->manualCriterion(
-            input: $input,
-            descriptionField: 'urgency_manual_description',
-            scoreField: 'urgency_manual_score',
-            mode: 'manual',
-        );
+        return [
+            'score' => $option['score'],
+            'color' => $option['color'],
+            'mode' => 'catalog',
+            'option' => $option,
+        ];
     }
 
     /** @param array<string, mixed> $input @return array<string, mixed> */
-    private function manualCriterion(array $input, string $descriptionField, string $scoreField, string $mode): array
+    private function resolveCivilUrgency(array $input): array
     {
-        $description = $this->string($input, $descriptionField);
-        $rawScore = $input[$scoreField] ?? null;
-        $score = is_int($rawScore) || is_string($rawScore)
-            ? filter_var($rawScore, FILTER_VALIDATE_INT)
-            : false;
-        $errors = [];
+        $context = NativeDefectCatalog::civilUrgencyContext($this->string($input, 'urgency_context_code'));
+        if ($context === null) {
+            throw ValidationException::withMessages([
+                'urgency_context_code' => 'Escolha um contexto de Urgência CIVIL válido.',
+            ]);
+        }
 
-        if ($description === null) {
-            $errors[$descriptionField] = 'Informe a descrição técnica utilizada nesta avaliação.';
-        }
-        if ($score === false || $score < 1 || $score > 5) {
-            $errors[$scoreField] = 'Informe uma nota entre 1 e 5.';
-        }
-        if ($errors !== []) {
-            throw ValidationException::withMessages($errors);
+        $option = NativeDefectCatalog::civilUrgencyOption(
+            $context['code'],
+            $this->string($input, 'urgency_option_code'),
+        );
+        if ($option === null) {
+            throw ValidationException::withMessages([
+                'urgency_option_code' => 'Escolha uma função válida para o contexto de Urgência CIVIL informado.',
+            ]);
         }
 
         return [
-            'score' => $score,
-            'color' => NativeDefectCatalog::colorForScore($score),
-            'mode' => $mode,
-            'manual' => [
-                'description' => $description,
-                'score' => $score,
-                'color' => NativeDefectCatalog::colorForScore($score),
+            'score' => $option['score'],
+            'color' => $option['color'],
+            'mode' => 'catalog',
+            'context' => ['code' => $context['code'], 'label' => $context['label']],
+            'option' => $option,
+        ];
+    }
+
+    /** @param array<string, mixed> $input @return array<string, mixed> */
+    private function resolveStructuralRecoveryUrgency(array $input): array
+    {
+        $manualFields = array_values(array_filter(
+            ['urgency_manual_description', 'urgency_manual_score'],
+            fn (string $field): bool => array_key_exists($field, $input) && filled($input[$field]),
+        ));
+        if ($manualFields !== []) {
+            throw ValidationException::withMessages(array_fill_keys(
+                $manualFields,
+                'A Urgência REC é definida pela matriz técnica e não aceita nota manual.',
+            ));
+        }
+
+        $matrix = NativeDefectCatalog::recUrgencyMatrix($this->string($input, 'urgency_matrix_code'));
+        if ($matrix === null) {
+            throw ValidationException::withMessages([
+                'urgency_matrix_code' => 'Escolha uma matriz de Urgência REC válida.',
+            ]);
+        }
+
+        $transporterTypeCode = $this->string($input, 'transporter_type_code');
+        if ($matrix['code'] === 'structural_function' && $transporterTypeCode !== null) {
+            throw ValidationException::withMessages([
+                'transporter_type_code' => 'O tipo de transportador só é utilizado na matriz de transportadores.',
+            ]);
+        }
+
+        $transporterType = $matrix['code'] === 'patio_port_transporter'
+            ? NativeDefectCatalog::recTransporterType($matrix['code'], $transporterTypeCode)
+            : null;
+        if ($matrix['code'] === 'patio_port_transporter' && $transporterType === null) {
+            throw ValidationException::withMessages([
+                'transporter_type_code' => 'Escolha um tipo de transportador válido.',
+            ]);
+        }
+
+        $option = NativeDefectCatalog::recUrgencyOption(
+            $matrix['code'],
+            $transporterType['code'] ?? null,
+            $this->string($input, 'urgency_option_code'),
+        );
+        if ($option === null) {
+            throw ValidationException::withMessages([
+                'urgency_option_code' => 'Escolha um elemento válido para a matriz de Urgência REC selecionada.',
+            ]);
+        }
+
+        return [
+            'score' => $option['score'],
+            'color' => $option['color'],
+            'mode' => 'catalog',
+            'matrix' => ['code' => $matrix['code'], 'label' => $matrix['label']],
+            'transporter_type' => $transporterType === null ? null : [
+                'code' => $transporterType['code'],
+                'label' => $transporterType['label'],
             ],
+            'option' => $option,
         ];
     }
 

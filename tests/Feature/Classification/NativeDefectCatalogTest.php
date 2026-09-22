@@ -19,9 +19,10 @@ final class NativeDefectCatalogTest extends TestCase
             'CV' => [['CV-1', 'Grave', '#FF0000', 75, 125, 'Tratar em até 1 ano'], ['CV-2', 'Alta', '#FFC000', 36, 74, 'Tratar em até 2 anos'], ['CV-3', 'Média', '#FFFF00', 16, 35, 'Tratar em até 3 anos'], ['CV-4', 'Baixa', '#92D050', 8, 15, 'Intervenção por oportunidade'], ['CV-5', 'Muito baixa', '#0070C0', 1, 7, 'Registro de condição']],
             'TAC' => [['TA-1', 'Grave', '#FF0000', 45, 75, 'Tratar em até 1 ano'], ['TA-2', 'Alta', '#FFC000', 25, 44, 'Tratar em até 3 anos'], ['TA-3', 'Média', '#FFFF00', 15, 24, 'Tratar em até 5 anos'], ['TA-4', 'Baixa', '#92D050', 9, 14, 'Intervenção por oportunidade'], ['TA-5', 'Muito baixa', '#0070C0', 3, 8, 'Registro de condição']],
             'REC' => [['IE-1', 'Grave', '#FF0000', 75, 125, 'Tratar em até 1 ano'], ['IE-2', 'Alta', '#FFC000', 36, 74, 'Tratar em até 2 anos'], ['IE-3', 'Média', '#FFFF00', 16, 35, 'Tratar em até 3 anos'], ['IE-4', 'Baixa', '#92D050', 8, 15, 'Intervenção por oportunidade'], ['IE-5', 'Muito baixa', '#0070C0', 1, 7, 'Registro de condição']],
+            'TEL' => [['TE-1', 'Grave', '#FF0000', 12, 15, 'Tratar em até 1 ano'], ['TE-2', 'Alta', '#FFC000', 9, 11, 'Tratar em até 2 anos'], ['TE-3', 'Média', '#FFFF00', 6, 8, 'Tratar em até 3 anos'], ['TE-4', 'Baixa', '#92D050', 3, 5, 'Intervenção por oportunidade']],
         ];
 
-        $this->assertSame(['CV', 'TAC', 'REC'], array_column(DefectCategory::options(), 'code'));
+        $this->assertSame(['CV', 'TAC', 'REC', 'TEL'], array_column(DefectCategory::options(), 'code'));
         foreach (DefectCategory::cases() as $category) {
             $definitions = NativeDefectCatalog::classifications($category);
             $this->assertSame($expected[$category->value], $definitions->map(fn ($definition): array => [
@@ -40,7 +41,7 @@ final class NativeDefectCatalogTest extends TestCase
     public function test_all_note_combinations_use_the_expected_native_classification(): void
     {
         $resolver = new GutClassificationResolver;
-        foreach (DefectCategory::cases() as $category) {
+        foreach ([DefectCategory::Civil, DefectCategory::AnticorrosiveTreatment, DefectCategory::StructuralRecovery] as $category) {
             $gravityScores = $category === DefectCategory::AnticorrosiveTreatment ? range(1, 3) : range(1, 5);
             foreach ($gravityScores as $gravity) {
                 foreach (range(1, 5) as $urgency) {

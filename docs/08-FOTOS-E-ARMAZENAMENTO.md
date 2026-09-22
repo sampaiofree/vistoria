@@ -88,13 +88,18 @@ processamento.
 
 - upload, reordenação e remoção exigem permissão de atualização da avaliação;
 - a inspeção deve estar em `in_progress` ou `in_correction` e o usuário deve ser
-  preparador;
-- fotografias não podem ser removidas ou reordenadas após o encerramento;
+  o Inspetor responsável com permissão de conteúdo de campo;
+- fotografias não podem ser removidas ou reordenadas fora dos estados editáveis de
+  campo;
 - a lista completa de IDs é validada durante a reordenação para detectar tela
   desatualizada;
 - para publicar uma condição observável, são exigidas ao menos duas fotos e todas
   as fotos da avaliação devem estar `ready`;
 - o envio para verificação repete essa validação de cobertura.
+
+Uma avaliação publicada ainda pode ser devolvida a rascunho quando seu conteúdo é
+alterado nos estados editáveis. Portanto, fotos publicadas não são um conjunto
+append-only nesta versão.
 
 ## Regras da vista geral
 

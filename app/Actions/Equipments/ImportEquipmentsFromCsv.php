@@ -44,6 +44,14 @@ final class ImportEquipmentsFromCsv
             return [...$row, 'data' => $this->normalize($data)];
         })->all();
 
+        $customerNumberCounts = collect($prepared)
+            ->pluck('data.numero_cliente')
+            ->filter()
+            ->countBy();
+        $internalNumberCounts = collect($prepared)
+            ->pluck('data.numero_interno')
+            ->filter()
+            ->countBy();
         $itemCounts = collect($prepared)
             ->pluck('data.maintenance_item_code')
             ->filter()
@@ -59,6 +67,14 @@ final class ImportEquipmentsFromCsv
             $data = $row['data'];
             $reasons = [];
 
+            if (($data['numero_cliente'] ?? null) !== null && ($customerNumberCounts[$data['numero_cliente']] ?? 0) > 1) {
+                $reasons[] = 'Número do cliente repetido no CSV.';
+            }
+
+            if (($data['numero_interno'] ?? null) !== null && ($internalNumberCounts[$data['numero_interno']] ?? 0) > 1) {
+                $reasons[] = 'Número interno repetido no CSV.';
+            }
+
             if (($data['maintenance_item_code'] ?? null) !== null && ($itemCounts[$data['maintenance_item_code']] ?? 0) > 1) {
                 $reasons[] = 'Item manutenção repetido no CSV.';
             }
@@ -70,6 +86,8 @@ final class ImportEquipmentsFromCsv
             $validator = Validator::make(
                 $data,
                 [
+                    'numero_cliente' => ['required', 'string', 'max:50'],
+                    'numero_interno' => ['required', 'string', 'max:50'],
                     'maintenance_plan_code' => ['nullable', 'string', 'max:80'],
                     'maintenance_item_code' => ['required', 'string', 'max:80'],
                     'tag' => ['required', 'string', 'max:120'],
@@ -123,6 +141,8 @@ final class ImportEquipmentsFromCsv
     private function normalize(array $data): array
     {
         return [
+            'numero_cliente' => TextNormalizer::technicalCode($data['numero_cliente'] ?? null),
+            'numero_interno' => TextNormalizer::technicalCode($data['numero_interno'] ?? null),
             'maintenance_plan_code' => TextNormalizer::technicalCode($data['maintenance_plan_code'] ?? null),
             'maintenance_item_code' => TextNormalizer::technicalCode($data['maintenance_item_code'] ?? null),
             'tag' => TextNormalizer::equipmentTag((string) ($data['tag'] ?? '')),

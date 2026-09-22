@@ -42,7 +42,6 @@ class InspectionFactory extends Factory
             'approved_at' => null,
             'report_generated_at' => null,
             'report_date' => null,
-            'report_revision' => null,
             'emission_type' => null,
             'first_page_text_template' => null,
             'released_at' => null,

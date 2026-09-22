@@ -82,23 +82,21 @@ operacionais.
 
 - administradores da empresa mantêm configurações e cadastros do tenant;
 - membros têm leitura operacional;
-- escrita técnica de avarias, avaliações e mapas exige função de preparador e
-  inspeção em `in_progress` ou `in_correction`;
+- escrita técnica de avarias, avaliações e mapas exige papel operacional de Inspetor
+  e responsabilidade na inspeção;
+-  inspeção em `in_progress` ou `in_correction`;
 - revisão, aprovação e liberação exigem a função correspondente;
 - recursos de outro tenant não são aceitos, mesmo quando um ID válido é enviado.
 
 ## Arquivos e imagens
 
-O filesystem possui três discos privados dedicados:
+O filesystem possui dois discos privados dedicados:
 
-- `equipment_documents`;
 - `inspection_photos`;
 - `inspection_maps`.
 
-Seus diretórios podem ser definidos por `EQUIPMENT_DOCUMENTS_ROOT`,
-`INSPECTION_PHOTOS_ROOT` e `INSPECTION_MAPS_ROOT`. Downloads e visualizações são
-servidos por Controllers após autorização; os arquivos privados não dependem de
-uma URL pública direta.
+Seus diretórios podem ser definidos por `INSPECTION_PHOTOS_ROOT` e
+`INSPECTION_MAPS_ROOT`. Os arquivos privados não dependem de uma URL pública direta.
 
 Logos e ícones institucionais ficam no disco público. O symlink criado por
 `php artisan storage:link` é necessário somente para esses assets públicos.
@@ -130,6 +128,10 @@ a partir do read model entregue pelo servidor.
 - snapshots desacoplam histórico de alterações cadastrais posteriores.
 
 ## Qualidade
+
+Os comandos a seguir são verificações disponíveis, não uma alegação de que todos
+eles passaram nesta árvore. Na reconciliação de 20/09/2026, a suíte PHP possuía
+uma falha conhecida de navegação; a suíte JavaScript passou.
 
 Comandos de verificação do projeto:
 

@@ -28,6 +28,8 @@ class Equipment extends Model
     protected $fillable = [
         'organization_id', // Organização proprietária; sem coluna correspondente na planilha
         'client_id', // Cliente proprietário; sem coluna correspondente na planilha
+        'numero_cliente', // Número de identificação do cliente
+        'numero_interno', // Número de identificação interno
         'maintenance_plan_code', // Plano de manutenção
         'maintenance_item_code', // Item manutenção
         'tag', // Campo de ordenação (TAG)
@@ -86,23 +88,10 @@ class Equipment extends Model
         return $this->belongsTo(User::class, 'decommissioned_by');
     }
 
-    public function documents(): HasMany
-    {
-        return $this->hasMany(EquipmentDocument::class)
-            ->orderByDesc('created_at');
-    }
-
     public function inspections(): HasMany
     {
         return $this->hasMany(Inspection::class)
             ->orderByDesc('created_at');
-    }
-
-    public function revisions(): HasMany
-    {
-        return $this->hasMany(EquipmentRevision::class)
-            ->orderByDesc('revision_date')
-            ->orderByDesc('id');
     }
 
     public function defectLocationMaps(): HasMany
@@ -120,12 +109,6 @@ class Equipment extends Model
     {
         return $this->inspections()
             ->where('status', InspectionStatus::Released->value);
-    }
-
-    public function currentDocuments(): HasMany
-    {
-        return $this->documents()
-            ->where('is_current', true);
     }
 
     public function isActive(): bool

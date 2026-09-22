@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Actions\Defects;
 
 use App\Enums\DefectAssessmentStatus;
+use App\Enums\DefectCategory;
 use App\Enums\GutCriterion;
 use App\Enums\InspectionStatus;
 use App\Models\DefectAssessment;
@@ -73,6 +74,7 @@ final class CompleteDefectAssessment
                 'assessed_at' => now(),
                 'defect_snapshot' => $this->snapshotBuilder->build($assessment->defect),
                 'quantity_snapshot' => $assessment->condition->requiresEvidence()
+                    && $assessment->defect->category !== DefectCategory::RoofCladding
                     ? $this->quantitySnapshot->build($assessment->defect->category, $assessment->quantities)
                     : null,
                 'snapshot_version' => DefectSnapshotBuilder::VERSION,
@@ -88,6 +90,10 @@ final class CompleteDefectAssessment
                     'gut_snapshot' => null,
                     'gut_classified_at' => null,
                     'gut_classified_by' => null,
+                    'tel_score' => null,
+                    'tel_snapshot' => null,
+                    'tel_classified_at' => null,
+                    'tel_classified_by' => null,
                     'classification_code' => null,
                     'classification_priority' => null,
                     'deadline_months' => null,
@@ -107,7 +113,11 @@ final class CompleteDefectAssessment
             $this->validator->ensureCanComplete($assessment);
 
             if ($assessment->condition->requiresGut()) {
-                $this->ensureConfiguredGutSelected($assessment);
+                if ($assessment->defect->category === DefectCategory::RoofCladding) {
+                    $this->ensureConfiguredTelSelected($assessment);
+                } else {
+                    $this->ensureConfiguredGutSelected($assessment);
+                }
             }
 
             $assessment->save();
@@ -135,6 +145,7 @@ final class CompleteDefectAssessment
         if (! in_array($inspection->status, [
             InspectionStatus::InProgress,
             InspectionStatus::InCorrection,
+            InspectionStatus::InReview,
         ], true)) {
             throw ValidationException::withMessages([
                 'inspection' => 'A inspeção não está em estado editável.',
@@ -155,6 +166,16 @@ final class CompleteDefectAssessment
         if ($assessment->gut_score === null) {
             throw ValidationException::withMessages([
                 'gut' => 'Salve a avaliação GUT antes de publicar a avaliação.',
+            ]);
+        }
+    }
+
+    private function ensureConfiguredTelSelected(DefectAssessment $assessment): void
+    {
+        if ($assessment->tel_score === null || ! is_array($assessment->tel_snapshot)
+            || $assessment->classification_code === null || ! is_array($assessment->classification_snapshot)) {
+            throw ValidationException::withMessages([
+                'tel' => 'Salve a classificação TEL antes de publicar a avaliação.',
             ]);
         }
     }

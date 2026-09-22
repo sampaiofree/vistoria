@@ -63,7 +63,6 @@ final class DefectAssessmentLocationController extends Controller
         abort_unless($assessment->locationMapVersion?->isReady(), 409, 'A imagem-base ainda não está disponível.');
 
         $reportNumbers = $numbering->buildForReport($assessment->inspection);
-        $photoNumbers = $numbering->numbersForAssessment($assessment, $reportNumbers);
 
         return Inertia::render('DefectAssessments/LocationEditor', [
             'assessment' => [
@@ -72,7 +71,7 @@ final class DefectAssessmentLocationController extends Controller
                 'defect_title' => $assessment->defect->title,
                 'category' => $assessment->defect->category->toArray(),
                 'color' => $colors->forAssessment($assessment),
-                'photo_legend' => $numbering->legend($photoNumbers),
+                'photo_legend' => $numbering->displayLegendForAssessment($assessment, $reportNumbers),
                 'show_url' => route('defect-assessments.show', $assessment),
             ],
             'map' => [

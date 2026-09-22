@@ -95,7 +95,7 @@ final class InspectionTransitionController extends Controller
 
         $action->handle($inspection, $request->user());
 
-        return back()->with('success', 'Inspeção aprovada para liberação.');
+        return back()->with('success', 'Inspeção enviada para liberação.');
     }
 
     public function release(

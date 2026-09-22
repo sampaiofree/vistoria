@@ -78,8 +78,9 @@ onBeforeUnmount(() => {
                         </div>
 
                         <dl class="mt-4 grid gap-3 text-sm sm:grid-cols-3">
-                            <div class="rounded-xl bg-slate-50 p-3"><dt class="text-xs font-semibold uppercase text-slate-500">GUT</dt><dd class="mt-1 font-medium text-slate-900">G {{ item.gut.gravity ?? '—' }} · U {{ item.gut.urgency ?? '—' }} · T {{ item.gut.trend ?? '—' }}</dd></div>
-                            <div class="rounded-xl bg-slate-50 p-3"><dt class="text-xs font-semibold uppercase text-slate-500">Quantidade</dt><dd class="mt-1 font-medium text-slate-900">{{ item.quantity ? `${formatQuantity(item.quantity.value)} ${item.quantity.unit_symbol}` : '—' }}</dd></div>
+                            <div v-if="item.tel" class="rounded-xl bg-slate-50 p-3"><dt class="text-xs font-semibold uppercase text-slate-500">TEL</dt><dd class="mt-1 font-medium text-slate-900">Impacto {{ item.tel.impact?.score ?? '—' }} · Risco {{ item.tel.fall_risk?.score ?? '—' }} · Pontuação {{ item.tel.score ?? '—' }}</dd></div>
+                            <div v-else class="rounded-xl bg-slate-50 p-3"><dt class="text-xs font-semibold uppercase text-slate-500">GUT</dt><dd class="mt-1 font-medium text-slate-900">G {{ item.gut?.gravity ?? '—' }} · U {{ item.gut?.urgency ?? '—' }} · T {{ item.gut?.trend ?? '—' }}</dd></div>
+                            <div v-if="!item.tel" class="rounded-xl bg-slate-50 p-3"><dt class="text-xs font-semibold uppercase text-slate-500">Quantidade</dt><dd class="mt-1 font-medium text-slate-900">{{ item.quantity ? `${formatQuantity(item.quantity.value)} ${item.quantity.unit_symbol}` : '—' }}</dd></div>
                             <div class="rounded-xl bg-slate-50 p-3"><dt class="text-xs font-semibold uppercase text-slate-500">Localização</dt><dd class="mt-1 font-medium text-slate-900">{{ item.location_description || '—' }}</dd></div>
                         </dl>
 

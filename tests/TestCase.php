@@ -8,13 +8,20 @@ use App\Models\DefectAssessmentLocation;
 use App\Models\DefectAssessmentQuantity;
 use App\Models\DefectLocationMap;
 use App\Models\DefectLocationMapVersion;
+use App\Enums\DefectCategory;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 
 abstract class TestCase extends BaseTestCase
 {
     protected function satisfyAssessmentPublicationRequirements(DefectAssessment $assessment): void
     {
-        DefectAssessmentQuantity::factory()->forAssessment($assessment)->create();
+        $assessment->loadMissing('defect');
+        if ($assessment->defect->category !== DefectCategory::RoofCladding) {
+            DefectAssessmentQuantity::factory()->forAssessment($assessment)->create();
+        }
+        if (blank($assessment->recommendation)) {
+            $assessment->update(['recommendation' => 'Executar a intervenção recomendada.']);
+        }
 
         foreach ([1, 2] as $position) {
             AssessmentPhoto::factory()->ready()->create([

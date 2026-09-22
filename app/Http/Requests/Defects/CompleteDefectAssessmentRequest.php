@@ -38,18 +38,18 @@ final class CompleteDefectAssessmentRequest extends FormRequest
                 $normalized[$field] = TextNormalizer::nullableText($this->input($field));
             }
         }
-        foreach (['urgency_manual_description', 'trend_manual_description'] as $field) {
+        foreach (['damage_group_code', 'damage_option_code'] as $field) {
             if ($this->exists($field)) {
                 $normalized[$field] = TextNormalizer::nullableText($this->input($field));
             }
         }
-
         $this->merge($normalized);
     }
 
     public function rules(): array
     {
-        return UpdateDefectAssessmentGutRequest::technicalRules() + [
+        return UpdateDefectAssessmentGutRequest::technicalRules()
+            + UpdateDefectAssessmentTelRequest::technicalRules() + [
             'condition' => ['required', 'string', Rule::in(array_map(
                 fn (DefectAssessmentCondition $condition): string => $condition->value,
                 DefectAssessmentCondition::cases(),

@@ -28,6 +28,18 @@ final class CreateEquipment
 
             $this->validateClient($client);
 
+            $numeroCliente = TextNormalizer::technicalCode($data['numero_cliente'] ?? null);
+
+            if ($numeroCliente === null) {
+                throw ValidationException::withMessages(['numero_cliente' => 'Informe o número do cliente.']);
+            }
+
+            $numeroInterno = TextNormalizer::technicalCode($data['numero_interno'] ?? null);
+
+            if ($numeroInterno === null) {
+                throw ValidationException::withMessages(['numero_interno' => 'Informe o número interno.']);
+            }
+
             $maintenanceItemCode = TextNormalizer::technicalCode($data['maintenance_item_code'] ?? null);
 
             if ($maintenanceItemCode === null) {
@@ -41,6 +53,26 @@ final class CreateEquipment
             }
 
             $tag = TextNormalizer::equipmentTag((string) $data['tag']);
+
+            if (Equipment::query()
+                ->withTrashed()
+                ->forOrganization($this->tenant->id())
+                ->where('numero_cliente', $numeroCliente)
+                ->exists()) {
+                throw ValidationException::withMessages([
+                    'numero_cliente' => 'Já existe um equipamento com este número do cliente na organização.',
+                ]);
+            }
+
+            if (Equipment::query()
+                ->withTrashed()
+                ->forOrganization($this->tenant->id())
+                ->where('numero_interno', $numeroInterno)
+                ->exists()) {
+                throw ValidationException::withMessages([
+                    'numero_interno' => 'Já existe um equipamento com este número interno na organização.',
+                ]);
+            }
 
             $existing = Equipment::query()
                 ->withTrashed()
@@ -67,6 +99,8 @@ final class CreateEquipment
             return Equipment::query()->create([
                 'organization_id' => $this->tenant->id(),
                 'client_id' => $client->getKey(),
+                'numero_cliente' => $numeroCliente,
+                'numero_interno' => $numeroInterno,
                 'maintenance_plan_code' => TextNormalizer::technicalCode($data['maintenance_plan_code'] ?? null),
                 'maintenance_item_code' => $maintenanceItemCode,
                 'area_code' => TextNormalizer::technicalCode($data['area_code'] ?? null),

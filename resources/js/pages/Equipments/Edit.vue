@@ -21,9 +21,15 @@ const props = defineProps({
         type: Array,
         default: () => [],
     },
+    identifier_context: {
+        type: Object,
+        required: true,
+    },
 });
 
 const form = useForm({
+    numero_cliente: props.equipment.numero_cliente ?? '',
+    numero_interno: props.equipment.numero_interno ?? '',
     maintenance_plan_code: props.equipment.maintenance_plan_code ?? '',
     maintenance_item_code: props.equipment.maintenance_item_code ?? '',
     area_code: props.equipment.area_code ?? '',
@@ -79,6 +85,7 @@ function submit() {
             <EquipmentForm
                 :form="form"
                 :abc-options="abc_options"
+                :identifier-context="identifier_context"
                 :prefix-editable="equipment.can_edit_defect_code_prefix"
                 :cancel-url="cancel_url"
                 submit-label="Salvar alterações"
