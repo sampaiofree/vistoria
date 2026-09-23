@@ -18,6 +18,7 @@ use App\Jobs\ProcessAssessmentPhoto;
 use App\Models\AssessmentPhoto;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
+use App\Models\DefectAssessmentQuantity;
 use App\Models\Equipment;
 use App\Models\Inspection;
 use App\Models\InspectionOverviewBlock;
@@ -317,6 +318,7 @@ final class DefectRoutesTest extends TestCase
             'location_description' => 'Lado esquerdo da carcaça.',
             'comment' => 'Avaliação inicial concluída.',
             'recommendation' => 'Monitorar e preparar reparo no próximo ciclo.',
+            'internal_notes' => 'Confirmar o reparo com a engenharia.',
         ]);
         $firstAssessment = $defect->latestAssessment;
 
@@ -361,8 +363,15 @@ final class DefectRoutesTest extends TestCase
         $this->assertNull($secondAssessment->urgency);
         $this->assertNull($secondAssessment->trend);
         $this->assertNull($secondAssessment->classification_id);
-        $this->assertSame(0, $secondAssessment->quantities()->count());
+        $this->assertSame(1, $secondAssessment->quantities()->count());
         $this->assertCount(0, $secondAssessment->photos);
+
+        $firstQuantity = $firstAssessment->quantities()->firstOrFail();
+        $copiedQuantity = $secondAssessment->quantities()->firstOrFail();
+        $this->assertNotSame($firstQuantity->id, $copiedQuantity->id);
+        $this->assertSame($firstQuantity->description, $copiedQuantity->description);
+        $this->assertSame((string) $firstQuantity->measurement_value, (string) $copiedQuantity->measurement_value);
+        $this->assertSame($firstQuantity->inputs, $copiedQuantity->inputs);
 
         $this->actingAs($admin)->post(route('inspections.defects.assessments.store', [$secondInspection, $defect]), [
             'condition' => DefectAssessmentCondition::Reinspected->value,
@@ -379,6 +388,7 @@ final class DefectRoutesTest extends TestCase
                 ->where('assessment.defect.code', $defect->code)
                 ->where('previous_assessment_summary.id', $firstAssessment->id)
                 ->where('previous_assessment_summary.condition', 'new')
+                ->where('previous_assessment_summary.internal_notes', 'Confirmar o reparo com a engenharia.')
                 ->has('assessment_history', 1));
 
         $this->satisfyAssessmentPublicationRequirements($secondAssessment);
@@ -448,6 +458,89 @@ final class DefectRoutesTest extends TestCase
         $this->assertSame(DefectAssessmentCondition::Treated->value, $secondAssessment->condition->value);
         $this->assertSame(DefectAssessmentStatus::Complete->value, $secondAssessment->status->value);
         $this->assertSame(DefectStatus::Repaired->value, $defect->status->value);
+    }
+
+    public function test_reinspection_copies_each_native_quantity_item_without_copying_other_assessment_data(): void
+    {
+        foreach ([
+            DefectCategory::Civil,
+            DefectCategory::AnticorrosiveTreatment,
+            DefectCategory::StructuralRecovery,
+        ] as $category) {
+            [, $admin, $equipment, $firstInspection] = $this->createInspectionReadyForDefects();
+            $defect = Defect::factory()->forEquipment($equipment, $firstInspection)->create([
+                'category' => $category,
+                'status' => DefectStatus::Active,
+            ]);
+            $previousAssessment = DefectAssessment::factory()
+                ->forDefect($defect, $firstInspection)
+                ->complete()
+                ->create([
+                    'condition' => DefectAssessmentCondition::New,
+                    'location_description' => 'Localização anterior',
+                    'comment' => 'Comentário anterior',
+                    'recommendation' => 'Recomendação anterior',
+                    'reason' => 'Justificativa anterior',
+                    'internal_notes' => 'Observação interna anterior',
+                    'gravity' => 3,
+                    'urgency' => 4,
+                    'trend' => 5,
+                    'gut_score' => 60,
+                    'classification_code' => 'CV-3',
+                ]);
+            $sourceQuantities = DefectAssessmentQuantity::factory()
+                ->forAssessment($previousAssessment)
+                ->count(2)
+                ->sequence(
+                    ['description' => 'Item anterior 1', 'position' => 1, 'quantity' => 2, 'inputs' => ['length' => '1.5']],
+                    ['description' => 'Item anterior 2', 'position' => 2, 'quantity' => 3, 'inputs' => ['length' => '2.5']],
+                )
+                ->create();
+
+            $nextInspection = Inspection::factory()->reinspection($firstInspection)->create([
+                'status' => InspectionStatus::InProgress,
+            ]);
+            InspectionResponsible::factory()->forInspection($nextInspection, $admin)->create([
+                'responsibility' => InspectionResponsibility::Preparer,
+                'is_primary' => true,
+            ]);
+
+            $this->actingAs($admin)
+                ->post(route('inspections.defects.assessments.store', [$nextInspection, $defect]), [
+                    'condition' => DefectAssessmentCondition::Reinspected->value,
+                    'assessment_action' => DefectAssessmentStatus::Draft->value,
+                ])
+                ->assertRedirect();
+
+            $currentAssessment = DefectAssessment::query()
+                ->where('defect_id', $defect->id)
+                ->where('inspection_id', $nextInspection->id)
+                ->firstOrFail();
+            $copiedQuantities = $currentAssessment->quantities()->get();
+
+            $this->assertSame(DefectAssessmentStatus::Draft, $currentAssessment->status);
+            $this->assertSame(DefectAssessmentCondition::Reinspected, $currentAssessment->condition);
+            $this->assertNull($currentAssessment->location_description);
+            $this->assertNull($currentAssessment->comment);
+            $this->assertNull($currentAssessment->recommendation);
+            $this->assertNull($currentAssessment->reason);
+            $this->assertNull($currentAssessment->internal_notes);
+            $this->assertNull($currentAssessment->gravity);
+            $this->assertNull($currentAssessment->gut_score);
+            $this->assertNull($currentAssessment->classification_code);
+            $this->assertCount(0, $currentAssessment->photos);
+            $this->assertCount(2, $copiedQuantities);
+
+            foreach ($sourceQuantities->values() as $index => $sourceQuantity) {
+                $copiedQuantity = $copiedQuantities->get($index);
+
+                $this->assertNotSame($sourceQuantity->id, $copiedQuantity->id);
+                $this->assertSame($sourceQuantity->description, $copiedQuantity->description);
+                $this->assertSame($sourceQuantity->inputs, $copiedQuantity->inputs);
+                $this->assertSame((string) $sourceQuantity->measurement_value, (string) $copiedQuantity->measurement_value);
+                $this->assertSame($sourceQuantity->formula_snapshot, $copiedQuantity->formula_snapshot);
+            }
+        }
     }
 
     public function test_assessment_history_skips_canceled_inspections_while_following_the_previous_chain(): void
@@ -1221,7 +1314,7 @@ final class DefectRoutesTest extends TestCase
             ->assertSessionHasNoErrors();
 
         $this->assertSame(DefectAssessmentStatus::Complete, $assessment->refresh()->status);
-        $this->assertSame(0, $assessment->quantities()->count());
+        $this->assertSame(1, $assessment->quantities()->count());
         $this->assertNull($assessment->quantity_snapshot);
         $this->assertNull($assessment->gut_snapshot);
         $this->assertCount(0, $assessment->photos);
@@ -1285,6 +1378,8 @@ final class DefectRoutesTest extends TestCase
                 InspectionOverviewPhoto::factory()->forBlock($block, $slot)->ready()->create();
             }
         }
+
+        $inspection->update(['general_notes' => 'Aspectos gerais do equipamento preenchidos.']);
     }
 
     /** @param array<string, mixed> $data */

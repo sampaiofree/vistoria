@@ -16,7 +16,8 @@ abstract class TestCase extends BaseTestCase
     protected function satisfyAssessmentPublicationRequirements(DefectAssessment $assessment): void
     {
         $assessment->loadMissing('defect');
-        if ($assessment->defect->category !== DefectCategory::RoofCladding) {
+        if ($assessment->defect->category !== DefectCategory::RoofCladding
+            && ! $assessment->quantities()->exists()) {
             DefectAssessmentQuantity::factory()->forAssessment($assessment)->create();
         }
         if (blank($assessment->recommendation)) {

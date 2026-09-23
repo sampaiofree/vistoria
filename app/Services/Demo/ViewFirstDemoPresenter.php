@@ -480,6 +480,7 @@ class ViewFirstDemoPresenter
             ['key' => 'overview', 'label' => 'Visão geral', 'url' => route('inspections.show', $inspection)],
             ['key' => 'report_overview', 'label' => 'Vista geral', 'url' => route('inspections.report-overview', $inspection)],
             ['key' => 'defects', 'label' => 'Avarias', 'url' => route('inspections.defects', $inspection), 'count' => $summary['total']],
+            ['key' => 'classifications', 'label' => 'Classificação', 'url' => route('inspections.classifications', $inspection)],
             ['key' => 'photos', 'label' => 'Fotografias', 'url' => route('inspections.photos', $inspection), 'count' => $photoCount],
             ['key' => 'history', 'label' => 'Histórico', 'url' => route('inspections.history', $inspection), 'count' => $inspection->statusHistories->count()],
             ['key' => 'report', 'label' => 'Relatório', 'url' => route('inspections.report-preview', $inspection)],
@@ -505,13 +506,18 @@ class ViewFirstDemoPresenter
             'defects' => [
                 'items' => $items,
                 'filters' => [
-                    ['key' => 'active', 'label' => 'Ativas', 'count' => collect($items)->where('is_repaired', false)->count()],
-                    ['key' => 'all', 'label' => 'Todas', 'count' => $summary['total']],
-                    ['key' => 'pending', 'label' => 'Pendentes', 'count' => $summary['pending']],
-                    ['key' => 'treated', 'label' => 'Tratadas', 'count' => $summary['treated']],
-                    ['key' => 'canceled', 'label' => 'Canceladas', 'count' => $summary['canceled']],
-                    ['key' => 'canceled_sr', 'label' => 'Canceladas S/R', 'count' => $summary['canceled_sr']],
-                    ['key' => 'critical', 'label' => 'Críticas', 'count' => $summary['critical']],
+                    'situations' => [
+                        ['key' => 'active', 'label' => 'Ativas', 'count' => collect($items)->where('is_repaired', false)->count()],
+                        ['key' => 'all', 'label' => 'Todas', 'count' => $summary['total']],
+                        ['key' => 'pending', 'label' => 'Pendentes de avaliação', 'count' => $summary['pending']],
+                        ['key' => 'treated', 'label' => 'Tratadas', 'count' => $summary['treated']],
+                        ['key' => 'canceled', 'label' => 'Canceladas', 'count' => $summary['canceled']],
+                        ['key' => 'canceled_sr', 'label' => 'Canceladas S/R', 'count' => $summary['canceled_sr']],
+                    ],
+                    'critical_count' => $summary['critical'],
+                    'pending_for_current_user_count' => collect($items)
+                        ->where('has_pending_correction_for_current_user', true)
+                        ->count(),
                 ],
             ],
             'photos' => [
@@ -789,6 +795,8 @@ class ViewFirstDemoPresenter
             'correction_requests' => $assessment === null
                 ? null
                 : $this->correctionRequestsPayload($assessment->correctionRequests, $inspection, $user, $assessment),
+            'has_pending_correction_for_current_user' => $assessment !== null
+                && $this->hasPendingCorrectionForCurrentUser($assessment, $user),
         ];
     }
 
@@ -1548,6 +1556,10 @@ class ViewFirstDemoPresenter
         array $inspectionPayload,
     ): array {
         $inspection->loadMissing(['organization', 'equipment.client']);
+        $contextSnapshot = $inspection->context_snapshot ?? [];
+        $snapshotEquipment = data_get($contextSnapshot, 'equipment', []);
+        $snapshotClient = data_get($contextSnapshot, 'client', []);
+        $snapshotOrganization = data_get($contextSnapshot, 'organization', []);
         $overview = $this->inspectionOverview->present($inspection);
         $mappedAssessmentIds = DefectAssessment::query()
             ->forOrganization($inspection->organization_id)
@@ -1577,7 +1589,7 @@ class ViewFirstDemoPresenter
             $mappedItems,
             $photoNumbering,
         );
-        $equipmentLabel = 'FOTO '.mb_strtoupper((string) $inspection->equipment->name).' '.mb_strtoupper((string) $inspection->equipment->tag);
+        $equipmentLabel = 'FOTO '.mb_strtoupper((string) ($snapshotEquipment['name'] ?? '')).' '.mb_strtoupper((string) ($snapshotEquipment['tag'] ?? ''));
         $photographicDocumentation['equipment_label'] = trim($equipmentLabel);
         $photographicDocumentation['blocks'] = collect($photographicDocumentation['blocks'])
             ->map(fn (array $block): array => array_merge($block, ['equipment_label' => $photographicDocumentation['equipment_label']]))
@@ -1632,10 +1644,7 @@ class ViewFirstDemoPresenter
         $titleTemplate = trim((string) ($inspection->first_page_text_template ?? ''));
         $titleLines = $titleTemplate === ''
             ? []
-            : (preg_split(
-                '/\r\n|\r|\n/',
-                str_replace('[nome do equipamento]', (string) $inspection->equipment->name, $titleTemplate),
-            ) ?: []);
+            : (preg_split('/\r\n|\r|\n/', $titleTemplate) ?: []);
         $currentApprovalDate = $inspection->report_date?->format('d/m/Y') ?? '—';
         $blockedIssues = [];
         $exportBlockingIssues = [];
@@ -1725,16 +1734,16 @@ class ViewFirstDemoPresenter
             'cover' => [
                 'eyebrow' => 'Relatório técnico de inspeção',
                 'title' => $reportNumber,
-                'client' => $inspection->equipment->client?->name,
+                'client' => $snapshotClient['name'] ?? null,
                 'client_logo_url' => $inspection->equipment->client?->logo_path !== null
                     ? Storage::disk('public')->url($inspection->equipment->client->logo_path)
                     : null,
-                'provider' => $inspection->organization?->name,
+                'provider' => $snapshotOrganization['name'] ?? null,
                 'provider_logo_url' => $inspection->organization?->logo_path !== null
                     ? Storage::disk('public')->url($inspection->organization->logo_path)
                     : null,
-                'equipment_tag' => $inspection->equipment->tag,
-                'equipment_name' => $inspection->equipment->name,
+                'equipment_tag' => $snapshotEquipment['tag'] ?? null,
+                'equipment_name' => $snapshotEquipment['name'] ?? null,
                 'inspection_type' => $inspection->inspection_type->label(),
                 'inspection_number' => $inspection->number,
                 'external_report_number' => $externalReportNumber,
@@ -1977,6 +1986,41 @@ class ViewFirstDemoPresenter
         ];
     }
 
+    private function hasPendingCorrectionForCurrentUser(DefectAssessment $assessment, User $user): bool
+    {
+        return $this->correctionRequestsForAssessment($assessment)
+            ->contains(fn (InspectionCorrectionRequest $request): bool => $this->userCanActOnCorrectionRequest($user, $request));
+    }
+
+    /** @return Collection<int, InspectionCorrectionRequest> */
+    private function correctionRequestsForAssessment(DefectAssessment $assessment): Collection
+    {
+        $requests = collect();
+        $append = function (InspectionCorrectionRequest $request) use (&$append, $requests): void {
+            $requests->push($request);
+
+            $request->children->each($append);
+        };
+
+        $assessment->correctionRequests->each($append);
+
+        return $requests->unique('id')->values();
+    }
+
+    private function userCanActOnCorrectionRequest(User $user, InspectionCorrectionRequest $request): bool
+    {
+        return match ($request->status) {
+            InspectionCorrectionRequestStatus::Marked => $user->can('update', $request)
+                || $user->can('delete', $request),
+            InspectionCorrectionRequestStatus::Requested => $user->can('address', $request)
+                || $user->can('createChild', $request),
+            InspectionCorrectionRequestStatus::Addressed => $user->can('markPending', $request)
+                || $user->can('close', $request)
+                || $user->can('replace', $request),
+            default => false,
+        };
+    }
+
     /** @return array<string, mixed> */
     private function correctionRequestPayload(
         InspectionCorrectionRequest $request,
@@ -2081,11 +2125,13 @@ class ViewFirstDemoPresenter
             'equipment.defects.assessments.correctionRequests.closedBy',
             'equipment.defects.assessments.correctionRequests.previousRequest',
             'equipment.defects.assessments.correctionRequests.parentRequest',
+            'equipment.defects.assessments.correctionRequests.inspection.responsibles',
             'equipment.defects.assessments.correctionRequests.children.creator',
             'equipment.defects.assessments.correctionRequests.children.sender',
             'equipment.defects.assessments.correctionRequests.children.addressedBy',
             'equipment.defects.assessments.correctionRequests.children.closedBy',
             'equipment.defects.assessments.correctionRequests.children.previousRequest',
+            'equipment.defects.assessments.correctionRequests.children.inspection.responsibles',
         ]);
 
         return $this->inspectionDefectScope->handle($inspection);
@@ -2220,6 +2266,7 @@ class ViewFirstDemoPresenter
             'comment' => $assessment->comment,
             'recommendation' => $assessment->recommendation,
             'reason' => $assessment->reason,
+            'internal_notes' => $assessment->internal_notes,
             'photos' => $assessment->photos
                 ->map(fn (AssessmentPhoto $photo): array => [
                     'id' => $photo->public_id,

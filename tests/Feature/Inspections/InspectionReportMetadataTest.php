@@ -42,9 +42,7 @@ final class InspectionReportMetadataTest extends TestCase
                 'report_date' => '2026-08-11',
                 'service_order' => 'OS-42',
                 'external_report_number' => '  REL-EXT-42  ',
-                'report_designer' => '  PROJETISTA   III  ',
-                'designer_i_report_number' => '  SM-IIE-1717  ',
-                'first_page_text_template' => 'Equipamento: [nome do equipamento]',
+                'first_page_text_template' => 'Equipamento: Bomba de alimentação',
             ])
             ->assertRedirect(route('inspections.show', $inspection));
 
@@ -53,16 +51,16 @@ final class InspectionReportMetadataTest extends TestCase
         $this->assertSame('2026-08-11', $inspection->report_date?->toDateString());
         $this->assertSame('OS-42', $inspection->service_order);
         $this->assertSame('REL-EXT-42', $inspection->external_report_number);
-        $this->assertSame('PROJETISTA III', $inspection->report_designer);
-        $this->assertSame('SM-IIE-1717', $inspection->designer_i_report_number);
+        $this->assertSame('PROJETISTA II', $inspection->report_designer);
+        $this->assertNull($inspection->designer_i_report_number);
         $this->assertSame($admin->id, $inspection->updated_by);
 
         $this->actingAs($admin)
             ->get(route('inspections.show', $inspection))
             ->assertInertia(fn (Assert $page) => $page
                 ->where('report_metadata.external_report_number', 'REL-EXT-42')
-                ->where('report_metadata.report_designer', 'PROJETISTA III')
-                ->where('report_metadata.designer_i_report_number', 'SM-IIE-1717')
+                ->where('report_metadata.report_designer', 'PROJETISTA II')
+                ->where('report_metadata.designer_i_report_number', null)
                 ->where('report_metadata.can_edit', true)
                 ->where('report_metadata.can_edit_restricted_fields', true)
                 ->where('capabilities.manage_report_metadata.action', route('inspections.report-metadata.update', $inspection)));
@@ -73,8 +71,6 @@ final class InspectionReportMetadataTest extends TestCase
                 'report_date' => '2026-08-12',
                 'service_order' => 'OS-43',
                 'external_report_number' => 'REL-EXT-43',
-                'report_designer' => 'PROJETISTA IV',
-                'designer_i_report_number' => 'SM-IIE-1718',
                 'first_page_text_template' => 'Outro',
             ])
             ->assertForbidden();
@@ -100,7 +96,7 @@ final class InspectionReportMetadataTest extends TestCase
                 'report_date' => '2026-08-11',
                 'service_order' => 'OS-42',
                 'external_report_number' => 'REL-EXT-42',
-                'report_designer' => 'PROJETISTA II',
+                'report_designer' => 'PROJETISTA III',
                 'designer_i_report_number' => 'SM-IIE-1717',
                 'first_page_text_template' => 'Texto original',
             ]);
@@ -124,8 +120,6 @@ final class InspectionReportMetadataTest extends TestCase
         $this->actingAs($inspector)
             ->put(route('inspections.report-metadata.update', $inspection), [
                 ...$unchangedRestrictedFields,
-                'report_designer' => 'PROJETISTA III',
-                'designer_i_report_number' => 'SM-IIE-1718',
                 'first_page_text_template' => 'Texto atualizado',
             ])
             ->assertRedirect(route('inspections.show', $inspection));
@@ -134,7 +128,7 @@ final class InspectionReportMetadataTest extends TestCase
         $this->assertSame('OS-42', $inspection->service_order);
         $this->assertSame('REL-EXT-42', $inspection->external_report_number);
         $this->assertSame('PROJETISTA III', $inspection->report_designer);
-        $this->assertSame('SM-IIE-1718', $inspection->designer_i_report_number);
+        $this->assertSame('SM-IIE-1717', $inspection->designer_i_report_number);
         $this->assertSame('Texto atualizado', $inspection->first_page_text_template);
 
         $this->actingAs($inspector)
@@ -143,8 +137,6 @@ final class InspectionReportMetadataTest extends TestCase
                 'report_date' => '2026-08-12',
                 'service_order' => 'OS-43',
                 'external_report_number' => 'REL-EXT-43',
-                'report_designer' => 'PROJETISTA IV',
-                'designer_i_report_number' => 'SM-IIE-1719',
                 'first_page_text_template' => 'Não deve persistir',
             ])
             ->assertSessionHasErrors([
@@ -181,8 +173,6 @@ final class InspectionReportMetadataTest extends TestCase
             'report_date' => '2026-09-21',
             'service_order' => 'OS-REVISADA',
             'external_report_number' => 'REL-REVISADO',
-            'report_designer' => 'REVISOR TÉCNICO',
-            'designer_i_report_number' => 'SM-IIE-2026',
             'first_page_text_template' => 'Conteúdo revisado',
         ];
 
@@ -249,8 +239,6 @@ final class InspectionReportMetadataTest extends TestCase
         $this->actingAs($inspector)
             ->put(route('inspections.report-metadata.update', $inspection), [
                 ...$unchangedRestrictedFields,
-                'report_designer' => 'PROJETISTA III',
-                'designer_i_report_number' => 'SM-IIE-1718',
                 'first_page_text_template' => 'Texto atualizado',
             ])
             ->assertRedirect(route('inspections.show', $inspection));
@@ -259,7 +247,6 @@ final class InspectionReportMetadataTest extends TestCase
             ->put(route('inspections.report-metadata.update', $inspection), [
                 ...$unchangedRestrictedFields,
                 'service_order' => 'OS-ALTERADA',
-                'report_designer' => 'PROJETISTA IV',
                 'first_page_text_template' => 'Texto atualizado',
             ])
             ->assertSessionHasErrors('service_order');
@@ -268,7 +255,6 @@ final class InspectionReportMetadataTest extends TestCase
             $this->actingAs($user)
                 ->put(route('inspections.report-metadata.update', $inspection), [
                     ...$unchangedRestrictedFields,
-                    'report_designer' => 'NÃO DEVE ATUALIZAR',
                 ])
                 ->assertForbidden();
         }
@@ -360,90 +346,37 @@ final class InspectionReportMetadataTest extends TestCase
         $this->assertSame('REL-ORIGINAL', $inspection->fresh()->external_report_number);
     }
 
-    public function test_report_designer_defaults_to_projetista_two_and_is_required_when_sent(): void
+    public function test_report_designer_and_designer_i_number_cannot_be_updated(): void
     {
         $organization = Organization::factory()->create();
         $admin = User::factory()->for($organization)->create(['operational_role' => OperationalRole::Reviewer]);
         $inspection = Inspection::factory()
             ->forEquipment(Equipment::factory()->for($organization)->create())
-            ->create(['status' => InspectionStatus::InReview]);
+            ->create([
+                'status' => InspectionStatus::InReview,
+                'report_designer' => 'PROJETISTA II',
+                'designer_i_report_number' => 'SM-IIE-1717',
+            ]);
         InspectionResponsible::factory()->forInspection($inspection, $admin)->create(['responsibility' => InspectionResponsibility::Approver]);
 
-        $this->assertSame('PROJETISTA II', $inspection->report_designer);
-
-        $basePayload = [
-            'emission_type' => EquipmentRevisionEmissionType::ForApproval->value,
-            'report_date' => '2026-08-15',
-            'service_order' => 'OS-COMPAT',
-            'external_report_number' => null,
-            'first_page_text_template' => 'Relatório de inspeção',
-        ];
-
-        $this->actingAs($admin)
-            ->put(route('inspections.report-metadata.update', $inspection), $basePayload)
-            ->assertStatus(302);
-
-        $this->assertSame('OS-COMPAT', $inspection->fresh()->service_order);
-
-        $this->actingAs($admin)
-            ->put(route('inspections.report-metadata.update', $inspection), [
-                ...$basePayload,
-                'report_designer' => '   ',
-            ])
-            ->assertSessionHasErrors('report_designer');
-
-        $this->actingAs($admin)
-            ->put(route('inspections.report-metadata.update', $inspection), [
-                ...$basePayload,
-                'report_designer' => str_repeat('P', 101),
-            ])
-            ->assertSessionHasErrors('report_designer');
-
-        $this->assertSame('PROJETISTA II', $inspection->fresh()->report_designer);
-    }
-
-    public function test_designer_i_report_number_is_optional_normalized_and_limited_to_100_characters(): void
-    {
-        $organization = Organization::factory()->create();
-        $admin = User::factory()->for($organization)->create(['operational_role' => OperationalRole::Reviewer]);
-        $inspection = Inspection::factory()
-            ->forEquipment(Equipment::factory()->for($organization)->create())
-            ->create(['status' => InspectionStatus::InReview]);
-        InspectionResponsible::factory()->forInspection($inspection, $admin)->create(['responsibility' => InspectionResponsibility::Approver]);
         $basePayload = [
             'emission_type' => EquipmentRevisionEmissionType::ForApproval->value,
             'report_date' => '2026-08-15',
             'service_order' => 'OS-42',
             'external_report_number' => 'U0306VT-G-6RI002',
-            'report_designer' => 'PROJETISTA II',
             'first_page_text_template' => 'Relatório de inspeção',
         ];
 
         $this->actingAs($admin)
             ->put(route('inspections.report-metadata.update', $inspection), [
                 ...$basePayload,
-                'designer_i_report_number' => '  SM-IIE-1717  ',
+                'report_designer' => 'PROJETISTA III',
+                'designer_i_report_number' => 'SM-IIE-1718',
             ])
-            ->assertRedirect(route('inspections.show', $inspection));
+            ->assertSessionHasErrors(['report_designer', 'designer_i_report_number']);
 
-        $this->assertSame('SM-IIE-1717', $inspection->fresh()->designer_i_report_number);
-
-        $this->actingAs($admin)
-            ->put(route('inspections.report-metadata.update', $inspection), [
-                ...$basePayload,
-                'designer_i_report_number' => '   ',
-            ])
-            ->assertRedirect(route('inspections.show', $inspection));
-
-        $this->assertNull($inspection->fresh()->designer_i_report_number);
-
-        $this->actingAs($admin)
-            ->put(route('inspections.report-metadata.update', $inspection), [
-                ...$basePayload,
-                'designer_i_report_number' => str_repeat('X', 101),
-            ])
-            ->assertSessionHasErrors('designer_i_report_number');
-
-        $this->assertNull($inspection->fresh()->designer_i_report_number);
+        $inspection->refresh();
+        $this->assertSame('PROJETISTA II', $inspection->report_designer);
+        $this->assertSame('SM-IIE-1717', $inspection->designer_i_report_number);
     }
 }

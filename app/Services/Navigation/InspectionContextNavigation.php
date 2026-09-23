@@ -103,6 +103,7 @@ final class InspectionContextNavigation
             'defects.*',
             'defect-assessments.*',
         );
+        $classificationsActive = $request->routeIs('inspections.classifications');
         $teamActive = $request->routeIs('inspections.team');
 
         return [
@@ -153,6 +154,13 @@ final class InspectionContextNavigation
                         $defectsActive,
                         $canCreateDefect,
                     ),
+                ],
+                [
+                    'key' => 'classifications',
+                    'label' => 'Nota M2',
+                    'href' => route('inspections.classifications', $inspection),
+                    'icon' => 'classification',
+                    'active' => $classificationsActive,
                 ],
                 [
                     'key' => 'team',

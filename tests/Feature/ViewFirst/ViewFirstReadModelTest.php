@@ -118,8 +118,11 @@ final class ViewFirstReadModelTest extends TestCase
                 ->has('content.items.0.quantities', 0)
                 ->has('content.items.0.evidence', 0)
                 ->has('content.items.1.evidence', 0)
-                ->has('content.filters', 7)
-                ->where('content.filters.0.key', 'active'));
+                ->where('content.items.0.has_pending_correction_for_current_user', false)
+                ->has('content.filters.situations', 6)
+                ->where('content.filters.situations.0.key', 'active')
+                ->where('content.filters.critical_count', 0)
+                ->where('content.filters.pending_for_current_user_count', 0));
 
         $this->actingAs($admin)
             ->get(route('inspections.photos', $inspection))
@@ -183,6 +186,52 @@ final class ViewFirstReadModelTest extends TestCase
                 ->where('content.cover.report_designer', 'PROJETISTA II')
                 ->where('content.cover.designer_i_report_number', 'SM-IIE-1717')
                 ->where('content.cover.current_revision', '0'));
+    }
+
+    public function test_report_uses_historical_context_but_keeps_logos_current(): void
+    {
+        $organization = Organization::factory()->create();
+        $admin = User::factory()
+            ->for($organization)
+            ->create(['operational_role' => OperationalRole::Inspector->value]);
+        $equipment = Equipment::factory()->for($organization)->create();
+        $inspection = Inspection::factory()->forEquipment($equipment)->create();
+        InspectionResponsible::factory()
+            ->forInspection($inspection, $admin)
+            ->create([
+                'responsibility' => InspectionResponsibility::Preparer,
+                'is_primary' => true,
+            ]);
+        $equipment->load('client');
+        $snapshot = $inspection->context_snapshot;
+
+        $inspection->update(['first_page_text_template' => 'Título histórico da inspeção']);
+        $equipment->update(['name' => 'Equipamento atual', 'tag' => 'TAG-ATUAL']);
+        $equipment->client->update([
+            'name' => 'Cliente atual',
+            'logo_path' => 'clients/logo-atual.png',
+        ]);
+        $organization->update([
+            'name' => 'Organização atual',
+            'logo_path' => 'organizations/logo-atual.png',
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('inspections.report-preview', $inspection))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('content.cover.client', $snapshot['client']['name'])
+                ->where('content.cover.provider', $snapshot['organization']['name'])
+                ->where('content.cover.equipment_name', $snapshot['equipment']['name'])
+                ->where('content.cover.equipment_tag', $snapshot['equipment']['tag'])
+                ->where('content.overview.equipment_label', sprintf(
+                    'FOTO %s %s',
+                    mb_strtoupper((string) $snapshot['equipment']['name']),
+                    mb_strtoupper((string) $snapshot['equipment']['tag']),
+                ))
+                ->where('content.title_lines', ['Título histórico da inspeção'])
+                ->where('content.cover.client_logo_url', Storage::disk('public')->url('clients/logo-atual.png'))
+                ->where('content.cover.provider_logo_url', Storage::disk('public')->url('organizations/logo-atual.png')));
     }
 
     public function test_report_export_is_disabled_when_external_report_number_is_missing(): void

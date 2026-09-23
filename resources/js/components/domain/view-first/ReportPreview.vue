@@ -7,6 +7,7 @@ import ReportGeneralAspectsPaginator from '@/components/domain/view-first/Report
 import ReportSummaryPage from '@/components/domain/view-first/ReportSummaryPage.vue';
 import ReportSummaryPaginator from '@/components/domain/view-first/ReportSummaryPaginator.vue';
 import GeneralAspectsDocument from '@/components/domain/inspections/GeneralAspectsDocument.vue';
+import ClassificationSummaryTable from '@/components/domain/inspections/ClassificationSummaryTable.vue';
 import {
     buildReportSummaryEntries,
     numberGeneralAspectsDocument,
@@ -412,9 +413,15 @@ function visualClass(photo) {
                         <div class="report-cover-emission-legend">
                             <strong>T.E. — TIPOS DE EMISSÃO</strong>
                             <div>
-                                <span v-for="emission in (cover.emission_types || [])" :key="emission.value">
-                                    {{ emission.value }} — {{ emission.label }}
-                                </span>
+                                <span>A — Preliminar</span>
+                                <span>B — P/ Aprovação</span>
+                                <span>C — P/ Conhecimento</span>
+                                <span>D — P/ Cotação</span>
+                                <span>E — P/ Construção</span>
+                                <span>F — Conforme comprado</span>
+                                <span>G — Conforme construído</span>
+                                <span>H — Cancelado</span>
+                                <span>L — Aprovado</span>
                             </div>
                         </div>
                         <div class="report-cover-approval">
@@ -486,12 +493,27 @@ function visualClass(photo) {
 
             <template v-else-if="page.type === 'classification-summary'">
                 <div class="report-general-aspects-page">
-                    <h2 class="report-general-aspects-title">RESUMO DA CLASSIFICAÇÃO DO EQUIPAMENTO – GUT</h2>
-                    <div class="report-classification-summary-meta">{{ classificationSummary.equipment?.area }} · {{ classificationSummary.equipment?.name }} · {{ classificationSummary.equipment?.tag }}</div>
-                    <section v-for="category in classificationSummary.categories" :key="category.code" class="report-classification-summary-category">
-                        <h3>{{ category.name }}</h3>
-                        <table><thead><tr><th>CLASSE</th><th>QTDE.</th><th>QUANT.</th><th>NOTA M2</th></tr></thead><tbody><tr v-for="row in category.rows" :key="row.classification_code"><td>{{ row.classification_code }}</td><td>{{ row.defect_count || '—' }}</td><td>{{ row.quantity.label }}</td><td>{{ row.sap_m2_number || '—' }}</td></tr><tr class="report-classification-summary-total"><td colspan="2">Mais crítica: {{ category.most_critical || '—' }}</td><td>{{ category.total.label }}</td><td></td></tr></tbody></table>
-                    </section>
+                    <h2 class="report-general-aspects-title">1. RESUMO DA CLASSIFICAÇÃO DO EQUIPAMENTO – GUT</h2>
+                    <table class="report-classification-summary-header">
+                        <colgroup>
+                            <col class="report-classification-summary-area">
+                            <col class="report-classification-summary-subarea">
+                            <col class="report-classification-summary-installation">
+                            <col class="report-classification-summary-abc">
+                            <col class="report-classification-summary-date">
+                            <col class="report-classification-summary-criticality">
+                        </colgroup>
+                        <thead>
+                            <tr><th>ÁREA</th><th>SUBÁREA</th><th>LOCAL DE INSTALAÇÃO</th><th>CÓD. ABC</th><th>DATA DA INSP.</th><th>CRITICIDADE</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>{{ classificationSummary.header?.area || '—' }}</td><td>{{ classificationSummary.header?.subarea || '—' }}</td><td>{{ classificationSummary.header?.installation_location || '—' }}</td><td>{{ classificationSummary.header?.abc_code || '—' }}</td><td>{{ classificationSummary.header?.inspection_date || '—' }}</td><td></td></tr>
+                            <tr class="report-classification-summary-header-labels"><th>EQUIPAMENTO</th><th>TAG</th><th>DESENHO GERAL</th><th>ORDEM</th><th colspan="2">PROC. INSPEÇÃO</th></tr>
+                            <tr><td>{{ classificationSummary.header?.equipment || '—' }}</td><td>{{ classificationSummary.header?.tag || '—' }}</td><td></td><td>{{ classificationSummary.header?.work_order || '—' }}</td><td colspan="2"></td></tr>
+                        </tbody>
+                    </table>
+                    <h3 class="report-classification-summary-table-title">Tabela 2 – Resumo das classificações das avarias e seus quantitativos.</h3>
+                    <ClassificationSummaryTable :summary="classificationSummary" variant="report" />
                 </div>
             </template>
 
@@ -825,7 +847,7 @@ function visualClass(photo) {
 .report-cover-page { grid-area: page; border-bottom: 1px solid #111827; }
 .report-cover-provider-role { grid-area: provider-role; display: flex; min-width: 0; align-items: center; justify-content: center; padding: 1.5mm 3mm; border-right: 1px solid #111827; border-bottom: 1px solid #111827; font-size: 11pt; line-height: 1.1; text-align: center; }
 .report-cover-designer-ii { grid-area: designer-ii; border-right: 1px solid #111827; border-bottom: 1px solid #111827; }
-.report-cover-client-logo { grid-area: client-logo; border-right: 1px solid #111827; }
+.report-cover-client-logo { grid-area: client-logo; }
 .report-cover-client-name { grid-area: client-name; display: flex; min-width: 0; align-items: center; justify-content: center; padding: 1.5mm 3mm; border-right: 1px solid #111827; color: #00008b; font-size: 12pt; font-weight: 700; line-height: 1.1; text-align: center; }
 .report-cover-samarco { grid-area: samarco; }
 .report-cover-institutional-logo { display: flex; min-width: 0; align-items: center; justify-content: center; padding: 1.5mm 3mm; }
@@ -847,13 +869,20 @@ function visualClass(photo) {
 .report-map-visual :deep(svg) { width: 100%; height: 100%; max-height: 100%; }
 .report-map-footer { flex: none; margin-top: 3mm; font-family: Georgia, 'Times New Roman', serif; }
 .report-map-classification-layout { display: grid; grid-template-columns: minmax(0, 1fr) 36mm; align-items: start; gap: 1.5mm; }
-.report-classification-summary-meta { margin: 0 0 5mm; font-family: Georgia, serif; font-size: 9pt; }
-.report-classification-summary-category { margin: 0 0 5mm; font-family: Georgia, serif; }
-.report-classification-summary-category h3 { margin: 0; padding: 1.5mm 2mm; background: #062b68; color: #fff; font-size: 9pt; }
-.report-classification-summary-category table { width: 100%; border-collapse: collapse; font-size: 8pt; }
-.report-classification-summary-category th, .report-classification-summary-category td { border: 1px solid #64748b; padding: 1.2mm 1.5mm; text-align: left; }
-.report-classification-summary-category th { background: #e2e8f0; font-size: 7.5pt; }
-.report-classification-summary-total td { font-weight: 700; background: #f8fafc; }
+.report-classification-summary-header { width: 100%; margin: 0 0 5mm; border-collapse: collapse; table-layout: fixed; font-family: Georgia, serif; font-size: 8pt; }
+.report-classification-summary-header th, .report-classification-summary-header td { border: 1px solid #111827; padding: 1.3mm 1.5mm; text-align: center; vertical-align: middle; overflow-wrap: anywhere; }
+.report-classification-summary-header th { background: #e2e8f0; font-size: 7.5pt; font-weight: 700; }
+.report-classification-summary-header td { min-height: 8mm; font-size: 8.5pt; }
+.report-classification-summary-header-labels th { border-top-width: 1.5px; }
+.report-classification-summary-header tr > :first-child { border-left: 0; }
+.report-classification-summary-header tr > :last-child { border-right: 0; }
+.report-classification-summary-area { width: 15%; }
+.report-classification-summary-subarea { width: 19%; }
+.report-classification-summary-installation { width: 24%; }
+.report-classification-summary-abc { width: 15%; }
+.report-classification-summary-date { width: 14%; }
+.report-classification-summary-criticality { width: 13%; }
+.report-classification-summary-table-title { margin: 0 0 2mm; font-family: Georgia, serif; font-size: 9pt; font-weight: 400; text-align: center; }
 .report-map-damage-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 7pt; }
 .report-map-damage-table th,
 .report-map-damage-table td { height: 5.5mm; padding: .7mm 1.5mm; border: 1px solid #111827; line-height: 1.05; text-align: center; vertical-align: middle; }

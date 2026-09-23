@@ -66,6 +66,8 @@ final class InspectionRoutesTest extends TestCase
         $this->assertSame('initial', $inspection->inspection_type->value);
         $this->assertNull($inspection->atmospheric_classification);
         $this->assertSame($equipment->numero_cliente, $inspection->external_report_number);
+        $this->assertSame('PROJETISTA II', $inspection->report_designer);
+        $this->assertSame($equipment->numero_interno, $inspection->designer_i_report_number);
         $this->assertNotEmpty($inspection->number);
         $this->assertNotEmpty($inspection->public_id);
         $this->assertSame($equipment->tag, $inspection->context_snapshot['equipment']['tag']);
@@ -93,6 +95,7 @@ final class InspectionRoutesTest extends TestCase
                 ->where('inspection.planned_start_on', '20/09/2026')
                 ->where('inspection.planned_end_on', '22/09/2026')
                 ->where('report_metadata.external_report_number', $equipment->numero_cliente)
+                ->where('report_metadata.designer_i_report_number', $equipment->numero_interno)
                 ->has('inspection.context_snapshot')
                 ->has('inspection.history', 1)
                 ->has('capabilities.update_planned.action')

@@ -98,6 +98,7 @@ onBeforeUnmount(() => {
                             <p v-if="item.reason"><strong class="text-slate-900">Justificativa:</strong> {{ item.reason }}</p>
                             <p v-if="item.comment" class="whitespace-pre-line"><strong class="text-slate-900">Comentário:</strong> {{ item.comment }}</p>
                             <p v-if="item.recommendation" class="whitespace-pre-line"><strong class="text-slate-900">Recomendação:</strong> {{ item.recommendation }}</p>
+                            <p v-if="item.internal_notes" class="whitespace-pre-line rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-950"><strong>Observações internas:</strong> {{ item.internal_notes }}</p>
                         </div>
 
                         <div v-if="item.photos?.length" class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">

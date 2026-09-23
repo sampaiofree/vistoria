@@ -72,14 +72,6 @@ final class UpdateReportMetadata
                 $attributes['external_report_number'] = TextNormalizer::nullableText($data['external_report_number']);
             }
 
-            if (array_key_exists('report_designer', $data)) {
-                $attributes['report_designer'] = TextNormalizer::text((string) $data['report_designer']);
-            }
-
-            if (array_key_exists('designer_i_report_number', $data)) {
-                $attributes['designer_i_report_number'] = TextNormalizer::nullableText($data['designer_i_report_number']);
-            }
-
             $inspection->update($attributes);
 
             return $inspection->refresh();

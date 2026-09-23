@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useForm } from '@inertiajs/vue3';
 
 const props = defineProps({
@@ -10,15 +10,12 @@ const props = defineProps({
 });
 
 const editing = ref(false);
-const textarea = ref(null);
 
 const form = useForm({
     emission_type: props.metadata.emission_type ?? '',
     report_date: props.metadata.report_date ?? '',
     service_order: props.metadata.service_order ?? '',
     external_report_number: props.metadata.external_report_number ?? '',
-    report_designer: props.metadata.report_designer ?? 'PROJETISTA II',
-    designer_i_report_number: props.metadata.designer_i_report_number ?? '',
     first_page_text_template: props.metadata.first_page_text_template ?? '',
 });
 
@@ -27,8 +24,7 @@ const canEditRestrictedFields = computed(() => props.metadata.can_edit_restricte
 const displayedEmission = computed(() => props.metadata.emission_type
     ? `${props.metadata.emission_type} — ${props.metadata.emission_type_label || ''}`
     : 'Não definido');
-const resolvedText = computed(() => (props.metadata.first_page_text_template || '')
-    .replaceAll('[nome do equipamento]', props.inspection.equipment?.name || ''));
+const resolvedText = computed(() => props.metadata.first_page_text_template || '');
 
 function syncForm() {
     form.defaults({
@@ -36,8 +32,6 @@ function syncForm() {
         report_date: props.metadata.report_date ?? '',
         service_order: props.metadata.service_order ?? '',
         external_report_number: props.metadata.external_report_number ?? '',
-        report_designer: props.metadata.report_designer ?? 'PROJETISTA II',
-        designer_i_report_number: props.metadata.designer_i_report_number ?? '',
         first_page_text_template: props.metadata.first_page_text_template ?? '',
     });
     form.reset();
@@ -67,15 +61,6 @@ function submit() {
     });
 }
 
-async function insertPlaceholder() {
-    const token = '[nome do equipamento]';
-    const start = textarea.value?.selectionStart ?? form.first_page_text_template.length;
-    const end = textarea.value?.selectionEnd ?? start;
-    form.first_page_text_template = `${form.first_page_text_template.slice(0, start)}${token}${form.first_page_text_template.slice(end)}`;
-    await nextTick();
-    textarea.value?.focus();
-    textarea.value?.setSelectionRange(start + token.length, start + token.length);
-}
 </script>
 
 <template>
@@ -124,26 +109,14 @@ async function insertPlaceholder() {
                     <input v-model="form.external_report_number" :disabled="!canEditRestrictedFields" type="text" maxlength="150" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 disabled:cursor-not-allowed disabled:bg-slate-100">
                     <span v-if="form.errors.external_report_number" class="block text-xs text-rose-600">{{ form.errors.external_report_number }}</span>
                 </label>
-                <label class="space-y-1.5 text-sm font-medium text-slate-700">
-                    <span>Projetista</span>
-                    <input v-model="form.report_designer" required type="text" maxlength="100" class="w-full rounded-xl border border-slate-300 px-3 py-2.5">
-                    <span v-if="form.errors.report_designer" class="block text-xs text-rose-600">{{ form.errors.report_designer }}</span>
-                </label>
-                <label class="space-y-1.5 text-sm font-medium text-slate-700 md:col-span-2">
+                <div class="space-y-1.5 text-sm font-medium text-slate-700 md:col-span-2">
                     <span>Nº Projetista I</span>
-                    <input v-model="form.designer_i_report_number" type="text" maxlength="100" class="w-full rounded-xl border border-slate-300 px-3 py-2.5">
+                    <p class="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-slate-700">{{ metadata.designer_i_report_number || 'Não informado' }}</p>
                     <span class="block text-xs font-normal text-slate-500">Obrigatório somente para impressão, PDF e DOC.</span>
-                    <span v-if="form.errors.designer_i_report_number" class="block text-xs text-rose-600">{{ form.errors.designer_i_report_number }}</span>
-                </label>
+                </div>
                 <label class="space-y-1.5 text-sm font-medium text-slate-700 md:col-span-2">
                     <span>Título da primeira página</span>
-                    <!--<div class="flex flex-wrap gap-2">
-                        <button type="button" class="rounded-lg border border-teal-200 bg-teal-50 px-2.5 py-1.5 text-xs font-semibold text-teal-800 hover:bg-teal-100" @click="insertPlaceholder">
-                            Inserir nome do equipamento
-                        </button>
-                        <span class="self-center text-xs font-normal text-slate-500">Use [nome do equipamento] para inserir o nome atual.</span>
-                    </div>-->
-                    <textarea ref="textarea" v-model="form.first_page_text_template" rows="6" maxlength="5000" class="w-full rounded-xl border border-slate-300 px-3 py-2.5"></textarea>
+                    <textarea v-model="form.first_page_text_template" rows="6" maxlength="5000" class="w-full rounded-xl border border-slate-300 px-3 py-2.5"></textarea>
                     <span v-if="form.errors.first_page_text_template" class="block text-xs text-rose-600">{{ form.errors.first_page_text_template }}</span>
                 </label>
             </div>
@@ -158,7 +131,6 @@ async function insertPlaceholder() {
             <div><dt class="text-xs font-bold uppercase tracking-wider text-slate-400">Data do relatório</dt><dd class="mt-1 text-sm font-semibold text-slate-900">{{ metadata.report_date ? new Date(`${metadata.report_date}T00:00:00`).toLocaleDateString('pt-BR') : 'Não definida' }}</dd></div>
             <div><dt class="text-xs font-bold uppercase tracking-wider text-slate-400">O.S.</dt><dd class="mt-1 text-sm font-semibold text-slate-900">{{ metadata.service_order || 'Não informada' }}</dd></div>
             <div><dt class="text-xs font-bold uppercase tracking-wider text-slate-400">Relatório externo</dt><dd class="mt-1 text-sm font-semibold text-slate-900">{{ metadata.external_report_number || 'Não informado' }}</dd></div>
-            <div><dt class="text-xs font-bold uppercase tracking-wider text-slate-400">Projetista</dt><dd class="mt-1 text-sm font-semibold text-slate-900">{{ metadata.report_designer || 'PROJETISTA II' }}</dd></div>
             <div><dt class="text-xs font-bold uppercase tracking-wider text-slate-400">Nº Projetista I</dt><dd class="mt-1 text-sm font-semibold text-slate-900">{{ metadata.designer_i_report_number || 'Não informado' }}</dd></div>
             <div class="sm:col-span-2 lg:col-span-4"><dt class="text-xs font-bold uppercase tracking-wider text-slate-400">Título da primeira página</dt><dd class="mt-1 whitespace-pre-line text-sm text-slate-700">{{ resolvedText || 'Nenhum título personalizado.' }}</dd></div>
         </dl>

@@ -85,6 +85,8 @@ final class CreateInspection
                 ]),
                 'service_order' => TextNormalizer::nullableText($data['service_order'] ?? null),
                 'external_report_number' => $equipment->numero_cliente,
+                'report_designer' => 'PROJETISTA II',
+                'designer_i_report_number' => $equipment->numero_interno,
                 'procedure_number' => TextNormalizer::nullableText($data['procedure_number'] ?? null),
                 'atmospheric_classification' => TextNormalizer::nullableText($data['atmospheric_classification'] ?? null),
                 'planned_start_on' => $data['planned_start_on'],

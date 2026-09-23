@@ -15,6 +15,8 @@ use App\Models\InspectionCorrectionRequest;
 use App\Models\User;
 use App\Services\Defects\AssessmentPhotoCoverageValidator;
 use App\Services\Defects\ReinspectionCoverageValidator;
+use App\Services\Inspections\GeneralAspectsCoverageValidator;
+use App\Services\Inspections\InspectionClassificationM2CoverageValidator;
 use App\Services\Inspections\InspectionOverviewCoverageValidator;
 use Illuminate\Validation\ValidationException;
 
@@ -27,6 +29,8 @@ final class SubmitInspectionForReview
         private readonly ReinspectionCoverageValidator $coverageValidator,
         private readonly AssessmentPhotoCoverageValidator $photoCoverageValidator,
         private readonly InspectionOverviewCoverageValidator $overviewCoverageValidator,
+        private readonly GeneralAspectsCoverageValidator $generalAspectsCoverageValidator,
+        private readonly InspectionClassificationM2CoverageValidator $classificationM2CoverageValidator,
     ) {}
 
     public function handle(Inspection $inspection, User $actor): Inspection
@@ -68,6 +72,8 @@ final class SubmitInspectionForReview
         $this->coverageValidator->validate($inspection);
         $this->photoCoverageValidator->validate($inspection);
         $this->overviewCoverageValidator->validate($inspection);
+        $this->generalAspectsCoverageValidator->validate($inspection);
+        $this->classificationM2CoverageValidator->validate($inspection);
 
         $attributes = [];
 

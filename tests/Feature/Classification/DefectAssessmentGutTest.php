@@ -430,6 +430,8 @@ final class DefectAssessmentGutTest extends TestCase
                 InspectionOverviewPhoto::factory()->forBlock($block, $slot)->ready()->create();
             }
         }
+
+        $inspection->update(['general_notes' => 'Aspectos gerais do equipamento preenchidos.']);
     }
 
     /** @return array<string, mixed> */

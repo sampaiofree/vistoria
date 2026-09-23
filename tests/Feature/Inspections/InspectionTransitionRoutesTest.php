@@ -9,6 +9,8 @@ use App\Enums\InspectionStatus;
 use App\Enums\OperationalRole;
 use App\Enums\PhotoProcessingStatus;
 use App\Enums\UserAccountType;
+use App\Enums\DefectAssessmentCondition;
+use App\Enums\DefectCategory;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
 use App\Models\Equipment;
@@ -128,6 +130,42 @@ final class InspectionTransitionRoutesTest extends TestCase
         $this->actingAs($actor)
             ->post(route('inspections.start', $inspectionWithInactiveEquipment))
             ->assertForbidden();
+    }
+
+    public function test_inspector_must_fill_m2_for_each_published_classification_before_submitting_for_review(): void
+    {
+        [$inspection, $inspector] = $this->inspectionReadyForOverviewValidation();
+        $this->completeOverview($inspection);
+        $defect = Defect::factory()->forEquipment($inspection->equipment, $inspection)->create([
+            'category' => DefectCategory::Civil,
+        ]);
+        DefectAssessment::factory()->forDefect($defect, $inspection)->complete()->create([
+            'condition' => DefectAssessmentCondition::Canceled,
+            'classification_code' => 'CV-2',
+            'classification_priority' => 2,
+            'classification_snapshot' => ['code' => 'CV-2', 'severity_rank' => 2],
+        ]);
+
+        $this->actingAs($inspector)
+            ->post(route('inspections.submit-for-review', $inspection))
+            ->assertSessionHasErrors('inspection')
+            ->assertSessionHasErrors(['inspection' => 'Preencha as Notas M2 das classificações: CV CV-2.']);
+
+        $this->actingAs($inspector)
+            ->put(route('inspections.classification-m2-links.update', $inspection), [
+                'links' => [[
+                    'category' => 'CV',
+                    'classification_code' => 'CV-2',
+                    'sap_number' => '11727296',
+                ]],
+            ])
+            ->assertRedirect();
+
+        $this->actingAs($inspector)
+            ->post(route('inspections.submit-for-review', $inspection))
+            ->assertRedirect();
+
+        $this->assertSame(InspectionStatus::AwaitingReview, $inspection->fresh()->status);
     }
 
     public function test_reviewer_cannot_send_for_release_when_review_has_an_incomplete_assessment(): void
@@ -347,6 +385,47 @@ final class InspectionTransitionRoutesTest extends TestCase
         $this->assertSame(InspectionStatus::AwaitingReview, $inspection->fresh()->status);
     }
 
+    public function test_inspector_cannot_submit_or_resubmit_for_review_without_general_aspects(): void
+    {
+        foreach ([InspectionStatus::InProgress, InspectionStatus::InCorrection] as $status) {
+            [$inspection, $inspector] = $this->inspectionReadyForOverviewValidation();
+            $inspection->update(['status' => $status]);
+            $this->completeOverview($inspection, includeGeneralAspects: false);
+
+            $this->actingAs($inspector)
+                ->post(route('inspections.submit-for-review', $inspection))
+                ->assertSessionHasErrors([
+                    'inspection' => 'Preencha os Aspectos gerais do equipamento antes de enviar para revisão.',
+                ]);
+
+            $this->assertSame($status, $inspection->fresh()->status);
+        }
+    }
+
+    public function test_inspector_can_submit_for_review_with_structured_general_aspects(): void
+    {
+        [$inspection, $inspector] = $this->inspectionReadyForOverviewValidation();
+        $this->completeOverview($inspection, includeGeneralAspects: false);
+        $inspection->update([
+            'general_notes' => json_encode([
+                'schema_version' => 1,
+                'document' => [
+                    'type' => 'doc',
+                    'content' => [[
+                        'type' => 'paragraph',
+                        'content' => [['type' => 'text', 'text' => 'Aspectos gerais estruturados.']],
+                    ]],
+                ],
+            ], JSON_THROW_ON_ERROR),
+        ]);
+
+        $this->actingAs($inspector)
+            ->post(route('inspections.submit-for-review', $inspection))
+            ->assertRedirect();
+
+        $this->assertSame(InspectionStatus::AwaitingReview, $inspection->fresh()->status);
+    }
+
     public function test_return_and_cancel_require_justification(): void
     {
         $organization = Organization::factory()->create();
@@ -454,6 +533,7 @@ final class InspectionTransitionRoutesTest extends TestCase
         ?PhotoProcessingStatus $unreadyStatus = null,
         ?int $blankTextInBlock = null,
         ?string $blankTextField = null,
+        bool $includeGeneralAspects = true,
     ): void
     {
         foreach ([1, 2] as $position) {
@@ -469,8 +549,12 @@ final class InspectionTransitionRoutesTest extends TestCase
                 ($unreadyPhoto === $number
                     ? $factory->state(['processing_status' => $unreadyStatus])
                     : $factory->ready())
-                    ->create();
+                ->create();
             }
+        }
+
+        if ($includeGeneralAspects) {
+            $inspection->update(['general_notes' => 'Aspectos gerais do equipamento preenchidos.']);
         }
     }
 }

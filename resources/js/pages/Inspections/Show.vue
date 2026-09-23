@@ -16,6 +16,7 @@ import InspectionTabs from '@/components/domain/view-first/InspectionTabs.vue';
 import PhotoGallery from '@/components/domain/view-first/PhotoGallery.vue';
 import ReportSection from '@/components/domain/view-first/ReportSection.vue';
 import ReportPreview from '@/components/domain/view-first/ReportPreview.vue';
+import ClassificationSummaryTable from '@/components/domain/inspections/ClassificationSummaryTable.vue';
 import InspectionLocationReportMap from '@/components/domain/inspection-locations/InspectionLocationReportMap.vue';
 import {
     captureReportPages,
@@ -39,7 +40,9 @@ const props = defineProps({
     index_url: { type: String, required: true },
 });
 
-const activeFilter = ref('active');
+const activeSituation = ref('active');
+const criticalOnly = ref(false);
+const pendingForMeOnly = ref(false);
 const activeView = ref('blocks');
 const reportLayoutReady = ref(true);
 const reportPreview = ref(null);
@@ -55,6 +58,7 @@ if (typeof window !== 'undefined') {
 const sectionTitles = {
     overview: 'Visão geral',
     defects: 'Avarias',
+    classifications: 'Classificação e Notas M2',
     photos: 'Fotografias',
     history: 'Histórico',
     report: 'Relatório',
@@ -65,15 +69,17 @@ const pageTitle = computed(() => sectionTitles[props.active_tab] || 'Inspeção'
 const pageSubtitle = computed(() => `${inspectionContextNumber.value} · ${props.inspection.equipment.tag} — ${props.inspection.equipment.name}`);
 
 const defects = computed(() => props.content?.items ?? []);
-const filters = computed(() => props.content?.filters ?? []);
+const defectFilters = computed(() => props.content?.filters ?? {});
+const situationFilters = computed(() => defectFilters.value.situations ?? []);
+const criticalCount = computed(() => defectFilters.value.critical_count ?? 0);
+const pendingForMeCount = computed(() => defectFilters.value.pending_for_current_user_count ?? 0);
 const generalCorrectionRequests = computed(() => props.content?.general_correction_requests ?? { history: [] });
 
 const filteredDefects = computed(() => defects.value.filter((defect) => {
-    switch (activeFilter.value) {
+    const matchesSituation = (() => {
+        switch (activeSituation.value) {
         case 'active':
             return defect.is_repaired !== true;
-        case 'critical':
-            return defect.classification?.is_critical === true;
         case 'pending':
             return defect.is_pending === true || defect.assessment?.status === 'draft';
         case 'treated':
@@ -84,7 +90,12 @@ const filteredDefects = computed(() => defects.value.filter((defect) => {
             return defect.assessment?.condition === 'canceled_sr';
         default:
             return true;
-    }
+        }
+    })();
+
+    return matchesSituation
+        && (!criticalOnly.value || defect.classification?.is_critical === true)
+        && (!pendingForMeOnly.value || defect.has_pending_correction_for_current_user === true);
 }));
 
 function setView(view) {
@@ -114,6 +125,12 @@ const m2Form = useForm({
 function saveM2Links() {
     if (!classificationSummary.value.can_edit_m2 || !classificationSummary.value.m2_update_url) return;
     m2Form.put(classificationSummary.value.m2_update_url, { preserveScroll: true });
+}
+
+function updateM2Link({ category, classificationCode, sapNumber }) {
+    const link = m2Form.links.find((item) => item.category === category && item.classification_code === classificationCode);
+
+    if (link) link.sap_number = sapNumber;
 }
 
 const photoStatusLabels = {
@@ -246,18 +263,34 @@ async function exportReport(format) {
         <div v-else-if="active_tab === 'defects'" class="print-hidden mt-6 space-y-6">
             <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
                 <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-                    <div class="flex max-w-full gap-2 overflow-x-auto pb-1" role="group" aria-label="Filtrar avarias">
+                    <div class="flex flex-wrap items-end gap-3" aria-label="Filtrar avarias">
+                        <label class="flex min-w-52 flex-col gap-1.5 text-sm font-semibold text-slate-700">
+                            <span>Situação da avaria</span>
+                            <select v-model="activeSituation" class="min-h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 shadow-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500">
+                                <option v-for="filter in situationFilters" :key="filter.key" :value="filter.key">
+                                    {{ filter.label }} ({{ filter.count }})
+                                </option>
+                            </select>
+                        </label>
                         <button
-                            v-for="filter in filters"
-                            :key="filter.key"
                             type="button"
-                            class="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
-                            :class="activeFilter === filter.key ? 'bg-slate-950 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
-                            :aria-pressed="activeFilter === filter.key"
-                            @click="activeFilter = filter.key"
+                            class="inline-flex min-h-10 items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
+                            :class="criticalOnly ? 'border-slate-950 bg-slate-950 text-white' : 'border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200'"
+                            :aria-pressed="criticalOnly"
+                            @click="criticalOnly = !criticalOnly"
                         >
-                            {{ filter.label }}
-                            <span class="rounded-full px-1.5 text-xs" :class="activeFilter === filter.key ? 'bg-white/15' : 'bg-white'">{{ filter.count }}</span>
+                            Críticas
+                            <span class="rounded-full px-1.5 text-xs" :class="criticalOnly ? 'bg-white/15' : 'bg-white'">{{ criticalCount }}</span>
+                        </button>
+                        <button
+                            type="button"
+                            class="inline-flex min-h-10 items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
+                            :class="pendingForMeOnly ? 'border-amber-700 bg-amber-700 text-white' : 'border-amber-200 bg-amber-50 text-amber-900 hover:bg-amber-100'"
+                            :aria-pressed="pendingForMeOnly"
+                            @click="pendingForMeOnly = !pendingForMeOnly"
+                        >
+                            Pendências para mim
+                            <span class="rounded-full px-1.5 text-xs" :class="pendingForMeOnly ? 'bg-white/15' : 'bg-white'">{{ pendingForMeCount }}</span>
                         </button>
                     </div>
                     <div class="inline-flex shrink-0 rounded-xl border border-slate-200 bg-slate-50 p-1" role="group" aria-label="Modo de visualização">
@@ -290,8 +323,30 @@ async function exportReport(format) {
                 <DefectCard v-for="defect in filteredDefects" :id="`defect-${defect.public_id}`" :key="defect.id" :defect="defect" variant="list" class="scroll-mt-24" />
             </div>
             <div v-if="filteredDefects.length === 0" class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center text-sm text-slate-500">
-                Nenhuma avaria corresponde a este filtro.
+                {{ pendingForMeOnly ? 'Nenhuma pendência para você corresponde aos filtros selecionados.' : 'Nenhuma avaria corresponde aos filtros selecionados.' }}
             </div>
+        </div>
+
+        <div v-else-if="active_tab === 'classifications'" class="print-hidden mt-6 space-y-6">
+            <section class="mx-auto max-w-7xl rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                <div class="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                        <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Resumo técnico</p>
+                        <h2 class="mt-2 text-xl font-semibold text-slate-950">Classificação e Notas M2</h2>
+                        <p class="mt-1 text-sm text-slate-500">Preencha a Nota M2 para cada classificação com avarias publicadas.</p>
+                    </div>
+                    <button v-if="classificationSummary.can_edit_m2" type="button" class="rounded-xl bg-teal-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" :disabled="m2Form.processing" @click="saveM2Links">Salvar Notas M2</button>
+                </div>
+                <div class="mt-6 overflow-x-auto">
+                    <ClassificationSummaryTable
+                        v-if="classificationSummary.categories?.length"
+                        :summary="classificationSummary"
+                        :editable="classificationSummary.can_edit_m2"
+                        :m2-links="m2Form.links"
+                        @update:m2="updateM2Link"
+                    />
+                </div>
+            </section>
         </div>
 
         <div v-else-if="active_tab === 'photos'" class="print-hidden mt-6 space-y-6">
@@ -393,19 +448,6 @@ async function exportReport(format) {
                 </div>
             </div>
 
-            <section v-if="classificationSummary.categories?.length" class="print-hidden mx-auto mb-6 max-w-6xl rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-                <div class="flex items-start justify-between gap-4">
-                    <div><p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Resumo técnico</p><h2 class="mt-2 text-xl font-semibold text-slate-950">Classificação do equipamento e Nota M2</h2></div>
-                    <button v-if="classificationSummary.can_edit_m2" type="button" class="rounded-xl bg-teal-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" :disabled="m2Form.processing" @click="saveM2Links">Salvar Notas M2</button>
-                </div>
-                <div class="mt-4 grid gap-3 text-sm sm:grid-cols-3"><p><span class="text-slate-500">Área:</span> {{ classificationSummary.equipment?.area }}</p><p><span class="text-slate-500">Equipamento:</span> {{ classificationSummary.equipment?.name }}</p><p><span class="text-slate-500">TAG:</span> {{ classificationSummary.equipment?.tag }}</p></div>
-                <div v-for="category in classificationSummary.categories" :key="category.code" class="mt-5 overflow-x-auto rounded-2xl border border-slate-200">
-                    <table class="min-w-full text-sm"><thead class="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th class="px-3 py-2">{{ category.name }}</th><th class="px-3 py-2">Avarias</th><th class="px-3 py-2">Quantitativo</th><th class="px-3 py-2">Nota M2</th></tr></thead><tbody>
-                        <tr v-for="row in category.rows" :key="row.classification_code" class="border-t border-slate-100"><td class="px-3 py-2 font-medium">{{ row.classification_code }}</td><td class="px-3 py-2">{{ row.defect_count || '—' }}</td><td class="px-3 py-2">{{ row.quantity.label }}</td><td class="px-3 py-2"><input v-if="classificationSummary.can_edit_m2 && row.defect_count > 0" v-model="m2Form.links.find((link) => link.category === category.code && link.classification_code === row.classification_code).sap_number" class="w-full rounded-lg border border-slate-300 px-2 py-1" maxlength="100"><span v-else>{{ row.sap_m2_number || '—' }}</span></td></tr>
-                        <tr class="border-t-2 border-slate-200 bg-slate-50 font-semibold"><td class="px-3 py-2">Total · mais crítica {{ category.most_critical || '—' }}</td><td></td><td class="px-3 py-2">{{ category.total.label }}</td><td></td></tr>
-                    </tbody></table>
-                </div>
-            </section>
             <ReportPreview ref="reportPreview" :content="content" @layout-ready="reportLayoutReady = $event" />
         </div>
 

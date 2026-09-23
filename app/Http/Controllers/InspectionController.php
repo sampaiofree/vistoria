@@ -324,6 +324,7 @@ final class InspectionController extends Controller
                 ['key' => 'overview', 'label' => 'Visão geral', 'url' => route('inspections.show', $inspection)],
                 ['key' => 'report_overview', 'label' => 'Vista geral', 'url' => route('inspections.report-overview', $inspection)],
                 ['key' => 'defects', 'label' => 'Avarias', 'url' => route('inspections.defects', $inspection)],
+                ['key' => 'classifications', 'label' => 'Classificação', 'url' => route('inspections.classifications', $inspection)],
                 ['key' => 'team', 'label' => 'Equipe', 'url' => route('inspections.team', $inspection), 'count' => $inspection->responsibles->count()],
                 ['key' => 'photos', 'label' => 'Fotografias', 'url' => route('inspections.photos', $inspection)],
                 ['key' => 'history', 'label' => 'Histórico', 'url' => route('inspections.history', $inspection)],
@@ -341,6 +342,15 @@ final class InspectionController extends Controller
         InspectionReadModelPresenter $presenter,
     ): InertiaResponse {
         return $this->renderHub($tenant, $request, $inspection, $presenter, 'defects');
+    }
+
+    public function classifications(
+        TenantContext $tenant,
+        Request $request,
+        Inspection $inspection,
+        InspectionReadModelPresenter $presenter,
+    ): InertiaResponse {
+        return $this->renderHub($tenant, $request, $inspection, $presenter, 'classifications');
     }
 
     public function photos(
@@ -450,6 +460,9 @@ final class InspectionController extends Controller
                 $locationReport['sheets'],
                 $viewFirstPayload['content']['photographic_documentation']['blocks'] ?? [],
             );
+        }
+
+        if (in_array($activeTab, ['classifications', 'report'], true)) {
             $classificationSummary = app(BuildInspectionClassificationSummary::class)->build($inspection);
             $viewFirstPayload['content']['classification_summary'] = [
                 ...$classificationSummary,
@@ -760,6 +773,7 @@ final class InspectionController extends Controller
             ['key' => 'overview', 'label' => 'Visão geral', 'url' => route('inspections.show', $inspection)],
             ['key' => 'report_overview', 'label' => 'Vista geral', 'url' => route('inspections.report-overview', $inspection)],
             ['key' => 'defects', 'label' => 'Avarias', 'url' => route('inspections.defects', $inspection)],
+            ['key' => 'classifications', 'label' => 'Classificação', 'url' => route('inspections.classifications', $inspection)],
             ['key' => 'photos', 'label' => 'Fotografias', 'url' => route('inspections.photos', $inspection)],
             ['key' => 'history', 'label' => 'Histórico', 'url' => route('inspections.history', $inspection)],
             ['key' => 'report', 'label' => 'Relatório', 'url' => route('inspections.report-preview', $inspection)],

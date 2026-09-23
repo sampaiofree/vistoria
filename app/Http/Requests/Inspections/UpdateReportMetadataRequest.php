@@ -32,17 +32,6 @@ final class UpdateReportMetadataRequest extends FormRequest
                 : trim((string) $this->input('first_page_text_template')),
         ]);
 
-        if ($this->exists('report_designer')) {
-            $this->merge([
-                'report_designer' => TextNormalizer::text((string) $this->input('report_designer')),
-            ]);
-        }
-
-        if ($this->exists('designer_i_report_number')) {
-            $this->merge([
-                'designer_i_report_number' => TextNormalizer::nullableText($this->input('designer_i_report_number')),
-            ]);
-        }
     }
 
     public function rules(): array
@@ -56,8 +45,8 @@ final class UpdateReportMetadataRequest extends FormRequest
             'report_date' => ['required', 'nullable', 'date'],
             'service_order' => ['required', 'nullable', 'string', 'max:100'],
             'external_report_number' => ['nullable', 'string', 'max:150'],
-            'report_designer' => ['sometimes', 'required', 'string', 'max:100'],
-            'designer_i_report_number' => ['sometimes', 'nullable', 'string', 'max:100'],
+            'report_designer' => ['prohibited'],
+            'designer_i_report_number' => ['prohibited'],
             'first_page_text_template' => ['required', 'nullable', 'string', 'max:5000'],
         ];
     }

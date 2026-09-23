@@ -52,6 +52,19 @@ final class InspectionContextNavigationTest extends TestCase
                 ->where('inspection_navigation.items.2.active', true));
     }
 
+    public function test_classification_page_is_available_in_the_inspection_sidebar_after_defects(): void
+    {
+        [$user, $inspection] = $this->context();
+
+        $this->actingAs($user)
+            ->get(route('inspections.classifications', $inspection))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('inspection_navigation.items.3.key', 'classifications')
+                ->where('inspection_navigation.items.3.label', 'Nota M2')
+                ->where('inspection_navigation.items.3.active', true));
+    }
+
     public function test_global_pages_do_not_receive_an_inspection_context(): void
     {
         [$user] = $this->context();

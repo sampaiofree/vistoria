@@ -47,6 +47,8 @@ final class InspectionCorrectionRequestTest extends TestCase
             ->get(route('inspections.defects', $inspection))
             ->assertInertia(fn (Assert $page) => $page
                 ->where('content.items.0.correction_requests.items.0.status', InspectionCorrectionRequestStatus::Marked->value)
+                ->where('content.items.0.has_pending_correction_for_current_user', true)
+                ->where('content.filters.pending_for_current_user_count', 1)
                 ->has('content.items.0.correction_requests.history', 0));
 
         $this->actingAs($reviewer)
@@ -63,6 +65,12 @@ final class InspectionCorrectionRequestTest extends TestCase
         $request->refresh();
         $this->assertSame(InspectionCorrectionRequestStatus::Requested, $request->status);
         $this->assertNotNull($request->sent_at);
+
+        $this->actingAs($inspector)
+            ->get(route('inspections.defects', $inspection))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('content.items.0.has_pending_correction_for_current_user', true)
+                ->where('content.filters.pending_for_current_user_count', 1));
 
         $this->actingAs($inspector)
             ->post(route('inspections.submit-for-review', $inspection))
@@ -441,5 +449,7 @@ final class InspectionCorrectionRequestTest extends TestCase
                 InspectionOverviewPhoto::factory()->forBlock($block, $slot)->ready()->create();
             }
         }
+
+        $inspection->update(['general_notes' => 'Aspectos gerais do equipamento preenchidos.']);
     }
 }

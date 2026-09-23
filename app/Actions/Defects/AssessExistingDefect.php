@@ -14,6 +14,7 @@ use App\Enums\InspectionStatus;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
 use App\Models\DefectAssessmentLocation;
+use App\Models\DefectAssessmentQuantity;
 use App\Models\Inspection;
 use App\Models\User;
 use App\Services\Defects\DefectAssessmentCompletionValidator;
@@ -77,7 +78,7 @@ final class AssessExistingDefect
             $this->validator->ensureConditionAllowed($defect, $inspection, $condition);
 
             $previousAssessment = $this->previousAssessmentResolver->handle($defect, $inspection);
-            $previousAssessment?->loadMissing(['locationMapVersion', 'location']);
+            $previousAssessment?->loadMissing(['locationMapVersion', 'location', 'quantities']);
 
             $inheritedMapVersionId = $condition->requiresEvidence()
                 && $previousAssessment?->locationMapVersion?->isReady()
@@ -105,6 +106,8 @@ final class AssessExistingDefect
                 'updated_by' => $actor->getKey(),
             ]);
 
+            $this->copyQuantities($previousAssessment, $assessment);
+
             if ($inheritedMapVersionId !== null && $previousAssessment?->location !== null) {
                 DefectAssessmentLocation::query()->create([
                     'organization_id' => $assessment->organization_id,
@@ -131,6 +134,40 @@ final class AssessExistingDefect
 
             return $assessment->refresh();
         });
+    }
+
+    private function copyQuantities(?DefectAssessment $previousAssessment, DefectAssessment $assessment): void
+    {
+        if ($previousAssessment === null) {
+            return;
+        }
+
+        $previousAssessment->quantities
+            ->sortBy([
+                ['position', 'asc'],
+                ['id', 'asc'],
+            ])
+            ->each(function (DefectAssessmentQuantity $quantity) use ($assessment): void {
+                DefectAssessmentQuantity::query()->create([
+                    'organization_id' => $assessment->organization_id,
+                    'inspection_id' => $assessment->inspection_id,
+                    'defect_assessment_id' => $assessment->id,
+                    'description' => $quantity->description,
+                    'category' => $quantity->category,
+                    'calculation_type' => $quantity->calculation_type,
+                    'rec_element' => $quantity->rec_element,
+                    'inputs' => $quantity->inputs,
+                    'quantity' => $quantity->quantity,
+                    'unit_value' => $quantity->unit_value,
+                    'measurement_value' => $quantity->measurement_value,
+                    'measurement_unit' => $quantity->measurement_unit,
+                    'mode' => $quantity->mode,
+                    'formula_version' => $quantity->formula_version,
+                    'formula_snapshot' => $quantity->formula_snapshot,
+                    'position' => $quantity->position,
+                    'notes' => $quantity->notes,
+                ]);
+            });
     }
 
     private function validateActor(User $actor, Inspection $inspection): void

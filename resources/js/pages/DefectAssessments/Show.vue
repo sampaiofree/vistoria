@@ -668,6 +668,11 @@ onUnmounted(() => {
                     </div>
                     <p v-if="isPublished" class="mt-3 text-xs text-slate-500">Mova a avaliação para rascunho antes de alterar a situação.</p>
                 </div>
+                <div v-if="isInherited && previous_assessment_summary" class="mt-4 rounded-2xl border border-teal-200 bg-teal-50 p-4 text-sm text-slate-700">
+                    <p class="text-xs font-bold uppercase tracking-wide text-teal-800">Última revisão · {{ previous_assessment_summary.inspection.number || '—' }} · {{ previous_assessment_summary.assessed_at || 'Data não informada' }}</p>
+                    <p class="mt-2"><strong class="text-slate-900">Situação:</strong> {{ previous_assessment_summary.condition_label }}</p>
+                    <p v-if="previous_assessment_summary.reason" class="mt-1 whitespace-pre-line"><strong class="text-slate-900">Justificativa:</strong> {{ previous_assessment_summary.reason }}</p>
+                </div>
             </section>
 
             <section v-if="requiresEvidence && !isTel" class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
@@ -764,6 +769,11 @@ onUnmounted(() => {
                         </template>
                     </template>
                 </div>
+                <div v-if="isInherited && previous_assessment_summary?.quantity" class="mt-5 rounded-2xl border border-teal-200 bg-teal-50 p-4 text-sm text-slate-700">
+                    <p class="text-xs font-bold uppercase tracking-wide text-teal-800">Última revisão · {{ previous_assessment_summary.inspection.number || '—' }} · {{ previous_assessment_summary.assessed_at || 'Data não informada' }}</p>
+                    <p class="mt-2">Os itens abaixo foram copiados da última revisão. Revise-os antes de publicar esta avaliação.</p>
+                    <p class="mt-1 font-semibold text-slate-900">Total anterior: {{ formatNativeMeasurement(previous_assessment_summary.quantity.value) }} {{ previous_assessment_summary.quantity.unit_symbol }}</p>
+                </div>
                 <p v-if="editing.quantity && quantityForm.errors.quantity" :class="errorClass">{{ quantityForm.errors.quantity }}</p>
                 <div v-if="editing.quantity && capabilities.quantity_store_url" class="mt-4 flex flex-wrap justify-end gap-3">
                     <button type="button" :disabled="quantityForm.processing" class="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700" @click="cancelEditing('quantity')">Cancelar</button>
@@ -820,6 +830,11 @@ onUnmounted(() => {
                         <span v-if="gut_snapshot" class="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600">Snapshot salvo</span>
                         <button v-if="capabilities.gut_url && !editing.gut" type="button" class="rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 hover:border-slate-400" @click="startEditing('gut')">Editar</button>
                     </div>
+                </div>
+                <div v-if="isInherited && previous_assessment_summary?.gut" class="mt-5 rounded-2xl border border-teal-200 bg-teal-50 p-4 text-sm text-slate-700">
+                    <p class="text-xs font-bold uppercase tracking-wide text-teal-800">Última revisão · {{ previous_assessment_summary.inspection.number || '—' }} · {{ previous_assessment_summary.assessed_at || 'Data não informada' }}</p>
+                    <p class="mt-2"><strong class="text-slate-900">Classificação:</strong> {{ previous_assessment_summary.classification?.code || '—' }} · {{ previous_assessment_summary.classification?.label || 'Sem classificação' }}</p>
+                    <p class="mt-1"><strong class="text-slate-900">GUT:</strong> G {{ previous_assessment_summary.gut.gravity ?? '—' }} · U {{ previous_assessment_summary.gut.urgency ?? '—' }} · T {{ previous_assessment_summary.gut.trend ?? '—' }} · {{ previous_assessment_summary.gut.score ?? '—' }}</p>
                 </div>
                 <p v-if="!gutConfigured" class="mt-5 border-t border-slate-100 pt-5 text-sm text-amber-700">As notas GUT não estão disponíveis. Atualize a página para tentar novamente.</p>
                 <div v-else-if="editing.gut && hasTechnicalGut" class="mt-5 space-y-5 border-t border-slate-100 pt-5">
@@ -1047,6 +1062,11 @@ onUnmounted(() => {
                         <button v-if="capabilities.tel_url && !editing.tel" type="button" class="rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 hover:border-slate-400" @click="startEditing('tel')">Editar</button>
                     </div>
                 </div>
+                <div v-if="isInherited && previous_assessment_summary?.tel" class="mt-5 rounded-2xl border border-teal-200 bg-teal-50 p-4 text-sm text-slate-700">
+                    <p class="text-xs font-bold uppercase tracking-wide text-teal-800">Última revisão · {{ previous_assessment_summary.inspection.number || '—' }} · {{ previous_assessment_summary.assessed_at || 'Data não informada' }}</p>
+                    <p class="mt-2"><strong class="text-slate-900">Classificação:</strong> {{ previous_assessment_summary.classification?.code || '—' }} · {{ previous_assessment_summary.classification?.label || 'Sem classificação' }}</p>
+                    <p class="mt-1"><strong class="text-slate-900">TEL:</strong> Impacto {{ previous_assessment_summary.tel.impact?.score ?? '—' }} · Risco {{ previous_assessment_summary.tel.fall_risk?.score ?? '—' }} · Pontuação {{ previous_assessment_summary.tel.score ?? '—' }}</p>
+                </div>
                 <div v-if="editing.tel" class="mt-5 grid gap-4 border-t border-slate-100 pt-5 md:grid-cols-2">
                     <label>
                         <span :class="labelClass">Altura do elemento (m)</span>
@@ -1131,6 +1151,11 @@ onUnmounted(() => {
                         <p class="mt-2 whitespace-pre-line text-sm text-slate-700">{{ assessment.recommendation || 'Nenhuma recomendação informada.' }}</p>
                     </div>
                 </div>
+                <div v-if="isInherited && previous_assessment_summary && (previous_assessment_summary.comment || previous_assessment_summary.recommendation)" class="mt-4 rounded-2xl border border-teal-200 bg-teal-50 p-4 text-sm text-slate-700">
+                    <p class="text-xs font-bold uppercase tracking-wide text-teal-800">Última revisão · {{ previous_assessment_summary.inspection.number || '—' }} · {{ previous_assessment_summary.assessed_at || 'Data não informada' }}</p>
+                    <p v-if="previous_assessment_summary.comment" class="mt-2 whitespace-pre-line"><strong class="text-slate-900">Comentário técnico:</strong> {{ previous_assessment_summary.comment }}</p>
+                    <p v-if="previous_assessment_summary.recommendation" class="mt-2 whitespace-pre-line"><strong class="text-slate-900">Recomendação:</strong> {{ previous_assessment_summary.recommendation }}</p>
+                </div>
             </section>
 
             <section v-if="requiresEvidence" class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
@@ -1197,6 +1222,7 @@ onUnmounted(() => {
                     </div>
                     <div class="flex flex-wrap items-center gap-2">
                         <span class="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600">{{ evidence.length }} item(ns)</span>
+                        <button v-if="isInherited && previous_assessment_summary?.photos?.length" type="button" class="rounded-xl border border-teal-300 bg-teal-50 px-3.5 py-2 text-sm font-semibold text-teal-800 hover:bg-teal-100" @click="historyOpen = true">Ver evidências anteriores</button>
                     </div>
                 </div>
                 <p class="mt-2 text-sm text-slate-500">
