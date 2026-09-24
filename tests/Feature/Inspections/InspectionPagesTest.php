@@ -209,6 +209,43 @@ final class InspectionPagesTest extends TestCase
         $this->assertStringContainsString('inspection.planned_end_on', $source);
     }
 
+    public function test_show_separates_cancel_from_workflow_and_places_it_last(): void
+    {
+        $source = file_get_contents(resource_path('js/pages/Inspections/Show.vue'));
+
+        $this->assertStringContainsString("const workflowTransitions = computed(() => props.transitions.filter((transition) => transition.key !== 'cancel'))", $source);
+        $this->assertStringContainsString("const cancelTransition = computed(() => props.transitions.find((transition) => transition.key === 'cancel'))", $source);
+        $this->assertStringContainsString('v-for="transition in workflowTransitions"', $source);
+        $this->assertStringContainsString('v-if="cancelTransition"', $source);
+        $this->assertStringContainsString('<TransitionForm :transition="cancelTransition" />', $source);
+        $this->assertStringContainsString('>Ações disponíveis<', $source);
+        $this->assertStringNotContainsString('>Workflow<', $source);
+        $this->assertStringNotContainsString('>Ações da inspeção<', $source);
+        $this->assertStringNotContainsString('border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500">Nenhuma ação disponível', $source);
+
+        $this->assertGreaterThan(
+            strpos($source, '<ReportMetadataPanel'),
+            strpos($source, 'v-if="cancelTransition"'),
+        );
+        $this->assertGreaterThan(
+            strpos($source, '<CorrectionRequestsPanel'),
+            strpos($source, 'v-if="cancelTransition"'),
+        );
+    }
+
+    public function test_show_combines_situation_criticality_and_personal_correction_filters(): void
+    {
+        $source = file_get_contents(resource_path('js/pages/Inspections/Show.vue'));
+
+        $this->assertStringContainsString('const activeSituation = ref(\'active\')', $source);
+        $this->assertStringContainsString('const criticalOnly = ref(false)', $source);
+        $this->assertStringContainsString('const pendingForMeOnly = ref(false)', $source);
+        $this->assertStringContainsString('v-model="activeSituation"', $source);
+        $this->assertStringContainsString('Pendências para mim', $source);
+        $this->assertStringContainsString('&& (!criticalOnly.value', $source);
+        $this->assertStringContainsString('&& (!pendingForMeOnly.value', $source);
+    }
+
     public function test_snapshot_has_no_editable_controls(): void
     {
         $source = file_get_contents(resource_path('js/components/domain/inspections/InspectionSnapshot.vue'));

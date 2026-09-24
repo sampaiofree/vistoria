@@ -82,6 +82,7 @@ function gutDefaults() {
         urgency_matrix_code: urgency.matrix?.code ?? '',
         transporter_type_code: urgency.transporter_type?.code ?? '',
         urgency_option_code: urgency.option?.code ?? '',
+        atmospheric_classification: urgency.source?.value ?? props.gut_definition?.sources?.urgency?.value ?? '',
         trend_group_code: trend.group?.code ?? '',
         trend_option_code: trend.option?.code ?? '',
     };
@@ -184,21 +185,35 @@ const isTac = computed(() => defectCategory.value === 'TAC');
 const isRec = computed(() => defectCategory.value === 'REC');
 const isTel = computed(() => defectCategory.value === 'TEL');
 const civilFields = [
-    { key: 'length', label: 'Comprimento (m)' },
-    { key: 'height', label: 'Altura (m)' },
-    { key: 'width', label: 'Largura (m)' },
-    { key: 'quantity', label: 'Quantidade' },
+    { key: 'length', label: 'Comprimento', unit: 'm' },
+    { key: 'height', label: 'Altura', unit: 'm' },
+    { key: 'width', label: 'Largura', unit: 'm' },
+    { key: 'quantity', label: 'Quantidade', unit: 'un.' },
 ];
 const recElements = computed(() => props.quantity_definition?.elements ?? []);
 const selectedRecElement = computed(() => recElements.value.find((element) => element.code === quantityForm.element) ?? null);
 const recQuantityFields = computed(() => {
-    const fields = [...(selectedRecElement.value?.fields ?? [])].filter((field) => field.key !== 'quantity' && field.key !== 'total_weight');
-    if (selectedRecElement.value?.mode !== 'manual') fields.push({ key: 'quantity', label: 'Quantidade', unit: null });
-
-    return fields;
+    return [...(selectedRecElement.value?.fields ?? [])]
+        .filter((field) => field.key !== 'total_weight');
 });
 const quantityPreview = computed(() => calculateNativeQuantity(defectCategory.value, quantityForm));
-const quantityReady = computed(() => quantityPreview.value !== null);
+const hasCalculatedMultiplier = computed(() => isCivil.value
+    || (isRec.value && selectedRecElement.value?.mode === 'calculated'));
+const allowsLegacyFractionalMultiplier = computed(() => Boolean(
+    hasCalculatedMultiplier.value
+    && editingQuantity.value
+    && !Number.isInteger(Number(editingQuantity.value.quantity)),
+));
+const quantityMultiplierIsValid = computed(() => {
+    if (!hasCalculatedMultiplier.value) return true;
+
+    const value = Number(quantityForm.quantity);
+
+    return Number.isFinite(value)
+        && value > 0
+        && (allowsLegacyFractionalMultiplier.value || Number.isInteger(value));
+});
+const quantityReady = computed(() => quantityPreview.value !== null && quantityMultiplierIsValid.value);
 const trendOptions = computed(() => trendOptionsFor(props.gut_definition, gutForm.trend_group_code));
 const civilUrgencyContexts = computed(() => urgencyContextsFor(props.gut_definition));
 const civilUrgencyOptions = computed(() => urgencyOptionsFor(
@@ -315,7 +330,7 @@ function saveGut() {
         .transform((data) => buildTechnicalGutPayload(props.gut_definition, data))
         .put(props.capabilities.gut_url, {
         preserveScroll: true,
-        only: ['assessment', 'classification', 'gut_definition', 'gut_snapshot', 'gut_options', 'gut_classification_ranges', 'capabilities', 'flash'],
+        only: ['assessment', 'classification', 'gut_definition', 'gut_snapshot', 'gut_options', 'gut_classification_ranges', 'location_map', 'capabilities', 'flash'],
         onSuccess: () => { editing.gut = false; },
     });
 }
@@ -460,6 +475,10 @@ function civilInputUnit(key) {
 
 function blockInvalidNumberKey(event) {
     if (['e', 'E', '+', '-'].includes(event.key)) event.preventDefault();
+}
+
+function blockInvalidIntegerKey(event) {
+    if (['e', 'E', '+', '-', '.', ','].includes(event.key)) event.preventDefault();
 }
 
 function cancelEditing(card) {
@@ -702,10 +721,10 @@ onUnmounted(() => {
                     </label>
                     <template v-if="isCivil">
                         <label v-for="field in civilFields" :key="field.key" class="block">
-                            <span :class="labelClass">{{ field.label }}</span>
+                            <span :class="labelClass">{{ field.label }} ({{ field.unit }})</span>
                             <div class="relative mt-1.5">
-                                <input v-model="quantityForm[field.key]" type="number" inputmode="decimal" min="0.0001" step="any" :class="unitInputClass" @keydown="blockInvalidNumberKey">
-                                <span class="pointer-events-none absolute inset-y-0 right-0 flex items-center border-l border-slate-200 px-3 text-sm font-semibold text-slate-500">{{ field.key === 'quantity' ? 'un.' : 'm' }}</span>
+                                <input v-model="quantityForm[field.key]" type="number" :inputmode="field.key === 'quantity' && !allowsLegacyFractionalMultiplier ? 'numeric' : 'decimal'" :min="field.key === 'quantity' ? 1 : 0.0001" :step="field.key === 'quantity' && !allowsLegacyFractionalMultiplier ? 1 : 'any'" :class="unitInputClass" @keydown="field.key === 'quantity' && !allowsLegacyFractionalMultiplier ? blockInvalidIntegerKey($event) : blockInvalidNumberKey($event)">
+                                <span class="pointer-events-none absolute inset-y-0 right-0 flex items-center border-l border-slate-200 px-3 text-sm font-semibold text-slate-500">{{ field.unit }}</span>
                             </div>
                             <p v-if="quantityForm.errors[`quantity.${field.key}`]" :class="errorClass">{{ quantityForm.errors[`quantity.${field.key}`] }}</p>
                         </label>
@@ -754,8 +773,8 @@ onUnmounted(() => {
                         </template>
                         <template v-else-if="selectedRecElement">
                             <label v-for="field in recQuantityFields" :key="field.key" class="block">
-                                <span :class="labelClass">{{ field.label }}<template v-if="field.unit"> ({{ field.unit }})</template></span>
-                                <input v-model="quantityForm[field.key]" type="number" inputmode="decimal" min="0.0001" step="any" :class="inputClass">
+                                <span :class="labelClass">{{ field.label }}<template v-if="field.unit"> ({{ field.key === 'quantity' ? 'un.' : field.unit }})</template></span>
+                                <input v-model="quantityForm[field.key]" type="number" :inputmode="field.key === 'quantity' && !allowsLegacyFractionalMultiplier ? 'numeric' : 'decimal'" :min="field.key === 'quantity' ? 1 : 0.0001" :step="field.key === 'quantity' && !allowsLegacyFractionalMultiplier ? 1 : 'any'" :class="inputClass" @keydown="field.key === 'quantity' && !allowsLegacyFractionalMultiplier ? blockInvalidIntegerKey($event) : blockInvalidNumberKey($event)">
                                 <p v-if="quantityForm.errors[`quantity.${field.key}`]" :class="errorClass">{{ quantityForm.errors[`quantity.${field.key}`] }}</p>
                             </label>
                             <div class="rounded-xl bg-slate-50 p-4">
@@ -799,7 +818,7 @@ onUnmounted(() => {
                             </div>
                             <div v-if="item.mode !== 'manual' || isCivil" class="rounded-xl bg-slate-50 p-3">
                                 <dt class="text-xs text-slate-500">Quantidade</dt>
-                                <dd class="mt-1 font-semibold text-slate-900">{{ formatNativeMeasurement(item.quantity) }}<span v-if="isCivil"> un.</span></dd>
+                                <dd class="mt-1 font-semibold text-slate-900">{{ formatNativeMeasurement(item.quantity) }}<span v-if="isCivil || isRec"> un.</span></dd>
                             </div>
                             <div v-if="item.unit_value" class="rounded-xl bg-slate-50 p-3">
                                 <dt class="text-xs text-slate-500">Valor unitário</dt>
@@ -836,6 +855,44 @@ onUnmounted(() => {
                     <p class="mt-2"><strong class="text-slate-900">Classificação:</strong> {{ previous_assessment_summary.classification?.code || '—' }} · {{ previous_assessment_summary.classification?.label || 'Sem classificação' }}</p>
                     <p class="mt-1"><strong class="text-slate-900">GUT:</strong> G {{ previous_assessment_summary.gut.gravity ?? '—' }} · U {{ previous_assessment_summary.gut.urgency ?? '—' }} · T {{ previous_assessment_summary.gut.trend ?? '—' }} · {{ previous_assessment_summary.gut.score ?? '—' }}</p>
                 </div>
+                <div v-if="isTac" class="mt-5 grid gap-4 border-t border-slate-100 pt-5 md:grid-cols-2">
+                    <div class="rounded-2xl border p-4" :class="gut_definition.sources?.gravity?.valid ? 'border-slate-200 bg-slate-50' : 'border-amber-300 bg-amber-50'">
+                        <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Gravidade (G) · Código ABC</p>
+                        <p v-if="gut_definition.sources?.gravity?.valid" class="mt-2 font-semibold text-slate-900">
+                            {{ gut_definition.sources.gravity.label }} · Nota {{ gut_definition.sources.gravity.score }}
+                        </p>
+                        <p v-else class="mt-2 text-sm font-medium text-amber-800">
+                            {{ gut_definition.sources?.gravity?.message || 'Corrija este dado no cadastro de origem para calcular o GUT.' }}
+                        </p>
+                    </div>
+                    <div class="rounded-2xl border p-4" :class="gut_definition.sources?.urgency?.valid ? 'border-slate-200 bg-slate-50' : 'border-amber-300 bg-amber-50'">
+                        <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Urgência (U) · Atmosfera</p>
+                        <template v-if="editing.gut">
+                            <div class="mt-3">
+                                <span :class="labelClass">Classificação atmosférica</span>
+                                <GutScoreSelect
+                                    v-model="gutForm.atmospheric_classification"
+                                    :options="gut_definition.sources?.urgency?.mapping ?? []"
+                                    value-key="value"
+                                    criterion="U"
+                                    aria-label="Classificação atmosférica"
+                                    placeholder="Selecione a classificação"
+                                />
+                            </div>
+                            <p class="mt-2 text-xs text-slate-600">Vale para todos os TACs desta inspeção e define a nota U automaticamente.</p>
+                            <p v-if="gutForm.errors.atmospheric_classification" :class="errorClass">{{ gutForm.errors.atmospheric_classification }}</p>
+                        </template>
+                        <p v-if="gut_definition.sources?.urgency?.valid" class="mt-3 font-semibold text-slate-900">
+                            {{ gut_definition.sources.urgency.label }} · Nota {{ gut_definition.sources.urgency.score }}
+                        </p>
+                        <p v-if="gut_definition.sources?.urgency?.description" class="mt-1 text-sm text-slate-600">
+                            {{ gut_definition.sources.urgency.description }}
+                        </p>
+                        <p v-else class="mt-3 text-sm font-medium text-amber-800">
+                            {{ gut_definition.sources?.urgency?.message || 'Corrija este dado no cadastro de origem para calcular o GUT.' }}
+                        </p>
+                    </div>
+                </div>
                 <p v-if="!gutConfigured" class="mt-5 border-t border-slate-100 pt-5 text-sm text-amber-700">As notas GUT não estão disponíveis. Atualize a página para tentar novamente.</p>
                 <div v-else-if="editing.gut && hasTechnicalGut" class="mt-5 space-y-5 border-t border-slate-100 pt-5">
                     <div v-if="isCivil || isRec" class="grid gap-4 md:grid-cols-2">
@@ -860,18 +917,6 @@ onUnmounted(() => {
                                 placeholder="Selecione o impacto"
                             />
                             <p v-if="gutForm.errors.asset_impact_code" :class="errorClass">{{ gutForm.errors.asset_impact_code }}</p>
-                        </div>
-                    </div>
-
-                    <div v-if="isTac" class="grid gap-4 md:grid-cols-2">
-                        <div v-for="criterion in ['gravity', 'urgency']" :key="criterion" class="rounded-2xl border p-4" :class="gut_definition.sources?.[criterion]?.valid ? 'border-slate-200 bg-slate-50' : 'border-amber-300 bg-amber-50'">
-                            <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">{{ criterion === 'gravity' ? 'Gravidade (G) · Código ABC' : 'Urgência (U) · Atmosfera' }}</p>
-                            <p v-if="gut_definition.sources?.[criterion]?.valid" class="mt-2 font-semibold text-slate-900">
-                                {{ gut_definition.sources[criterion].label }} · Nota {{ gut_definition.sources[criterion].score }}
-                            </p>
-                            <p v-else class="mt-2 text-sm font-medium text-amber-800">
-                                {{ gut_definition.sources?.[criterion]?.message || 'Corrija este dado no cadastro de origem para calcular o GUT.' }}
-                            </p>
                         </div>
                     </div>
 
@@ -1020,7 +1065,12 @@ onUnmounted(() => {
                     <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Resultado automático</p>
                     <p v-if="gutScorePreview !== null" class="mt-1 font-semibold text-slate-900">
                         <template v-if="technicalGutPreview">G {{ technicalGutPreview.gravity }} × U {{ technicalGutPreview.urgency }} × T {{ technicalGutPreview.trend }} = </template>
-                        {{ gutScorePreview }} · {{ previewClassification ? `${previewClassification.code} — ${previewClassification.name}` : 'Sem classificação para este resultado GUT' }}
+                        {{ gutScorePreview }} ·
+                        <template v-if="previewClassification">
+                            <span class="inline-flex items-center rounded-lg px-2.5 py-1 text-sm font-bold" :style="previewClassification.color ? { backgroundColor: previewClassification.color, color: '#fff' } : {}" :class="previewClassification.color ? '' : 'bg-slate-100 text-slate-800'">{{ previewClassification.code }}</span>
+                            <span class="ml-1 text-slate-700">— {{ previewClassification.name }}</span>
+                        </template>
+                        <template v-else>Sem classificação para este resultado GUT</template>
                     </p>
                     <p v-else class="mt-1 text-slate-600">Preencha os critérios técnicos para calcular o resultado.</p>
                     <p v-if="gutForm.errors.gut" :class="errorClass">{{ gutForm.errors.gut }}</p>

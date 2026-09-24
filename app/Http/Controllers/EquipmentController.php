@@ -107,7 +107,7 @@ final class EquipmentController extends Controller
     {
         $equipment = $this->tenantEquipment($tenant, $equipment);
         $this->authorize('update', $equipment);
-        $equipment->loadMissing('client');
+        $equipment->loadMissing('client')->loadCount(['inspections', 'defects']);
 
         return Inertia::render('Equipments/Edit', [
             'equipment' => $this->equipmentFormPayload($equipment),
@@ -115,6 +115,11 @@ final class EquipmentController extends Controller
             'cancel_url' => route('equipments.show', $equipment),
             'abc_options' => AssetAbcClass::options(),
             'identifier_context' => $this->equipmentIdentifierContext($tenant, $equipment->client->name),
+            'related_records' => [
+                'inspections_count' => $equipment->inspections_count,
+                'defects_count' => $equipment->defects_count,
+                'requires_confirmation' => $equipment->inspections_count > 0 || $equipment->defects_count > 0,
+            ],
         ]);
     }
 
@@ -146,7 +151,7 @@ final class EquipmentController extends Controller
 
     private function equipmentFormPayload(Equipment $equipment): array
     {
-        return [...$equipment->only(['numero_cliente', 'numero_interno', 'maintenance_plan_code', 'maintenance_item_code', 'area_code', 'area_name', 'subarea_code', 'subarea_name', 'task_list_group', 'task_list_group_counter', 'public_id', 'tag', 'defect_code_prefix', 'name', 'description', 'abc_code', 'installation_location', 'status']), 'can_edit_defect_code_prefix' => $equipment->isRegistrationEditable()];
+        return $equipment->only(['numero_cliente', 'numero_interno', 'maintenance_plan_code', 'maintenance_item_code', 'area_code', 'area_name', 'subarea_code', 'subarea_name', 'task_list_group', 'task_list_group_counter', 'public_id', 'tag', 'defect_code_prefix', 'name', 'description', 'abc_code', 'installation_location', 'status']);
     }
 
     /** @return array{client_name: ?string, organization_name: string} */

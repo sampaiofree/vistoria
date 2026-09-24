@@ -599,14 +599,13 @@ As opções e as duas notas de entrada devem ser preservadas no snapshot, além 
 
 ### Quantitativo
 
-A unidade principal é `m³`. O inspetor informa Comprimento, Altura, Largura e Quantidade; os resultados são somente leitura:
+A unidade principal é `m³`. O inspetor registra cada medição como um item independente e informa Comprimento, Altura, Largura e Quantidade. Para novos itens, a quantidade é um número inteiro positivo; itens legados com quantidade decimal permanecem editáveis para preservar seu histórico.
 
 ```text
-M³ unitário = Comprimento × Altura × Largura
-M³ total = M³ unitário × Quantidade
+M³ do item = Comprimento × Altura × Largura × Quantidade
 ```
 
-Exemplo: 2,00 m × 0,50 m × 0,30 m, com quantidade 2, resulta em 0,30 m³ unitário e 0,60 m³ total.
+Exemplo: 2,00 m × 0,50 m × 0,30 m × 2 resulta em 0,60 m³ para o item. Uma segunda ocorrência pode ser registrada como outro item e entra na soma da avaliação.
 
 ### Classificação e validação complementar
 

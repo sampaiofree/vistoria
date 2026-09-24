@@ -497,6 +497,195 @@ final class ViewFirstReadModelTest extends TestCase
         ], $presenter->progress($inspection));
     }
 
+    public function test_report_exposes_one_rec_quantity_row_per_persisted_item(): void
+    {
+        [, $admin, $equipment, $inspection] = $this->viewFirstScenario();
+        $defect = Defect::factory()->forEquipment($equipment, $inspection)->create([
+            'category' => DefectCategory::StructuralRecovery,
+            'code' => 'VT002-REC-001',
+            'sequence_number' => 1,
+            'created_at' => '2026-05-11 08:00:00',
+        ]);
+        DefectAssessment::factory()->forDefect($defect, $inspection)->complete()->create([
+            'condition' => DefectAssessmentCondition::New,
+            'gravity' => 1,
+            'urgency' => 2,
+            'trend' => 2,
+            'gut_score' => 4,
+            'classification_code' => 'IE-5',
+            'classification_snapshot' => ['color' => '#A9D18E'],
+            'gut_snapshot' => [
+                'criteria' => [
+                    'gravity' => ['score' => 1, 'color' => '#70AD47', 'safety_impact' => ['label' => 'Sem possibilidade de acidente'], 'asset_impact' => ['label' => 'Sem impacto no ativo']],
+                    'urgency' => ['score' => 2, 'color' => '#FFD966', 'option' => ['label' => 'Guarda-corpos']],
+                    'trend' => ['score' => 2, 'color' => '#FFD966', 'group' => ['label' => 'DEFORMAÇÃO'], 'option' => ['label' => 'Deformação']],
+                ],
+            ],
+            'quantity_snapshot' => [
+                'snapshot_version' => 2,
+                'category' => 'REC',
+                'measurement_unit' => 'kg',
+                'total' => '128.5100000000000000',
+                'items' => [
+                    ['position' => 1, 'description' => 'Guarda-corpo', 'element' => ['code' => 'guardrail', 'label' => 'Guarda-corpo'], 'inputs' => ['quantity' => 1], 'quantity' => '1', 'total' => '90.0000000000000000', 'measurement_unit' => 'kg'],
+                    ['position' => 2, 'description' => 'Perfil L', 'element' => ['code' => 'profile_l', 'label' => 'Perfil L'], 'inputs' => ['quantity' => 2], 'quantity' => '2', 'total' => '38.5100000000000000', 'measurement_unit' => 'kg'],
+                ],
+            ],
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('inspections.report-preview', $inspection))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('content.rec_quantity_rows', 2)
+                ->where('content.rec_quantity_rows.0.code', 'VT002-REC-001')
+                ->where('content.rec_quantity_rows.0.registered_on', '11/05/2026')
+                ->where('content.rec_quantity_rows.0.project', $inspection->context_snapshot['equipment']['numero_cliente'])
+                ->where('content.rec_quantity_rows.0.item', 'Guarda-corpo')
+                ->where('content.rec_quantity_rows.0.element', 'Guarda-corpo')
+                ->where('content.rec_quantity_rows.0.quantity', '1,0')
+                ->where('content.rec_quantity_rows.1.quantity', '2,0')
+                ->where('content.rec_quantity_rows.0.total_weight_label', '90,00')
+                ->where('content.rec_quantity_rows.1.element', 'Perfil L')
+                ->where('content.rec_quantity_rows.1.total_weight_label', '38,51')
+                ->where('content.rec_quantity_rows.0.gravity.label', 'IMP. ATIV. / IMP. SEG.')
+                ->where('content.rec_quantity_rows.0.trend.label', 'DEFORMAÇÃO')
+                ->where('content.rec_quantity_rows.0.gut_score', 4)
+                ->where('content.rec_quantity_rows.0.classification.code', 'IE-5'));
+    }
+
+    public function test_report_excludes_draft_rec_until_it_is_completed(): void
+    {
+        [, $admin, $equipment, $inspection] = $this->viewFirstScenario();
+        $defect = Defect::factory()->forEquipment($equipment, $inspection)->create([
+            'category' => DefectCategory::StructuralRecovery,
+            'code' => 'VT002-REC-002',
+            'sequence_number' => 2,
+        ]);
+        $assessment = DefectAssessment::factory()->forDefect($defect, $inspection)->draft()->create([
+            'condition' => DefectAssessmentCondition::New,
+            'recommendation' => 'Recuperar o elemento estrutural.',
+            'gravity' => 2,
+            'urgency' => 3,
+            'trend' => 2,
+            'gut_score' => 12,
+            'classification_code' => 'IE-4',
+            'classification_snapshot' => ['code' => 'IE-4', 'color' => '#92D050'],
+            'gut_snapshot' => [
+                'criteria' => [
+                    'gravity' => ['score' => 2, 'color' => '#92D050', 'safety_impact' => ['label' => 'Impacto de segurança'], 'asset_impact' => ['label' => 'Impacto no ativo']],
+                    'urgency' => ['score' => 3, 'color' => '#FFFF00', 'option' => ['label' => 'Travessa / Longarina']],
+                    'trend' => ['score' => 2, 'color' => '#92D050', 'option' => ['label' => 'Deformação']],
+                ],
+            ],
+            'quantity_snapshot' => [
+                'snapshot_version' => 2,
+                'category' => 'REC',
+                'measurement_unit' => 'kg',
+                'total' => '35.0000000000000000',
+                'items' => [
+                    ['position' => 1, 'description' => 'Longarina', 'element' => ['code' => 'profile_l', 'label' => 'Perfil L'], 'inputs' => ['quantity' => 1], 'quantity' => '1', 'total' => '35.0000000000000000', 'measurement_unit' => 'kg'],
+                ],
+            ],
+        ]);
+        $this->locateAssessment($assessment);
+        foreach ([1, 2] as $position) {
+            AssessmentPhoto::factory()->for($inspection)->for($assessment, 'assessment')->ready()->create([
+                'organization_id' => $inspection->organization_id,
+                'position' => $position,
+            ]);
+        }
+
+        $this->actingAs($admin)
+            ->get(route('inspections.report-preview', $inspection))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('content.rec_quantity_rows', 0)
+                ->has('content.location_sequence', 0)
+                ->has('content.photographic_documentation.blocks', 0));
+
+        $assessment->update([
+            'status' => DefectAssessmentStatus::Complete,
+            'assessed_at' => now(),
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('inspections.report-preview', $inspection))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('content.rec_quantity_rows', 1)
+                ->where('content.rec_quantity_rows.0.code', 'VT002-REC-002')
+                ->has('content.location_sequence', 1)
+                ->where('content.location_sequence.0.category.code', 'REC')
+                ->has('content.photographic_documentation.blocks', 1));
+    }
+
+    public function test_report_exposes_one_civil_quantity_row_per_persisted_item(): void
+    {
+        [, $admin, $equipment, $inspection] = $this->viewFirstScenario();
+        $defect = Defect::factory()->forEquipment($equipment, $inspection)->create([
+            'category' => DefectCategory::Civil,
+            'code' => 'VT002-CV-010',
+            'sequence_number' => 10,
+            'created_at' => '2026-05-11 08:00:00',
+        ]);
+        $assessment = DefectAssessment::factory()->forDefect($defect, $inspection)->complete()->create([
+            'condition' => DefectAssessmentCondition::New,
+            'item_description' => 'Laje',
+            'gravity' => 3,
+            'urgency' => 4,
+            'trend' => 2,
+            'gut_score' => 24,
+            'classification_code' => 'CV-3',
+            'classification_snapshot' => ['color' => '#FFFF00'],
+            'gut_snapshot' => [
+                'criteria' => [
+                    'gravity' => ['score' => 3, 'color' => '#FFD966', 'safety_impact' => ['label' => 'Sem possibilidade de acidente'], 'asset_impact' => ['label' => 'Impacto na atividade']],
+                    'urgency' => ['score' => 4, 'color' => '#FFD966', 'option' => ['label' => 'Bases de sustentação de equipamentos']],
+                    'trend' => ['score' => 2, 'color' => '#A9D18E', 'group' => ['label' => 'Infiltração'], 'option' => ['label' => 'Infiltração localizada']],
+                ],
+            ],
+            'quantity_snapshot' => [
+                'snapshot_version' => 2,
+                'category' => 'CV',
+                'measurement_unit' => 'm3',
+                'total' => '6.4000000000000000',
+                'items' => [
+                    ['position' => 1, 'description' => 'Trecho norte', 'inputs' => ['length' => '2', 'height' => '1', 'width' => '0.4', 'quantity' => '2'], 'quantity' => '2', 'total' => '1.6000000000000000', 'measurement_unit' => 'm3'],
+                    ['position' => 2, 'description' => 'Trecho sul', 'inputs' => ['length' => '3', 'height' => '2', 'width' => '0.4', 'quantity' => '2.5'], 'quantity' => '2.5', 'total' => '4.8000000000000000', 'measurement_unit' => 'm3'],
+                ],
+            ],
+        ]);
+        $this->locateAssessment($assessment);
+        AssessmentPhoto::factory()->for($inspection)->for($assessment, 'assessment')->ready()->create([
+            'organization_id' => $inspection->organization_id,
+            'position' => 1,
+        ]);
+        AssessmentPhoto::factory()->for($inspection)->for($assessment, 'assessment')->ready()->create([
+            'organization_id' => $inspection->organization_id,
+            'position' => 2,
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('inspections.report-preview', $inspection))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('content.civil_quantity_rows', 2)
+                ->where('content.civil_quantity_rows.0.code', 'VT002-CV-010')
+                ->where('content.civil_quantity_rows.0.registered_on', '11/05/2026')
+                ->where('content.civil_quantity_rows.0.project', $inspection->context_snapshot['equipment']['numero_cliente'])
+                ->where('content.civil_quantity_rows.0.photos', '1 E 2')
+                ->where('content.civil_quantity_rows.0.item', 'Laje')
+                ->where('content.civil_quantity_rows.0.element', 'Bases de sustentação de equipamentos')
+                ->where('content.civil_quantity_rows.0.quantity', '2,0')
+                ->where('content.civil_quantity_rows.1.quantity', '2,5')
+                ->where('content.civil_quantity_rows.0.total_volume_label', '1,60')
+                ->where('content.civil_quantity_rows.1.total_volume_label', '4,80')
+                ->where('content.civil_quantity_rows.0.trend.label', 'Infiltração')
+                ->where('content.civil_quantity_rows.0.gut_score', 24)
+                ->where('content.civil_quantity_rows.0.classification.code', 'CV-3'));
+    }
+
     public function test_empty_inspection_keeps_the_hub_renderable_without_inventing_criticality(): void
     {
         $organization = Organization::factory()->create();

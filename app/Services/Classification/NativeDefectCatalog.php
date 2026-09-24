@@ -656,16 +656,18 @@ final class NativeDefectCatalog
             score: $enum?->urgency(),
             message: 'Informe uma classificação atmosférica válida (C2, C3, C4, C5 ou CX) na inspeção.',
             mapping: AtmosphericCorrosivity::options(),
+            description: $enum?->description(),
         );
     }
 
-    /** @param list<array{value:string,label:string,score:int}> $mapping @return array<string, mixed> */
-    private static function source(string $field, ?string $value, ?string $label, ?int $score, string $message, array $mapping): array
+    /** @param list<array{value:string,label:string,description?:string,score:int}> $mapping @return array<string, mixed> */
+    private static function source(string $field, ?string $value, ?string $label, ?int $score, string $message, array $mapping, ?string $description = null): array
     {
         return [
             'field' => $field,
             'value' => $value,
             'label' => $label,
+            ...($description === null ? [] : ['description' => $description]),
             'score' => $score,
             'color' => $score === null ? null : self::colorForScore($score),
             'valid' => $score !== null,

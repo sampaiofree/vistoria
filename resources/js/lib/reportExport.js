@@ -4,6 +4,26 @@ const A4_WIDTH_PX = 794;
 const A4_HEIGHT_PX = 1123;
 const A4_WIDTH_TWIPS = 11906;
 const A4_HEIGHT_TWIPS = 16838;
+const A4_LANDSCAPE_WIDTH_MM = 297;
+const A4_LANDSCAPE_HEIGHT_MM = 210;
+const A4_LANDSCAPE_WIDTH_PX = 1123;
+const A4_LANDSCAPE_HEIGHT_PX = 794;
+const A4_LANDSCAPE_WIDTH_TWIPS = 16838;
+const A4_LANDSCAPE_HEIGHT_TWIPS = 11906;
+
+export function reportPageDimensions(orientation = 'portrait') {
+    return orientation === 'landscape'
+        ? {
+            orientation: 'landscape', widthMm: A4_LANDSCAPE_WIDTH_MM, heightMm: A4_LANDSCAPE_HEIGHT_MM,
+            widthPx: A4_LANDSCAPE_WIDTH_PX, heightPx: A4_LANDSCAPE_HEIGHT_PX,
+            widthTwips: A4_LANDSCAPE_WIDTH_TWIPS, heightTwips: A4_LANDSCAPE_HEIGHT_TWIPS,
+        }
+        : {
+            orientation: 'portrait', widthMm: A4_WIDTH_MM, heightMm: A4_HEIGHT_MM,
+            widthPx: A4_WIDTH_PX, heightPx: A4_HEIGHT_PX,
+            widthTwips: A4_WIDTH_TWIPS, heightTwips: A4_HEIGHT_TWIPS,
+        };
+}
 
 function nextFrame() {
     return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -77,7 +97,10 @@ export async function captureReportPages(elements, onProgress = () => {}) {
             },
         });
         const blob = await pngBlob(canvas);
-        pages.push(new Uint8Array(await blob.arrayBuffer()));
+        pages.push({
+            data: new Uint8Array(await blob.arrayBuffer()),
+            orientation: elements[index].dataset.reportOrientation === 'landscape' ? 'landscape' : 'portrait',
+        });
         canvas.width = 1;
         canvas.height = 1;
     }
@@ -87,8 +110,9 @@ export async function captureReportPages(elements, onProgress = () => {}) {
 
 export async function downloadReportPdf(pages, filename) {
     const { jsPDF } = await import('jspdf');
+    const firstPage = reportPageDimensions(pages[0]?.orientation);
     const pdf = new jsPDF({
-        orientation: 'portrait',
+        orientation: firstPage.orientation,
         unit: 'mm',
         format: 'a4',
         compress: true,
@@ -96,8 +120,9 @@ export async function downloadReportPdf(pages, filename) {
     });
 
     pages.forEach((page, index) => {
-        if (index > 0) pdf.addPage('a4', 'portrait');
-        pdf.addImage(page, 'PNG', 0, 0, A4_WIDTH_MM, A4_HEIGHT_MM, undefined, 'FAST');
+        const dimensions = reportPageDimensions(page.orientation);
+        if (index > 0) pdf.addPage('a4', dimensions.orientation);
+        pdf.addImage(page.data, 'PNG', 0, 0, dimensions.widthMm, dimensions.heightMm, undefined, 'FAST');
     });
 
     pdf.save(`${filename}.pdf`);
@@ -117,11 +142,14 @@ export async function downloadReportDoc(pages, filename) {
     const documentFile = new Document({
         creator: 'Vistoria',
         title: filename,
-        sections: pages.map((page, index) => ({
+        sections: pages.map((page, index) => {
+            const dimensions = reportPageDimensions(page.orientation);
+
+            return {
             properties: {
                 type: index === 0 ? undefined : SectionType.NEXT_PAGE,
                 page: {
-                    size: { width: A4_WIDTH_TWIPS, height: A4_HEIGHT_TWIPS },
+                    size: { width: dimensions.widthTwips, height: dimensions.heightTwips },
                     margin: { top: 0, right: 0, bottom: 0, left: 0, header: 0, footer: 0, gutter: 0 },
                 },
             },
@@ -130,9 +158,9 @@ export async function downloadReportDoc(pages, filename) {
                     spacing: { before: 0, after: 0, line: 1 },
                     children: [
                         new ImageRun({
-                            data: page,
+                            data: page.data,
                             type: 'png',
-                            transformation: { width: A4_WIDTH_PX, height: A4_HEIGHT_PX },
+                            transformation: { width: dimensions.widthPx, height: dimensions.heightPx },
                             floating: {
                                 horizontalPosition: { relative: HorizontalPositionRelativeFrom.PAGE, offset: 0 },
                                 verticalPosition: { relative: VerticalPositionRelativeFrom.PAGE, offset: 0 },
@@ -144,7 +172,8 @@ export async function downloadReportDoc(pages, filename) {
                     ],
                 }),
             ],
-        })),
+        };
+        }),
     });
     const blob = await Packer.toBlob(documentFile);
     downloadBlob(blob, `${filename}.docx`);

@@ -83,28 +83,19 @@ export function buildReportSummaryEntries(contentPages, summaryPageCount, overvi
             });
         }
 
-        if (page.type === 'overview') {
+        if (page.type === 'overview' || (page.annexTitle && !page.continuation && ['location-map', 'rec-quantity', 'civil-quantity'].includes(page.type))) {
             entries.push({
-                key: 'annex-a',
-                title: overviewTitle || 'ANEXO A – LOCALIZAÇÃO E DOCUMENTAÇÃO FOTOGRÁFICA - TAC',
+                key: page.type === 'overview' ? 'annex-a' : `annex-${page.key}`,
+                title: page.annexTitle || overviewTitle || 'ANEXO A – LOCALIZAÇÃO E DOCUMENTAÇÃO FOTOGRÁFICA - TAC',
                 page: pageNumber,
                 kind: 'annex',
-            });
-        }
-
-        if (page.type === 'defect-evolution' && !page.continuation) {
-            entries.push({
-                key: 'defect-evolution',
-                title: '3 QUADRO DE EVOLUÇÃO DAS AVARIAS',
-                page: pageNumber,
-                kind: 'section',
             });
         }
 
         if (page.type === 'classification-summary') {
             entries.push({
                 key: 'classification-summary',
-                title: 'RESUMO DA CLASSIFICAÇÃO DO EQUIPAMENTO – GUT',
+                title: '1 RESUMO DA CLASSIFICAÇÃO DO EQUIPAMENTO – GUT',
                 page: pageNumber,
                 kind: 'section',
             });
@@ -119,14 +110,6 @@ export function buildReportSummaryEntries(contentPages, summaryPageCount, overvi
             });
         }
 
-        if (page.type === 'location-map' && page.annexTitle) {
-            entries.push({
-                key: `annex-${page.key}`,
-                title: page.annexTitle,
-                page: pageNumber,
-                kind: 'annex',
-            });
-        }
     });
 
     return entries;

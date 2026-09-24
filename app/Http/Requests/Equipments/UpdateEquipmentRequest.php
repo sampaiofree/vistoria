@@ -37,6 +37,7 @@ final class UpdateEquipmentRequest extends FormRequest
             'description' => TextNormalizer::nullableText($this->input('description')),
             'abc_code' => TextNormalizer::technicalCode($this->input('abc_code')),
             'installation_location' => TextNormalizer::nullableText($this->input('installation_location')),
+            'confirm_related_records_edit' => $this->boolean('confirm_related_records_edit'),
         ]);
     }
 
@@ -86,6 +87,7 @@ final class UpdateEquipmentRequest extends FormRequest
             'description' => ['nullable', 'string', 'max:10000'],
             'abc_code' => ['nullable', Rule::enum(AssetAbcClass::class)],
             'installation_location' => ['nullable', 'string', 'max:255'],
+            'confirm_related_records_edit' => ['nullable', 'boolean'],
         ];
     }
 }

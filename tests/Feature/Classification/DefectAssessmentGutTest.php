@@ -78,6 +78,21 @@ final class DefectAssessmentGutTest extends TestCase
                 ->missing('assessment.defect_classification_id'));
     }
 
+    public function test_saved_gut_classification_color_is_used_by_the_confirmed_location_preview(): void
+    {
+        [$actor, $assessment] = $this->scenario(DefectCategory::Civil);
+        $saved = app(SaveDefectAssessmentGut::class)->handle($actor, $assessment, $this->technicalGutPayload(DefectCategory::Civil));
+        $this->locateAssessment($saved);
+
+        $this->actingAs($actor)
+            ->get(route('defect-assessments.show', $saved))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('location_map.location.confirmed', true)
+                ->where('location_map.color', $saved->classification_snapshot['color'])
+                ->where('location_map.style.fill', $saved->classification_snapshot['color']));
+    }
+
     public function test_invalid_http_notes_do_not_replace_a_saved_result(): void
     {
         [$actor, $assessment] = $this->scenario();

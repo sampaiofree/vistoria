@@ -15,10 +15,6 @@ const props = defineProps({
         type: String,
         required: true,
     },
-    prefixEditable: {
-        type: Boolean,
-        default: true,
-    },
     abcOptions: {
         type: Array,
         default: () => [],
@@ -114,8 +110,8 @@ const internalNumberLabel = computed(() => props.identifierContext.organization_
 
             <label class="block">
                 <span :class="labelClass">Prefixo de avaria <span class="text-rose-600" aria-hidden="true">*</span></span>
-                <input v-model="form.defect_code_prefix" :class="inputClass" type="text" maxlength="80" autocomplete="off" :disabled="!prefixEditable" required>
-                <p class="mt-1 text-xs text-slate-500">Obrigatório e único na organização. Depois da primeira avaria, não pode ser alterado.</p>
+                <input v-model="form.defect_code_prefix" :class="inputClass" type="text" maxlength="80" autocomplete="off" required>
+                <p class="mt-1 text-xs text-slate-500">Obrigatório e único na organização. A alteração não modifica códigos de avarias já existentes.</p>
                 <p v-if="form.errors.defect_code_prefix" :class="helpClass">{{ form.errors.defect_code_prefix }}</p>
             </label>
 

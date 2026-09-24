@@ -67,6 +67,8 @@ const sectionTitles = {
 const inspectionContextNumber = computed(() => props.inspection.number || 'Inspeção');
 const pageTitle = computed(() => sectionTitles[props.active_tab] || 'Inspeção');
 const pageSubtitle = computed(() => `${inspectionContextNumber.value} · ${props.inspection.equipment.tag} — ${props.inspection.equipment.name}`);
+const workflowTransitions = computed(() => props.transitions.filter((transition) => transition.key !== 'cancel'));
+const cancelTransition = computed(() => props.transitions.find((transition) => transition.key === 'cancel'));
 
 const defects = computed(() => props.content?.items ?? []);
 const defectFilters = computed(() => props.content?.filters ?? {});
@@ -216,6 +218,19 @@ async function exportReport(format) {
         </div>
 
         <div v-if="active_tab === 'overview'" class="print-hidden mt-6 space-y-6">
+            <section class="space-y-4">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                        <h2 class="text-sm font-semibold text-slate-950">Ações disponíveis</h2>
+                        <p class="mt-1 text-sm text-slate-500">Dependem da etapa atual e da responsabilidade do usuário.</p>
+                    </div>
+                </div>
+                <div v-if="workflowTransitions.length" class="grid gap-4 md:grid-cols-2">
+                    <TransitionForm v-for="transition in workflowTransitions" :key="transition.key" :transition="transition" />
+                </div>
+                <p v-else class="text-sm text-slate-500">Nenhuma ação disponível para este usuário nesta etapa.</p>
+            </section>
+
             <ReportMetadataPanel
                 :inspection="inspection"
                 :metadata="report_metadata"
@@ -247,16 +262,15 @@ async function exportReport(format) {
                 empty_label="Nenhuma solicitação geral registrada."
             />
 
-            <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+            <section v-if="cancelTransition" class="rounded-3xl border border-rose-200 bg-rose-50/50 p-5 shadow-sm sm:p-6">
                 <div>
-                    <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Workflow</p>
-                    <h2 class="mt-2 text-xl font-semibold text-slate-950">Ações da inspeção</h2>
-                    <p class="mt-1 text-sm text-slate-500">As ações disponíveis dependem da etapa atual e da responsabilidade do usuário.</p>
+                    <p class="text-xs font-bold uppercase tracking-[0.16em] text-rose-700">Ação destrutiva</p>
+                    <h2 class="mt-2 text-xl font-semibold text-slate-950">Cancelar inspeção</h2>
+                    <p class="mt-1 text-sm text-slate-600">Esta ação encerra a inspeção atual e exige uma justificativa.</p>
                 </div>
-                <div v-if="transitions.length" class="mt-5 grid gap-4 md:grid-cols-2">
-                    <TransitionForm v-for="transition in transitions" :key="transition.key" :transition="transition" />
+                <div class="mt-5 max-w-2xl">
+                    <TransitionForm :transition="cancelTransition" />
                 </div>
-                <p v-else class="mt-5 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-500">Nenhuma ação disponível para este usuário nesta etapa.</p>
             </section>
         </div>
 
@@ -636,12 +650,23 @@ async function exportReport(format) {
     margin: 0;
 }
 
+@page report-landscape {
+    size: A4 landscape;
+    margin: 0;
+}
+
 .report-preview-pages.report-exporting .report-a4-page {
     width: 210mm !important;
     height: 297mm !important;
     min-height: 297mm !important;
     margin: 0 !important;
     box-shadow: none !important;
+}
+
+.report-preview-pages.report-exporting .report-a4-page.report-a4-landscape {
+    width: 297mm !important;
+    height: 210mm !important;
+    min-height: 210mm !important;
 }
 
 @media print {
@@ -678,6 +703,10 @@ async function exportReport(format) {
         inset: 0 auto auto 0;
         width: 210mm;
         max-width: none !important;
+    }
+
+    .report-a4-page.report-a4-landscape {
+        page: report-landscape;
     }
 
     .break-inside-avoid {

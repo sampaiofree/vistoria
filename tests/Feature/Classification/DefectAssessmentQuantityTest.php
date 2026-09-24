@@ -10,6 +10,7 @@ use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
 use App\Enums\MeasurementUnit;
 use App\Enums\OperationalRole;
+use App\Enums\QuantityCalculationMode;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
 use App\Models\DefectAssessmentQuantity;
@@ -211,7 +212,7 @@ final class DefectAssessmentQuantityTest extends TestCase
         $this->assertSame(0, $assessment->quantities()->count());
     }
 
-    public function test_civil_quantity_rejects_non_decimal_or_non_positive_dimensions(): void
+    public function test_civil_quantity_rejects_invalid_dimensions_and_fractional_new_multiplier(): void
     {
         [$actor, $assessment] = $this->scenario(DefectCategory::Civil);
         $valid = ['length' => 1, 'height' => 1, 'width' => 1, 'quantity' => 1];
@@ -221,6 +222,7 @@ final class DefectAssessmentQuantityTest extends TestCase
             'scientific notation' => [[...$valid, 'width' => '1e3'], 'quantity.width'],
             'zero' => [[...$valid, 'height' => 0], 'quantity.height'],
             'negative' => [[...$valid, 'length' => -1], 'quantity.length'],
+            'fractional quantity' => [[...$valid, 'quantity' => 1.5], 'quantity.quantity'],
         ] as [$quantity, $field]) {
             $this->store($actor, $assessment, ['quantity' => $quantity])
                 ->assertSessionHasErrors($field);
@@ -229,15 +231,86 @@ final class DefectAssessmentQuantityTest extends TestCase
         $this->assertSame(0, $assessment->quantities()->count());
     }
 
-    public function test_civil_quantity_form_displays_units_and_blocks_exponent_keys(): void
+    public function test_civil_quantity_form_displays_an_integer_multiplier_and_calculated_totals(): void
     {
         $source = file_get_contents(resource_path('js/pages/DefectAssessments/Show.vue'));
+        $civilFieldsStart = strpos($source, 'const civilFields = [');
+        $civilFieldsEnd = strpos($source, '];', $civilFieldsStart) + 2;
+        $civilFields = substr($source, $civilFieldsStart, $civilFieldsEnd - $civilFieldsStart);
 
         $this->assertStringContainsString("inputmode=\"decimal\"", $source);
         $this->assertStringContainsString('@keydown="blockInvalidNumberKey"', $source);
         $this->assertStringContainsString("['e', 'E', '+', '-']", $source);
-        $this->assertStringContainsString("field.key === 'quantity' ? 'un.' : 'm'", $source);
+        $this->assertStringContainsString("key: 'quantity'", $civilFields);
+        $this->assertStringContainsString("unit: 'un.'", $civilFields);
+        $this->assertStringContainsString('blockInvalidIntegerKey', $source);
+        $this->assertStringContainsString('M³ UNI.', $source);
+        $this->assertStringContainsString('M³ TOTAL', $source);
+        $this->assertStringContainsString('quantity: item?.quantity ?? inputs.quantity ?? 1', $source);
         $this->assertStringContainsString('civilInputUnit(key)', $source);
+    }
+
+    public function test_editing_a_legacy_fractional_civil_item_preserves_its_multiplier(): void
+    {
+        [$actor, $assessment] = $this->scenario(DefectCategory::Civil);
+        $item = DefectAssessmentQuantity::factory()->forAssessment($assessment)->create([
+            'quantity' => 1.5,
+            'mode' => QuantityCalculationMode::Calculated,
+        ]);
+
+        $this->actingAs($actor)->put(route('defect-assessment-quantities.update', $item), [
+            'description' => 'Trecho legado revisado',
+            'quantity' => ['length' => 2, 'height' => 0.5, 'width' => 0.3, 'quantity' => 1.5],
+        ])->assertRedirect()->assertSessionHasNoErrors();
+
+        $item->refresh();
+        $this->assertSame('1.5000000000000000', $item->quantity);
+        $this->assertSame('0.4500000000000000', $item->measurement_value);
+        $this->assertSame('Trecho legado revisado', $item->description);
+    }
+
+    public function test_rec_quantity_form_displays_the_multiplier_and_legacy_fractional_item_preserves_it(): void
+    {
+        $source = file_get_contents(resource_path('js/pages/DefectAssessments/Show.vue'));
+        $recFieldsStart = strpos($source, 'const recQuantityFields = computed');
+        $recFieldsEnd = strpos($source, 'const quantityPreview', $recFieldsStart);
+        $recFields = substr($source, $recFieldsStart, $recFieldsEnd - $recFieldsStart);
+
+        $this->assertStringNotContainsString("field.key !== 'quantity'", $recFields);
+        $this->assertStringContainsString("field.key !== 'total_weight'", $recFields);
+
+        [$actor, $assessment] = $this->scenario(DefectCategory::StructuralRecovery);
+        $item = DefectAssessmentQuantity::factory()->forAssessment($assessment)->create([
+            'quantity' => 1.5,
+            'mode' => QuantityCalculationMode::Calculated,
+        ]);
+
+        $this->actingAs($actor)->put(route('defect-assessment-quantities.update', $item), [
+            'description' => 'Perfil legado revisado',
+            'quantity' => [
+                'element' => 'profile_l', 'width' => 76, 'thickness' => 6, 'length' => 2.8, 'quantity' => 1.5,
+            ],
+        ])->assertRedirect()->assertSessionHasNoErrors();
+
+        $item->refresh();
+        $this->assertSame('1.5000000000000000', $item->quantity);
+        $this->assertSame('28.8817200000000000', $item->measurement_value);
+        $this->assertSame('Perfil legado revisado', $item->description);
+    }
+
+    public function test_rec_rejects_fractional_multiplier_for_new_items(): void
+    {
+        [$actor, $assessment] = $this->scenario(DefectCategory::StructuralRecovery);
+        $quantity = ['element' => 'profile_l', 'width' => 76, 'thickness' => 6, 'length' => 2.8, 'quantity' => 1.5];
+
+        $this->store($actor, $assessment, compact('quantity'))
+            ->assertSessionHasErrors('quantity.quantity');
+        $this->assertSame(0, $assessment->quantities()->count());
+
+        $quantity['quantity'] = 2;
+        $this->store($actor, $assessment, compact('quantity'))
+            ->assertSessionHasNoErrors();
+        $this->assertSame('38.5089600000000000', $assessment->quantities()->firstOrFail()->measurement_value);
     }
 
     public function test_quantity_item_cannot_be_changed_by_another_organization(): void

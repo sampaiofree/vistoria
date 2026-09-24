@@ -40,7 +40,11 @@ final class UpdateDefectAssessmentQuantity
 
             $this->ensureEditable($actor, $assessment);
             $wasComplete = $assessment->status === DefectAssessmentStatus::Complete;
-            $measurement = $this->calculator->calculate($assessment->defect->category, $data['quantity']);
+            $measurement = $this->calculator->calculate(
+                $assessment->defect->category,
+                $data['quantity'],
+                $quantity->hasFractionalMultiplier(),
+            );
             $quantity->update([
                 ...$measurement,
                 'description' => TextNormalizer::nullableText($data['description'] ?? null),

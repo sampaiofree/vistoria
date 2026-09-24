@@ -25,6 +25,10 @@ const props = defineProps({
         type: Object,
         required: true,
     },
+    related_records: {
+        type: Object,
+        default: () => ({ inspections_count: 0, defects_count: 0, requires_confirmation: false }),
+    },
 });
 
 const form = useForm({
@@ -44,9 +48,17 @@ const form = useForm({
     description: props.equipment.description ?? '',
     abc_code: props.equipment.abc_code ?? '',
     installation_location: props.equipment.installation_location ?? '',
+    confirm_related_records_edit: false,
 });
 
 function submit() {
+    if (props.related_records.requires_confirmation && !form.confirm_related_records_edit) {
+        form.setError('confirm_related_records_edit', 'Confirme que deseja alterar este cadastro histórico antes de salvar.');
+
+        return;
+    }
+
+    form.clearErrors('confirm_related_records_edit');
     form.put(props.action, {
         preserveScroll: true,
     });
@@ -82,11 +94,37 @@ function submit() {
         </section>
 
         <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div
+                v-if="related_records.requires_confirmation"
+                class="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950"
+            >
+                <h3 class="font-semibold">Atenção: histórico vinculado</h3>
+                <p class="mt-1">
+                    Este equipamento possui {{ related_records.inspections_count }} inspeção(ões)/relatório(s) e
+                    {{ related_records.defects_count }} avaria(s) vinculada(s). Os relatórios existentes preservam
+                    o snapshot histórico; esta edição altera o cadastro atual e será usada em operações futuras.
+                </p>
+                <p class="mt-2">
+                    Se o prefixo de avaria for alterado, os códigos já existentes não serão modificados e novas
+                    avarias passarão a usar o novo prefixo.
+                </p>
+                <label class="mt-4 flex cursor-pointer items-start gap-3">
+                    <input
+                        v-model="form.confirm_related_records_edit"
+                        class="mt-0.5 rounded border-amber-400 text-teal-600 focus:ring-teal-500"
+                        type="checkbox"
+                    >
+                    <span>Entendo o impacto e confirmo a alteração deste cadastro.</span>
+                </label>
+                <p v-if="form.errors.confirm_related_records_edit" class="mt-2 text-xs font-medium text-rose-700">
+                    {{ form.errors.confirm_related_records_edit }}
+                </p>
+            </div>
+
             <EquipmentForm
                 :form="form"
                 :abc-options="abc_options"
                 :identifier-context="identifier_context"
-                :prefix-editable="equipment.can_edit_defect_code_prefix"
                 :cancel-url="cancel_url"
                 submit-label="Salvar alterações"
                 @submit="submit"

@@ -22,6 +22,12 @@ test('previews CIVIL and TAC while keeping calculated results out of requests', 
     assert.deepEqual(buildNativeQuantityPayload('CV', {
         length: 2, height: 0.5, width: 0.3, quantity: 2, unitValue: 0.3, totalValue: 0.6,
     }), { length: 2, height: 0.5, width: 0.3, quantity: 2 });
+    assert.deepEqual(buildNativeQuantityPayload('CV', {
+        length: 2, height: 0.5, width: 0.3, unitValue: 0.3, totalValue: 0.3,
+    }), { length: 2, height: 0.5, width: 0.3, quantity: 1 });
+    assert.deepEqual(buildNativeQuantityPayload('CV', {
+        length: 2, height: 0.5, width: 0.3, quantity: 3,
+    }), { length: 2, height: 0.5, width: 0.3, quantity: 3 });
 });
 
 test('calculates every REC formula from document 09', () => {
@@ -67,6 +73,13 @@ test('builds a REC request from definition fields and formats only the presentat
         element: 'profile_l', width: 76, thickness: 6, length: 2.8, quantity: 2,
         unitValue: 19.25448, totalValue: 38.50896,
     }, definition), { element: 'profile_l', width: 76, thickness: 6, length: 2.8, quantity: 2 });
+    assert.deepEqual(buildNativeQuantityPayload('REC', {
+        element: 'profile_l', width: 76, thickness: 6, length: 2.8,
+        unitValue: 19.25448, totalValue: 19.25448,
+    }, definition), { element: 'profile_l', width: 76, thickness: 6, length: 2.8, quantity: 1 });
+    assert.deepEqual(buildNativeQuantityPayload('REC', {
+        element: 'profile_l', width: 76, thickness: 6, length: 2.8, quantity: 3,
+    }, definition), { element: 'profile_l', width: 76, thickness: 6, length: 2.8, quantity: 3 });
     assert.equal(formatNativeMeasurement(38.50896), '38,51');
     assert.equal(formatNativeMeasurement(1234.5), '1.234,50');
 });

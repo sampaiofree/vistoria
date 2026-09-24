@@ -28,12 +28,24 @@ enum AtmosphericCorrosivity: string
         return "Atmosfera {$this->value}";
     }
 
-    /** @return list<array{value:string,label:string,score:int}> */
+    public function description(): string
+    {
+        return match ($this) {
+            self::C2 => 'Baixa corrosividade; baixa poluição.',
+            self::C3 => 'Corrosividade média; ambiente urbano/industrial moderadamente poluído.',
+            self::C4 => 'Alta corrosividade; forte poluição industrial, umidade e agentes agressivos.',
+            self::C5 => 'Corrosividade muito alta em ambientes internos.',
+            self::CX => 'Corrosividade muito alta em ambientes externos.',
+        };
+    }
+
+    /** @return list<array{value:string,label:string,description:string,score:int}> */
     public static function options(): array
     {
         return array_map(fn (self $classification): array => [
             'value' => $classification->value,
             'label' => $classification->label(),
+            'description' => $classification->description(),
             'score' => $classification->urgency(),
         ], self::cases());
     }

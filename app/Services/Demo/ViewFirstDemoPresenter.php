@@ -6,6 +6,7 @@ namespace App\Services\Demo;
 
 use App\Enums\DefectAssessmentCondition;
 use App\Enums\DefectAssessmentStatus;
+use App\Enums\DefectCategory;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionCorrectionRequestFlow;
 use App\Enums\InspectionCorrectionRequestStatus;
@@ -748,6 +749,7 @@ class ViewFirstDemoPresenter
             'public_id' => $defect->public_id,
             'code' => $defect->code,
             'title' => $defect->title,
+            'registered_on' => $defect->created_at?->format('d/m/Y') ?? '—',
             'origin_description' => $defect->origin_description,
             'category' => $defect->categoryCode(),
             'category_label' => $defect->categoryLabel(),
@@ -1278,6 +1280,7 @@ class ViewFirstDemoPresenter
             'calculation_type' => $snapshot['calculation_type'] ?? null,
             'rec_element' => $elementCode,
             'element_code' => $elementCode,
+            'element_label' => data_get($snapshot, 'element.label') ?? $elementCode,
             'inputs' => $inputs,
             'quantity' => (string) ($snapshot['quantity'] ?? $inputs['quantity'] ?? '1'),
             'unit_value' => $unitRaw,
@@ -1534,6 +1537,11 @@ class ViewFirstDemoPresenter
     private function formatQuantity(float $value, bool $precise = false): string
     {
         return number_format($value, 2, ',', '.');
+    }
+
+    private function formatReportQuantity(float $value): string
+    {
+        return number_format($value, 1, ',', '.');
     }
 
     private function withoutNameSuffix(?string $name): ?string
@@ -1849,6 +1857,16 @@ class ViewFirstDemoPresenter
                 })
                 ->values()
                 ->all(),
+            'rec_quantity_rows' => $this->recQuantityRows(
+                $exportableItems,
+                $snapshotEquipment,
+                $photoNumbering,
+            ),
+            'civil_quantity_rows' => $this->civilQuantityRows(
+                $exportableItems,
+                $snapshotEquipment,
+                $photoNumbering,
+            ),
             'photographic_documentation' => $photographicDocumentation,
             'quantities' => [
                 'total' => $summary['quantity_total'] ?? 0.0,
@@ -1887,6 +1905,147 @@ class ViewFirstDemoPresenter
                 ? null
                 : implode(' ', $exportBlockingIssues),
         ];
+    }
+
+    /**
+     * @param Collection<int, array<string, mixed>> $items
+     * @param array<string, mixed> $equipment
+     * @param array<string, int> $photoNumbering
+     * @return list<array<string, mixed>>
+     */
+    private function recQuantityRows(Collection $items, array $equipment, array $photoNumbering): array
+    {
+        return $items
+            ->filter(fn (array $item): bool => ($item['category'] ?? null) === DefectCategory::StructuralRecovery->value)
+            ->sortBy(fn (array $item): array => [(string) ($item['code'] ?? ''), (int) ($item['id'] ?? 0)])
+            ->flatMap(function (array $item) use ($equipment, $photoNumbering): array {
+                $criteria = data_get($item, 'assessment.gut_snapshot.criteria', []);
+                $gravity = (array) ($criteria['gravity'] ?? []);
+                $urgency = (array) ($criteria['urgency'] ?? []);
+                $trend = (array) ($criteria['trend'] ?? []);
+                $photoNumbers = collect($item['photos'] ?? [])
+                    ->map(fn (array $photo): ?int => isset($photo['report_number'])
+                        ? (int) $photo['report_number']
+                        : ($photoNumbering[$photo['id'] ?? ''] ?? null))
+                    ->filter()
+                    ->all();
+                return collect($item['quantities'] ?? [])
+                    ->sortBy('position')
+                    ->map(function (array $quantity) use ($item, $equipment, $photoNumbers, $gravity, $urgency, $trend): array {
+                        return [
+                            'key' => ($item['id'] ?? $item['code'] ?? 'rec').'-'.($quantity['position'] ?? 0),
+                            'code' => $item['code'] ?? '—',
+                            'registered_on' => $item['registered_on'] ?? '—',
+                            'project' => $equipment['numero_cliente'] ?? '—',
+                            'photos' => $this->photoNumbering->format($photoNumbers),
+                            'item' => $quantity['description'] ?? '—',
+                            'element' => $quantity['element_label'] ?? $quantity['element_code'] ?? '—',
+                            'quantity' => isset($quantity['quantity'])
+                                ? $this->formatReportQuantity((float) $quantity['quantity'])
+                                : '—',
+                            'total_weight' => $quantity['total'] ?? null,
+                            'total_weight_label' => isset($quantity['total'])
+                                ? $this->formatQuantity((float) $quantity['total'])
+                                : '—',
+                            'gravity' => [
+                                'label' => 'IMP. ATIV. / IMP. SEG.',
+                                'score' => $gravity['score'] ?? null,
+                                'color' => $gravity['color'] ?? null,
+                            ],
+                            'urgency' => [
+                                'label' => data_get($urgency, 'option.label') ?? data_get($urgency, 'matrix.label') ?? '—',
+                                'score' => $urgency['score'] ?? null,
+                                'color' => $urgency['color'] ?? null,
+                            ],
+                            'trend' => [
+                                'label' => data_get($trend, 'group.label') ?? '—',
+                                'score' => $trend['score'] ?? null,
+                                'color' => $trend['color'] ?? null,
+                            ],
+                            'gut_score' => data_get($item, 'assessment.gut_score') ?? '—',
+                            'classification' => [
+                                'code' => data_get($item, 'classification.code') ?? '—',
+                                'color' => data_get($item, 'classification.color'),
+                            ],
+                        ];
+                    })
+                    ->all();
+            })
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param Collection<int, array<string, mixed>> $items
+     * @param array<string, mixed> $equipment
+     * @param array<string, int> $photoNumbering
+     * @return list<array<string, mixed>>
+     */
+    private function civilQuantityRows(Collection $items, array $equipment, array $photoNumbering): array
+    {
+        return $items
+            ->filter(fn (array $item): bool => ($item['category'] ?? null) === DefectCategory::Civil->value)
+            ->sortBy(fn (array $item): array => [(string) ($item['code'] ?? ''), (int) ($item['id'] ?? 0)])
+            ->flatMap(function (array $item) use ($equipment, $photoNumbering): array {
+                $criteria = data_get($item, 'assessment.gut_snapshot.criteria', []);
+                $gravity = (array) ($criteria['gravity'] ?? []);
+                $urgency = (array) ($criteria['urgency'] ?? []);
+                $trend = (array) ($criteria['trend'] ?? []);
+                $photoNumbers = collect($item['photos'] ?? [])
+                    ->map(fn (array $photo): ?int => isset($photo['report_number'])
+                        ? (int) $photo['report_number']
+                        : ($photoNumbering[$photo['id'] ?? ''] ?? null))
+                    ->filter()
+                    ->all();
+                $gravityLabels = collect([
+                    data_get($gravity, 'safety_impact.label'),
+                    data_get($gravity, 'asset_impact.label'),
+                ])->filter()->implode(' / ');
+
+                return collect($item['quantities'] ?? [])
+                    ->sortBy('position')
+                    ->map(function (array $quantity) use ($item, $equipment, $photoNumbers, $gravity, $urgency, $trend, $gravityLabels): array {
+                        return [
+                            'key' => ($item['id'] ?? $item['code'] ?? 'civil').'-'.($quantity['position'] ?? 0),
+                            'code' => $item['code'] ?? '—',
+                            'registered_on' => $item['registered_on'] ?? '—',
+                            'project' => $equipment['numero_cliente'] ?? '—',
+                            'photos' => $this->photoNumbering->format($photoNumbers),
+                            'item' => data_get($item, 'assessment.item_description') ?? '—',
+                            'element' => data_get($urgency, 'option.label') ?? '—',
+                            'quantity' => isset($quantity['quantity'])
+                                ? $this->formatReportQuantity((float) $quantity['quantity'])
+                                : '—',
+                            'total_volume' => $quantity['total'] ?? null,
+                            'total_volume_label' => isset($quantity['total'])
+                                ? $this->formatQuantity((float) $quantity['total'])
+                                : '—',
+                            'gravity' => [
+                                'label' => $gravityLabels !== '' ? $gravityLabels : '—',
+                                'score' => $gravity['score'] ?? null,
+                                'color' => $gravity['color'] ?? null,
+                            ],
+                            'urgency' => [
+                                'label' => data_get($urgency, 'option.label') ?? '—',
+                                'score' => $urgency['score'] ?? null,
+                                'color' => $urgency['color'] ?? null,
+                            ],
+                            'trend' => [
+                                'label' => data_get($trend, 'group.label') ?? '—',
+                                'score' => $trend['score'] ?? null,
+                                'color' => $trend['color'] ?? null,
+                            ],
+                            'gut_score' => data_get($item, 'assessment.gut_score') ?? '—',
+                            'classification' => [
+                                'code' => data_get($item, 'classification.code') ?? '—',
+                                'color' => data_get($item, 'classification.color'),
+                            ],
+                        ];
+                    })
+                    ->all();
+            })
+            ->values()
+            ->all();
     }
 
     /**

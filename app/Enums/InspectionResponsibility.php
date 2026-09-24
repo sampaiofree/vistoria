@@ -13,8 +13,8 @@ enum InspectionResponsibility: string
     {
         return match ($this) {
             self::Preparer => 'Preparador',
-            self::Reviewer => 'Verificador',
-            self::Approver => 'Aprovador',
+            self::Reviewer => 'Inspetor',
+            self::Approver => 'Revisor',
             self::Releaser => 'Liberador',
         };
     }

@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Actions\Classification;
 
 use App\Enums\GutCriterion;
+use App\Enums\DefectCategory;
 use App\Models\DefectAssessment;
+use App\Models\Inspection;
 use App\Models\User;
 use App\Services\Classification\GutClassificationResolver;
 use App\Services\Classification\NativeDefectCatalog;
@@ -36,6 +38,20 @@ final class SaveDefectAssessmentGut
             }
 
             $category = $assessment->defect->category;
+            if ($category === DefectCategory::AnticorrosiveTreatment
+                && array_key_exists('atmospheric_classification', $data)) {
+                $inspection = Inspection::query()
+                    ->forOrganization($this->tenant->id())
+                    ->lockForUpdate()
+                    ->findOrFail($assessment->inspection_id);
+
+                $inspection->update([
+                    'atmospheric_classification' => $data['atmospheric_classification'],
+                    'updated_by' => $actor->getKey(),
+                ]);
+                $assessment->setRelation('inspection', $inspection);
+            }
+
             $resolved = $this->resolver->resolveTechnical($assessment, $data);
             $classification = $resolved['classification'];
 

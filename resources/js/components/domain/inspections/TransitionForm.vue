@@ -9,7 +9,7 @@ const errorMessages = computed(() => [...new Set(Object.values(form.errors).filt
 function submit() { form.post(props.transition.action, { preserveScroll: true, onSuccess: () => form.reset() }); }
 </script>
 <template>
-    <form class="rounded-xl border border-slate-200 p-4" @submit.prevent="submit">
+    <form class="rounded-xl border border-slate-200 p-4 bg-white" @submit.prevent="submit">
         <div class="font-semibold text-slate-900">{{ transition.label }}</div>
         <p v-if="transition.description" class="mt-1 text-sm text-slate-500">{{ transition.description }}</p>
         <label v-if="needsJustification" class="mt-3 block text-sm font-medium text-slate-700">Justificativa obrigatória<textarea v-model="form.justification" required rows="3" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"></textarea><span v-if="form.errors.justification" class="text-xs text-rose-600">{{ form.errors.justification }}</span></label>

@@ -21,7 +21,6 @@ const props = defineProps({
 const cover = computed(() => props.content.cover ?? {});
 const locations = computed(() => props.content.locations ?? []);
 const photographicBlocks = computed(() => props.content.photographic_documentation?.blocks ?? []);
-const evolutionRows = computed(() => props.content.evolution_rows ?? []);
 const reportFindings = computed(() => props.content.findings ?? []);
 const textualFindings = computed(() => reportFindings.value.filter((finding) =>
     ['canceled', 'canceled_sr'].includes(finding.condition),
@@ -30,6 +29,8 @@ const generalAspects = computed(() => props.content.general_aspects?.document ??
 const reportOverview = computed(() => props.content.overview ?? { blocks: [] });
 const classificationSummary = computed(() => props.content.classification_summary ?? null);
 const locationSequence = computed(() => props.content.location_sequence ?? []);
+const recQuantityRows = computed(() => props.content.rec_quantity_rows ?? []);
+const civilQuantityRows = computed(() => props.content.civil_quantity_rows ?? []);
 const numberedGeneralAspects = computed(() => numberGeneralAspectsDocument(generalAspects.value));
 const generalAspectsPages = ref([]);
 const generalAspectsReady = ref(!generalAspects.value);
@@ -135,6 +136,22 @@ function categoryKey(value) {
     return String(value || '').trim().toLocaleUpperCase('pt-BR');
 }
 
+function annexLetter(number) {
+    let value = '';
+
+    while (number > 0) {
+        number -= 1;
+        value = String.fromCharCode(65 + (number % 26)) + value;
+        number = Math.floor(number / 26);
+    }
+
+    return value;
+}
+
+function annexTitle(letter, suffix) {
+    return `ANEXO ${letter} – ${suffix}`;
+}
+
 function mapPages(sheet) {
     return (sheet.maps || []).flatMap((map) => {
         const chunksForMap = observationChunks(map);
@@ -219,30 +236,121 @@ function legacyLocationPages() {
     ]);
 }
 
-const reportContentPages = computed(() => {
+function quantityPages(items, type, category) {
+    return chunks(items, 16).map((items, index) => ({
+        type,
+        key: `${type}-${index}`,
+        category,
+        items,
+        orientation: 'landscape',
+        continuation: index > 0,
+    }));
+}
+
+function categoryPosition(category) {
+    return ({ TAC: 0, REC: 1, CV: 2, CIVIL: 2, TEL: 3 })[categoryKey(category)] ?? -1;
+}
+
+function insertQuantityPages(locationPages, category, quantities) {
+    const normalizedCategory = categoryKey(category);
+
+    if (!quantities.length) return locationPages;
+
+    let lastCategoryPage = -1;
+    locationPages.forEach((page, index) => {
+        if (categoryKey(page.category?.code || page.category?.name || page.category) === normalizedCategory) {
+            lastCategoryPage = index;
+        }
+    });
+
+    if (lastCategoryPage !== -1) {
+        return [
+            ...locationPages.slice(0, lastCategoryPage + 1),
+            ...quantities,
+            ...locationPages.slice(lastCategoryPage + 1),
+        ];
+    }
+
+    const followingCategoryPage = locationPages.findIndex((page) => {
+        const pageCategory = page.category?.code || page.category?.name || page.category;
+
+        return categoryPosition(pageCategory) > categoryPosition(normalizedCategory);
+    });
+
+    if (followingCategoryPage === -1) return [...locationPages, ...quantities];
+
     return [
+        ...locationPages.slice(0, followingCategoryPage),
+        ...quantities,
+        ...locationPages.slice(followingCategoryPage),
+    ];
+}
+
+function assignAnnexTitles(contentPages) {
+    let nextAnnex = 1;
+    const quantityAnnexTitles = {};
+    const quantityAnnexSuffixes = {
+        'rec-quantity': 'QUANTITATIVO GERAL – REC',
+        'civil-quantity': 'QUANTITATIVO GERAL – CIVIL',
+    };
+
+    return contentPages.map((page) => {
+        if (page.type === 'overview') {
+            const suffix = String(reportOverview.value.title || 'ANEXO A – LOCALIZAÇÃO E DOCUMENTAÇÃO FOTOGRÁFICA - TAC')
+                .replace(/^ANEXO\s+[A-Z]+\s+–\s+/u, '');
+
+            return { ...page, annexTitle: annexTitle(annexLetter(nextAnnex++), suffix) };
+        }
+
+        if (page.type === 'location-map' && page.annexTitle) {
+            const suffix = String(page.annexTitle).replace(/^ANEXO\s+[A-Z]+\s+–\s+/u, '');
+
+            return { ...page, annexTitle: annexTitle(annexLetter(nextAnnex++), suffix) };
+        }
+
+        if (quantityAnnexSuffixes[page.type] && !page.continuation) {
+            quantityAnnexTitles[page.type] = annexTitle(annexLetter(nextAnnex++), quantityAnnexSuffixes[page.type]);
+
+            return { ...page, annexTitle: quantityAnnexTitles[page.type] };
+        }
+
+        if (quantityAnnexSuffixes[page.type]) {
+            return { ...page, annexTitle: quantityAnnexTitles[page.type] };
+        }
+
+        return page;
+    });
+}
+
+const reportContentPages = computed(() => {
+    const locationPages = locationSequence.value.length ? sequencedLocationPages() : legacyLocationPages();
+    const locationPagesWithQuantities = insertQuantityPages(
+        insertQuantityPages(
+            locationPages,
+            'REC',
+            quantityPages(recQuantityRows.value, 'rec-quantity', 'REC'),
+        ),
+        'CV',
+        quantityPages(civilQuantityRows.value, 'civil-quantity', 'CV'),
+    );
+
+    return assignAnnexTitles([
+        ...(classificationSummary.value ? [{ type: 'classification-summary', key: 'classification-summary' }] : []),
         ...generalAspectsPages.value.map((document, index) => ({
             type: 'general-aspects',
             key: `general-aspects-${index}`,
             document,
             continuation: index > 0,
         })),
-        ...chunks(evolutionRows.value, 14).map((items, index) => ({
-            type: 'defect-evolution',
-            key: `defect-evolution-${index}`,
-            items,
-            continuation: index > 0,
-        })),
-        ...(classificationSummary.value ? [{ type: 'classification-summary', key: 'classification-summary' }] : []),
         { type: 'overview', key: 'report-overview' },
-        ...(locationSequence.value.length ? sequencedLocationPages() : legacyLocationPages()),
+        ...locationPagesWithQuantities,
         ...chunks(textualFindings.value, 2).map((items, index) => ({
             type: 'textual-findings',
             key: `textual-findings-${index}`,
             items,
             continuation: index > 0,
         })),
-    ];
+    ]);
 });
 
 const summaryEntries = computed(() => buildReportSummaryEntries(
@@ -364,6 +472,7 @@ function visualClass(photo) {
             :total="pages.length"
             :report="cover"
             :cover="page.type === 'cover'"
+            :orientation="page.orientation ?? 'portrait'"
         >
             <template v-if="page.type === 'cover'">
                 <div class="report-cover-layout">
@@ -520,7 +629,7 @@ function visualClass(photo) {
             <template v-else-if="page.type === 'overview'">
                 <div class="report-overview-page">
                     <h2 class="report-general-aspects-title report-overview-heading">
-                        {{ reportOverview.title || 'ANEXO A – LOCALIZAÇÃO E DOCUMENTAÇÃO FOTOGRÁFICA - TAC' }}
+                        {{ page.annexTitle || reportOverview.title || 'ANEXO A – LOCALIZAÇÃO E DOCUMENTAÇÃO FOTOGRÁFICA - TAC' }}
                     </h2>
                     <div class="report-page-title report-blue-title report-location-title report-overview-section-title">
                         {{ reportOverview.section_title || 'DOCUMENTAÇÃO FOTOGRÁFICA - TAC' }}
@@ -558,30 +667,28 @@ function visualClass(photo) {
                 </div>
             </template>
 
-            <template v-else-if="page.type === 'defect-evolution'">
-                <div class="report-evolution-page">
-                    <h2 class="report-general-aspects-title">
-                        3. QUADRO DE EVOLUÇÃO DAS AVARIAS<span v-if="page.continuation"> — CONTINUAÇÃO</span>
+            <template v-else-if="page.type === 'rec-quantity' || page.type === 'civil-quantity'">
+                <div class="report-quantity-page">
+                    <h2 class="report-quantity-title">
+                        {{ page.annexTitle || (page.type === 'civil-quantity' ? 'QUANTITATIVO GERAL – CIVIL' : 'QUANTITATIVO GERAL – REC') }}<span v-if="page.continuation"> — CONTINUAÇÃO</span>
                     </h2>
-                    <table class="report-evolution-table">
+                    <table class="report-quantity-table">
                         <thead>
                             <tr>
-                                <th>Código</th>
-                                <th>Avaria</th>
-                                <th>Situação atual</th>
-                                <th>Classe anterior</th>
-                                <th>Classe atual</th>
-                                <th>Quantidade</th>
+                                <th>{{ page.type === 'civil-quantity' ? 'CÓD.' : 'CÓD. REC' }}</th><th>DATA DE CADASTRO</th><th>PROJETO</th><th>FOTO</th>
+                                <th>ITEM / SUBITEM</th><th>ELEMENTO</th><th>QTD.</th><th>{{ page.type === 'civil-quantity' ? 'M³ TOTAL' : 'PESO TOTAL' }}</th>
+                                <th>G</th><th>U</th><th>T</th><th>PONT. TOTAL</th><th>CLASS.</th>
                             </tr>
                         </thead>
                         <tbody>
-                            <tr v-for="item in page.items" :key="item.id">
-                                <td><strong>{{ item.code }}</strong></td>
-                                <td>{{ item.title }}</td>
-                                <td>{{ item.condition_label }}</td>
-                                <td>{{ item.previous_classification?.code || '—' }}</td>
-                                <td>{{ item.current_classification?.code || '—' }}</td>
-                                <td>{{ item.quantity || '—' }}</td>
+                            <tr v-for="item in page.items" :key="item.key">
+                                <td>{{ item.code }}</td><td>{{ item.registered_on }}</td><td>{{ item.project }}</td><td>{{ item.photos }}</td>
+                                <td>{{ item.item }}</td><td>{{ item.element }}</td><td>{{ item.quantity }}</td><td>{{ page.type === 'civil-quantity' ? item.total_volume_label : item.total_weight_label }}</td>
+                                <td><span>{{ item.gravity.label }}</span><strong :style="damageColorStyle(item.gravity.color)">{{ item.gravity.score ?? '—' }}</strong></td>
+                                <td><span>{{ item.urgency.label }}</span><strong :style="damageColorStyle(item.urgency.color)">{{ item.urgency.score ?? '—' }}</strong></td>
+                                <td><span>{{ item.trend.label }}</span><strong :style="damageColorStyle(item.trend.color)">{{ item.trend.score ?? '—' }}</strong></td>
+                                <td class="report-quantity-score">{{ item.gut_score }}</td>
+                                <td class="report-quantity-class" :style="damageColorStyle(item.classification.color)">{{ item.classification.code }}</td>
                             </tr>
                         </tbody>
                     </table>
@@ -784,15 +891,14 @@ function visualClass(photo) {
 .report-general-aspects-page { display: flex; width: 100%; height: 252mm; min-height: 0; flex-direction: column; overflow: hidden; }
 .report-general-aspects-title { flex: none; margin: 0 0 8mm; padding: 0; border: 0; background: transparent; color: #111827; font-family: Georgia, 'Times New Roman', serif; font-size: 10pt; font-weight: 800; line-height: 1.1; text-align: left; }
 .report-general-aspects-body { min-height: 0; flex: 1; overflow: hidden; font-family: Georgia, 'Times New Roman', serif; font-size: 10pt; }
-.report-evolution-page { height: 252mm; overflow: hidden; }
-.report-evolution-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-family: Georgia, 'Times New Roman', serif; font-size: 8pt; }
-.report-evolution-table th, .report-evolution-table td { border: 1px solid #94a3b8; padding: 2.5mm 2mm; vertical-align: top; }
-.report-evolution-table th { background: #062b68; color: #fff; font-size: 7pt; text-transform: uppercase; }
-.report-evolution-table th:nth-child(1) { width: 17%; }
-.report-evolution-table th:nth-child(2) { width: 27%; }
-.report-evolution-table th:nth-child(3) { width: 17%; }
-.report-evolution-table th:nth-child(4), .report-evolution-table th:nth-child(5) { width: 13%; }
-.report-evolution-table th:nth-child(6) { width: 13%; }
+.report-quantity-page { width: 100%; height: 165mm; overflow: hidden; font-family: Arial, sans-serif; }
+.report-quantity-title { margin: 0 0 4mm; font-family: Georgia, 'Times New Roman', serif; font-size: 10pt; font-weight: 800; }
+.report-quantity-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 5.5pt; }
+.report-quantity-table th, .report-quantity-table td { border: 1px solid #062b68; padding: 1mm .8mm; text-align: center; vertical-align: middle; overflow-wrap: anywhere; }
+.report-quantity-table th { background: #062b68; color: #fff; font-size: 5.5pt; font-weight: 800; white-space: nowrap; }
+.report-quantity-table td:nth-child(1) { width: 7%; }.report-quantity-table td:nth-child(2) { width: 8%; }.report-quantity-table td:nth-child(3) { width: 11%; }.report-quantity-table td:nth-child(4) { width: 5%; }.report-quantity-table td:nth-child(5) { width: 11%; }.report-quantity-table td:nth-child(6) { width: 9%; }.report-quantity-table td:nth-child(7) { width: 4%; }.report-quantity-table td:nth-child(8) { width: 7%; }.report-quantity-table td:nth-child(9), .report-quantity-table td:nth-child(10), .report-quantity-table td:nth-child(11) { width: 10%; }.report-quantity-table td:nth-child(12) { width: 6%; }.report-quantity-table td:nth-child(13) { width: 5%; }
+.report-quantity-table td:nth-child(9), .report-quantity-table td:nth-child(10), .report-quantity-table td:nth-child(11) { padding: 0; }.report-quantity-table td:nth-child(9) span, .report-quantity-table td:nth-child(10) span, .report-quantity-table td:nth-child(11) span { display: block; min-height: 7mm; padding: 1mm .8mm; }.report-quantity-table td:nth-child(9) strong, .report-quantity-table td:nth-child(10) strong, .report-quantity-table td:nth-child(11) strong { display: block; padding: 1mm; color: #111827; font-size: 7pt; }
+.report-quantity-score { background: #dbeafe; color: #0759a0; font-size: 7pt; font-weight: 800; }.report-quantity-class { font-size: 7pt; font-weight: 800; }
 .report-textual-finding { margin-bottom: 6mm; border: 1px solid #94a3b8; font-family: Georgia, 'Times New Roman', serif; }
 .report-textual-finding-title { display: flex; justify-content: space-between; gap: 4mm; padding: 3mm; background: #e2e8f0; font-size: 9pt; }
 .report-textual-finding-classes { padding: 2.5mm 3mm; border-top: 1px solid #94a3b8; font-size: 8pt; }
@@ -868,7 +974,7 @@ function visualClass(photo) {
 .report-map-visual { display: flex; min-height: 40mm; flex: 1; align-items: center; justify-content: center; overflow: hidden; }
 .report-map-visual :deep(svg) { width: 100%; height: 100%; max-height: 100%; }
 .report-map-footer { flex: none; margin-top: 3mm; font-family: Georgia, 'Times New Roman', serif; }
-.report-map-classification-layout { display: grid; grid-template-columns: minmax(0, 1fr) 36mm; align-items: start; gap: 1.5mm; }
+.report-map-classification-layout { display: grid; grid-template-columns: minmax(0, 1fr) 36mm; align-items: end; gap: 1.5mm; }
 .report-classification-summary-header { width: 100%; margin: 0 0 5mm; border-collapse: collapse; table-layout: fixed; font-family: Georgia, serif; font-size: 8pt; }
 .report-classification-summary-header th, .report-classification-summary-header td { border: 1px solid #111827; padding: 1.3mm 1.5mm; text-align: center; vertical-align: middle; overflow-wrap: anywhere; }
 .report-classification-summary-header th { background: #e2e8f0; font-size: 7.5pt; font-weight: 700; }

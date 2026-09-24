@@ -81,7 +81,10 @@ final class EquipmentMaintenanceFieldsTest extends TestCase
         $this->get(route('equipments.edit', $equipment))->assertInertia(fn (Assert $page) => $page
             ->has('abc_options', 4)
             ->where('abc_options.0.value', 'A')
-            ->where('abc_options.3.value', 'D'));
+            ->where('abc_options.3.value', 'D')
+            ->where('related_records.inspections_count', 0)
+            ->where('related_records.defects_count', 0)
+            ->where('related_records.requires_confirmation', false));
         $this->get(route('equipments.index', ['search' => '000123']))->assertInertia(fn (Assert $page) => $page
             ->has('equipments.data', 1)
             ->where('equipments.data.0.maintenance_item_code', '000123')
@@ -210,6 +213,18 @@ final class EquipmentMaintenanceFieldsTest extends TestCase
         $this->assertDatabaseHas('equipments', ['id' => $equipment->id, 'maintenance_plan_code' => '000099', 'area_code' => 'U04', 'area_name' => 'Nova área', 'subarea_code' => '08', 'task_list_group_counter' => 'T5', 'defect_code_prefix' => 'ANTIGO']);
     }
 
+    public function test_non_administrator_cannot_edit_an_equipment_even_with_confirmation(): void
+    {
+        [$organization, $admin, $client] = $this->context();
+        $equipment = Equipment::factory()->inStructure($client)->create();
+        $member = User::factory()->for($organization)->create(['account_type' => UserAccountType::Member->value]);
+
+        $this->actingAs($member)->get(route('equipments.edit', $equipment))->assertForbidden();
+        $this->put(route('equipments.update', $equipment), $this->payload($client, [
+            'confirm_related_records_edit' => true,
+        ]))->assertForbidden();
+    }
+
     public function test_update_rejects_an_item_belonging_to_another_equipment(): void
     {
         [$organization, $admin, $client] = $this->context();
@@ -289,16 +304,29 @@ final class EquipmentMaintenanceFieldsTest extends TestCase
         app(CreateEquipment::class)->handle($admin, $this->payload($client, ['maintenance_item_code' => '']));
     }
 
-    public function test_equipment_with_a_defect_cannot_be_edited(): void
+    public function test_equipment_with_a_defect_requires_confirmation_and_can_be_fully_edited(): void
     {
         [$organization, $admin, $client] = $this->context();
         $equipment = Equipment::factory()->inStructure($client)->create(['maintenance_item_code' => '000123', 'defect_code_prefix' => 'ANTIGO']);
-        Defect::factory()->forEquipment($equipment)->create();
+        $defect = Defect::factory()->forEquipment($equipment)->create();
+        $defectCode = $defect->code;
 
-        $this->actingAs($admin)->get(route('equipments.edit', $equipment))->assertForbidden();
-        $this->put(route('equipments.update', $equipment), $this->payload($client, ['maintenance_item_code' => '000124', 'defect_code_prefix' => 'NOVO']))->assertForbidden();
+        $this->actingAs($admin)->get(route('equipments.edit', $equipment))->assertInertia(fn (Assert $page) => $page
+            ->where('related_records.inspections_count', 1)
+            ->where('related_records.defects_count', 1)
+            ->where('related_records.requires_confirmation', true));
+        $this->put(route('equipments.update', $equipment), $this->payload($client, ['maintenance_item_code' => '000124', 'defect_code_prefix' => 'NOVO']))
+            ->assertSessionHasErrors('confirm_related_records_edit');
 
-        $this->assertSame('ANTIGO', $equipment->refresh()->defect_code_prefix);
+        $this->put(route('equipments.update', $equipment), $this->payload($client, [
+            'maintenance_item_code' => '000124',
+            'defect_code_prefix' => 'NOVO',
+            'confirm_related_records_edit' => true,
+        ]))->assertSessionHasNoErrors();
+
+        $this->assertSame('NOVO', $equipment->refresh()->defect_code_prefix);
+        $this->assertSame('000124', $equipment->maintenance_item_code);
+        $this->assertSame($defectCode, $defect->refresh()->code);
     }
 
     public function test_prefix_can_change_before_the_first_defect(): void
@@ -311,19 +339,42 @@ final class EquipmentMaintenanceFieldsTest extends TestCase
         $this->assertSame('NOVO', $equipment->refresh()->defect_code_prefix);
     }
 
-    public function test_equipment_with_an_inspection_cannot_be_edited_even_when_the_action_is_called_directly(): void
+    public function test_equipment_with_an_inspection_requires_confirmation_and_preserves_its_snapshot(): void
     {
         [$organization, $admin, $client] = $this->context();
         $equipment = Equipment::factory()->inStructure($client)->create();
-        Inspection::factory()->forEquipment($equipment)->create();
+        $inspection = Inspection::factory()->forEquipment($equipment)->create();
+        $snapshotBefore = $inspection->context_snapshot;
 
-        $this->actingAs($admin)->get(route('equipments.edit', $equipment))->assertForbidden();
-        $this->put(route('equipments.update', $equipment), $this->payload($client))->assertForbidden();
-        $this->get(route('equipments.show', $equipment))->assertInertia(fn (Assert $page) => $page->where('can.update', false));
+        $this->actingAs($admin)->get(route('equipments.edit', $equipment))->assertInertia(fn (Assert $page) => $page
+            ->where('related_records.inspections_count', 1)
+            ->where('related_records.defects_count', 0)
+            ->where('related_records.requires_confirmation', true));
+        $this->put(route('equipments.update', $equipment), $this->payload($client))
+            ->assertSessionHasErrors('confirm_related_records_edit');
+
+        $this->put(route('equipments.update', $equipment), $this->payload($client, [
+            'maintenance_item_code' => '000124',
+            'tag' => 'ATUALIZADO',
+            'confirm_related_records_edit' => true,
+        ]))->assertSessionHasNoErrors();
+        $this->assertSame('000124', $equipment->refresh()->maintenance_item_code);
+        $this->assertSame('ATUALIZADO', $equipment->tag);
+        $this->assertSame($snapshotBefore, $inspection->refresh()->context_snapshot);
 
         app(TenantContext::class)->set($organization);
-        $this->expectException(ValidationException::class);
-        app(UpdateEquipment::class)->handle($admin, $equipment, $this->payload($client));
+        try {
+            app(UpdateEquipment::class)->handle($admin, $equipment, $this->payload($client));
+            $this->fail('A atualização direta deveria exigir confirmação para equipamento com vínculos.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('confirm_related_records_edit', $exception->errors());
+        }
+
+        app(UpdateEquipment::class)->handle($admin, $equipment, $this->payload($client, [
+            'maintenance_item_code' => '000125',
+            'confirm_related_records_edit' => true,
+        ]));
+        $this->assertSame('000125', $equipment->refresh()->maintenance_item_code);
     }
 
     public function test_explicit_prefix_conflict_is_reported_without_a_database_error(): void

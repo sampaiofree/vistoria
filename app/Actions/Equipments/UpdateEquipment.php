@@ -2,7 +2,6 @@
 
 namespace App\Actions\Equipments;
 
-use App\Models\Defect;
 use App\Models\Equipment;
 use App\Models\User;
 use App\Services\Tenancy\TenantContext;
@@ -24,9 +23,11 @@ final class UpdateEquipment
                 ->lockForUpdate()
                 ->findOrFail($equipment->getKey());
 
-            if (! $equipment->isRegistrationEditable()) {
+            $hasRelatedRecords = $equipment->inspections()->exists() || $equipment->defects()->exists();
+
+            if ($hasRelatedRecords && ! filter_var($data['confirm_related_records_edit'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
                 throw ValidationException::withMessages([
-                    'equipment' => 'Não é possível editar um equipamento que já possui inspeções ou avarias.',
+                    'confirm_related_records_edit' => 'Confirme que deseja alterar o cadastro que possui inspeções, relatórios ou avarias vinculados.',
                 ]);
             }
 
@@ -78,18 +79,6 @@ final class UpdateEquipment
                 ->whereKeyNot($equipment->getKey())
                 ->exists()) {
                 throw ValidationException::withMessages(['defect_code_prefix' => 'Já existe um equipamento com este prefixo de avaria na organização.']);
-            }
-
-            if (
-                $equipment->defect_code_prefix !== $defectCodePrefix
-                && Defect::query()
-                    ->forOrganization($this->tenant->id())
-                    ->where('equipment_id', $equipment->getKey())
-                    ->exists()
-            ) {
-                throw ValidationException::withMessages([
-                    'defect_code_prefix' => 'Não é possível alterar o prefixo depois que a avaria já foi usada.',
-                ]);
             }
 
             $equipment->update([

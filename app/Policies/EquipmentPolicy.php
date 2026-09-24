@@ -31,8 +31,7 @@ final class EquipmentPolicy
     {
         return $user->isActive()
             && $user->isCompanyAdmin()
-            && $this->sameOrganization($user, $equipment)
-            && $equipment->isRegistrationEditable();
+            && $this->sameOrganization($user, $equipment);
     }
 
     public function changeStatus(User $user, Equipment $equipment): bool

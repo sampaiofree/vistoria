@@ -84,18 +84,29 @@ test('uses the selected REC matrix and transporter type to resolve urgency', () 
     assert.deepEqual(urgencyOptionsFor(definition, 'patio_port_transporter', 'floor_level'), [{ code: 'beam', score: 2 }]);
 });
 
-test('uses contextual TAC sources and never submits their calculated scores', () => {
+test('uses the selected TAC atmosphere to derive urgency and never submits manual scores', () => {
     const definition = {
         category: { code: 'TAC' },
-        sources: { gravity: { valid: true, score: 3 }, urgency: { valid: true, score: 5 } },
+        sources: {
+            gravity: { valid: true, score: 3 },
+            urgency: {
+                mapping: [
+                    { value: 'C2', score: 1 },
+                    { value: 'C5', score: 4 },
+                    { value: 'CX', score: 5 },
+                ],
+            },
+        },
         trend_options: [{ code: 'astm-2-3', score: 4 }],
     };
-    const values = { condition: 'reinspected', trend_option_code: 'astm-2-3', gravity: 1, urgency: 1 };
+    const values = {
+        condition: 'reinspected', atmospheric_classification: 'CX', trend_option_code: 'astm-2-3', gravity: 1, urgency: 1,
+    };
 
     assert.deepEqual(calculateTechnicalGut(definition, values), { gravity: 3, urgency: 5, trend: 4, score: 60 });
     assert.deepEqual(buildTechnicalGutPayload(definition, values), {
-        condition: 'reinspected', trend_option_code: 'astm-2-3',
+        condition: 'reinspected', atmospheric_classification: 'CX', trend_option_code: 'astm-2-3',
     });
-    definition.sources.urgency.valid = false;
+    values.atmospheric_classification = '';
     assert.equal(technicalGutReady(definition, values), false);
 });

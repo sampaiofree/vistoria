@@ -135,7 +135,12 @@ export function calculateNativeQuantity(category, inputs) {
 
 export function buildNativeQuantityPayload(category, values, definition = null) {
     if (category === 'CV') {
-        return pick(values, ['length', 'height', 'width', 'quantity']);
+        return {
+            ...pick(values, ['length', 'height', 'width']),
+            // CIVIL items are recorded separately. Keep the persisted field for
+            // compatibility and legacy items, but default every new item to one.
+            quantity: values.quantity ?? 1,
+        };
     }
 
     if (category === 'TAC') return pick(values, ['area']);
@@ -153,7 +158,9 @@ export function buildNativeQuantityPayload(category, values, definition = null) 
         for (const field of element?.fields ?? []) {
             if (field.key !== 'quantity') payload[field.key] = values[field.key];
         }
-        payload.quantity = values.quantity;
+        // Calculated REC elements are recorded individually. Keep an existing
+        // multiplier when editing legacy data, otherwise persist one.
+        payload.quantity = values.quantity ?? 1;
 
         return payload;
     }

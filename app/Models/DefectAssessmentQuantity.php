@@ -70,6 +70,11 @@ final class DefectAssessmentQuantity extends Model
         return (float) $this->measurement_value;
     }
 
+    public function hasFractionalMultiplier(): bool
+    {
+        return str_contains(rtrim(rtrim((string) $this->quantity, '0'), '.'), '.');
+    }
+
     /** @return array<string, mixed> */
     public function snapshot(): array
     {

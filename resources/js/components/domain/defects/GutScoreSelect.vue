@@ -65,8 +65,13 @@ function selectValue(value) {
             >
                 <span v-if="selected" class="flex min-w-0 items-center gap-2.5">
                     <span v-if="selected.color" class="h-3.5 w-3.5 shrink-0 rounded-full border border-black/15" :style="{ backgroundColor: selected.color }" aria-hidden="true" />
-                    <span v-if="scoreLabel(selected)" class="shrink-0 font-bold">{{ scoreLabel(selected) }}</span>
-                    <span class="truncate text-slate-600">{{ selected.label }}</span>
+                    <span class="min-w-0">
+                        <span class="flex min-w-0 items-center gap-2">
+                            <span v-if="scoreLabel(selected)" class="shrink-0 font-bold">{{ scoreLabel(selected) }}</span>
+                            <span class="truncate text-slate-600">{{ selected.label }}</span>
+                        </span>
+                        <span v-if="selected.description" class="block truncate text-xs text-slate-500">{{ selected.description }}</span>
+                    </span>
                 </span>
                 <span v-else class="text-slate-500">{{ placeholder }}</span>
                 <span class="shrink-0 text-slate-400" aria-hidden="true">⌄</span>
@@ -98,8 +103,11 @@ function selectValue(value) {
                     >
                         <span v-if="option.color" class="mt-0.5 h-3.5 w-3.5 shrink-0 rounded-full border border-black/15" :style="{ backgroundColor: option.color }" aria-hidden="true" />
                         <span class="min-w-0 flex-1">
-                            <span v-if="scoreLabel(option)" class="font-bold">{{ scoreLabel(option) }}</span>
-                            <span :class="[scoreLabel(option) ? 'ml-2' : '', active ? 'text-teal-50' : 'text-slate-600']">{{ option.label }}</span>
+                            <span>
+                                <span v-if="scoreLabel(option)" class="font-bold">{{ scoreLabel(option) }}</span>
+                                <span :class="[scoreLabel(option) ? 'ml-2' : '', active ? 'text-teal-50' : 'text-slate-600']">{{ option.label }}</span>
+                            </span>
+                            <span v-if="option.description" class="mt-0.5 block text-xs" :class="active ? 'text-teal-50' : 'text-slate-500'">{{ option.description }}</span>
                         </span>
                         <span v-if="isSelected" class="shrink-0 font-bold" aria-label="Selecionada">✓</span>
                     </li>

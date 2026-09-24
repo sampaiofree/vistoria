@@ -126,12 +126,4 @@ class Equipment extends Model
         return $this->isActive()
             && $this->hasOperationalStructure();
     }
-
-    public function isRegistrationEditable(): bool
-    {
-        $hasInspections = $this->getAttribute('inspections_exists') ?? $this->inspections()->exists();
-        $hasDefects = $this->getAttribute('defects_exists') ?? $this->defects()->exists();
-
-        return ! $hasInspections && ! $hasDefects;
-    }
 }

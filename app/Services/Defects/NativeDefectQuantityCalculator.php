@@ -24,9 +24,13 @@ final class NativeDefectQuantityCalculator
     private const PI = '3.14159265358979323846264338327950288419716939937510';
 
     /** @return array<string, mixed> */
-    public static function rules(DefectCategory $category, mixed $element = null): array
+    public static function rules(
+        DefectCategory $category,
+        mixed $element = null,
+        bool $allowLegacyFractionalMultiplier = false,
+    ): array
     {
-        return match ($category) {
+        $rules = match ($category) {
             DefectCategory::Civil => self::rulesForFields(
                 ['length', 'height', 'width', 'quantity'],
                 ['length', 'height', 'width', 'quantity'],
@@ -35,10 +39,20 @@ final class NativeDefectQuantityCalculator
             DefectCategory::StructuralRecovery => self::structuralRecoveryRules($element),
             DefectCategory::RoofCladding => ['quantity' => ['prohibited']],
         };
+
+        if (! $allowLegacyFractionalMultiplier && self::hasCalculatedMultiplier($category, $element)) {
+            $rules['quantity.quantity'] = self::positiveIntegerRule();
+        }
+
+        return $rules;
     }
 
     /** @return array<string, mixed> */
-    public function calculate(DefectCategory $category, array $data): array
+    public function calculate(
+        DefectCategory $category,
+        array $data,
+        bool $allowLegacyFractionalMultiplier = false,
+    ): array
     {
         if ($category === DefectCategory::RoofCladding) {
             throw ValidationException::withMessages([
@@ -54,7 +68,7 @@ final class NativeDefectQuantityCalculator
 
         Validator::make(
             ['quantity' => $data],
-            self::rules($category, $data['element'] ?? null),
+            self::rules($category, $data['element'] ?? null, $allowLegacyFractionalMultiplier),
             attributes: self::attributes(),
         )->validate();
 
@@ -327,6 +341,25 @@ final class NativeDefectQuantityCalculator
         }
 
         return $rules;
+    }
+
+    private static function hasCalculatedMultiplier(DefectCategory $category, mixed $element): bool
+    {
+        if ($category === DefectCategory::Civil) {
+            return true;
+        }
+
+        if ($category !== DefectCategory::StructuralRecovery || ! is_string($element)) {
+            return false;
+        }
+
+        return StructuralRecoveryElement::tryFrom($element)?->mode() === QuantityCalculationMode::Calculated;
+    }
+
+    /** @return list<string> */
+    private static function positiveIntegerRule(): array
+    {
+        return ['required_with:quantity', 'integer', 'min:1', 'max:999999999999'];
     }
 
     /** @return list<string> */

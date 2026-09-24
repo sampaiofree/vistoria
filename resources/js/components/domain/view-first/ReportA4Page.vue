@@ -16,11 +16,19 @@ defineProps({
         type: Boolean,
         default: false,
     },
+    orientation: {
+        type: String,
+        default: 'portrait',
+    },
 });
 </script>
 
 <template>
-    <section class="report-a4-page" :class="{ 'report-a4-cover': cover }">
+    <section
+        class="report-a4-page"
+        :class="{ 'report-a4-cover': cover, 'report-a4-landscape': orientation === 'landscape' }"
+        :data-report-orientation="orientation"
+    >
         <div v-if="!cover" class="report-a4-header">
             <div class="report-header-cell report-header-logo">
                 <img v-if="report.client_logo_url" :src="report.client_logo_url" :alt="report.client || 'Cliente'">
@@ -71,6 +79,16 @@ defineProps({
 
 .report-a4-cover {
     padding-top: 12mm;
+}
+
+.report-a4-landscape {
+    width: 297mm;
+    min-height: 210mm;
+    padding: 10mm 14mm 9mm;
+}
+
+.report-a4-landscape .report-a4-content {
+    padding-top: 4mm;
 }
 
 .report-a4-header {
@@ -166,6 +184,13 @@ defineProps({
         transform-origin: top left;
         margin-left: 0;
     }
+
+    .report-a4-page.report-a4-landscape {
+        width: 297mm;
+        height: 210mm;
+        min-height: 210mm;
+        padding: 10mm 14mm 9mm;
+    }
 }
 
 @media print {
@@ -179,6 +204,13 @@ defineProps({
         box-shadow: none;
         break-after: page;
         page-break-after: always;
+    }
+
+    .report-a4-page.report-a4-landscape {
+        width: 297mm;
+        height: 210mm;
+        min-height: 210mm;
+        padding: 10mm 14mm 9mm;
     }
 
     .report-a4-page:last-child {

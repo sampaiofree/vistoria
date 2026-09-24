@@ -425,7 +425,7 @@ Localizada significa até 30% da seção do perfil ou da área da chapa; general
 
 ### Quantitativos
 
-A unidade principal é `kg`, com densidade de aço de `7.850 kg/m³`. O **Elemento REC** é obrigatório, determina os campos e a fórmula, e os elementos calculáveis obedecem a:
+A unidade principal é `kg`, com densidade de aço de `7.850 kg/m³`. O **Elemento REC** é obrigatório e determina os campos e a fórmula. Cada elemento calculável é registrado como um item independente e recebe uma Quantidade inteira positiva; itens legados com quantidade decimal permanecem editáveis para preservar seu histórico. Elementos de peso manual não usam multiplicador.
 
 ```text
 Peso total = Peso unitário × Quantidade

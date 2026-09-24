@@ -39,7 +39,7 @@ final class NativeDefectQuantityCalculatorTest extends TestCase
     public static function calculatedStructuralRecoveryCases(): array
     {
         return [
-            'perfil W' => ['profile_w', ['flange_width' => 200, 'flange_thickness' => 10, 'web_height' => 300, 'web_thickness' => 8, 'length' => 2, 'quantity' => 1.5], '98.4704000000000000', '147.7056000000000000'],
+            'perfil W' => ['profile_w', ['flange_width' => 200, 'flange_thickness' => 10, 'web_height' => 300, 'web_thickness' => 8, 'length' => 2, 'quantity' => 2], '98.4704000000000000', '196.9408000000000000'],
             'perfil L' => ['profile_l', ['width' => 76, 'thickness' => 6, 'length' => 2.8, 'quantity' => 2], '19.2544800000000000', '38.5089600000000000'],
             'perfil U' => ['profile_u', ['height' => 200, 'web_thickness' => 8, 'width' => 75, 'flange_thickness' => 10, 'length' => 3, 'quantity' => 2], '69.2370000000000000', '138.4740000000000000'],
             'perfil UE' => ['profile_ue', ['height' => 200, 'web_thickness' => 8, 'flange_width' => 75, 'fold_width' => 20, 'flange_thickness' => 6, 'length' => 3, 'quantity' => 2], '60.5706000000000000', '121.1412000000000000'],

@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Http\Requests\Defects;
 
 use App\Enums\DefectAssessmentCondition;
+use App\Enums\DefectCategory;
+use App\Enums\AtmosphericCorrosivity;
 use App\Models\DefectAssessment;
 use App\Support\TextNormalizer;
 use Illuminate\Foundation\Http\FormRequest;
@@ -30,13 +32,31 @@ final class UpdateDefectAssessmentGutRequest extends FormRequest
             }
         }
 
+        if ($this->exists('atmospheric_classification')) {
+            $normalized['atmospheric_classification'] = TextNormalizer::technicalCode(
+                is_string($this->input('atmospheric_classification'))
+                    ? $this->input('atmospheric_classification')
+                    : null,
+            );
+        }
+
         $this->merge($normalized);
     }
 
     public function rules(): array
     {
+        $assessment = $this->route('defectAssessment');
+        $isTac = $assessment instanceof DefectAssessment
+            && $assessment->defect->category === DefectCategory::AnticorrosiveTreatment;
+
         return self::technicalRules() + [
             'condition' => ['required', Rule::enum(DefectAssessmentCondition::class)],
+            'atmospheric_classification' => [
+                Rule::requiredIf($isTac),
+                Rule::prohibitedIf(! $isTac),
+                'nullable',
+                Rule::enum(AtmosphericCorrosivity::class),
+            ],
         ];
     }
 

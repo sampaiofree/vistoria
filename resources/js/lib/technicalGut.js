@@ -64,9 +64,10 @@ export function calculateTechnicalGut(definition, values) {
         gravity = definition?.sources?.gravity?.valid === false
             ? null
             : scoreOf(definition?.sources?.gravity?.score);
-        urgency = definition?.sources?.urgency?.valid === false
-            ? null
-            : scoreOf(definition?.sources?.urgency?.score);
+        urgency = scoreOf(findOption(
+            definition?.sources?.urgency?.mapping,
+            values.atmospheric_classification,
+        )?.score);
         trend = scoreOf(findOption(definition?.trend_options, values.trend_option_code)?.score);
     } else if (category === 'CV' || category === 'REC') {
         const safety = scoreOf(findOption(definition?.safety_impact_options, values.safety_impact_code)?.score);
@@ -101,6 +102,7 @@ export function buildTechnicalGutPayload(definition, values) {
     if (values.condition) payload.condition = values.condition;
 
     if (category === 'TAC') {
+        payload.atmospheric_classification = values.atmospheric_classification;
         payload.trend_option_code = values.trend_option_code;
 
         return payload;
@@ -129,7 +131,7 @@ export function technicalGutReady(definition, values) {
     if (!result) return false;
 
     const category = categoryCode(definition);
-    if (category === 'TAC') return Boolean(values.trend_option_code);
+    if (category === 'TAC') return Boolean(values.atmospheric_classification && values.trend_option_code);
     if (!values.safety_impact_code || !values.asset_impact_code) return false;
 
     if (category === 'CV') {
