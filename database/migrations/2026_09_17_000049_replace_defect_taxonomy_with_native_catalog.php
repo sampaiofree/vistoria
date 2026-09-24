@@ -55,10 +55,28 @@ return new class extends Migration
 
         $this->deleteAssessmentPhotoFiles($photoFiles);
 
-        Schema::table('defects', function (Blueprint $table): void {
-            $table->dropUnique('defects_sequence_category_unique');
-            $table->dropIndex('defects_org_category_status_index');
-            $this->dropForeign($table, 'defects_org_category_foreign', 'defect_category_id');
+        // MySQL applies ALTER TABLE statements independently. If a previous
+        // attempt stopped partway through, tolerate the index already removed.
+        $hasDefectsCategoryForeign = Schema::hasForeignKey('defects', 'defects_org_category_foreign');
+        $hasDefectsSequenceCategoryUnique = Schema::hasIndex('defects', 'defects_sequence_category_unique');
+        $hasDefectsCategoryStatusIndex = Schema::hasIndex('defects', 'defects_org_category_status_index');
+
+        Schema::table('defects', function (Blueprint $table) use (
+            $hasDefectsCategoryForeign,
+            $hasDefectsSequenceCategoryUnique,
+            $hasDefectsCategoryStatusIndex,
+        ): void {
+            // This FK uses defects_org_category_status_index on MySQL/InnoDB.
+            // Remove the constraint before removing its supporting index.
+            if ($hasDefectsCategoryForeign) {
+                $this->dropForeign($table, 'defects_org_category_foreign', 'defect_category_id');
+            }
+            if ($hasDefectsSequenceCategoryUnique) {
+                $table->dropUnique('defects_sequence_category_unique');
+            }
+            if ($hasDefectsCategoryStatusIndex) {
+                $table->dropIndex('defects_org_category_status_index');
+            }
             $table->dropColumn('defect_category_id');
             $table->unique(['organization_id', 'equipment_id', 'category', 'sequence_number'], 'defects_sequence_unique');
             $table->index(['organization_id', 'category', 'status'], 'defects_org_category_status_index');
@@ -71,15 +89,15 @@ return new class extends Migration
         });
 
         Schema::table('defect_assessments', function (Blueprint $table): void {
-            $table->dropIndex('assessments_org_classification_index');
             $this->dropForeign($table, 'assessments_org_classification_foreign', 'defect_classification_id');
+            $table->dropIndex('assessments_org_classification_index');
             $table->dropColumn('defect_classification_id');
             $table->index(['organization_id', 'classification_code'], 'assessments_org_classification_code_index');
         });
 
         Schema::table('inspection_location_maps', function (Blueprint $table): void {
-            $table->dropIndex('location_maps_scope_position_index');
             $this->dropForeign($table, 'location_maps_org_category_foreign', 'defect_category_id');
+            $table->dropIndex('location_maps_scope_position_index');
             $table->dropColumn('defect_category_id');
             $table->string('category', 30);
             $table->index(['organization_id', 'inspection_id', 'category', 'position'], 'location_maps_scope_position_index');

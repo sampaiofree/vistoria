@@ -133,22 +133,22 @@ return new class extends Migration
         });
 
         Schema::table('defect_assessments', function (Blueprint $table): void {
-            $table->dropIndex('assessments_org_classification_index');
             if (DB::getDriverName() === 'sqlite') {
                 $table->dropForeign(['organization_id', 'defect_classification_id']);
             } else {
                 $table->dropForeign('assessments_org_classification_foreign');
             }
+            $table->dropIndex('assessments_org_classification_index');
             $table->dropColumn('defect_classification_id');
         });
 
         Schema::table('defects', function (Blueprint $table): void {
-            $table->dropIndex('defects_org_category_status_index');
             if (DB::getDriverName() === 'sqlite') {
                 $table->dropForeign(['organization_id', 'defect_category_id']);
             } else {
                 $table->dropForeign('defects_org_category_foreign');
             }
+            $table->dropIndex('defects_org_category_status_index');
             $table->dropColumn('defect_category_id');
         });
 
