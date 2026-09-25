@@ -13,6 +13,24 @@ const emit = defineEmits(['update:modelValue']);
 
 const PENDING_TEXT_COLOR = '#DC2626';
 
+function escapeHtml(value) {
+    return value
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+}
+
+function plainTextAsHtml(value) {
+    const normalized = value.replace(/\r\n?/g, '\n');
+
+    return normalized
+        .split(/\n{2,}/)
+        .map((paragraph) => `<p>${escapeHtml(paragraph).replaceAll('\n', '<br>')}</p>`)
+        .join('');
+}
+
 const PendingTextColor = Mark.create({
     name: 'textColor',
     addAttributes() {
@@ -93,6 +111,14 @@ const editor = useEditor({
         attributes: {
             class: 'general-aspects-editor-content',
             spellcheck: 'true',
+        },
+        handlePaste: (_view, event) => {
+            const text = event.clipboardData?.getData('text/plain');
+            if (text === undefined || text === '') return false;
+
+            // Do not let HTML copied from Word, Outlook, PDFs, or browser extensions
+            // reach the editor. Only our minimal HTML representation is inserted.
+            return editor.value?.commands.insertContent(plainTextAsHtml(text)) ?? false;
         },
     },
     onUpdate: ({ editor: currentEditor }) => emit('update:modelValue', currentEditor.getJSON()),
