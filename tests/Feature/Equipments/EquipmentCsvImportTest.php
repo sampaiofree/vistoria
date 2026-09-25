@@ -147,6 +147,41 @@ final class EquipmentCsvImportTest extends TestCase
             ]);
     }
 
+    public function test_import_rejects_a_csv_that_is_not_utf8_before_caching_the_preview(): void
+    {
+        [$admin] = $this->context();
+        $utf8Csv = implode("\n", [
+            'Item manutenção;Campo de ordenação (TAG);Denominação do loc.instalação;Prefixo de avaria;Número do cliente;Número interno',
+            '000123;EQ-01;Bomba;AV-001;SAM-001;SEND-001',
+        ]);
+        $csv = mb_convert_encoding($utf8Csv, 'Windows-1252', 'UTF-8');
+
+        Cache::shouldReceive('put')->never();
+
+        $this->actingAs($admin)->post(route('equipments.import.preview'), [
+            'file' => UploadedFile::fake()->createWithContent('ativos.csv', $csv),
+        ])->assertSessionHasErrors([
+            'file' => 'O arquivo CSV não está em UTF-8. Salve-o como CSV UTF-8 e tente novamente.',
+        ]);
+    }
+
+    public function test_import_accepts_a_utf8_csv_with_accents(): void
+    {
+        [$admin] = $this->context();
+        $csv = implode("\n", [
+            'Item manutenção;Campo de ordenação (TAG);Denominação do loc.instalação;Prefixo de avaria;Número do cliente;Número interno',
+            '000123;EQ-01;Bomba de pressão;AV-001;SAM-001;SEND-001',
+        ]);
+
+        $preview = $this->actingAs($admin)->post(route('equipments.import.preview'), [
+            'file' => UploadedFile::fake()->createWithContent('ativos.csv', $csv),
+        ]);
+
+        $this->get($this->redirectLocation($preview))->assertInertia(fn (Assert $page) => $page
+            ->where('preview.columns.0.label', 'Item manutenção')
+            ->where('preview.samples.0.values.column_2', 'Bomba de pressão'));
+    }
+
     public function test_global_validation_messages_are_translated_to_portuguese(): void
     {
         $errors = Validator::make([

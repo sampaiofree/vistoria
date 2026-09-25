@@ -14,11 +14,14 @@ use App\Models\Defect;
 use App\Models\Equipment;
 use App\Models\Inspection;
 use App\Models\Organization;
+use App\Models\SapM2Note;
 use App\Models\User;
 use App\Services\Tenancy\TenantContext;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -138,6 +141,104 @@ final class EquipmentMaintenanceFieldsTest extends TestCase
         $this->actingAs($admin)->post(route('equipments.store'), $this->payload($client))->assertSessionHasErrors('maintenance_item_code');
         $existing->delete();
         $this->post(route('equipments.store'), $this->payload($client))->assertSessionHasErrors('maintenance_item_code');
+    }
+
+    public function test_admin_can_permanently_delete_an_unrelated_equipment_and_reuse_its_identifiers(): void
+    {
+        [, $admin, $client] = $this->context();
+        $payload = $this->payload($client);
+
+        $this->actingAs($admin)->post(route('equipments.store'), $payload)->assertSessionHasNoErrors();
+        $equipment = Equipment::sole();
+
+        $this->delete(route('equipments.destroy', $equipment))
+            ->assertRedirect(route('equipments.index'))
+            ->assertSessionHas('success', 'Item de manutenção excluído.');
+
+        $this->assertNull(Equipment::withTrashed()->find($equipment->id));
+        $this->post(route('equipments.store'), $payload)->assertSessionHasNoErrors();
+    }
+
+    public function test_only_an_admin_from_the_equipment_organization_can_delete_it(): void
+    {
+        [$organization, $admin, $client] = $this->context();
+        $equipment = Equipment::factory()->inStructure($client)->create();
+        $member = User::factory()->for($organization)->create(['account_type' => UserAccountType::Member->value]);
+        $otherAdmin = User::factory()->for(Organization::factory())->create(['account_type' => UserAccountType::CompanyAdmin->value]);
+
+        $this->actingAs($member)->delete(route('equipments.destroy', $equipment))->assertForbidden();
+        $this->actingAs($otherAdmin)->delete(route('equipments.destroy', $equipment))->assertNotFound();
+        $this->assertDatabaseHas('equipments', ['id' => $equipment->id]);
+        $this->actingAs($admin);
+    }
+
+    public function test_linked_records_hide_the_delete_action_and_block_deletion(): void
+    {
+        [, $admin, $client] = $this->context();
+        $equipment = Equipment::factory()->inStructure($client)->create();
+        Inspection::factory()->forEquipment($equipment)->create();
+
+        $this->actingAs($admin)->get(route('equipments.index', ['search' => $equipment->maintenance_item_code]))
+            ->assertInertia(fn (Assert $page) => $page->where('equipments.data.0.can_delete', false));
+
+        $this->delete(route('equipments.destroy', $equipment))
+            ->assertRedirect(route('equipments.index'))
+            ->assertSessionHas('error', 'Este item de manutenção não pode ser excluído porque possui registros vinculados.');
+
+        $this->assertDatabaseHas('equipments', ['id' => $equipment->id]);
+    }
+
+    public function test_soft_deleted_technical_records_also_block_equipment_deletion(): void
+    {
+        [$organization, $admin, $client] = $this->context();
+        $equipment = Equipment::factory()->inStructure($client)->create();
+
+        DB::table('equipment_documents')->insert([
+            'public_id' => (string) Str::ulid(),
+            'organization_id' => $organization->id,
+            'equipment_id' => $equipment->id,
+            'document_group' => (string) Str::ulid(),
+            'document_type' => 'manual',
+            'title' => 'Manual removido',
+            'disk' => 'public',
+            'path' => 'documents/removido.pdf',
+            'original_name' => 'removido.pdf',
+            'mime_type' => 'application/pdf',
+            'size' => 1,
+            'checksum' => str_repeat('a', 64),
+            'is_current' => true,
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+            'deleted_at' => now(),
+        ]);
+
+        $this->actingAs($admin)->get(route('equipments.index', ['search' => $equipment->maintenance_item_code]))
+            ->assertInertia(fn (Assert $page) => $page->where('equipments.data.0.can_delete', false));
+        $this->delete(route('equipments.destroy', $equipment))->assertSessionHas('error');
+        $this->assertDatabaseHas('equipments', ['id' => $equipment->id]);
+    }
+
+    public function test_deletion_is_rechecked_when_a_technical_record_is_created_after_listing(): void
+    {
+        [$organization, $admin, $client] = $this->context();
+        $equipment = Equipment::factory()->inStructure($client)->create();
+
+        $this->actingAs($admin)->get(route('equipments.index', ['search' => $equipment->maintenance_item_code]))
+            ->assertInertia(fn (Assert $page) => $page->where('equipments.data.0.can_delete', true));
+
+        SapM2Note::query()->create([
+            'organization_id' => $organization->id,
+            'equipment_id' => $equipment->id,
+            'sap_number' => 'M2-001',
+            'created_by' => $admin->id,
+            'updated_by' => $admin->id,
+        ]);
+
+        $this->delete(route('equipments.destroy', $equipment))
+            ->assertRedirect(route('equipments.index'))
+            ->assertSessionHas('error', 'Este item de manutenção não pode ser excluído porque possui registros vinculados.');
+        $this->assertDatabaseHas('equipments', ['id' => $equipment->id]);
     }
 
     public function test_same_item_in_different_organizations_is_allowed(): void

@@ -99,8 +99,7 @@ Route::middleware([
         Route::post('equipments/import/confirm', [EquipmentImportController::class, 'confirm'])
             ->name('equipments.import.confirm');
 
-        Route::resource('equipments', EquipmentController::class)
-            ->except(['destroy']);
+        Route::resource('equipments', EquipmentController::class);
 
         Route::patch(
             'equipments/{equipment}/status',

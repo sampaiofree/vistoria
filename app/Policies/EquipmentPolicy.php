@@ -41,6 +41,13 @@ final class EquipmentPolicy
             && $this->sameOrganization($user, $equipment);
     }
 
+    public function delete(User $user, Equipment $equipment): bool
+    {
+        return $user->isActive()
+            && $user->isCompanyAdmin()
+            && $this->sameOrganization($user, $equipment);
+    }
+
     private function sameOrganization(User $user, Equipment $equipment): bool
     {
         return $user->organization_id !== null

@@ -43,7 +43,18 @@ final class EquipmentCsv
     /** @return array{columns: array<int, array{key:string, label:string}>, rows: array<int, array{line:int, values:array<string, string>}>, mapping:array<string, ?string>} */
     public function read(UploadedFile $file): array
     {
-        $handle = fopen((string) $file->getRealPath(), 'rb');
+        $path = (string) $file->getRealPath();
+        $contents = file_get_contents($path);
+
+        if ($contents === false) {
+            throw ValidationException::withMessages(['file' => 'Não foi possível ler o arquivo CSV.']);
+        }
+
+        if (! mb_check_encoding($contents, 'UTF-8')) {
+            throw ValidationException::withMessages(['file' => 'O arquivo CSV não está em UTF-8. Salve-o como CSV UTF-8 e tente novamente.']);
+        }
+
+        $handle = fopen($path, 'rb');
 
         if ($handle === false) {
             throw ValidationException::withMessages(['file' => 'Não foi possível ler o arquivo CSV.']);

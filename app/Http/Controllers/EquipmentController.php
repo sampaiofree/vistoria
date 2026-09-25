@@ -8,6 +8,7 @@ use App\Actions\Equipments\ActivateEquipment;
 use App\Actions\Equipments\CreateEquipment;
 use App\Actions\Equipments\DeactivateEquipment;
 use App\Actions\Equipments\DecommissionEquipment;
+use App\Actions\Equipments\DeleteEquipment;
 use App\Actions\Equipments\UpdateEquipment;
 use App\Enums\AssetAbcClass;
 use App\Enums\EquipmentStatus;
@@ -35,6 +36,8 @@ final class EquipmentController extends Controller
         $filters = ['search' => trim((string) $request->string('search'))];
 
         $equipments = Equipment::query()->forOrganization($tenant->id())
+            ->select('equipments.*')
+            ->selectSub(DeleteEquipment::relatedRecordsExistsQuery(), 'has_related_records')
             ->withExists(['inspections', 'defects'])
             ->when($filters['search'] !== '', function ($query) use ($filters): void {
                 $tagSearch = TextNormalizer::equipmentTag($filters['search']);
@@ -55,8 +58,9 @@ final class EquipmentController extends Controller
                 'public_id' => $equipment->public_id, 'numero_cliente' => $equipment->numero_cliente, 'numero_interno' => $equipment->numero_interno, 'maintenance_item_code' => $equipment->maintenance_item_code, 'tag' => $equipment->tag,
                 'defect_code_prefix' => $equipment->defect_code_prefix, 'description' => $equipment->description, 'area_name' => $equipment->area_name, 'subarea_name' => $equipment->subarea_name,
                 'status' => $equipment->status->value,
-                'show_url' => route('equipments.show', $equipment), 'edit_url' => route('equipments.edit', $equipment), 'status_url' => route('equipments.status', $equipment),
+                'show_url' => route('equipments.show', $equipment), 'edit_url' => route('equipments.edit', $equipment), 'status_url' => route('equipments.status', $equipment), 'delete_url' => route('equipments.destroy', $equipment),
                 'can_update' => $request->user()->can('update', $equipment), 'can_change_status' => $request->user()->can('changeStatus', $equipment),
+                'can_delete' => $request->user()->can('delete', $equipment) && ! $equipment->has_related_records,
             ]);
 
         return Inertia::render('Equipments/Index', [
@@ -142,6 +146,18 @@ final class EquipmentController extends Controller
         };
 
         return back()->with('success', 'Status do equipamento atualizado.');
+    }
+
+    public function destroy(Request $request, TenantContext $tenant, Equipment $equipment, DeleteEquipment $delete): RedirectResponse
+    {
+        $equipment = $this->tenantEquipment($tenant, $equipment);
+        $this->authorize('delete', $equipment);
+
+        if (! $delete->handle($equipment)) {
+            return redirect()->route('equipments.index')->with('error', 'Este item de manutenção não pode ser excluído porque possui registros vinculados.');
+        }
+
+        return redirect()->route('equipments.index')->with('success', 'Item de manutenção excluído.');
     }
 
     private function equipmentSummaryPayload(Equipment $equipment): array

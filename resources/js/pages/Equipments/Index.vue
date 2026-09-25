@@ -1,6 +1,6 @@
 <script setup>
 import { onBeforeUnmount, watch } from 'vue';
-import { Link, useForm } from '@inertiajs/vue3';
+import { Link, router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/components/ui/AppLayout.vue';
 import Pagination from '@/components/ui/Pagination.vue';
 import StatusToggleForm from '@/components/ui/StatusToggleForm.vue';
@@ -43,6 +43,14 @@ function search() {
         preserveScroll: true,
         replace: true,
     });
+}
+
+function removeEquipment(equipment) {
+    if (!window.confirm(`Excluir definitivamente o item ${equipment.maintenance_item_code || equipment.tag}? Esta ação não pode ser desfeita.`)) {
+        return;
+    }
+
+    router.delete(equipment.delete_url, { preserveScroll: true });
 }
 
 watch(() => form.search, () => {
@@ -162,6 +170,14 @@ onBeforeUnmount(() => {
                                     >
                                         Editar
                                     </Link>
+                                    <button
+                                        v-if="equipment.can_delete"
+                                        type="button"
+                                        class="rounded-lg border border-rose-200 bg-white px-3 py-2 text-sm font-medium text-rose-700 transition hover:border-rose-300 hover:bg-rose-50"
+                                        @click="removeEquipment(equipment)"
+                                    >
+                                        Excluir
+                                    </button>
                                     <StatusToggleForm
                                         v-if="equipment.can_change_status && equipment.status !== 'decommissioned'"
                                         :action="equipment.status_url"
