@@ -4,6 +4,7 @@ import { EditorContent, useEditor } from '@tiptap/vue-3';
 import { Extension, Mark } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import TextAlign from '@tiptap/extension-text-align';
+import { plainTextAsHtml } from '@/lib/plainTextPaste';
 
 const props = defineProps({
     modelValue: { type: Object, required: true },
@@ -12,24 +13,6 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue']);
 
 const PENDING_TEXT_COLOR = '#DC2626';
-
-function escapeHtml(value) {
-    return value
-        .replaceAll('&', '&amp;')
-        .replaceAll('<', '&lt;')
-        .replaceAll('>', '&gt;')
-        .replaceAll('"', '&quot;')
-        .replaceAll("'", '&#039;');
-}
-
-function plainTextAsHtml(value) {
-    const normalized = value.replace(/\r\n?/g, '\n');
-
-    return normalized
-        .split(/\n{2,}/)
-        .map((paragraph) => `<p>${escapeHtml(paragraph).replaceAll('\n', '<br>')}</p>`)
-        .join('');
-}
 
 const PendingTextColor = Mark.create({
     name: 'textColor',

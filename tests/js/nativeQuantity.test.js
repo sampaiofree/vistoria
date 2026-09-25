@@ -80,6 +80,17 @@ test('builds a REC request from definition fields and formats only the presentat
     assert.deepEqual(buildNativeQuantityPayload('REC', {
         element: 'profile_l', width: 76, thickness: 6, length: 2.8, quantity: 3,
     }, definition), { element: 'profile_l', width: 76, thickness: 6, length: 2.8, quantity: 3 });
+    const profileWDefinition = { elements: [{ code: 'profile_w', mode: 'calculated', fields: [
+        { key: 'flange_width' }, { key: 'flange_thickness' }, { key: 'web_height' },
+        { key: 'web_thickness' }, { key: 'length' }, { key: 'quantity' },
+    ] }] };
+    assert.deepEqual(buildNativeQuantityPayload('REC', {
+        element: 'profile_w', flange_width: 200, flange_thickness: 10,
+        web_height: 300, web_thickness: 8, length: 2, quantity: 2,
+    }, profileWDefinition), {
+        element: 'profile_w', flange_width: 200, flange_thickness: 10,
+        web_height: 300, web_thickness: 8, length: 2, quantity: 2,
+    });
     assert.equal(formatNativeMeasurement(38.50896), '38,51');
     assert.equal(formatNativeMeasurement(1234.5), '1.234,50');
 });

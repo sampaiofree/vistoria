@@ -136,9 +136,17 @@ const locationPreviewMap = computed(() => {
     };
 });
 
+function recQuantityFieldDefaults(inputs = {}) {
+    const fields = props.quantity_definition?.elements
+        ?.flatMap((element) => element.fields ?? []) ?? [];
+
+    return Object.fromEntries(fields.map((field) => [field.key, inputs[field.key] ?? '']));
+}
+
 const quantityForm = useForm({
     description: '',
     element: '',
+    ...recQuantityFieldDefaults(),
     area: '',
     total_weight: '',
     length: '',
@@ -375,8 +383,8 @@ function quantityDefaults(item = null) {
     const inputs = item?.inputs ?? {};
     return {
         description: item?.description ?? '',
-        ...inputs,
         element: item?.rec_element ?? item?.element_code ?? '',
+        ...recQuantityFieldDefaults(inputs),
         area: inputs.area ?? (isTac.value ? item?.measurement_value ?? '' : ''),
         total_weight: inputs.total_weight ?? (item?.mode === 'manual' ? item?.measurement_value ?? '' : ''),
         length: inputs.length ?? '',
