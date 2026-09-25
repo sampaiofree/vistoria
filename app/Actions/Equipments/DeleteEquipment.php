@@ -14,7 +14,6 @@ final class DeleteEquipment
     private const RELATED_TABLES = [
         'inspections',
         'defects',
-        'equipment_documents',
         'defect_code_sequences',
         'defect_assessments',
         'defect_relations',

@@ -19,9 +19,7 @@ use App\Models\User;
 use App\Services\Tenancy\TenantContext;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -185,37 +183,6 @@ final class EquipmentMaintenanceFieldsTest extends TestCase
             ->assertRedirect(route('equipments.index'))
             ->assertSessionHas('error', 'Este item de manutenção não pode ser excluído porque possui registros vinculados.');
 
-        $this->assertDatabaseHas('equipments', ['id' => $equipment->id]);
-    }
-
-    public function test_soft_deleted_technical_records_also_block_equipment_deletion(): void
-    {
-        [$organization, $admin, $client] = $this->context();
-        $equipment = Equipment::factory()->inStructure($client)->create();
-
-        DB::table('equipment_documents')->insert([
-            'public_id' => (string) Str::ulid(),
-            'organization_id' => $organization->id,
-            'equipment_id' => $equipment->id,
-            'document_group' => (string) Str::ulid(),
-            'document_type' => 'manual',
-            'title' => 'Manual removido',
-            'disk' => 'public',
-            'path' => 'documents/removido.pdf',
-            'original_name' => 'removido.pdf',
-            'mime_type' => 'application/pdf',
-            'size' => 1,
-            'checksum' => str_repeat('a', 64),
-            'is_current' => true,
-            'status' => 'active',
-            'created_at' => now(),
-            'updated_at' => now(),
-            'deleted_at' => now(),
-        ]);
-
-        $this->actingAs($admin)->get(route('equipments.index', ['search' => $equipment->maintenance_item_code]))
-            ->assertInertia(fn (Assert $page) => $page->where('equipments.data.0.can_delete', false));
-        $this->delete(route('equipments.destroy', $equipment))->assertSessionHas('error');
         $this->assertDatabaseHas('equipments', ['id' => $equipment->id]);
     }
 
