@@ -57,7 +57,9 @@ return new class extends Migration
 
         // MySQL applies ALTER TABLE statements independently. If a previous
         // attempt stopped partway through, tolerate the index already removed.
-        $hasDefectsCategoryForeign = Schema::hasForeignKey('defects', 'defects_org_category_foreign');
+        $hasDefectsCategoryForeign = Schema::hasForeignKey('defects', DB::getDriverName() === 'sqlite'
+            ? ['organization_id', 'defect_category_id']
+            : 'defects_org_category_foreign');
         $hasDefectsSequenceCategoryUnique = Schema::hasIndex('defects', 'defects_sequence_category_unique');
         $hasDefectsCategoryStatusIndex = Schema::hasIndex('defects', 'defects_org_category_status_index');
 

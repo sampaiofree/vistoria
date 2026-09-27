@@ -15,6 +15,7 @@ import {
     calculateNativeQuantity,
     formatNativeMeasurement,
     nativeUnitSymbol,
+    normalizeNativeQuantityMultiplier,
 } from '@/lib/nativeQuantity';
 import {
     buildTechnicalGutPayload,
@@ -44,10 +45,12 @@ const props = defineProps({
     quantity_definition: { type: Object, default: null },
     classification: { type: Object, default: null },
     condition_options: { type: Array, default: () => [] },
+    classification_method_options: { type: Array, default: () => [] },
     origin_type: { type: String, default: 'new' },
     previous_assessment_summary: { type: Object, default: null },
     assessment_history: { type: Array, default: () => [] },
     reinspection_action: { type: Object, default: null },
+    historical_source: { type: Object, default: null },
     location_map: { type: Object, default: null },
     correction_requests: { type: Object, default: () => ({ history: [] }) },
 });
@@ -55,6 +58,7 @@ const props = defineProps({
 const form = useForm({
     status: props.assessment.status,
     condition: props.assessment.condition,
+    is_unsafe_condition: Boolean(props.assessment.is_unsafe_condition),
     location_description: props.assessment.location_description ?? '',
     comment: props.assessment.comment ?? '',
     recommendation: props.assessment.recommendation ?? '',
@@ -63,6 +67,7 @@ const form = useForm({
     item_description: props.assessment.item_description ?? '',
     project_reference: props.assessment.project_reference ?? '',
     impacts_activity: props.assessment.impacts_activity ?? null,
+    classification_method: props.assessment.classification_method ?? 'gut',
 });
 
 function snapshotCriterion(criterion) {
@@ -100,7 +105,10 @@ const editing = reactive({ condition: false, quantity: false, gut: false, tel: f
 const historyOpen = ref(false);
 const locationModalOpen = ref(false);
 const startingReinspection = ref(false);
-const mapForm = useForm({ file: null });
+const mapForm = useForm({
+    file: null,
+    project_number: props.location_map?.project_number ?? '',
+});
 const mapPreviewUrl = ref(null);
 let mapProcessingPoll = null;
 
@@ -112,6 +120,8 @@ const locationEditorMap = computed(() => props.location_map?.editor
         photo_legend: props.location_map.photo_legend,
     }
     : null);
+const mapProjectNumberChanged = computed(() => mapForm.project_number.trim()
+    !== (props.location_map?.project_number ?? '').trim());
 
 const locationPreviewMap = computed(() => {
     const locationMap = props.location_map;
@@ -160,7 +170,6 @@ const title = computed(() => props.assessment.defect?.code ?? 'Avaliação da av
 const subtitle = computed(() => `${props.assessment.defect?.equipment?.tag ?? ''} — ${props.assessment.defect?.title ?? ''}`);
 const isPublished = computed(() => props.assessment.status === 'complete');
 const requiresEvidence = computed(() => !['canceled', 'canceled_sr'].includes(form.condition));
-const requiresGut = computed(() => ['new', 'reinspected', 'reclassified'].includes(form.condition));
 const requiresReason = computed(() => ['canceled', 'canceled_sr'].includes(form.condition));
 const isInherited = computed(() => props.origin_type === 'inherited');
 const keepPublished = computed(() => Boolean(props.capabilities.keep_published));
@@ -192,6 +201,14 @@ const isCivil = computed(() => defectCategory.value === 'CV');
 const isTac = computed(() => defectCategory.value === 'TAC');
 const isRec = computed(() => defectCategory.value === 'REC');
 const isTel = computed(() => defectCategory.value === 'TEL');
+const isSolidaryStructures = computed(() => defectCategory.value === 'ES');
+const hasQuantities = computed(() => !isTel.value && !isSolidaryStructures.value);
+const hasLocationMap = computed(() => !isSolidaryStructures.value);
+const supportsEngineeringNote = computed(() => ['CV', 'TAC', 'REC'].includes(defectCategory.value));
+const usesEngineeringNote = computed(() => supportsEngineeringNote.value
+    && form.classification_method === 'engineering_note');
+const requiresClassification = computed(() => ['new', 'reinspected', 'reclassified'].includes(form.condition)
+    && !isSolidaryStructures.value);
 const civilFields = [
     { key: 'length', label: 'Comprimento', unit: 'm' },
     { key: 'height', label: 'Altura', unit: 'm' },
@@ -207,11 +224,6 @@ const recQuantityFields = computed(() => {
 const quantityPreview = computed(() => calculateNativeQuantity(defectCategory.value, quantityForm));
 const hasCalculatedMultiplier = computed(() => isCivil.value
     || (isRec.value && selectedRecElement.value?.mode === 'calculated'));
-const allowsLegacyFractionalMultiplier = computed(() => Boolean(
-    hasCalculatedMultiplier.value
-    && editingQuantity.value
-    && !Number.isInteger(Number(editingQuantity.value.quantity)),
-));
 const quantityMultiplierIsValid = computed(() => {
     if (!hasCalculatedMultiplier.value) return true;
 
@@ -219,7 +231,7 @@ const quantityMultiplierIsValid = computed(() => {
 
     return Number.isFinite(value)
         && value > 0
-        && (allowsLegacyFractionalMultiplier.value || Number.isInteger(value));
+        && Number.isInteger(value);
 });
 const quantityReady = computed(() => quantityPreview.value !== null && quantityMultiplierIsValid.value);
 const trendOptions = computed(() => trendOptionsFor(props.gut_definition, gutForm.trend_group_code));
@@ -320,6 +332,33 @@ function saveCondition() {
     });
 }
 
+function toggleUnsafeCondition() {
+    if (!props.capabilities.update_url || isPublished.value || form.processing) return;
+
+    const previousValue = form.is_unsafe_condition;
+    form.is_unsafe_condition = !previousValue;
+    form.status = 'draft';
+    form.patch(props.capabilities.update_url, {
+        preserveScroll: true,
+        only: ['assessment', 'capabilities', 'flash'],
+        onError: () => { form.is_unsafe_condition = previousValue; },
+    });
+}
+
+function selectClassificationMethod(method) {
+    if (!props.capabilities.update_url || method === form.classification_method || form.processing) return;
+
+    const previousMethod = form.classification_method;
+    form.classification_method = method;
+    form.status = 'draft';
+    editing.gut = false;
+    form.patch(props.capabilities.update_url, {
+        preserveScroll: true,
+        only: ['assessment', 'classification', 'gut_snapshot', 'capabilities', 'flash'],
+        onError: () => { form.classification_method = previousMethod; },
+    });
+}
+
 function startReinspectionAssessment() {
     if (!props.reinspection_action?.assessment_store_url || startingReinspection.value) return;
 
@@ -381,6 +420,9 @@ function removeQuantity(item) {
 
 function quantityDefaults(item = null) {
     const inputs = item?.inputs ?? {};
+    const persistedQuantity = item?.quantity ?? inputs.quantity ?? 1;
+    const usesIntegerMultiplier = isCivil.value || (isRec.value && item?.mode !== 'manual');
+
     return {
         description: item?.description ?? '',
         element: item?.rec_element ?? item?.element_code ?? '',
@@ -390,7 +432,7 @@ function quantityDefaults(item = null) {
         length: inputs.length ?? '',
         height: inputs.height ?? '',
         width: inputs.width ?? '',
-        quantity: item?.quantity ?? inputs.quantity ?? 1,
+        quantity: usesIntegerMultiplier ? normalizeNativeQuantityMultiplier(persistedQuantity) : persistedQuantity,
     };
 }
 
@@ -421,11 +463,11 @@ function startEditing(card) {
         telForm.reset();
     }
     if (card === 'narrative') {
-        form.defaults({ status: props.assessment.status, condition: props.assessment.condition, location_description: props.assessment.location_description ?? '', comment: props.assessment.comment ?? '', recommendation: props.assessment.recommendation ?? '', reason: props.assessment.reason ?? '', internal_notes: props.assessment.internal_notes ?? '', item_description: props.assessment.item_description ?? '', project_reference: props.assessment.project_reference ?? '', impacts_activity: props.assessment.impacts_activity ?? null });
+        form.defaults({ status: props.assessment.status, condition: props.assessment.condition, is_unsafe_condition: Boolean(props.assessment.is_unsafe_condition), location_description: props.assessment.location_description ?? '', comment: props.assessment.comment ?? '', recommendation: props.assessment.recommendation ?? '', reason: props.assessment.reason ?? '', internal_notes: props.assessment.internal_notes ?? '', item_description: props.assessment.item_description ?? '', project_reference: props.assessment.project_reference ?? '', impacts_activity: props.assessment.impacts_activity ?? null, classification_method: props.assessment.classification_method ?? 'gut' });
         form.reset();
     }
     if (card === 'condition') {
-        form.defaults({ ...form.data(), condition: props.assessment.condition, reason: props.assessment.reason ?? '' });
+        form.defaults({ ...form.data(), condition: props.assessment.condition, is_unsafe_condition: Boolean(props.assessment.is_unsafe_condition), reason: props.assessment.reason ?? '' });
         form.reset('condition', 'reason');
     }
     editing[card] = true;
@@ -516,7 +558,7 @@ function selectMapFile(event) {
 }
 
 function uploadMap() {
-    if (!props.capabilities.location_map_upload_url || !mapForm.file) return;
+    if (!props.capabilities.location_map_upload_url || !mapForm.file || !mapForm.project_number.trim()) return;
     mapForm.post(props.capabilities.location_map_upload_url, {
         forceFormData: true,
         preserveScroll: true,
@@ -524,6 +566,17 @@ function uploadMap() {
             clearMapPreview();
             mapForm.reset('file');
         },
+    });
+}
+
+function saveMapProjectNumber() {
+    if (!props.location_map?.project_number_update_url
+        || !mapForm.project_number.trim()
+        || !mapProjectNumberChanged.value) return;
+
+    mapForm.patch(props.location_map.project_number_update_url, {
+        preserveScroll: true,
+        only: ['location_map', 'assessment', 'capabilities', 'flash'],
     });
 }
 
@@ -579,9 +632,36 @@ onUnmounted(() => {
         </template>
 
         <div class="mx-auto max-w-5xl space-y-6">
-            <div v-if="isPublished" class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900" role="status">
+            <div v-if="historical_source" class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700" role="status">
+                <p class="font-semibold">Histórico mantido — edição bloqueada</p>
+                <p class="mt-1">Avaliação de {{ historical_source.inspection.number }} · {{ historical_source.assessed_at || 'Data não informada' }}. Esta avaria não foi selecionada para reinspeção.</p>
+            </div>
+            <div v-else-if="isPublished" class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900" role="status">
                 Este documento só pode ser editado no modo rascunho.
             </div>
+
+            <section class="flex flex-col gap-4 rounded-3xl border p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-6" :class="form.is_unsafe_condition ? 'border-rose-300 bg-rose-50' : 'border-slate-200 bg-white'">
+                <div class="flex items-start gap-3">
+                    <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-black" :class="form.is_unsafe_condition ? 'bg-rose-700 text-white' : 'bg-slate-100 text-slate-500'">CI</span>
+                    <div>
+                        <p class="text-xs font-bold uppercase tracking-[0.16em]" :class="form.is_unsafe_condition ? 'text-rose-800' : 'text-slate-500'">Condição insegura</p>
+                        <h2 class="mt-1 text-lg font-semibold text-slate-950">{{ form.is_unsafe_condition ? 'Condição insegura identificada' : 'Nenhuma condição insegura identificada' }}</h2>
+                        <p class="mt-1 text-sm" :class="form.is_unsafe_condition ? 'text-rose-800' : 'text-slate-500'">{{ form.is_unsafe_condition ? 'Esta avaria foi marcada com o alerta CI.' : 'Marque somente quando houver uma condição insegura na avaliação.' }}</p>
+                    </div>
+                </div>
+                <button
+                    v-if="capabilities.update_url && !isPublished"
+                    type="button"
+                    class="shrink-0 rounded-xl px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
+                    :class="form.is_unsafe_condition ? 'border border-rose-300 bg-white text-rose-800 hover:bg-rose-100' : 'bg-rose-700 text-white hover:bg-rose-800'"
+                    :disabled="form.processing"
+                    :aria-pressed="form.is_unsafe_condition"
+                    @click="toggleUnsafeCondition"
+                >
+                    {{ form.is_unsafe_condition ? 'Remover marcação CI' : 'Marcar condição insegura' }}
+                </button>
+                <p v-else-if="isPublished && !historical_source" class="shrink-0 text-sm font-medium text-slate-500">Mova para rascunho para alterar.</p>
+            </section>
 
             <div v-if="workflowErrors.length" class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800" role="alert">
                 <p class="font-semibold">Não foi possível concluir a ação:</p>
@@ -591,7 +671,7 @@ onUnmounted(() => {
             </div>
 
             <CorrectionRequestsPanel
-                v-if="correction_requests.create_url || correction_requests.items?.length || correction_requests.history?.length"
+                v-if="correction_requests?.create_url || correction_requests?.items?.length || correction_requests?.history?.length"
                 :correction="correction_requests"
                 title="Solicitações de correção desta avaria"
                 empty_label="Nenhuma correção solicitada para esta avaria."
@@ -693,7 +773,7 @@ onUnmounted(() => {
                         <span class="rounded-xl bg-slate-950 px-3.5 py-2 text-sm font-bold text-white">{{ assessment.condition_label }}</span>
                         <span v-if="requiresReason && assessment.reason" class="text-sm text-slate-600">{{ assessment.reason }}</span>
                     </div>
-                    <p v-if="isPublished" class="mt-3 text-xs text-slate-500">Mova a avaliação para rascunho antes de alterar a situação.</p>
+                    <p v-if="isPublished && !historical_source" class="mt-3 text-xs text-slate-500">Mova a avaliação para rascunho antes de alterar a situação.</p>
                 </div>
                 <div v-if="isInherited && previous_assessment_summary" class="mt-4 rounded-2xl border border-teal-200 bg-teal-50 p-4 text-sm text-slate-700">
                     <p class="text-xs font-bold uppercase tracking-wide text-teal-800">Última revisão · {{ previous_assessment_summary.inspection.number || '—' }} · {{ previous_assessment_summary.assessed_at || 'Data não informada' }}</p>
@@ -702,7 +782,7 @@ onUnmounted(() => {
                 </div>
             </section>
 
-            <section v-if="requiresEvidence && !isTel" class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+            <section v-if="requiresEvidence && hasQuantities" class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
                 <div class="flex flex-wrap items-start justify-between gap-3">
                     <div>
                         <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">02 · Quantitativo</p>
@@ -731,10 +811,11 @@ onUnmounted(() => {
                         <label v-for="field in civilFields" :key="field.key" class="block">
                             <span :class="labelClass">{{ field.label }} ({{ field.unit }})</span>
                             <div class="relative mt-1.5">
-                                <input v-model="quantityForm[field.key]" type="number" :inputmode="field.key === 'quantity' && !allowsLegacyFractionalMultiplier ? 'numeric' : 'decimal'" :min="field.key === 'quantity' ? 1 : 0.0001" :step="field.key === 'quantity' && !allowsLegacyFractionalMultiplier ? 1 : 'any'" :class="unitInputClass" @keydown="field.key === 'quantity' && !allowsLegacyFractionalMultiplier ? blockInvalidIntegerKey($event) : blockInvalidNumberKey($event)">
+                                <input v-model="quantityForm[field.key]" type="number" :inputmode="field.key === 'quantity' ? 'numeric' : 'decimal'" :min="field.key === 'quantity' ? 1 : 0.0001" :step="field.key === 'quantity' ? 1 : 'any'" :class="unitInputClass" @keydown="field.key === 'quantity' ? blockInvalidIntegerKey($event) : blockInvalidNumberKey($event)">
                                 <span class="pointer-events-none absolute inset-y-0 right-0 flex items-center border-l border-slate-200 px-3 text-sm font-semibold text-slate-500">{{ field.unit }}</span>
                             </div>
                             <p v-if="quantityForm.errors[`quantity.${field.key}`]" :class="errorClass">{{ quantityForm.errors[`quantity.${field.key}`] }}</p>
+                            <p v-if="field.key === 'quantity' && quantityForm.quantity !== '' && !quantityMultiplierIsValid" :class="errorClass">Informe uma quantidade inteira positiva.</p>
                         </label>
                         <div class="rounded-xl bg-slate-50 p-4">
                             <p :class="labelClass">M³ UNI.</p>
@@ -782,8 +863,9 @@ onUnmounted(() => {
                         <template v-else-if="selectedRecElement">
                             <label v-for="field in recQuantityFields" :key="field.key" class="block">
                                 <span :class="labelClass">{{ field.label }}<template v-if="field.unit"> ({{ field.key === 'quantity' ? 'un.' : field.unit }})</template></span>
-                                <input v-model="quantityForm[field.key]" type="number" :inputmode="field.key === 'quantity' && !allowsLegacyFractionalMultiplier ? 'numeric' : 'decimal'" :min="field.key === 'quantity' ? 1 : 0.0001" :step="field.key === 'quantity' && !allowsLegacyFractionalMultiplier ? 1 : 'any'" :class="inputClass" @keydown="field.key === 'quantity' && !allowsLegacyFractionalMultiplier ? blockInvalidIntegerKey($event) : blockInvalidNumberKey($event)">
+                                <input v-model="quantityForm[field.key]" type="number" :inputmode="field.key === 'quantity' ? 'numeric' : 'decimal'" :min="field.key === 'quantity' ? 1 : 0.0001" :step="field.key === 'quantity' ? 1 : 'any'" :class="inputClass" @keydown="field.key === 'quantity' ? blockInvalidIntegerKey($event) : blockInvalidNumberKey($event)">
                                 <p v-if="quantityForm.errors[`quantity.${field.key}`]" :class="errorClass">{{ quantityForm.errors[`quantity.${field.key}`] }}</p>
+                                <p v-if="field.key === 'quantity' && quantityForm.quantity !== '' && !quantityMultiplierIsValid" :class="errorClass">Informe uma quantidade inteira positiva.</p>
                             </label>
                             <div class="rounded-xl bg-slate-50 p-4">
                                 <p :class="labelClass">Peso unitário</p>
@@ -846,18 +928,37 @@ onUnmounted(() => {
                 </div>
             </section>
 
-            <section v-if="requiresGut && !isTel" class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+            <section v-if="requiresClassification && !isTel" class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
                 <div class="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                        <p class="text-xs font-bold uppercase tracking-[0.16em] text-slate-600">03 · Classificação GUT</p>
-                        <h2 class="mt-2 text-xl font-semibold text-slate-950">Notas desta categoria</h2>
-                        <p class="mt-1 text-sm text-slate-500">O produto G×U×T define automaticamente a classificação da categoria.</p>
+                        <p class="text-xs font-bold uppercase tracking-[0.16em] text-slate-600">03 · Classificação</p>
+                        <h2 class="mt-2 text-xl font-semibold text-slate-950">{{ usesEngineeringNote ? 'Nota de Engenharia' : 'Notas desta categoria' }}</h2>
+                        <p class="mt-1 text-sm text-slate-500">{{ usesEngineeringNote ? 'Esta avaliação será publicada sem nota e classificação GUT.' : 'O produto G×U×T define automaticamente a classificação da categoria.' }}</p>
                     </div>
-                    <div class="flex items-center gap-2">
+                    <div v-if="!usesEngineeringNote" class="flex items-center gap-2">
                         <span v-if="gut_snapshot" class="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600">Snapshot salvo</span>
                         <button v-if="capabilities.gut_url && !editing.gut" type="button" class="rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 hover:border-slate-400" @click="startEditing('gut')">Editar</button>
                     </div>
                 </div>
+                <div v-if="supportsEngineeringNote" class="mt-5 inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1" role="group" aria-label="Método de classificação">
+                    <button
+                        v-for="method in classification_method_options"
+                        :key="method.value"
+                        type="button"
+                        class="rounded-lg px-3.5 py-2 text-sm font-semibold transition"
+                        :class="form.classification_method === method.value ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:text-slate-950'"
+                        :disabled="form.processing || !capabilities.update_url"
+                        :aria-pressed="form.classification_method === method.value"
+                        @click="selectClassificationMethod(method.value)"
+                    >
+                        {{ method.label }}
+                    </button>
+                </div>
+                <div v-if="usesEngineeringNote" class="mt-5 rounded-2xl border border-teal-200 bg-teal-50 p-4 text-sm text-teal-900">
+                    <p class="font-semibold">Nota de Engenharia selecionada</p>
+                    <p class="mt-1">Nota GUT não é necessaria quando uma nota de engenharia é selecionada.</p>
+                </div>
+                <template v-else>
                 <div v-if="isInherited && previous_assessment_summary?.gut" class="mt-5 rounded-2xl border border-teal-200 bg-teal-50 p-4 text-sm text-slate-700">
                     <p class="text-xs font-bold uppercase tracking-wide text-teal-800">Última revisão · {{ previous_assessment_summary.inspection.number || '—' }} · {{ previous_assessment_summary.assessed_at || 'Data não informada' }}</p>
                     <p class="mt-2"><strong class="text-slate-900">Classificação:</strong> {{ previous_assessment_summary.classification?.code || '—' }} · {{ previous_assessment_summary.classification?.label || 'Sem classificação' }}</p>
@@ -1106,9 +1207,10 @@ onUnmounted(() => {
                     </div>
                     <p v-else class="mt-1 text-slate-600">Ainda não calculado.</p>
                 </div>
+                </template>
             </section>
 
-            <section v-if="requiresGut && isTel" class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+            <section v-if="requiresClassification && isTel" class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
                 <div class="flex flex-wrap items-start justify-between gap-3">
                     <div>
                         <p class="text-xs font-bold uppercase tracking-[0.16em] text-slate-600">02 · Classificação TEL</p>
@@ -1216,7 +1318,7 @@ onUnmounted(() => {
                 </div>
             </section>
 
-            <section v-if="requiresEvidence" class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+            <section v-if="requiresEvidence && hasLocationMap" class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
                 <div class="flex flex-wrap items-start justify-between gap-3">
                     <div>
                         <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">05 · Mapa e localização</p>
@@ -1252,12 +1354,27 @@ onUnmounted(() => {
                     </div>
 
                     <div class="space-y-3">
+                        <div v-if="capabilities.location_map_upload_url || location_map" class="rounded-2xl border border-slate-200 p-4">
+                            <label v-if="capabilities.location_map_upload_url" class="block">
+                                <span :class="labelClass">Número do projeto</span>
+                                <input v-model="mapForm.project_number" type="text" maxlength="150" autocomplete="off" placeholder="Ex.: PRJ-2026-A01" :class="inputClass">
+                            </label>
+                            <div v-else>
+                                <p :class="labelClass">Número do projeto</p>
+                                <p class="mt-1.5 text-sm font-medium text-slate-900">{{ location_map.project_number || 'Não informado' }}</p>
+                            </div>
+                            <p v-if="mapForm.errors.project_number" :class="errorClass">{{ mapForm.errors.project_number }}</p>
+                            <button v-if="location_map?.project_number_update_url" type="button" :disabled="mapForm.processing || !mapForm.project_number.trim() || !mapProjectNumberChanged" class="mt-3 w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:border-slate-400 disabled:opacity-50" @click="saveMapProjectNumber">
+                                {{ mapForm.processing ? 'Salvando…' : 'Salvar número do projeto' }}
+                            </button>
+                            <p v-else-if="capabilities.location_map_upload_url" class="mt-2 text-xs text-slate-500">Informe o número antes de enviar o mapa.</p>
+                        </div>
                         <form v-if="capabilities.location_map_upload_url && !locationModalOpen" class="rounded-2xl border border-slate-200 p-4" @submit.prevent="uploadMap">
                             <h3 class="text-sm font-semibold text-slate-950">{{ location_map ? 'Substituir imagem' : 'Enviar mapa' }}</h3>
                             <p class="mt-1 text-xs leading-5 text-slate-500">PNG, JPEG ou WEBP, até 50 MB. Uma substituição preserva as versões usadas em avaliações anteriores.</p>
                             <input type="file" accept="image/png,image/jpeg,image/webp" class="mt-3 block w-full text-xs" @change="selectMapFile">
                             <p v-if="mapForm.errors.file" class="mt-2 text-xs font-medium text-rose-700">{{ mapForm.errors.file }}</p>
-                            <button type="submit" :disabled="!mapForm.file || mapForm.processing" class="mt-3 w-full rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
+                            <button type="submit" :disabled="!mapForm.file || !mapForm.project_number.trim() || mapForm.processing" class="mt-3 w-full rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
                                 {{ mapForm.processing ? 'Enviando…' : (location_map ? 'Criar nova versão' : 'Enviar mapa') }}
                             </button>
                         </form>

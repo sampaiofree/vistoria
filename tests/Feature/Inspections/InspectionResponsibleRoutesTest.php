@@ -129,7 +129,7 @@ final class InspectionResponsibleRoutesTest extends TestCase
                 ->has('assignment_options.roles', 4)
                 ->where('assignment_options.roles.0.value', InspectionResponsibility::Preparer->value)
                 ->where('assignment_options.roles.1.value', InspectionResponsibility::Reviewer->value)
-                ->where('assignment_options.roles.1.label', 'Verificador')
+                ->where('assignment_options.roles.1.label', 'Inspetor')
                 ->where('assignment_options.roles.2.value', InspectionResponsibility::Approver->value)
                 ->where('assignment_options.roles.3.value', InspectionResponsibility::Releaser->value));
     }

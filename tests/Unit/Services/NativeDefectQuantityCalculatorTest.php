@@ -82,6 +82,21 @@ final class NativeDefectQuantityCalculatorTest extends TestCase
         );
     }
 
+    public function test_it_rejects_fractional_calculated_quantities(): void
+    {
+        foreach ([
+            [DefectCategory::Civil, ['length' => 2, 'height' => 0.5, 'width' => 0.3, 'quantity' => 1.5]],
+            [DefectCategory::StructuralRecovery, ['element' => 'profile_l', 'width' => 76, 'thickness' => 6, 'length' => 2.8, 'quantity' => 1.5]],
+        ] as [$category, $input]) {
+            try {
+                app(NativeDefectQuantityCalculator::class)->calculate($category, $input);
+                $this->fail('Quantidade calculada fracionada deveria ser rejeitada.');
+            } catch (ValidationException $exception) {
+                $this->assertArrayHasKey('quantity.quantity', $exception->errors());
+            }
+        }
+    }
+
     #[DataProvider('invalidGeometryCases')]
     public function test_it_rejects_impossible_structural_geometry(array $input, string $error): void
     {

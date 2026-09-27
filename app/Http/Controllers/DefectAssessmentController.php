@@ -81,6 +81,23 @@ final class DefectAssessmentController extends Controller
             ->with('success', 'Avaliação registrada.');
     }
 
+    public function historical(
+        TenantContext $tenant,
+        Request $request,
+        Inspection $inspection,
+        Defect $defect,
+        InspectionReadModelPresenter $presenter,
+        \App\Services\Defects\InspectionAssessmentResolver $resolver,
+    ): InertiaResponse {
+        $inspection = $this->tenantInspection($tenant, $inspection);
+        $defect = $this->tenantDefect($tenant, $defect);
+        $this->authorize('view', $inspection);
+        $entry = $resolver->entry($inspection, $defect->id);
+        abort_unless($entry?->requires_reinspection === false && $entry->sourceAssessment !== null, 404);
+
+        return Inertia::render('DefectAssessments/Show', $presenter->assessment($entry->sourceAssessment, $request->user(), $inspection));
+    }
+
     public function update(
         UpdateDefectAssessmentRequest $request,
         TenantContext $tenant,
@@ -162,7 +179,7 @@ final class DefectAssessmentController extends Controller
 
         $this->authorize('complete', $defectAssessment);
 
-        if ($defectAssessment->defect->category !== \App\Enums\DefectCategory::RoofCladding
+        if ($defectAssessment->defect->category->requiresGut()
             && collect(UpdateDefectAssessmentGutRequest::technicalFieldNames())
             ->contains(fn (string $field): bool => $request->exists($field))) {
             $gut->handle($request->user(), $defectAssessment, $request->validated());
@@ -191,7 +208,9 @@ final class DefectAssessmentController extends Controller
         SaveDefectAssessmentGut $action,
     ): RedirectResponse {
         $defectAssessment = $this->tenantDefectAssessment($tenant, $defectAssessment);
+        $defectAssessment->loadMissing('defect');
         $this->authorize('update', $defectAssessment);
+        abort_unless($defectAssessment->defect->category->requiresGut(), 404);
         $action->handle($request->user(), $defectAssessment, $request->validated());
 
         return back()->with('success', 'Classificação GUT atualizada.');
@@ -204,7 +223,9 @@ final class DefectAssessmentController extends Controller
         SaveDefectAssessmentTelClassification $action,
     ): RedirectResponse {
         $defectAssessment = $this->tenantDefectAssessment($tenant, $defectAssessment);
+        $defectAssessment->loadMissing('defect');
         $this->authorize('update', $defectAssessment);
+        abort_unless($defectAssessment->defect->category === \App\Enums\DefectCategory::RoofCladding, 404);
         $action->handle($request->user(), $defectAssessment, $request->validated());
 
         return back()->with('success', 'Classificação TEL atualizada.');

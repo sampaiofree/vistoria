@@ -29,6 +29,7 @@ class InspectionFactory extends Factory
             'report_designer' => 'PROJETISTA II',
             'designer_i_report_number' => null,
             'procedure_number' => null,
+            'general_drawing' => null,
             'atmospheric_classification' => null,
             'planned_start_on' => null,
             'planned_end_on' => null,

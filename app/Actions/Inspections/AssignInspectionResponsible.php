@@ -4,6 +4,8 @@ namespace App\Actions\Inspections;
 
 use App\Actions\Inspections\Concerns\ValidatesInspectionAssignment;
 use App\Enums\InspectionResponsibility;
+use App\Enums\OperationalRole;
+use App\Enums\UserAccountType;
 use App\Models\Inspection;
 use App\Models\InspectionResponsible;
 use App\Models\User;
@@ -32,7 +34,20 @@ final class AssignInspectionResponsible
         }
 
         return DB::transaction(function () use ($inspection, $user, $responsibility, $actor, $completedAt, $organizationId): InspectionResponsible {
-            Inspection::query()->whereKey($inspection->getKey())->lockForUpdate()->firstOrFail();
+            $inspection = Inspection::query()->whereKey($inspection->getKey())->lockForUpdate()->firstOrFail();
+            $user->refresh();
+            $this->validateUser($user, $organizationId);
+            if ($inspection->status->isFinal()) {
+                throw ValidationException::withMessages(['inspection' => 'Responsáveis não podem ser alterados em inspeções liberadas ou canceladas.']);
+            }
+            $requiredRole = match ($responsibility) {
+                InspectionResponsibility::Approver => OperationalRole::Reviewer,
+                InspectionResponsibility::Releaser => OperationalRole::Releaser,
+                default => null,
+            };
+            if ($requiredRole !== null && ($user->operational_role !== $requiredRole || $user->account_type !== UserAccountType::Member)) {
+                throw ValidationException::withMessages(['user_id' => 'Selecione um usuário operacional com papel de '.$requiredRole->label().'.']);
+            }
             $assignments = InspectionResponsible::query()
                 ->where('inspection_id', $inspection->getKey())
                 ->where('responsibility', $responsibility->value)

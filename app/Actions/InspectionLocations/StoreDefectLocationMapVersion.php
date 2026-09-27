@@ -29,11 +29,14 @@ final class StoreDefectLocationMapVersion
         private readonly DefectLocationMapVersionPruner $pruner,
     ) {}
 
-    public function handle(User $actor, DefectAssessment $assessment, UploadedFile $file): DefectLocationMapVersion
+    public function handle(User $actor, DefectAssessment $assessment, UploadedFile $file, string $projectNumber): DefectLocationMapVersion
     {
         $assessment->loadMissing(['defect.locationMap', 'inspection']);
         if ($actor->organization_id !== $assessment->organization_id || ! $actor->can('update', $assessment)) {
             throw ValidationException::withMessages(['file' => 'A avaliacao nao esta disponivel para receber um mapa.']);
+        }
+        if (! $assessment->defect->category->requiresLocationMap()) {
+            throw ValidationException::withMessages(['file' => 'Esta categoria não utiliza mapa de localização.']);
         }
 
         $this->sourceValidator->validate($file, []);
@@ -55,7 +58,7 @@ final class StoreDefectLocationMapVersion
         $previousVersion = $assessment->locationMapVersion;
 
         try {
-            $version = DB::transaction(function () use ($actor, $assessment, $file, $path, $mapPublicId, $versionPublicId): DefectLocationMapVersion {
+            $version = DB::transaction(function () use ($actor, $assessment, $file, $path, $mapPublicId, $versionPublicId, $projectNumber): DefectLocationMapVersion {
                 $assessment = DefectAssessment::query()
                     ->forOrganization($assessment->organization_id)
                     ->with(['defect', 'location'])
@@ -85,6 +88,7 @@ final class StoreDefectLocationMapVersion
                     'defect_location_map_id' => $map->id,
                     'created_for_assessment_id' => $assessment->id,
                     'version' => ((int) $map->versions()->max('version')) + 1,
+                    'project_number' => $projectNumber,
                     'source_disk' => 'inspection_maps',
                     'source_path' => $path,
                     'source_mime_type' => $file->getMimeType(),

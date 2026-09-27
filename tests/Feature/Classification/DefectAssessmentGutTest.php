@@ -6,7 +6,8 @@ namespace Tests\Feature\Classification;
 
 use App\Actions\Classification\SaveDefectAssessmentGut;
 use App\Actions\Defects\CompleteDefectAssessment;
-use App\Actions\Inspections\SubmitInspectionForReview;
+use App\Actions\Defects\UpdateDefectAssessment;
+use App\Actions\Inspections\SubmitInspectionForPlanning;
 use App\Enums\DefectAssessmentCondition;
 use App\Enums\DefectCategory;
 use App\Enums\InspectionResponsibility;
@@ -93,6 +94,30 @@ final class DefectAssessmentGutTest extends TestCase
                 ->where('location_map.style.fill', $saved->classification_snapshot['color']));
     }
 
+    public function test_report_map_preserves_the_selected_trend_group_for_civil_and_rec(): void
+    {
+        foreach ([
+            [DefectCategory::Civil, 'cracking', 'Fissuração'],
+            [DefectCategory::StructuralRecovery, 'discontinuity', 'DESCONTINUIDADE'],
+        ] as [$category, $code, $label]) {
+            [$actor, $assessment] = $this->scenario($category);
+            $saved = app(SaveDefectAssessmentGut::class)->handle($actor, $assessment, $this->technicalGutPayload($category));
+            $this->satisfyAssessmentPublicationRequirements($saved);
+            $published = app(CompleteDefectAssessment::class)->handle($actor, $saved);
+
+            $map = app(InspectionLocationReportComposer::class)->compose($published->inspection)['sheets'][0]['maps'][0];
+
+            $this->assertSame(
+                ['code' => $code, 'label' => $label],
+                $map['damage_rows'][0]['gut']['trend']['group'],
+            );
+            $this->assertSame(
+                $published->gut_snapshot['criteria']['trend']['color'],
+                $map['damage_rows'][0]['gut']['trend']['color'],
+            );
+        }
+    }
+
     public function test_invalid_http_notes_do_not_replace_a_saved_result(): void
     {
         [$actor, $assessment] = $this->scenario();
@@ -125,6 +150,10 @@ final class DefectAssessmentGutTest extends TestCase
         $reportMap = $composition['sheets'][0]['maps'][0];
         $this->assertSame(['code' => 'IE-3', 'color' => '#123456'], $reportMap['damage_rows'][0]['classification']);
         $this->assertSame('#654321', $reportMap['damage_rows'][0]['gut']['gravity']['color']);
+        $this->assertSame(
+            ['code' => 'discontinuity', 'label' => 'DESCONTINUIDADE'],
+            $reportMap['damage_rows'][0]['gut']['trend']['group'],
+        );
         $this->assertSame('#123456', $reportMap['markers'][0]['style']['fill']);
         $this->assertSame($snapshot, $saved->refresh()->classification_snapshot);
     }
@@ -410,10 +439,138 @@ final class DefectAssessmentGutTest extends TestCase
             $this->satisfyAssessmentPublicationRequirements($saved);
             app(CompleteDefectAssessment::class)->handle($actor, $saved);
             $this->completeOverview($assessment->inspection);
-            $submitted = app(SubmitInspectionForReview::class)->handle($assessment->inspection, $actor);
-            $this->assertSame(InspectionStatus::AwaitingReview, $submitted->status);
+            $planner = User::factory()->create(['organization_id' => $assessment->organization_id, 'operational_role' => OperationalRole::Planner]);
+            $assessment->inspection->responsibles()->where('responsibility', 'preparer')->update(['responsibility' => 'reviewer']);
+            InspectionResponsible::factory()->forInspection($assessment->inspection, $planner)->create(['responsibility' => InspectionResponsibility::Preparer]);
+            $submitted = app(SubmitInspectionForPlanning::class)->handle($assessment->inspection, $actor);
+            $this->assertSame(InspectionStatus::AwaitingM2, $submitted->status);
             $this->assertSame(1, $submitted->defectAssessments()->whereNotNull('defect_location_map_version_id')->count());
         }
+    }
+
+    public function test_solidary_structures_publish_without_quantity_gut_or_location_map(): void
+    {
+        [$actor, $assessment] = $this->scenario(DefectCategory::SolidaryStructures);
+        $this->satisfyAssessmentPublicationRequirements($assessment);
+
+        $published = app(CompleteDefectAssessment::class)->handle($actor, $assessment);
+
+        $this->assertTrue($published->isComplete());
+        $this->assertNull($published->quantity_snapshot);
+        $this->assertNull($published->gut_score);
+        $this->assertNull($published->defect_location_map_version_id);
+
+        $this->actingAs($actor)
+            ->get(route('defect-assessments.show', $published))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('assessment.defect.category', 'ES')
+                ->where('gut_definition', null)
+                ->where('quantity_definition', null)
+                ->where('location_map', null)
+                ->where('capabilities.gut_url', null)
+                ->where('capabilities.quantity_store_url', null)
+                ->where('capabilities.location_map_upload_url', null));
+    }
+
+    public function test_engineering_note_clears_gut_and_allows_publication_without_a_new_gut_result(): void
+    {
+        [$actor, $assessment] = $this->scenario(DefectCategory::Civil);
+        $saved = app(SaveDefectAssessmentGut::class)->handle(
+            $actor,
+            $assessment,
+            $this->technicalGutPayload(DefectCategory::Civil),
+        );
+
+        $updated = app(UpdateDefectAssessment::class)->handle($actor, $saved, [
+            'condition' => DefectAssessmentCondition::New,
+            'classification_method' => 'engineering_note',
+        ]);
+
+        $this->assertSame('engineering_note', $updated->classification_method->value);
+        foreach (['gravity', 'urgency', 'trend', 'gut_score', 'gut_snapshot', 'classification_code', 'classification_snapshot'] as $field) {
+            $this->assertNull($updated->$field);
+        }
+
+        $this->satisfyAssessmentPublicationRequirements($updated);
+        $published = app(CompleteDefectAssessment::class)->handle($actor, $updated);
+        $this->assertTrue($published->isComplete());
+
+        $this->actingAs($actor)
+            ->get(route('defect-assessments.show', $published))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('assessment.classification_method', 'engineering_note')
+                ->where('capabilities.gut_url', null)
+                ->has('classification_method_options', 2));
+    }
+
+    public function test_returning_to_gut_requires_a_new_gut_result_before_publication(): void
+    {
+        [$actor, $assessment] = $this->scenario(DefectCategory::StructuralRecovery);
+        $engineering = app(UpdateDefectAssessment::class)->handle($actor, $assessment, [
+            'condition' => DefectAssessmentCondition::New,
+            'classification_method' => 'engineering_note',
+        ]);
+        $gut = app(UpdateDefectAssessment::class)->handle($actor, $engineering, [
+            'condition' => DefectAssessmentCondition::New,
+            'classification_method' => 'gut',
+        ]);
+        $this->satisfyAssessmentPublicationRequirements($gut);
+
+        $this->expectException(ValidationException::class);
+        app(CompleteDefectAssessment::class)->handle($actor, $gut);
+    }
+
+    public function test_unsafe_condition_is_saved_per_assessment_without_changing_publication_requirements(): void
+    {
+        [$actor, $assessment] = $this->scenario(DefectCategory::Civil);
+
+        $this->assertFalse($assessment->is_unsafe_condition);
+
+        $this->actingAs($actor)
+            ->patch(route('defect-assessments.update', $assessment), [
+                'condition' => DefectAssessmentCondition::New->value,
+                'is_unsafe_condition' => true,
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $assessment->refresh();
+        $this->assertTrue($assessment->is_unsafe_condition);
+
+        $this->actingAs($actor)
+            ->get(route('defect-assessments.show', $assessment))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('assessment.is_unsafe_condition', true));
+
+        $this->satisfyAssessmentPublicationRequirements($assessment);
+        $published = app(CompleteDefectAssessment::class)->handle($actor, $assessment);
+        $this->assertTrue($published->isComplete());
+        $this->assertTrue($published->is_unsafe_condition);
+
+        $this->actingAs($actor)
+            ->patch(route('defect-assessments.update', $published), [
+                'condition' => DefectAssessmentCondition::New->value,
+                'is_unsafe_condition' => false,
+            ])
+            ->assertForbidden();
+
+        $this->actingAs($actor)
+            ->patch(route('defect-assessments.status.update', $published), ['status' => 'draft'])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $this->actingAs($actor)
+            ->patch(route('defect-assessments.update', $published), [
+                'condition' => DefectAssessmentCondition::New->value,
+                'is_unsafe_condition' => false,
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $this->assertFalse($published->refresh()->is_unsafe_condition);
     }
 
     /** @return array{User,DefectAssessment} */

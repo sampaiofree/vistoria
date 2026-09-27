@@ -14,10 +14,19 @@ final class ResolvePreviousDefectAssessment
 {
     public function handle(Defect $defect, Inspection $inspection): ?DefectAssessment
     {
+        $entry = app(InspectionAssessmentResolver::class)->entry($inspection, $defect->id);
+        if ($entry !== null) {
+            return $entry->sourceAssessment;
+        }
+
         $cursor = $inspection->previousInspection;
 
         while ($cursor !== null) {
             if ($cursor->status !== InspectionStatus::Canceled) {
+                $entry = app(InspectionAssessmentResolver::class)->entry($cursor, $defect->id);
+                if ($entry?->requires_reinspection === false) {
+                    return $entry->sourceAssessment;
+                }
                 $assessment = DefectAssessment::query()
                     ->forOrganization($defect->organization_id)
                     ->where('defect_id', $defect->getKey())

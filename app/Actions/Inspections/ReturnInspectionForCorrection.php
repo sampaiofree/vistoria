@@ -5,11 +5,9 @@ declare(strict_types=1);
 namespace App\Actions\Inspections;
 
 use App\Actions\Inspections\Concerns\ValidatesInspectionTransition;
-use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionCorrectionRequestFlow;
 use App\Enums\InspectionCorrectionRequestStatus;
 use App\Enums\InspectionStatus;
-use App\Enums\OperationalRole;
 use App\Models\Inspection;
 use App\Models\InspectionCorrectionRequest;
 use App\Models\User;
@@ -26,23 +24,33 @@ final class ReturnInspectionForCorrection
 
     public function handle(Inspection $inspection, User $actor, ?string $reason): Inspection
     {
+        return $this->withLockedInspection($inspection, $actor, 'returnForCorrection',
+            fn (Inspection $locked): Inspection => $this->perform($locked, $actor, $reason));
+    }
+
+    private function perform(Inspection $inspection, User $actor, ?string $reason): Inspection
+    {
         $this->validateTenant($inspection, $actor);
 
-        if ($inspection->status !== InspectionStatus::InReview) {
+        if (! in_array($inspection->status, [InspectionStatus::AwaitingM2, InspectionStatus::InReview], true)) {
             throw ValidationException::withMessages([
                 'status' => 'A inspeção não está em revisão.',
             ]);
         }
-        if ($actor->operational_role !== OperationalRole::Reviewer || ! $inspection->hasAnyResponsibilityForUser($actor, ...InspectionResponsibility::cases())) {
-            throw ValidationException::withMessages(['actor' => 'Somente o Revisor vinculado pode devolver a inspeção para correção.']);
+        if (! $actor->can('returnForCorrection', $inspection)) {
+            throw ValidationException::withMessages(['actor' => 'Somente o responsável pela etapa pode devolver a inspeção para correção.']);
         }
 
-        return DB::transaction(function () use ($inspection, $actor, $reason): Inspection {
+        $flow = $inspection->status === InspectionStatus::AwaitingM2
+            ? InspectionCorrectionRequestFlow::PlannerToInspector
+            : InspectionCorrectionRequestFlow::ReviewerToInspector;
+
+        return DB::transaction(function () use ($inspection, $actor, $reason, $flow): Inspection {
             $requests = InspectionCorrectionRequest::query()
                 ->forOrganization($inspection->organization_id)
                 ->with('assessment.defect')
                 ->where('inspection_id', $inspection->id)
-                ->where('flow', InspectionCorrectionRequestFlow::ReviewerToInspector->value)
+                ->where('flow', $flow->value)
                 ->lockForUpdate()
                 ->get();
 
@@ -74,7 +82,7 @@ final class ReturnInspectionForCorrection
                     'organization_id' => $inspection->organization_id,
                     'inspection_id' => $inspection->id,
                     'status' => InspectionCorrectionRequestStatus::Requested,
-                    'flow' => InspectionCorrectionRequestFlow::ReviewerToInspector,
+                    'flow' => $flow,
                     'request_message' => $reason,
                     'created_by' => $actor->id,
                     'sent_by' => $actor->id,
@@ -94,7 +102,7 @@ final class ReturnInspectionForCorrection
             return $this->transition->handle(
                 $actor,
                 $inspection,
-                [InspectionStatus::InReview],
+                [$inspection->status],
                 InspectionStatus::InCorrection,
                 [],
                 $summary,

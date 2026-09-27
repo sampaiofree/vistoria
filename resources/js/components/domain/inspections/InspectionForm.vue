@@ -1,8 +1,12 @@
 <script setup>
 import { Link, useForm } from '@inertiajs/vue3';
+import { ref } from 'vue';
+import ReinspectionDefectSelect from './ReinspectionDefectSelect.vue';
 
 const props = defineProps({
     action: { type: String, required: true },
+    reinspectionOptionsUrl: { type: String, required: true },
+    reinspectionOptions: { type: Object, default: null },
     cancelUrl: { type: String, required: true },
     inspection: { type: Object, required: true },
     equipmentOptions: { type: Array, default: () => [] },
@@ -19,9 +23,13 @@ const form = useForm({
     atmospheric_classification: props.inspection.atmospheric_classification ?? '',
     planned_start_on: props.inspection.planned_start_on_input ?? '',
     planned_end_on: props.inspection.planned_end_on_input ?? '',
+    reinspection_defect_ids: props.reinspectionOptions?.selected_ids ?? [],
+    reinspection_base_id: props.reinspectionOptions?.previous_inspection_id ?? null,
 });
+const scopeStatus = ref('ready');
 
 function submit() {
+    if (scopeStatus.value !== 'ready') return;
     form.put(props.action, { preserveScroll: true });
 }
 </script>
@@ -82,9 +90,20 @@ function submit() {
             </div>
         </section>
 
+        <ReinspectionDefectSelect
+            v-model="form.reinspection_defect_ids"
+            :equipment-id="form.equipment_id"
+            :inspection-id="inspection.id"
+            :options-url="reinspectionOptionsUrl"
+            :initial-options="reinspectionOptions"
+            :error="form.errors.reinspection_defect_ids"
+            @base-change="form.reinspection_base_id = $event"
+            @status="scopeStatus = $event"
+        />
+
         <div class="flex justify-end gap-3 border-t border-slate-200 pt-5">
             <Link :href="cancelUrl" class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700">Cancelar</Link>
-            <button :disabled="form.processing" class="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{{ submitLabel }}</button>
+            <button :disabled="form.processing || scopeStatus !== 'ready'" class="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{{ submitLabel }}</button>
         </div>
     </form>
 </template>

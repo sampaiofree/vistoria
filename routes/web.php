@@ -17,6 +17,7 @@ use App\Http\Controllers\InspectionCorrectionRequestController;
 use App\Http\Controllers\InspectionLocationMapAssetController;
 use App\Http\Controllers\InspectionOverviewController;
 use App\Http\Controllers\InspectionOverviewPhotoController;
+use App\Http\Controllers\InspectionQuantitativeController;
 use App\Http\Controllers\InspectionResponsibleController;
 use App\Http\Controllers\InspectionTransitionController;
 use App\Http\Controllers\NotificationController;
@@ -115,6 +116,9 @@ Route::middleware([
         Route::get('inspections/equipment-options', [InspectionController::class, 'equipmentOptions'])
             ->name('inspections.equipment-options');
 
+        Route::get('inspections/reinspection-options', [InspectionController::class, 'reinspectionOptions'])
+            ->name('inspections.reinspection-options');
+
         Route::post('inspections', [InspectionController::class, 'store'])
             ->name('inspections.store');
 
@@ -147,6 +151,9 @@ Route::middleware([
         Route::get('inspections/{inspection}/defects', [InspectionController::class, 'defects'])
             ->name('inspections.defects');
 
+        Route::get('inspections/{inspection}/defects/{defect}/historical', [DefectAssessmentController::class, 'historical'])
+            ->name('inspections.defects.historical');
+
         Route::get('inspections/{inspection}/classifications', [InspectionController::class, 'classifications'])
             ->name('inspections.classifications');
 
@@ -166,8 +173,17 @@ Route::middleware([
         Route::get('inspections/{inspection}/report-preview', [InspectionController::class, 'reportPreview'])
             ->name('inspections.report-preview');
 
+        Route::get('inspections/{inspection}/quantitative', [InspectionQuantitativeController::class, 'show'])
+            ->name('inspections.quantitative');
+
+        Route::get('inspections/{inspection}/quantitative/export', [InspectionQuantitativeController::class, 'export'])
+            ->name('inspections.quantitative.export');
+
         Route::put('inspections/{inspection}/classification-m2-links', [InspectionController::class, 'updateClassificationM2Links'])
             ->name('inspections.classification-m2-links.update');
+
+        Route::put('inspections/{inspection}/classification-header', [InspectionController::class, 'updateClassificationHeader'])
+            ->name('inspections.classification-header.update');
 
         Route::post(
             'inspections/{inspection}/defects',
@@ -193,6 +209,11 @@ Route::middleware([
             'defect-assessments/{defectAssessment}/location-map',
             [DefectAssessmentLocationController::class, 'destroyMap'],
         )->name('defect-assessments.location-map.destroy');
+
+        Route::patch(
+            'defect-assessments/{defectAssessment}/location-map/project-number',
+            [DefectAssessmentLocationController::class, 'updateProjectNumber'],
+        )->name('defect-assessments.location-map.project-number.update');
 
         Route::get(
             'defect-assessments/{defectAssessment}/location/editor',
@@ -282,6 +303,9 @@ Route::middleware([
         Route::get('inspections/{inspection}/team', [InspectionController::class, 'team'])
             ->name('inspections.team');
 
+        Route::post('inspections/{inspection}/self-assign', [InspectionResponsibleController::class, 'selfAssign'])
+            ->name('inspections.self-assign');
+
         Route::post(
             'inspections/{inspection}/responsibles',
             [InspectionResponsibleController::class, 'store'],
@@ -306,6 +330,9 @@ Route::middleware([
             'inspections/{inspection}/submit-for-review',
             [InspectionTransitionController::class, 'submitForReview'],
         )->name('inspections.submit-for-review');
+
+        Route::post('inspections/{inspection}/submit-for-planning', [InspectionTransitionController::class, 'submitForPlanning'])
+            ->name('inspections.submit-for-planning');
 
         Route::post(
             'inspections/{inspection}/return-for-correction',

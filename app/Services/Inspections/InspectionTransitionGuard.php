@@ -17,9 +17,10 @@ final class InspectionTransitionGuard
             'canceled',
         ],
         'in_progress' => [
-            'awaiting_review',
+            'awaiting_m2',
             'canceled',
         ],
+        'awaiting_m2' => ['awaiting_review', 'in_correction', 'canceled'],
         'awaiting_review' => [
             'in_review',
             'canceled',
@@ -30,7 +31,7 @@ final class InspectionTransitionGuard
             'canceled',
         ],
         'in_correction' => [
-            'awaiting_review',
+            'awaiting_m2',
             'canceled',
         ],
         'awaiting_release' => [

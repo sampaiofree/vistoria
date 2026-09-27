@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Inspections;
 
+use App\Enums\DefectAssessmentCondition;
+use App\Enums\DefectCategory;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
 use App\Enums\OperationalRole;
 use App\Enums\PhotoProcessingStatus;
 use App\Enums\UserAccountType;
-use App\Enums\DefectAssessmentCondition;
-use App\Enums\DefectCategory;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
 use App\Models\Equipment;
@@ -59,11 +59,13 @@ final class InspectionTransitionRoutesTest extends TestCase
         $this->completeOverview($inspection);
 
         $this->actingAs($inspector)
-            ->post(route('inspections.submit-for-review', $inspection))
+            ->post(route('inspections.submit-for-planning', $inspection))
             ->assertRedirect();
 
         $inspection->refresh();
-        $this->assertSame(InspectionStatus::AwaitingReview, $inspection->status);
+        $this->assertSame(InspectionStatus::AwaitingM2, $inspection->status);
+        $planner = $inspection->responsibles()->where('responsibility', 'preparer')->firstOrFail()->user;
+        $this->actingAs($planner)->post(route('inspections.submit-for-review', $inspection))->assertSessionHasNoErrors();
         $this->assertNotNull($inspection->field_completed_at);
 
         $this->actingAs($reviewer)
@@ -96,7 +98,7 @@ final class InspectionTransitionRoutesTest extends TestCase
         $inspection->refresh();
         $this->assertSame(InspectionStatus::Released, $inspection->status);
         $this->assertNotNull($inspection->released_at);
-        $this->assertSame(5, $inspection->statusHistories()->count());
+        $this->assertSame(6, $inspection->statusHistories()->count());
     }
 
     public function test_start_requires_an_assigned_inspector_and_an_active_equipment(): void
@@ -132,7 +134,7 @@ final class InspectionTransitionRoutesTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_inspector_must_fill_m2_for_each_published_classification_before_submitting_for_review(): void
+    public function test_planner_must_fill_m2_after_inspector_submits(): void
     {
         [$inspection, $inspector] = $this->inspectionReadyForOverviewValidation();
         $this->completeOverview($inspection);
@@ -146,12 +148,16 @@ final class InspectionTransitionRoutesTest extends TestCase
             'classification_snapshot' => ['code' => 'CV-2', 'severity_rank' => 2],
         ]);
 
-        $this->actingAs($inspector)
+        $this->actingAs($inspector)->post(route('inspections.submit-for-planning', $inspection))->assertSessionHasNoErrors();
+        $planner = $inspection->responsibles()->where('responsibility', 'preparer')->firstOrFail()->user;
+        $reviewer = User::factory()->create(['organization_id' => $inspection->organization_id, 'operational_role' => OperationalRole::Reviewer]);
+        $this->assignResponsibility($inspection, $reviewer, InspectionResponsibility::Approver);
+        $this->actingAs($planner)
             ->post(route('inspections.submit-for-review', $inspection))
             ->assertSessionHasErrors('inspection')
             ->assertSessionHasErrors(['inspection' => 'Preencha as Notas M2 das classificações: CV CV-2.']);
 
-        $this->actingAs($inspector)
+        $this->actingAs($planner)
             ->put(route('inspections.classification-m2-links.update', $inspection), [
                 'links' => [[
                     'category' => 'CV',
@@ -161,7 +167,7 @@ final class InspectionTransitionRoutesTest extends TestCase
             ])
             ->assertRedirect();
 
-        $this->actingAs($inspector)
+        $this->actingAs($planner)
             ->post(route('inspections.submit-for-review', $inspection))
             ->assertRedirect();
 
@@ -259,7 +265,7 @@ final class InspectionTransitionRoutesTest extends TestCase
         $this->assignResponsibility($inspection, $actor, InspectionResponsibility::Preparer);
 
         $this->actingAs($actor)
-            ->post(route('inspections.submit-for-review', $inspection))
+            ->post(route('inspections.submit-for-planning', $inspection))
             ->assertForbidden();
     }
 
@@ -281,23 +287,23 @@ final class InspectionTransitionRoutesTest extends TestCase
             ->create(['status' => InspectionStatus::InProgress]);
 
         $this->assignResponsibility($inspection, $inspector, InspectionResponsibility::Reviewer);
-        $this->assignResponsibility($inspection, $admin, InspectionResponsibility::Preparer);
+        // The administrator is not an operational planner.
 
-        $this->assertFalse($admin->can('submitForReview', $inspection));
-        $this->assertFalse($unassignedInspector->can('submitForReview', $inspection));
+        $this->assertFalse($admin->can('submitForPlanning', $inspection));
+        $this->assertFalse($unassignedInspector->can('submitForPlanning', $inspection));
 
         foreach ([$admin, $unassignedInspector] as $user) {
             $this->actingAs($user)
-                ->post(route('inspections.submit-for-review', $inspection))
+                ->post(route('inspections.submit-for-planning', $inspection))
                 ->assertForbidden();
         }
 
         $this->completeOverview($inspection);
 
         $this->actingAs($inspector)
-            ->post(route('inspections.submit-for-review', $inspection))
+            ->post(route('inspections.submit-for-planning', $inspection))
             ->assertRedirect();
-        $this->assertSame(InspectionStatus::AwaitingReview, $inspection->fresh()->status);
+        $this->assertSame(InspectionStatus::AwaitingM2, $inspection->fresh()->status);
 
         $inspection->refresh()->update(['status' => InspectionStatus::InProgress]);
 
@@ -308,8 +314,8 @@ final class InspectionTransitionRoutesTest extends TestCase
 
         $this->actingAs($inspector)
             ->post(route('inspections.cancel', $inspection), ['justification' => 'Cancelamento necessário.'])
-            ->assertRedirect();
-        $this->assertSame(InspectionStatus::Canceled, $inspection->fresh()->status);
+            ->assertForbidden();
+        $this->assertSame(InspectionStatus::InProgress, $inspection->fresh()->status);
     }
 
     public function test_inspector_cannot_submit_for_review_without_all_overview_photos(): void
@@ -322,10 +328,10 @@ final class InspectionTransitionRoutesTest extends TestCase
             ->forEquipment(Equipment::factory()->for($organization)->create())
             ->create(['status' => InspectionStatus::InProgress]);
 
-        $this->assignResponsibility($inspection, $inspector, InspectionResponsibility::Preparer);
+        $this->assignResponsibility($inspection, $inspector, InspectionResponsibility::Reviewer);
 
         $this->actingAs($inspector)
-            ->post(route('inspections.submit-for-review', $inspection))
+            ->post(route('inspections.submit-for-planning', $inspection))
             ->assertSessionHasErrors([
                 'inspection' => 'Adicione as fotografias da Vista geral nos slots: 1, 2, 3, 4.',
             ]);
@@ -340,7 +346,7 @@ final class InspectionTransitionRoutesTest extends TestCase
             $this->completeOverview($inspection, unreadyPhoto: 3, unreadyStatus: $status);
 
             $this->actingAs($inspector)
-                ->post(route('inspections.submit-for-review', $inspection))
+                ->post(route('inspections.submit-for-planning', $inspection))
                 ->assertSessionHasErrors([
                     'inspection' => 'Aguarde o processamento ou substitua as fotografias da Vista geral nos slots: 3.',
                 ]);
@@ -356,7 +362,7 @@ final class InspectionTransitionRoutesTest extends TestCase
             $this->completeOverview($inspection, blankTextInBlock: 2, blankTextField: $field);
 
             $this->actingAs($inspector)
-                ->post(route('inspections.submit-for-review', $inspection))
+                ->post(route('inspections.submit-for-planning', $inspection))
                 ->assertSessionHasErrors([
                     'inspection' => "Preencha os seguintes campos da Vista geral: {$label} do bloco 2.",
                 ]);
@@ -375,14 +381,14 @@ final class InspectionTransitionRoutesTest extends TestCase
             ->forEquipment(Equipment::factory()->for($organization)->create())
             ->create(['status' => InspectionStatus::InCorrection]);
 
-        $this->assignResponsibility($inspection, $inspector, InspectionResponsibility::Preparer);
+        $this->assignResponsibility($inspection, $inspector, InspectionResponsibility::Reviewer);
         $this->completeOverview($inspection);
 
         $this->actingAs($inspector)
-            ->post(route('inspections.submit-for-review', $inspection))
+            ->post(route('inspections.submit-for-planning', $inspection))
             ->assertRedirect();
 
-        $this->assertSame(InspectionStatus::AwaitingReview, $inspection->fresh()->status);
+        $this->assertSame(InspectionStatus::AwaitingM2, $inspection->fresh()->status);
     }
 
     public function test_inspector_cannot_submit_or_resubmit_for_review_without_general_aspects(): void
@@ -393,7 +399,7 @@ final class InspectionTransitionRoutesTest extends TestCase
             $this->completeOverview($inspection, includeGeneralAspects: false);
 
             $this->actingAs($inspector)
-                ->post(route('inspections.submit-for-review', $inspection))
+                ->post(route('inspections.submit-for-planning', $inspection))
                 ->assertSessionHasErrors([
                     'inspection' => 'Preencha os Aspectos gerais do equipamento antes de enviar para revisão.',
                 ]);
@@ -420,10 +426,10 @@ final class InspectionTransitionRoutesTest extends TestCase
         ]);
 
         $this->actingAs($inspector)
-            ->post(route('inspections.submit-for-review', $inspection))
+            ->post(route('inspections.submit-for-planning', $inspection))
             ->assertRedirect();
 
-        $this->assertSame(InspectionStatus::AwaitingReview, $inspection->fresh()->status);
+        $this->assertSame(InspectionStatus::AwaitingM2, $inspection->fresh()->status);
     }
 
     public function test_return_and_cancel_require_justification(): void
@@ -438,6 +444,8 @@ final class InspectionTransitionRoutesTest extends TestCase
             ->create(['status' => InspectionStatus::InReview]);
 
         $this->assignResponsibility($inspectionForCorrection, $actor, InspectionResponsibility::Approver);
+        $inspector = User::factory()->for($organization)->create(['operational_role' => OperationalRole::Inspector]);
+        $this->assignResponsibility($inspectionForCorrection, $inspector, InspectionResponsibility::Reviewer);
 
         $this->actingAs($actor)
             ->post(route('inspections.return-for-correction', $inspectionForCorrection), [])
@@ -456,7 +464,8 @@ final class InspectionTransitionRoutesTest extends TestCase
             ->forEquipment(Equipment::factory()->for($organization)->create())
             ->create();
 
-        $this->assignResponsibility($inspectionToCancel, $actor, InspectionResponsibility::Approver);
+        $actor = User::factory()->for($organization)->create(['operational_role' => OperationalRole::Releaser]);
+        $this->assignResponsibility($inspectionToCancel, $actor, InspectionResponsibility::Releaser);
 
         $this->actingAs($actor)
             ->post(route('inspections.cancel', $inspectionToCancel), [])
@@ -483,6 +492,8 @@ final class InspectionTransitionRoutesTest extends TestCase
             ->create(['status' => InspectionStatus::AwaitingRelease]);
 
         $this->assignResponsibility($inspection, $releaser, InspectionResponsibility::Releaser);
+        $reviewer = User::factory()->for($organization)->create(['operational_role' => OperationalRole::Reviewer]);
+        $this->assignResponsibility($inspection, $reviewer, InspectionResponsibility::Approver);
 
         $this->actingAs($releaser)
             ->post(route('inspections.return-for-review', $inspection), [])
@@ -522,7 +533,7 @@ final class InspectionTransitionRoutesTest extends TestCase
             ->forEquipment(Equipment::factory()->for($organization)->create())
             ->create(['status' => InspectionStatus::InProgress]);
 
-        $this->assignResponsibility($inspection, $inspector, InspectionResponsibility::Preparer);
+        $this->assignResponsibility($inspection, $inspector, InspectionResponsibility::Reviewer);
 
         return [$inspection, $inspector];
     }
@@ -534,8 +545,11 @@ final class InspectionTransitionRoutesTest extends TestCase
         ?int $blankTextInBlock = null,
         ?string $blankTextField = null,
         bool $includeGeneralAspects = true,
-    ): void
-    {
+    ): void {
+        if (! $inspection->responsibles()->where('responsibility', 'preparer')->exists()) {
+            $planner = User::factory()->create(['organization_id' => $inspection->organization_id, 'operational_role' => OperationalRole::Planner]);
+            $this->assignResponsibility($inspection, $planner, InspectionResponsibility::Preparer);
+        }
         foreach ([1, 2] as $position) {
             $block = InspectionOverviewBlock::factory()->forInspection($inspection, $position)->create([
                 'comment' => $blankTextInBlock === $position && $blankTextField === 'comment' ? null : "Comentário {$position}",
@@ -549,7 +563,7 @@ final class InspectionTransitionRoutesTest extends TestCase
                 ($unreadyPhoto === $number
                     ? $factory->state(['processing_status' => $unreadyStatus])
                     : $factory->ready())
-                ->create();
+                    ->create();
             }
         }
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Actions\Defects;
 
 use App\Enums\DefectAssessmentStatus;
+use App\Enums\DefectAssessmentClassificationMethod;
 use App\Enums\InspectionStatus;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
@@ -48,9 +49,27 @@ final class UpdateDefectAssessment
             }
 
             $wasComplete = $assessment->isComplete();
+            $classificationMethod = array_key_exists('classification_method', $data)
+                ? DefectAssessmentClassificationMethod::tryFrom((string) $data['classification_method'])
+                : ($assessment->classification_method ?? DefectAssessmentClassificationMethod::Gut);
+
+            if ($classificationMethod === null) {
+                throw ValidationException::withMessages([
+                    'classification_method' => 'Escolha um método de classificação válido.',
+                ]);
+            }
+
+            if ($classificationMethod === DefectAssessmentClassificationMethod::EngineeringNote
+                && ! $assessment->defect->category->allowsEngineeringNote()) {
+                throw ValidationException::withMessages([
+                    'classification_method' => 'Nota de Engenharia está disponível apenas para CIVIL, TAC e REC.',
+                ]);
+            }
 
             $assessment->fill([
                 'condition' => $data['condition'] ?? $assessment->condition,
+                'is_unsafe_condition' => $data['is_unsafe_condition'] ?? $assessment->is_unsafe_condition,
+                'classification_method' => $classificationMethod,
                 'location_description' => TextNormalizer::nullableText($data['location_description'] ?? $assessment->location_description),
                 'comment' => TextNormalizer::nullableText($data['comment'] ?? $assessment->comment),
                 'recommendation' => TextNormalizer::nullableText($data['recommendation'] ?? $assessment->recommendation),
@@ -77,7 +96,9 @@ final class UpdateDefectAssessment
                 ]);
             }
 
-            if (! $assessment->condition->requiresGut()) {
+            if (! $assessment->condition->requiresGut()
+                || ! $assessment->defect->category->requiresGut()
+                || $assessment->classification_method === DefectAssessmentClassificationMethod::EngineeringNote) {
                 $assessment->fill([
                     'gravity' => null,
                     'urgency' => null,

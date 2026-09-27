@@ -8,6 +8,7 @@ use App\Enums\OperationalRole;
 use App\Enums\UserAccountType;
 use App\Models\Inspection;
 use App\Models\User;
+use App\Services\Inspections\InspectionSelfAssignment;
 
 final class InspectionPolicy
 {
@@ -23,6 +24,7 @@ final class InspectionPolicy
             && (
                 $user->isCompanyAdmin()
                 || $inspection->hasAnyResponsibilityForUser($user, ...InspectionResponsibility::cases())
+                || app(InspectionSelfAssignment::class)->isAvailable($user, $inspection)
             );
     }
 
@@ -32,6 +34,14 @@ final class InspectionPolicy
             && ! $user->isSuperAdmin()
             && $user->organization_id !== null
             && $user->operational_role === OperationalRole::Planner;
+    }
+
+    // Availability is checked under lock by the action, allowing retries and stale-page conflicts.
+    public function selfAssign(User $user, Inspection $inspection): bool
+    {
+        return app(InspectionSelfAssignment::class)->roleFor($user) !== null
+            && $this->sameOrganization($user, $inspection)
+            && ! $inspection->status->isFinal();
     }
 
     public function updatePlanned(User $user, Inspection $inspection): bool
@@ -62,11 +72,22 @@ final class InspectionPolicy
 
     public function manageClassificationM2(User $user, Inspection $inspection): bool
     {
-        return $this->manageReportContent($user, $inspection);
+        if ($user->account_type !== UserAccountType::Member) {
+            return false;
+        }
+
+        return match ($inspection->status) {
+            InspectionStatus::AwaitingM2 => $this->activeWithRoleAndAssignment($user, $inspection, OperationalRole::Planner),
+            InspectionStatus::InReview => $this->activeWithRoleAndAssignment($user, $inspection, OperationalRole::Reviewer),
+            default => false,
+        };
     }
 
     public function assignResponsibles(User $user, Inspection $inspection): bool
     {
+        if ($this->activeCompanyAdmin($user) && $this->sameOrganization($user, $inspection) && ! $inspection->status->isFinal()) {
+            return true;
+        }
         if ($inspection->status === InspectionStatus::Planned) {
             return false;
         }
@@ -96,6 +117,12 @@ final class InspectionPolicy
 
     public function submitForReview(User $user, Inspection $inspection): bool
     {
+        return $inspection->status === InspectionStatus::AwaitingM2
+            && $this->activeWithRoleAndAssignment($user, $inspection, OperationalRole::Planner);
+    }
+
+    public function submitForPlanning(User $user, Inspection $inspection): bool
+    {
         return match ($inspection->status) {
             InspectionStatus::InProgress, InspectionStatus::InCorrection => $this->manageReportContent($user, $inspection),
             default => false,
@@ -109,6 +136,7 @@ final class InspectionPolicy
         }
 
         return match ($inspection->status) {
+            InspectionStatus::AwaitingM2 => $this->activeWithRoleAndAssignment($user, $inspection, OperationalRole::Planner),
             InspectionStatus::InReview => $this->activeWithRoleAndAssignment($user, $inspection, OperationalRole::Reviewer),
             default => false,
         };
@@ -131,6 +159,7 @@ final class InspectionPolicy
     public function createCorrectionRequests(User $user, Inspection $inspection): bool
     {
         return match ($inspection->status) {
+            InspectionStatus::AwaitingM2 => $this->activeWithRoleAndAssignment($user, $inspection, OperationalRole::Planner),
             InspectionStatus::InReview => $this->activeWithRoleAndAssignment($user, $inspection, OperationalRole::Reviewer),
             InspectionStatus::AwaitingRelease => $this->activeWithRoleAndAssignment($user, $inspection, OperationalRole::Releaser),
             default => false,
@@ -153,17 +182,8 @@ final class InspectionPolicy
 
     public function cancel(User $user, Inspection $inspection): bool
     {
-        if ($inspection->status === InspectionStatus::InProgress) {
-            return $this->manageInProgress($user, $inspection);
-        }
-
-        return $this->activeInOrganization($user)
-            && $this->sameOrganization($user, $inspection)
-            && ! $inspection->status->isFinal()
-            && (
-                $user->isCompanyAdmin()
-                || $inspection->hasAnyResponsibilityForUser($user, ...InspectionResponsibility::cases())
-            );
+        return ! $inspection->status->isFinal()
+            && $this->activeWithRoleAndAssignment($user, $inspection, OperationalRole::Releaser);
     }
 
     /**
@@ -188,7 +208,7 @@ final class InspectionPolicy
 
         return match ($inspection->status) {
             InspectionStatus::InProgress, InspectionStatus::InCorrection => $user->operational_role === OperationalRole::Inspector,
-            InspectionStatus::InReview => $user->operational_role === OperationalRole::Reviewer,
+            InspectionStatus::InReview => $this->activeWithRoleAndAssignment($user, $inspection, OperationalRole::Reviewer),
             default => false,
         } && $inspection->hasAnyResponsibilityForUser($user, ...InspectionResponsibility::cases());
     }
@@ -201,9 +221,16 @@ final class InspectionPolicy
     private function activeWithRoleAndAssignment(User $user, Inspection $inspection, OperationalRole $role): bool
     {
         return $this->activeInOrganization($user)
+            && (! in_array($role, [OperationalRole::Reviewer, OperationalRole::Releaser], true) || $user->account_type === UserAccountType::Member)
+            && ($inspection->status !== InspectionStatus::AwaitingM2 || $user->account_type === UserAccountType::Member)
             && $this->sameOrganization($user, $inspection)
             && $user->operational_role === $role
-            && $inspection->hasAnyResponsibilityForUser($user, ...InspectionResponsibility::cases());
+            && $inspection->hasAnyResponsibilityForUser($user, ...match ($role) {
+                OperationalRole::Reviewer => [InspectionResponsibility::Approver],
+                OperationalRole::Releaser => [InspectionResponsibility::Releaser],
+                OperationalRole::Planner => $inspection->status === InspectionStatus::AwaitingM2 ? [InspectionResponsibility::Preparer] : InspectionResponsibility::cases(),
+                default => InspectionResponsibility::cases(),
+            });
     }
 
     private function activeInOrganization(User $user): bool

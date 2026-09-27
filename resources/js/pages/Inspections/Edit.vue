@@ -5,6 +5,8 @@ import InspectionForm from '@/components/domain/inspections/InspectionForm.vue';
 import InspectionStatusBadge from '@/components/domain/inspections/InspectionStatusBadge.vue';
 
 defineProps({
+    reinspection_options_url: { type: String, required: true },
+    reinspection_options: { type: Object, default: null },
     inspection: {
         type: Object,
         required: true,
@@ -70,6 +72,8 @@ defineProps({
         <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <InspectionForm
                 :action="action"
+                :reinspection-options-url="reinspection_options_url"
+                :reinspection-options="reinspection_options"
                 :cancel-url="cancel_url"
                 :inspection="inspection"
                 :equipment-options="equipment_options"

@@ -28,6 +28,8 @@ final class SaveDefectAssessmentTelClassification
                 ->lockForUpdate()
                 ->findOrFail($assessment->getKey());
 
+            app(\App\Services\Defects\InspectionAssessmentResolver::class)->ensureMutable($assessment);
+
             if (! $assessment->condition->requiresGut()) {
                 return $this->clear($assessment, $actor);
             }

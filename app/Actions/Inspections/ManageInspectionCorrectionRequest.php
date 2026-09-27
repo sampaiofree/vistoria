@@ -43,20 +43,16 @@ final class ManageInspectionCorrectionRequest
         });
     }
 
-    public function createChild(User $actor, InspectionCorrectionRequest $parent, string $message, ?DefectAssessment $assessment = null): InspectionCorrectionRequest
+    public function createChild(User $actor, InspectionCorrectionRequest $parent, string $message): InspectionCorrectionRequest
     {
-        return DB::transaction(function () use ($actor, $parent, $message, $assessment): InspectionCorrectionRequest {
+        return DB::transaction(function () use ($actor, $parent, $message): InspectionCorrectionRequest {
             $parent = $this->request($parent, ['inspection.responsibles']);
 
             if (! $actor->can('createChild', $parent)) {
                 throw ValidationException::withMessages(['request' => 'Somente o Revisor vinculado pode desdobrar este apontamento para o Inspetor.']);
             }
 
-            $assessment = $assessment === null ? null : $this->assessment($assessment);
-            $assessmentId = $assessment?->id ?? $parent->defect_assessment_id;
-            if ($assessment !== null && $assessment->inspection_id !== $parent->inspection_id) {
-                throw ValidationException::withMessages(['defect_assessment_id' => 'A avaria deve pertencer à mesma inspeção.']);
-            }
+            $assessmentId = $parent->defect_assessment_id;
 
             $this->ensureNoOpenRequest($parent->inspection, InspectionCorrectionRequestFlow::ReviewerToInspector, $parent->id, $assessmentId);
 
@@ -100,7 +96,7 @@ final class ManageInspectionCorrectionRequest
             $request = $this->request($request);
             $this->authorize($actor, 'address', $request, 'Somente o responsável pelo ajuste pode responder este apontamento.');
 
-            if ($request->flow === InspectionCorrectionRequestFlow::ReviewerToInspector
+            if (in_array($request->flow, [InspectionCorrectionRequestFlow::ReviewerToInspector, InspectionCorrectionRequestFlow::PlannerToInspector], true)
                 && $request->defect_assessment_id !== null
                 && $request->assessment?->status !== DefectAssessmentStatus::Complete) {
                 throw ValidationException::withMessages(['request' => 'Publique a avaliação da avaria antes de informar que a correção foi atendida.']);
@@ -143,6 +139,12 @@ final class ManageInspectionCorrectionRequest
         return DB::transaction(function () use ($actor, $request): InspectionCorrectionRequest {
             $request = $this->request($request);
             $this->authorize($actor, 'close', $request, 'Somente o solicitante vinculado pode encerrar este apontamento.');
+
+            // A retry must preserve the original closure and its audit fields.
+            if ($request->status === InspectionCorrectionRequestStatus::Closed) {
+                return $request;
+            }
+
             $request->update([
                 'status' => InspectionCorrectionRequestStatus::Closed,
                 'closed_by' => $actor->id,
@@ -188,6 +190,7 @@ final class ManageInspectionCorrectionRequest
         }
 
         return match ([$inspection->status, $actor->operational_role]) {
+            [InspectionStatus::AwaitingM2, OperationalRole::Planner] => InspectionCorrectionRequestFlow::PlannerToInspector,
             [InspectionStatus::InReview, OperationalRole::Reviewer] => InspectionCorrectionRequestFlow::ReviewerToInspector,
             [InspectionStatus::AwaitingRelease, OperationalRole::Releaser] => InspectionCorrectionRequestFlow::ReleaserToReviewer,
             default => throw ValidationException::withMessages(['request' => 'O fluxo do apontamento não é válido nesta etapa.']),
@@ -232,6 +235,8 @@ final class ManageInspectionCorrectionRequest
     /** @param array<int, string> $with */
     private function request(InspectionCorrectionRequest $request, array $with = []): InspectionCorrectionRequest
     {
+        Inspection::query()->forOrganization($this->tenant->id())->lockForUpdate()->findOrFail($request->inspection_id);
+
         return InspectionCorrectionRequest::query()
             ->forOrganization($this->tenant->id())
             ->with(array_merge(['inspection.responsibles', 'assessment', 'children'], $with))
@@ -241,6 +246,8 @@ final class ManageInspectionCorrectionRequest
 
     private function assessment(DefectAssessment $assessment): DefectAssessment
     {
+        Inspection::query()->forOrganization($this->tenant->id())->lockForUpdate()->findOrFail($assessment->inspection_id);
+
         return DefectAssessment::query()
             ->forOrganization($this->tenant->id())
             ->with(['inspection.responsibles'])

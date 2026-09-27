@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Enums\DefectAssessmentCondition;
+use App\Enums\DefectAssessmentClassificationMethod;
 use App\Enums\DefectAssessmentStatus;
 use App\Models\Concerns\BelongsToOrganization;
 use App\Models\Concerns\HasPublicId;
@@ -29,6 +30,8 @@ final class DefectAssessment extends Model
         'previous_assessment_id',
         'defect_location_map_version_id',
         'condition',
+        'is_unsafe_condition',
+        'classification_method',
         'status',
         'location_description',
         'comment',
@@ -53,6 +56,8 @@ final class DefectAssessment extends Model
     {
         return [
             'condition' => DefectAssessmentCondition::class,
+            'is_unsafe_condition' => 'boolean',
+            'classification_method' => DefectAssessmentClassificationMethod::class,
             'status' => DefectAssessmentStatus::class,
             'defect_snapshot' => 'array',
             'quantity_snapshot' => 'array',

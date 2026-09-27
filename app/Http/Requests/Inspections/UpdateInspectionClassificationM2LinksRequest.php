@@ -25,17 +25,28 @@ final class UpdateInspectionClassificationM2LinksRequest extends FormRequest
             'classification_code' => strtoupper(trim((string) data_get($link, 'classification_code'))),
             'sap_number' => TextNormalizer::nullableText(data_get($link, 'sap_number')),
         ])->all();
+        $specialRows = collect($this->input('special_rows', []))->map(fn (mixed $row): array => [
+            'assessment_public_id' => trim((string) data_get($row, 'assessment_public_id')),
+            'service' => TextNormalizer::nullableText(data_get($row, 'service')),
+            'priority' => TextNormalizer::nullableText(data_get($row, 'priority')),
+            'note' => TextNormalizer::nullableText(data_get($row, 'note')),
+        ])->all();
 
-        $this->merge(['links' => $links]);
+        $this->merge(['links' => $links, 'special_rows' => $specialRows]);
     }
 
     public function rules(): array
     {
         return [
-            'links' => ['required', 'array'],
+            'links' => ['present', 'array'],
             'links.*.category' => ['required', 'string', 'in:TAC,REC,CV,TEL'],
             'links.*.classification_code' => ['required', 'string', 'max:20'],
             'links.*.sap_number' => ['nullable', 'string', 'max:100'],
+            'special_rows' => ['sometimes', 'array'],
+            'special_rows.*.assessment_public_id' => ['required', 'string', 'max:26', 'distinct'],
+            'special_rows.*.service' => ['nullable', 'string', 'max:100'],
+            'special_rows.*.priority' => ['nullable', 'string', 'max:100'],
+            'special_rows.*.note' => ['nullable', 'string', 'max:100'],
         ];
     }
 }

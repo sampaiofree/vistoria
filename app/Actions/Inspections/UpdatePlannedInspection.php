@@ -111,6 +111,7 @@ final class UpdatePlannedInspection
                 'assigned_at' => now(),
             ]);
 
+            $equipmentChanged = $inspection->equipment_id !== $equipment->id;
             $inspection->update([
                 'equipment_id' => $equipment->getKey(),
                 'previous_inspection_id' => $previousInspection?->getKey(),
@@ -125,6 +126,11 @@ final class UpdatePlannedInspection
                 'snapshot_version' => InspectionSnapshotBuilder::VERSION,
                 'updated_by' => $actor->getKey(),
             ]);
+
+            $inspection->unsetRelation('previousInspection');
+            if ($equipmentChanged || $inspection->reinspection_scope_version !== null || array_key_exists('reinspection_defect_ids', $data)) {
+                app(\App\Services\Inspections\ReinspectionScopePlanner::class)->save($inspection, $actor, $data, $equipmentChanged);
+            }
 
             return $inspection->refresh();
         });

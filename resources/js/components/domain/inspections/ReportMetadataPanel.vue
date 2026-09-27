@@ -16,6 +16,7 @@ const form = useForm({
     report_date: props.metadata.report_date ?? '',
     service_order: props.metadata.service_order ?? '',
     external_report_number: props.metadata.external_report_number ?? '',
+    designer_i_report_number: props.metadata.designer_i_report_number ?? '',
     first_page_text_template: props.metadata.first_page_text_template ?? '',
 });
 
@@ -32,6 +33,7 @@ function syncForm() {
         report_date: props.metadata.report_date ?? '',
         service_order: props.metadata.service_order ?? '',
         external_report_number: props.metadata.external_report_number ?? '',
+        designer_i_report_number: props.metadata.designer_i_report_number ?? '',
         first_page_text_template: props.metadata.first_page_text_template ?? '',
     });
     form.reset();
@@ -51,6 +53,16 @@ function cancelEditing() {
 }
 
 function submit() {
+    form.transform((data) => {
+        if (canEditRestrictedFields.value) {
+            return data;
+        }
+
+        const { designer_i_report_number, ...allowedData } = data;
+
+        return allowedData;
+    });
+
     form.put(props.metadata.update_url, {
         preserveScroll: true,
         only: ['inspection', 'report_metadata', 'emission_options', 'capabilities', 'transitions', 'flash'],
@@ -109,10 +121,14 @@ function submit() {
                     <input v-model="form.external_report_number" :disabled="!canEditRestrictedFields" type="text" maxlength="150" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 disabled:cursor-not-allowed disabled:bg-slate-100">
                     <span v-if="form.errors.external_report_number" class="block text-xs text-rose-600">{{ form.errors.external_report_number }}</span>
                 </label>
-                <div class="space-y-1.5 text-sm font-medium text-slate-700 md:col-span-2">
+                <label v-if="canEditRestrictedFields" class="space-y-1.5 text-sm font-medium text-slate-700 md:col-span-2">
+                    <span>Nº Projetista I</span>
+                    <input v-model="form.designer_i_report_number" type="text" maxlength="100" required class="w-full rounded-xl border border-slate-300 px-3 py-2.5">
+                    <span v-if="form.errors.designer_i_report_number" class="block text-xs text-rose-600">{{ form.errors.designer_i_report_number }}</span>
+                </label>
+                <div v-else class="space-y-1.5 text-sm font-medium text-slate-700 md:col-span-2">
                     <span>Nº Projetista I</span>
                     <p class="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-slate-700">{{ metadata.designer_i_report_number || 'Não informado' }}</p>
-                    <span class="block text-xs font-normal text-slate-500">Obrigatório somente para impressão, PDF e DOC.</span>
                 </div>
                 <label class="space-y-1.5 text-sm font-medium text-slate-700 md:col-span-2">
                     <span>Título da primeira página</span>

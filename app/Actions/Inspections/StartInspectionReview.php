@@ -20,8 +20,14 @@ final class StartInspectionReview
 
     public function handle(Inspection $inspection, User $actor): Inspection
     {
+        return $this->withLockedInspection($inspection, $actor, 'startReview',
+            fn (Inspection $locked): Inspection => $this->perform($locked, $actor));
+    }
+
+    private function perform(Inspection $inspection, User $actor): Inspection
+    {
         $this->validateTenant($inspection, $actor);
-        if ($actor->operational_role !== OperationalRole::Reviewer || ! $inspection->hasAnyResponsibilityForUser($actor, ...InspectionResponsibility::cases())) {
+        if ($actor->operational_role !== OperationalRole::Reviewer || ! $inspection->hasAnyResponsibilityForUser($actor, InspectionResponsibility::Approver)) {
             throw ValidationException::withMessages(['actor' => 'Somente o Revisor vinculado pode iniciar a revisão.']);
         }
 

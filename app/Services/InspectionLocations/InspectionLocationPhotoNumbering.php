@@ -18,9 +18,7 @@ final class InspectionLocationPhotoNumbering
     /** @return array<string,int> */
     public function buildForReport(Inspection $inspection, ?Collection $loadedAssessments = null): array
     {
-        $assessments = $loadedAssessments ?? DefectAssessment::query()
-            ->forOrganization($inspection->organization_id)
-            ->where('inspection_id', $inspection->id)
+        $assessments = $loadedAssessments ?? app(\App\Services\Defects\InspectionAssessmentResolver::class)->query($inspection)
             ->where('status', DefectAssessmentStatus::Complete->value)
             ->with(['defect', 'photos', 'location', 'locationMapVersion'])
             ->get();
@@ -31,8 +29,10 @@ final class InspectionLocationPhotoNumbering
             $ordered = $assessments
                 ->filter(fn (DefectAssessment $assessment): bool => $assessment->defect?->category === $category
                     && ! $assessment->condition->isCanceled()
-                    && $assessment->locationMapVersion?->isReady()
-                    && $assessment->location?->isConfirmed())
+                    && (! $category->requiresLocationMap() || (
+                        $assessment->locationMapVersion?->isReady()
+                        && $assessment->location?->isConfirmed()
+                    )))
                 ->sortBy(fn (DefectAssessment $assessment): array => [
                     (int) ($assessment->defect?->sequence_number ?? PHP_INT_MAX),
                     (int) $assessment->id,

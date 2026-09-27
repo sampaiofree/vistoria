@@ -22,6 +22,7 @@ use App\Models\Organization;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 final class InspectionCorrectionRequestTest extends TestCase
@@ -73,7 +74,7 @@ final class InspectionCorrectionRequestTest extends TestCase
                 ->where('content.filters.pending_for_current_user_count', 1));
 
         $this->actingAs($inspector)
-            ->post(route('inspections.submit-for-review', $inspection))
+            ->post(route('inspections.submit-for-planning', $inspection))
             ->assertSessionHasErrors('inspection');
 
         $this->actingAs($inspector)
@@ -215,7 +216,10 @@ final class InspectionCorrectionRequestTest extends TestCase
                 'response_message' => 'Conclusão geral atualizada.',
             ])
             ->assertRedirect();
-        $this->actingAs($inspector)->post(route('inspections.submit-for-review', $inspection))->assertRedirect();
+        $this->actingAs($inspector)->post(route('inspections.submit-for-planning', $inspection))->assertRedirect();
+        if ($inspection->fresh()->status === InspectionStatus::AwaitingM2) {
+            $this->actingAs($inspection->responsibles()->where('responsibility', 'preparer')->firstOrFail()->user)->post(route('inspections.submit-for-review', $inspection))->assertSessionHasNoErrors();
+        }
         $this->actingAs($reviewer)->post(route('inspections.start-review', $inspection))->assertRedirect();
 
         $this->actingAs($reviewer)
@@ -241,6 +245,8 @@ final class InspectionCorrectionRequestTest extends TestCase
     public function test_requests_must_be_closed_before_release_and_only_assigned_roles_can_act(): void
     {
         [$inspection, $reviewer, $inspector] = $this->inspectionWithReviewerAndInspector(InspectionStatus::InReview);
+        $releaser = User::factory()->for($inspection->organization)->create(['operational_role' => OperationalRole::Releaser]);
+        $this->assign($inspection, $releaser, InspectionResponsibility::Releaser);
         $otherReviewer = User::factory()->for($inspection->organization)->create([
             'operational_role' => OperationalRole::Reviewer,
         ]);
@@ -264,9 +270,12 @@ final class InspectionCorrectionRequestTest extends TestCase
             ->assertRedirect();
 
         $this->actingAs($inspector)
-            ->post(route('inspections.submit-for-review', $inspection))
+            ->post(route('inspections.submit-for-planning', $inspection))
             ->assertRedirect();
 
+        if ($inspection->fresh()->status === InspectionStatus::AwaitingM2) {
+            $this->actingAs($inspection->responsibles()->where('responsibility', 'preparer')->firstOrFail()->user)->post(route('inspections.submit-for-review', $inspection))->assertSessionHasNoErrors();
+        }
         $this->actingAs($reviewer)
             ->post(route('inspections.start-review', $inspection))
             ->assertRedirect();
@@ -311,6 +320,9 @@ final class InspectionCorrectionRequestTest extends TestCase
         $this->assertSame(InspectionCorrectionRequestStatus::Requested, $parent->status);
         $this->assertNull($inspection->fresh()->approved_at);
 
+        if ($inspection->fresh()->status === InspectionStatus::AwaitingM2) {
+            $this->actingAs($inspection->responsibles()->where('responsibility', 'preparer')->firstOrFail()->user)->post(route('inspections.submit-for-review', $inspection))->assertSessionHasNoErrors();
+        }
         $this->actingAs($reviewer)->post(route('inspections.start-review', $inspection))->assertRedirect();
         $this->actingAs($reviewer)
             ->patch(route('inspection-correction-requests.address', $parent), [
@@ -352,6 +364,71 @@ final class InspectionCorrectionRequestTest extends TestCase
         $this->assertSame(InspectionCorrectionRequestStatus::Requested, $request->fresh()->status);
     }
 
+    #[DataProvider('delegationContexts')]
+    public function test_delegation_inherits_the_parent_context_and_ignores_legacy_assessment_selection(bool $hasAssessment, bool $legacySelection): void
+    {
+        [$inspection, $reviewer, $inspector, $releaser] = $this->inspectionWithReleaseTeam(InspectionStatus::AwaitingRelease);
+        $defect = Defect::factory()->forEquipment($inspection->equipment, $inspection)->create();
+        $assessment = DefectAssessment::factory()->forDefect($defect, $inspection)->complete()->create();
+        $otherDefect = Defect::factory()->forEquipment($inspection->equipment, $inspection)->create();
+        $otherAssessment = DefectAssessment::factory()->forDefect($otherDefect, $inspection)->complete()->create();
+
+        $this->actingAs($releaser);
+        if ($hasAssessment) {
+            $this->post(route('defect-assessment-correction-requests.store', $assessment), [
+                'request_message' => 'Confira a recomendação técnica desta avaria.',
+            ])->assertRedirect()->assertSessionHasNoErrors();
+        }
+        $this->post(route('inspections.return-for-review', $inspection), $hasAssessment ? [] : [
+            'justification' => 'Confira as conclusões gerais do relatório.',
+        ])->assertRedirect()->assertSessionHasNoErrors();
+
+        $parent = InspectionCorrectionRequest::query()->sole();
+        $originalParent = $parent->getRawOriginal();
+        $this->actingAs($reviewer)->post(route('inspections.start-review', $inspection))
+            ->assertRedirect()->assertSessionHasNoErrors();
+
+        $url = route('inspection-correction-requests.children.store', $parent);
+        $payload = ['request_message' => '  Atualize o texto técnico e confira as evidências.  '];
+        if ($legacySelection) {
+            $payload['defect_assessment_id'] = (string) $otherAssessment->id;
+        }
+        $this->actingAs($inspector)->post($url, $payload)->assertForbidden();
+        $this->actingAs($reviewer)->post($url, $payload)->assertRedirect()->assertSessionHasNoErrors();
+
+        $child = InspectionCorrectionRequest::query()->where('parent_request_id', $parent->id)->sole();
+        $this->assertSame($hasAssessment ? $assessment->id : null, $child->defect_assessment_id);
+        $this->assertSame($parent->id, $child->parent_request_id);
+        $this->assertSame($parent->organization_id, $child->organization_id);
+        $this->assertSame($parent->inspection_id, $child->inspection_id);
+        $this->assertSame(InspectionCorrectionRequestFlow::ReviewerToInspector, $child->flow);
+        $this->assertSame(InspectionCorrectionRequestStatus::Marked, $child->status);
+        $this->assertSame($reviewer->id, $child->created_by);
+        $this->assertSame('Atualize o texto técnico e confira as evidências.', $child->request_message);
+        $this->assertSame($originalParent, $parent->fresh()->getRawOriginal());
+
+        $pageUrl = $hasAssessment ? route('defect-assessments.show', $assessment) : route('inspections.show', $inspection);
+        $context = $hasAssessment ? 'correction_requests' : 'content.general_correction_requests';
+        $this->get($pageUrl)->assertInertia(fn (Assert $page) => $page
+            ->missing($context.'.assessment_options')
+            ->where($context.'.items.0.public_id', $parent->public_id)
+            ->where($context.'.items.0.children.0.public_id', $child->public_id));
+
+        $this->post($url, ['request_message' => 'Não deve criar um segundo ajuste em aberto.'])
+            ->assertSessionHasErrors('request');
+        $this->assertDatabaseCount('inspection_correction_requests', 2);
+    }
+
+    public static function delegationContexts(): array
+    {
+        return [
+            'assessment' => [true, false],
+            'assessment with legacy selection' => [true, true],
+            'general' => [false, false],
+            'general with legacy selection' => [false, true],
+        ];
+    }
+
     public function test_reviewer_can_delegate_a_releaser_request_to_inspector_and_must_validate_the_child_before_responding(): void
     {
         [$inspection, $reviewer, $inspector, $releaser] = $this->inspectionWithReleaseTeam(InspectionStatus::AwaitingRelease);
@@ -363,6 +440,9 @@ final class InspectionCorrectionRequestTest extends TestCase
             ->assertRedirect();
         $parent = InspectionCorrectionRequest::query()->sole();
 
+        if ($inspection->fresh()->status === InspectionStatus::AwaitingM2) {
+            $this->actingAs($inspection->responsibles()->where('responsibility', 'preparer')->firstOrFail()->user)->post(route('inspections.submit-for-review', $inspection))->assertSessionHasNoErrors();
+        }
         $this->actingAs($reviewer)->post(route('inspections.start-review', $inspection))->assertRedirect();
         $this->actingAs($reviewer)
             ->post(route('inspection-correction-requests.children.store', $parent), [
@@ -383,7 +463,10 @@ final class InspectionCorrectionRequestTest extends TestCase
         $this->actingAs($inspector)
             ->patch(route('inspection-correction-requests.address', $child), ['response_message' => 'Texto e evidências atualizados.'])
             ->assertRedirect();
-        $this->actingAs($inspector)->post(route('inspections.submit-for-review', $inspection))->assertRedirect();
+        $this->actingAs($inspector)->post(route('inspections.submit-for-planning', $inspection))->assertRedirect();
+        if ($inspection->fresh()->status === InspectionStatus::AwaitingM2) {
+            $this->actingAs($inspection->responsibles()->where('responsibility', 'preparer')->firstOrFail()->user)->post(route('inspections.submit-for-review', $inspection))->assertSessionHasNoErrors();
+        }
         $this->actingAs($reviewer)->post(route('inspections.start-review', $inspection))->assertRedirect();
 
         $this->actingAs($reviewer)->patch(route('inspection-correction-requests.close', $child))->assertRedirect();
@@ -442,6 +525,8 @@ final class InspectionCorrectionRequestTest extends TestCase
 
     private function completeOverview(Inspection $inspection): void
     {
+        $planner = User::factory()->create(['organization_id' => $inspection->organization_id, 'operational_role' => OperationalRole::Planner]);
+        $this->assign($inspection, $planner, InspectionResponsibility::Preparer);
         foreach ([1, 2] as $position) {
             $block = InspectionOverviewBlock::factory()->forInspection($inspection, $position)->create();
 

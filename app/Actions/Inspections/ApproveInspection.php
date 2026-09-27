@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace App\Actions\Inspections;
 
 use App\Actions\Inspections\Concerns\ValidatesInspectionTransition;
-use App\Enums\InspectionResponsibility;
-use App\Enums\InspectionCorrectionRequestStatus;
 use App\Enums\InspectionCorrectionRequestFlow;
+use App\Enums\InspectionCorrectionRequestStatus;
+use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
 use App\Enums\OperationalRole;
 use App\Models\Inspection;
@@ -15,6 +15,9 @@ use App\Models\InspectionCorrectionRequest;
 use App\Models\User;
 use App\Services\Defects\AssessmentPhotoCoverageValidator;
 use App\Services\Defects\ReinspectionCoverageValidator;
+use App\Services\Inspections\GeneralAspectsCoverageValidator;
+use App\Services\Inspections\InspectionClassificationM2CoverageValidator;
+use App\Services\Inspections\InspectionOverviewCoverageValidator;
 use Illuminate\Validation\ValidationException;
 
 final class ApproveInspection
@@ -29,8 +32,14 @@ final class ApproveInspection
 
     public function handle(Inspection $inspection, User $actor): Inspection
     {
+        return $this->withLockedInspection($inspection, $actor, 'approve',
+            fn (Inspection $locked): Inspection => $this->perform($locked, $actor));
+    }
+
+    private function perform(Inspection $inspection, User $actor): Inspection
+    {
         $this->validateTenant($inspection, $actor);
-        if ($actor->operational_role !== OperationalRole::Reviewer || ! $inspection->hasAnyResponsibilityForUser($actor, ...InspectionResponsibility::cases())) {
+        if ($actor->operational_role !== OperationalRole::Reviewer || ! $inspection->hasAnyResponsibilityForUser($actor, InspectionResponsibility::Approver)) {
             throw ValidationException::withMessages(['actor' => 'Somente o Revisor vinculado pode enviar a inspeção para liberação.']);
         }
 
@@ -43,7 +52,7 @@ final class ApproveInspection
         $openReviewerRequests = InspectionCorrectionRequest::query()
             ->forOrganization($inspection->organization_id)
             ->where('inspection_id', $inspection->id)
-            ->where('flow', InspectionCorrectionRequestFlow::ReviewerToInspector->value)
+            ->whereIn('flow', [InspectionCorrectionRequestFlow::ReviewerToInspector->value, InspectionCorrectionRequestFlow::PlannerToInspector->value])
             ->whereIn('status', [
                 InspectionCorrectionRequestStatus::Marked,
                 InspectionCorrectionRequestStatus::Requested,
@@ -75,6 +84,9 @@ final class ApproveInspection
 
         $this->coverageValidator->validate($inspection);
         $this->photoCoverageValidator->validate($inspection);
+        app(InspectionOverviewCoverageValidator::class)->validate($inspection);
+        app(GeneralAspectsCoverageValidator::class)->validate($inspection);
+        app(InspectionClassificationM2CoverageValidator::class)->validate($inspection);
 
         return $this->transition->handle(
             $actor,

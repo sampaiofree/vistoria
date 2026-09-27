@@ -32,6 +32,8 @@ final class CreateInspectionBatchRequest extends FormRequest
                 $inspection = is_array($inspection) ? $inspection : [];
 
                 return [
+                    ...(array_key_exists('reinspection_defect_ids', $inspection) ? ['reinspection_defect_ids' => $inspection['reinspection_defect_ids']] : []),
+                    ...(array_key_exists('reinspection_base_id', $inspection) ? ['reinspection_base_id' => $inspection['reinspection_base_id']] : []),
                     'equipment_id' => blank($inspection['equipment_id'] ?? null) ? null : (int) $inspection['equipment_id'],
                     'service_order' => TextNormalizer::nullableText($inspection['service_order'] ?? null),
                     'atmospheric_classification' => TextNormalizer::technicalCode($inspection['atmospheric_classification'] ?? null),
@@ -51,6 +53,9 @@ final class CreateInspectionBatchRequest extends FormRequest
 
         return [
             'inspections' => ['required', 'array', 'min:1', 'max:100'],
+            'inspections.*.reinspection_defect_ids' => ['sometimes', 'array'],
+            'inspections.*.reinspection_defect_ids.*' => ['required', 'integer'],
+            'inspections.*.reinspection_base_id' => ['sometimes', 'nullable', 'integer'],
             'inspections.*.equipment_id' => [
                 'required',
                 'integer',

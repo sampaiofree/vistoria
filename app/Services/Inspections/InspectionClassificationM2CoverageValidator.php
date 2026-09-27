@@ -14,18 +14,30 @@ final class InspectionClassificationM2CoverageValidator
 
     public function validate(Inspection $inspection): void
     {
-        $pending = collect($this->summary->build($inspection)['categories'])
+        $summary = $this->summary->build($inspection);
+        $pending = collect($summary['categories'])
             ->flatMap(fn (array $category) => collect($category['rows'])
                 ->filter(fn (array $row): bool => $row['defect_count'] > 0 && blank($row['sap_m2_number']))
                 ->map(fn (array $row): string => $category['code'].' '.$row['classification_code']))
             ->values();
 
-        if ($pending->isEmpty()) {
+        $messages = [];
+        if ($pending->isNotEmpty()) {
+            $messages[] = 'Preencha as Notas M2 das classificações: '.$pending->implode(', ').'.';
+        }
+        foreach ($summary['special_assessment_rows'] as $row) {
+            $missing = collect(['service' => 'Serviço', 'priority' => 'Prioridade', 'note' => 'Nota'])
+                ->filter(fn (string $label, string $field): bool => blank($row[$field]))->values();
+            if ($missing->isNotEmpty()) {
+                $messages[] = 'Preencha '.$missing->implode(', ').' na tratativa especial '.$row['code'].'.';
+            }
+        }
+        if ($messages === []) {
             return;
         }
 
         throw ValidationException::withMessages([
-            'inspection' => 'Preencha as Notas M2 das classificações: '.$pending->implode(', ').'.',
+            'inspection' => implode(' ', $messages),
         ]);
     }
 }

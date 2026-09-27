@@ -11,6 +11,7 @@ use App\Actions\Inspections\ReturnInspectionForCorrection;
 use App\Actions\Inspections\ReturnInspectionForReview;
 use App\Actions\Inspections\StartInspection;
 use App\Actions\Inspections\StartInspectionReview;
+use App\Actions\Inspections\SubmitInspectionForPlanning;
 use App\Actions\Inspections\SubmitInspectionForReview;
 use App\Http\Controllers\Concerns\ResolvesTenantStructure;
 use App\Http\Requests\Inspections\ApproveInspectionRequest;
@@ -20,6 +21,7 @@ use App\Http\Requests\Inspections\ReturnInspectionForCorrectionRequest;
 use App\Http\Requests\Inspections\ReturnInspectionForReviewRequest;
 use App\Http\Requests\Inspections\StartInspectionRequest;
 use App\Http\Requests\Inspections\StartInspectionReviewRequest;
+use App\Http\Requests\Inspections\SubmitInspectionForPlanningRequest;
 use App\Http\Requests\Inspections\SubmitInspectionForReviewRequest;
 use App\Models\Inspection;
 use App\Services\Tenancy\TenantContext;
@@ -49,10 +51,22 @@ final class InspectionTransitionController extends Controller
         SubmitInspectionForReview $action,
     ): RedirectResponse {
         $inspection = $this->tenantInspection($tenant, $inspection);
-
         $action->handle($inspection, $request->user());
 
         return back()->with('success', 'Inspeção enviada para revisão.');
+    }
+
+    public function submitForPlanning(
+        SubmitInspectionForPlanningRequest $request,
+        TenantContext $tenant,
+        Inspection $inspection,
+        SubmitInspectionForPlanning $action,
+    ): RedirectResponse {
+        $inspection = $this->tenantInspection($tenant, $inspection);
+
+        $action->handle($inspection, $request->user());
+
+        return back()->with('success', 'Inspeção enviada ao Planejador para preenchimento de notas.');
     }
 
     public function returnForCorrection(

@@ -61,6 +61,13 @@ const subtitle = computed(() => {
 
 const priorityCards = [
     {
+        key: 'awaiting_m2',
+        title: 'Preenchimento de notas',
+        description: 'Inspeções aguardando o planejador',
+        icon: 'review',
+        variant: 'info',
+    },
+    {
         key: 'overdue',
         title: 'Atrasadas',
         description: 'Planejadas fora do prazo',
@@ -101,6 +108,9 @@ function retry(prop) {
 <template>
     <AppLayout :title="title" :subtitle="subtitle" wide>
         <template #actions>
+            <Link v-if="links.available_inspections" :href="links.available_inspections" class="inline-flex min-h-11 items-center justify-center rounded-md border border-teal-700 px-4 py-2 text-sm font-semibold text-teal-700 hover:bg-teal-50">
+                Disponíveis para mim
+            </Link>
             <Link
                 v-if="mode === 'global' && links.organizations_index"
                 :href="links.organizations_index"

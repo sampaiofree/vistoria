@@ -49,7 +49,7 @@ final class DefectAssessmentCompletionValidator
 
             $assessment->loadMissing(['quantities', 'locationMapVersion', 'location']);
 
-            if ($assessment->defect->category !== DefectCategory::RoofCladding && $assessment->quantities->isEmpty()) {
+            if ($assessment->defect->category->requiresQuantities() && $assessment->quantities->isEmpty()) {
                 $errors['quantity'] = 'Informe o quantitativo antes de publicar a avaliação.';
             }
 
@@ -61,15 +61,19 @@ final class DefectAssessmentCompletionValidator
                 $errors['photos'] = 'Aguarde o processamento de todas as fotografias antes de publicar a avaliação.';
             }
 
-            if ($assessment->locationMapVersion === null) {
-                $errors['location_map'] = 'Envie o mapa de localização antes de publicar a avaliação.';
-            } elseif ($assessment->locationMapVersion->processing_status !== InspectionLocationMapProcessingStatus::Ready
-                || $assessment->locationMapVersion->background_path === null) {
-                $errors['location_map'] = 'Aguarde o processamento do mapa de localização antes de publicar a avaliação.';
-            }
+            if ($assessment->defect->category->requiresLocationMap()) {
+                if ($assessment->locationMapVersion === null) {
+                    $errors['location_map'] = 'Envie o mapa de localização antes de publicar a avaliação.';
+                } elseif ($assessment->locationMapVersion->processing_status !== InspectionLocationMapProcessingStatus::Ready
+                    || $assessment->locationMapVersion->background_path === null) {
+                    $errors['location_map'] = 'Aguarde o processamento do mapa de localização antes de publicar a avaliação.';
+                } elseif (blank($assessment->locationMapVersion->project_number)) {
+                    $errors['project_number'] = 'Informe o número do projeto do mapa antes de publicar a avaliação.';
+                }
 
-            if ($assessment->location === null || ! $assessment->location->isConfirmed()) {
-                $errors['location'] = 'Identifique e confirme a localização da avaria no mapa antes de publicar a avaliação.';
+                if ($assessment->location === null || ! $assessment->location->isConfirmed()) {
+                    $errors['location'] = 'Identifique e confirme a localização da avaria no mapa antes de publicar a avaliação.';
+                }
             }
         }
 

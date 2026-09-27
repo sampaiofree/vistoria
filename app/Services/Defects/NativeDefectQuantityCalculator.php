@@ -27,7 +27,6 @@ final class NativeDefectQuantityCalculator
     public static function rules(
         DefectCategory $category,
         mixed $element = null,
-        bool $allowLegacyFractionalMultiplier = false,
     ): array
     {
         $rules = match ($category) {
@@ -37,10 +36,10 @@ final class NativeDefectQuantityCalculator
             ),
             DefectCategory::AnticorrosiveTreatment => self::rulesForFields(['area'], ['area']),
             DefectCategory::StructuralRecovery => self::structuralRecoveryRules($element),
-            DefectCategory::RoofCladding => ['quantity' => ['prohibited']],
+            DefectCategory::RoofCladding, DefectCategory::SolidaryStructures => ['quantity' => ['prohibited']],
         };
 
-        if (! $allowLegacyFractionalMultiplier && self::hasCalculatedMultiplier($category, $element)) {
+        if (self::hasCalculatedMultiplier($category, $element)) {
             $rules['quantity.quantity'] = self::positiveIntegerRule();
         }
 
@@ -51,12 +50,11 @@ final class NativeDefectQuantityCalculator
     public function calculate(
         DefectCategory $category,
         array $data,
-        bool $allowLegacyFractionalMultiplier = false,
     ): array
     {
-        if ($category === DefectCategory::RoofCladding) {
+        if (! $category->requiresQuantities()) {
             throw ValidationException::withMessages([
-                'quantity' => 'A categoria Telhado/Tapamento não possui quantitativo nesta etapa.',
+                'quantity' => 'Esta categoria não possui quantitativo nesta etapa.',
             ]);
         }
 
@@ -68,7 +66,7 @@ final class NativeDefectQuantityCalculator
 
         Validator::make(
             ['quantity' => $data],
-            self::rules($category, $data['element'] ?? null, $allowLegacyFractionalMultiplier),
+            self::rules($category, $data['element'] ?? null),
             attributes: self::attributes(),
         )->validate();
 
@@ -76,7 +74,7 @@ final class NativeDefectQuantityCalculator
             DefectCategory::Civil => $this->civil($data),
             DefectCategory::AnticorrosiveTreatment => $this->tac($data),
             DefectCategory::StructuralRecovery => $this->structuralRecovery($data),
-            DefectCategory::RoofCladding => throw new \LogicException('TEL não possui quantitativo.'),
+            DefectCategory::RoofCladding, DefectCategory::SolidaryStructures => throw new \LogicException('Esta categoria não possui quantitativo.'),
         };
     }
 

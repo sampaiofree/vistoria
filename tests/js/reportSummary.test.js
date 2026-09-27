@@ -101,6 +101,19 @@ test('includes the REC quantity annex only on its first landscape page', () => {
     ]);
 });
 
+test('includes the Estruturas Solidárias photographic annex in the summary', () => {
+    const entries = buildReportSummaryEntries([
+        { type: 'overview', key: 'report-overview', annexTitle: 'ANEXO A – LOCALIZAÇÃO E DOCUMENTAÇÃO FOTOGRÁFICA - TAC' },
+        { type: 'photographic', key: 'solidary-structures-0', annexTitle: 'ANEXO B – ESTRUTURAS SOLIDÁRIAS' },
+        { type: 'photographic', key: 'solidary-structures-1', continuation: true },
+    ], 1);
+
+    assert.deepEqual(entries.map(({ title, page }) => ({ title, page })), [
+        { title: 'ANEXO A – LOCALIZAÇÃO E DOCUMENTAÇÃO FOTOGRÁFICA - TAC', page: 3 },
+        { title: 'ANEXO B – ESTRUTURAS SOLIDÁRIAS', page: 4 },
+    ]);
+});
+
 test('includes the CIVIL quantity annex only once and keeps subsequent annex destinations', () => {
     const entries = buildReportSummaryEntries([
         { type: 'overview', key: 'report-overview', annexTitle: 'ANEXO A – LOCALIZAÇÃO E DOCUMENTAÇÃO FOTOGRÁFICA - TAC' },

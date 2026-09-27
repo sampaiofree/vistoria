@@ -49,8 +49,8 @@ const thumbnailPhoto = computed(() => {
     return photos[0] ?? null;
 });
 const conditionLabel = computed(() => assessment.value.condition_label ?? props.defect.condition_label ?? 'Condição não informada');
-const publicationLabel = computed(() => assessment.value.status_label
-    ?? (status.value === 'draft' ? 'Rascunho' : status.value === 'complete' ? 'Publicada' : null));
+const publicationLabel = computed(() => props.defect.historical_carried_forward ? 'Histórico mantido' : (assessment.value.status_label
+    ?? (status.value === 'draft' ? 'Rascunho' : status.value === 'complete' ? 'Publicada' : null)));
 const actionUrl = computed(() => props.defect.assessment_url ?? props.defect.show_url ?? null);
 const canStartAssessment = computed(() => !props.defect.assessment && Boolean(props.defect.assessment_store_url));
 
@@ -95,6 +95,7 @@ const element = computed(() => {
             <div class="min-w-0 flex-1">
                 <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">{{ defect.code }}</p>
                 <h3 class="mt-1 truncate text-base font-semibold text-slate-950">{{ defect.title }}</h3>
+                <p v-if="defect.historical_label" class="mt-1 text-xs text-slate-500">{{ defect.historical_label }} · Somente leitura</p>
                 <p class="mt-1 truncate text-sm text-slate-500">{{ location }}</p>
                 <p class="mt-2 truncate text-xs text-slate-500">
                     {{ discipline }} · {{ defect.origin_type === 'inherited' ? 'Herdada' : 'Nova nesta inspeção' }} · {{ conditionLabel }} ·
@@ -177,7 +178,7 @@ const element = computed(() => {
 
         <div class="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
             <p v-if="defect.pending_label || defect.is_pending" class="text-sm font-medium text-amber-700">{{ defect.pending_label || 'Avaliação pendente' }}</p>
-            <span v-else class="text-sm text-slate-500">Dados técnicos consolidados</span>
+            <span v-else class="text-sm text-slate-500">{{ defect.historical_label || 'Dados técnicos consolidados' }}</span>
             <button
                 v-if="canStartAssessment"
                 type="button"

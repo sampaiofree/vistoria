@@ -6,6 +6,7 @@ import ReportMetadataPanel from '@/components/domain/inspections/ReportMetadataP
 import InspectionRevisionPanel from '@/components/domain/inspections/InspectionRevisionPanel.vue';
 import GeneralAspectsPanel from '@/components/domain/inspections/GeneralAspectsPanel.vue';
 import InspectionStatusBadge from '@/components/domain/inspections/InspectionStatusBadge.vue';
+import SelfAssignmentButton from '@/components/domain/inspections/SelfAssignmentButton.vue';
 import InspectionTimeline from '@/components/domain/inspections/InspectionTimeline.vue';
 import TransitionForm from '@/components/domain/inspections/TransitionForm.vue';
 import CorrectionRequestsPanel from '@/components/domain/inspections/CorrectionRequestsPanel.vue';
@@ -17,6 +18,8 @@ import PhotoGallery from '@/components/domain/view-first/PhotoGallery.vue';
 import ReportSection from '@/components/domain/view-first/ReportSection.vue';
 import ReportPreview from '@/components/domain/view-first/ReportPreview.vue';
 import ClassificationSummaryTable from '@/components/domain/inspections/ClassificationSummaryTable.vue';
+import ClassificationEquipmentSummary from '@/components/domain/inspections/ClassificationEquipmentSummary.vue';
+import ClassificationSpecialAssessmentTable from '@/components/domain/inspections/ClassificationSpecialAssessmentTable.vue';
 import InspectionLocationReportMap from '@/components/domain/inspection-locations/InspectionLocationReportMap.vue';
 import {
     captureReportPages,
@@ -122,6 +125,12 @@ const m2Form = useForm({
         classification_code: row.classification_code,
         sap_number: row.sap_m2_number ?? '',
     }))),
+    special_rows: (props.content?.classification_summary?.special_assessment_rows ?? []).map((row) => ({
+        assessment_public_id: row.assessment_public_id,
+        service: row.service ?? '',
+        priority: row.priority ?? '',
+        note: row.note ?? '',
+    })),
 });
 
 function saveM2Links() {
@@ -133,6 +142,12 @@ function updateM2Link({ category, classificationCode, sapNumber }) {
     const link = m2Form.links.find((item) => item.category === category && item.classification_code === classificationCode);
 
     if (link) link.sap_number = sapNumber;
+}
+
+function updateSpecialAssessmentValue({ assessmentPublicId, field, value }) {
+    const row = m2Form.special_rows.find((item) => item.assessment_public_id === assessmentPublicId);
+
+    if (row) row[field] = value;
 }
 
 const photoStatusLabels = {
@@ -184,10 +199,11 @@ async function exportReport(format) {
         wide
     >
         <template #actions>
+            <SelfAssignmentButton :capability="capabilities.self_assign" />
             <InspectionStatusBadge :status="inspection.status" />
             <div v-if="active_tab !== 'overview'" class="hidden min-w-44 sm:block">
                 <AssessmentProgress
-                    :progress="{ completed: summary.completed, total: summary.total, percentage: summary.progress_percent }"
+                    :progress="{ completed: summary.completed, total: summary.required_total ?? summary.total, percentage: summary.progress_percent }"
                     label="Avaliações"
                 />
             </div>
@@ -275,6 +291,9 @@ async function exportReport(format) {
         </div>
 
         <div v-else-if="active_tab === 'defects'" class="print-hidden mt-6 space-y-6">
+            <p v-if="summary.historical_count" class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                {{ summary.historical_count }} avaria(s) com histórico mantido e edição bloqueada. O progresso considera apenas as {{ summary.required_total }} avaliações exigidas nesta inspeção.
+            </p>
             <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
                 <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                     <div class="flex flex-wrap items-end gap-3" aria-label="Filtrar avarias">
@@ -342,14 +361,22 @@ async function exportReport(format) {
         </div>
 
         <div v-else-if="active_tab === 'classifications'" class="print-hidden mt-6 space-y-6">
+            <ClassificationEquipmentSummary
+                :header="classificationSummary.header"
+                :editable="classificationSummary.can_edit_m2"
+                :update-url="classificationSummary.header_update_url"
+            />
             <section class="mx-auto max-w-7xl rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
                 <div class="flex flex-wrap items-start justify-between gap-4">
                     <div>
                         <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Resumo técnico</p>
                         <h2 class="mt-2 text-xl font-semibold text-slate-950">Classificação e Notas M2</h2>
-                        <p class="mt-1 text-sm text-slate-500">Preencha a Nota M2 para cada classificação com avarias publicadas.</p>
+                        <p class="mt-1 text-sm text-slate-500">O planejador deve conferir as Notas M2 e as tratativas especiais antes de enviar para revisão.</p>
                     </div>
-                    <button v-if="classificationSummary.can_edit_m2" type="button" class="rounded-xl bg-teal-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" :disabled="m2Form.processing" @click="saveM2Links">Salvar Notas M2</button>
+                    <button v-if="classificationSummary.can_edit_m2" type="button" class="rounded-xl bg-teal-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" :disabled="m2Form.processing" @click="saveM2Links">Salvar Notas M2 e ENDs</button>
+                </div>
+                <div v-if="Object.keys(m2Form.errors).length" role="alert" class="mt-4 text-sm text-rose-700">
+                    <p v-for="(message, field) in m2Form.errors" :key="field">{{ message }}</p>
                 </div>
                 <div class="mt-6 overflow-x-auto">
                     <ClassificationSummaryTable
@@ -358,6 +385,21 @@ async function exportReport(format) {
                         :editable="classificationSummary.can_edit_m2"
                         :m2-links="m2Form.links"
                         @update:m2="updateM2Link"
+                    />
+                </div>
+            </section>
+            <section class="mx-auto max-w-7xl rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                <div class="mb-6">
+                    <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Tratativas especiais</p>
+                    <h2 class="mt-2 text-xl font-semibold text-slate-950">END’s, Trabalhos de Engenharia e CI’s</h2>
+                    <p class="mt-1 text-sm text-slate-500">Condição insegura, Nota de Engenharia e Estruturas Solidárias. Serviço, Prioridade e Nota são obrigatórios antes do envio à revisão; você pode salvar parcialmente.</p>
+                </div>
+                <div class="overflow-x-auto">
+                    <ClassificationSpecialAssessmentTable
+                        :rows="classificationSummary.special_assessment_rows || []"
+                        :editable="classificationSummary.can_edit_m2"
+                        :values="m2Form.special_rows"
+                        @update:value="updateSpecialAssessmentValue"
                     />
                 </div>
             </section>

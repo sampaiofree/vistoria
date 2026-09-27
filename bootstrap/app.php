@@ -31,6 +31,7 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
 
         $middleware->appendToGroup('web', HandleInertiaRequests::class);
+        $middleware->appendToGroup('web', \App\Http\Middleware\LockInspectionMutation::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

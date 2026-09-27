@@ -20,9 +20,12 @@ final class UpsertDefectAssessmentLocation
     /** @param array<string,mixed> $data */
     public function handle(User $actor, DefectAssessment $assessment, array $data): DefectAssessmentLocation
     {
-        $assessment->loadMissing(['inspection', 'locationMapVersion', 'location']);
+        $assessment->loadMissing(['defect', 'inspection', 'locationMapVersion', 'location']);
         if ($actor->organization_id !== $assessment->organization_id || ! $actor->can('update', $assessment)) {
             throw ValidationException::withMessages(['location' => 'A avaliacao nao esta disponivel para localizar a avaria.']);
+        }
+        if (! $assessment->defect->category->requiresLocationMap()) {
+            throw ValidationException::withMessages(['location' => 'Esta categoria não utiliza mapa de localização.']);
         }
         if ($assessment->locationMapVersion === null || ! $assessment->locationMapVersion->isReady()) {
             throw ValidationException::withMessages(['location' => 'Aguarde o processamento da imagem do mapa.']);

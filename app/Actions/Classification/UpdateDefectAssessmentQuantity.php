@@ -43,7 +43,6 @@ final class UpdateDefectAssessmentQuantity
             $measurement = $this->calculator->calculate(
                 $assessment->defect->category,
                 $data['quantity'],
-                $quantity->hasFractionalMultiplier(),
             );
             $quantity->update([
                 ...$measurement,
@@ -57,6 +56,12 @@ final class UpdateDefectAssessmentQuantity
 
     private function ensureEditable(User $actor, DefectAssessment $assessment): void
     {
+        if (! $assessment->defect->category->requiresQuantities()) {
+            throw ValidationException::withMessages([
+                'quantity' => 'Esta categoria não possui quantitativo.',
+            ]);
+        }
+
         if (! $actor->isActive()
             || $actor->isSuperAdmin()
             || ! $actor->belongsToOrganization($this->tenant->id())

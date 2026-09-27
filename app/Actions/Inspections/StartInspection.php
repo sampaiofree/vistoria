@@ -22,6 +22,12 @@ final class StartInspection
 
     public function handle(Inspection $inspection, User $actor): Inspection
     {
+        return $this->withLockedInspection($inspection, $actor, 'start',
+            fn (Inspection $locked): Inspection => $this->perform($locked, $actor));
+    }
+
+    private function perform(Inspection $inspection, User $actor): Inspection
+    {
         $this->validateTenant($inspection, $actor);
 
         if ($actor->operational_role !== OperationalRole::Inspector) {

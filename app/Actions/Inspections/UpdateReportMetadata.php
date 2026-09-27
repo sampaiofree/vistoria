@@ -68,6 +68,10 @@ final class UpdateReportMetadata
                 'updated_by' => $actor->getKey(),
             ];
 
+            if ($actor->operational_role === OperationalRole::Reviewer) {
+                $attributes['designer_i_report_number'] = TextNormalizer::nullableText($data['designer_i_report_number'] ?? null);
+            }
+
             if (array_key_exists('external_report_number', $data)) {
                 $attributes['external_report_number'] = TextNormalizer::nullableText($data['external_report_number']);
             }

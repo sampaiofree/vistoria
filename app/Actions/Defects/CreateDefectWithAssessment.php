@@ -107,10 +107,11 @@ final class CreateDefectWithAssessment
             ]);
 
             if (($data['assessment_action'] ?? DefectAssessmentStatus::Draft->value) === DefectAssessmentStatus::Complete->value) {
-                $assessment = match ($category) {
-                    DefectCategory::RoofCladding => $this->saveTel->handle($actor, $assessment, $data),
-                    default => $this->saveGut->handle($actor, $assessment, $data),
-                };
+                if ($category === DefectCategory::RoofCladding) {
+                    $assessment = $this->saveTel->handle($actor, $assessment, $data);
+                } elseif ($category->requiresGut()) {
+                    $assessment = $this->saveGut->handle($actor, $assessment, $data);
+                }
 
                 $assessment = $this->completeAssessment->handle($actor, $assessment, $data);
             }

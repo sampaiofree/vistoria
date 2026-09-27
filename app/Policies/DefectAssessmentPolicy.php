@@ -29,6 +29,7 @@ final class DefectAssessmentPolicy
             return $user->can('manageFieldContent', $inspection)
                 && $this->sameOrganizationDefect($user, $defect)
                 && $inspection->equipment_id === $defect->equipment_id
+                && app(\App\Services\Defects\InspectionAssessmentResolver::class)->requiresAssessment($inspection, $defect)
                 && $defect->status === DefectStatus::Active;
         }
 
@@ -38,6 +39,7 @@ final class DefectAssessmentPolicy
     public function update(User $user, DefectAssessment $assessment): bool
     {
         return $assessment->isDraft()
+            && app(\App\Services\Defects\InspectionAssessmentResolver::class)->requiresAssessment($assessment->inspection, $assessment->defect)
             && $user->can('manageFieldContent', $assessment->inspection);
     }
 
@@ -47,7 +49,8 @@ final class DefectAssessmentPolicy
      */
     public function changeStatus(User $user, DefectAssessment $assessment): bool
     {
-        return $user->can('manageFieldContent', $assessment->inspection);
+        return app(\App\Services\Defects\InspectionAssessmentResolver::class)->requiresAssessment($assessment->inspection, $assessment->defect)
+            && $user->can('manageFieldContent', $assessment->inspection);
     }
 
     public function complete(User $user, DefectAssessment $assessment): bool

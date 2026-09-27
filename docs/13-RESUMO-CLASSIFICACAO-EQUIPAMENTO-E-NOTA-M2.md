@@ -66,14 +66,20 @@ não devem ser inferidos do cadastro atual.
 `SapM2Note` é única por organização, equipamento e número SAP. Uma
 `InspectionClassificationM2Link` associa uma inspeção, categoria, código de
 classificação e nota. A tela pode editar vínculos quando o usuário tem a Policy
-`manageClassificationM2`: Inspetor ativo, responsável e inspeção em
-`in_progress` ou `in_correction`.
+`manageClassificationM2`: Planejador ativo vinculado como preparador em
+`awaiting_m2`, ou Revisor responsável em `in_review`. O Inspetor consulta a aba.
+O envio à revisão exige M2 dos grupos elegíveis e Serviço, Prioridade e Nota de
+todas as tratativas especiais. O salvamento parcial é permitido; aprovação e
+liberação revalidam esses campos. Alterações são auditadas no histórico da inspeção.
 
 No estado atual, uma linha só é elegível para vínculo se tiver ao menos uma avaria
 publicada (`defect_count > 0`). O vínculo é atualizado ou removido informando
 `sap_number` nulo, mas uma linha sem avaria publicada é rejeitada pela ação mesmo
 quando a intenção é remover um vínculo antigo. A entidade `SapM2Note` não é
 apagada ao remover o vínculo.
+
+Vínculos de grupos sem avarias atuais são preservados, mas seu número não é
+exibido no resumo/relatório nem satisfaz a validação de um grupo novo.
 
 Não há chamada ao SAP. O número é texto validado e persistido dentro do tenant.
 

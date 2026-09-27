@@ -7,11 +7,13 @@ namespace App\Http\Controllers;
 use App\Actions\InspectionLocations\DeleteDefectAssessmentLocation;
 use App\Actions\InspectionLocations\DeleteDefectLocationMapVersion;
 use App\Actions\InspectionLocations\StoreDefectLocationMapVersion;
+use App\Actions\InspectionLocations\UpdateDefectLocationMapProjectNumber;
 use App\Actions\InspectionLocations\UpsertDefectAssessmentLocation;
 use App\Exceptions\StaleDefectAssessmentLocationException;
 use App\Http\Controllers\Concerns\ResolvesTenantStructure;
 use App\Http\Requests\InspectionLocations\StoreDefectLocationMapRequest;
 use App\Http\Requests\InspectionLocations\UpdateDefectAssessmentLocationRequest;
+use App\Http\Requests\InspectionLocations\UpdateDefectLocationMapProjectNumberRequest;
 use App\Models\DefectAssessment;
 use App\Services\InspectionLocations\DefectLocationColor;
 use App\Services\InspectionLocations\InspectionLocationPhotoNumbering;
@@ -33,8 +35,10 @@ final class DefectAssessmentLocationController extends Controller
         StoreDefectLocationMapVersion $action,
     ): RedirectResponse {
         $assessment = $this->tenantDefectAssessment($tenant, $defectAssessment);
+        $assessment->loadMissing('defect');
         $this->authorize('update', $assessment);
-        $action->handle($request->user(), $assessment, $request->file('file'));
+        abort_unless($assessment->defect->category->requiresLocationMap(), 404);
+        $action->handle($request->user(), $assessment, $request->file('file'), $request->validated('project_number'));
 
         return back()->with('success', 'Imagem do mapa enviada para processamento.');
     }
@@ -45,10 +49,27 @@ final class DefectAssessmentLocationController extends Controller
         DeleteDefectLocationMapVersion $action,
     ): RedirectResponse {
         $assessment = $this->tenantDefectAssessment($tenant, $defectAssessment);
+        $assessment->loadMissing('defect');
         $this->authorize('update', $assessment);
+        abort_unless($assessment->defect->category->requiresLocationMap(), 404);
         $action->handle(request()->user(), $assessment);
 
         return redirect()->route('defect-assessments.show', $assessment)->with('success', 'Mapa removido desta avaliação.');
+    }
+
+    public function updateProjectNumber(
+        UpdateDefectLocationMapProjectNumberRequest $request,
+        TenantContext $tenant,
+        DefectAssessment $defectAssessment,
+        UpdateDefectLocationMapProjectNumber $action,
+    ): RedirectResponse {
+        $assessment = $this->tenantDefectAssessment($tenant, $defectAssessment);
+        $assessment->loadMissing('defect');
+        $this->authorize('update', $assessment);
+        abort_unless($assessment->defect->category->requiresLocationMap(), 404);
+        $action->handle($request->user(), $assessment, $request->validated('project_number'));
+
+        return back()->with('success', 'Número do projeto atualizado.');
     }
 
     public function editor(
@@ -60,6 +81,7 @@ final class DefectAssessmentLocationController extends Controller
         $assessment = $this->tenantDefectAssessment($tenant, $defectAssessment);
         $assessment->loadMissing(['defect.equipment', 'inspection', 'photos', 'locationMapVersion.map', 'location']);
         $this->authorize('update', $assessment);
+        abort_unless($assessment->defect->category->requiresLocationMap(), 404);
         abort_unless($assessment->locationMapVersion?->isReady(), 409, 'A imagem-base ainda não está disponível.');
 
         $reportNumbers = $numbering->buildForReport($assessment->inspection);
@@ -104,7 +126,9 @@ final class DefectAssessmentLocationController extends Controller
         UpsertDefectAssessmentLocation $action,
     ): RedirectResponse {
         $assessment = $this->tenantDefectAssessment($tenant, $defectAssessment);
+        $assessment->loadMissing('defect');
         $this->authorize('update', $assessment);
+        abort_unless($assessment->defect->category->requiresLocationMap(), 404);
         try {
             $action->handle($request->user(), $assessment, $request->validated());
         } catch (StaleDefectAssessmentLocationException $exception) {
@@ -121,7 +145,9 @@ final class DefectAssessmentLocationController extends Controller
         DeleteDefectAssessmentLocation $action,
     ): RedirectResponse {
         $assessment = $this->tenantDefectAssessment($tenant, $defectAssessment);
+        $assessment->loadMissing('defect');
         $this->authorize('update', $assessment);
+        abort_unless($assessment->defect->category->requiresLocationMap(), 404);
         $data = $request->validate(['lock_version' => ['required', 'integer', 'min:1']]);
         try {
             $action->handle($request->user(), $assessment, (int) $data['lock_version']);

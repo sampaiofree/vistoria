@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace App\Actions\Inspections;
 
+use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
+use App\Enums\OperationalRole;
+use App\Enums\UserAccountType;
 use App\Models\Inspection;
 use App\Models\InspectionStatusHistory;
 use App\Models\User;
@@ -62,6 +65,21 @@ final class TransitionInspection
                 throw ValidationException::withMessages([
                     'status' => 'A transição solicitada não é permitida.',
                 ]);
+            }
+
+            $recipient = match ($toStatus) {
+                InspectionStatus::InProgress, InspectionStatus::InCorrection => [InspectionResponsibility::Reviewer, OperationalRole::Inspector],
+                InspectionStatus::AwaitingM2 => [InspectionResponsibility::Preparer, OperationalRole::Planner],
+                InspectionStatus::AwaitingReview, InspectionStatus::InReview => [InspectionResponsibility::Approver, OperationalRole::Reviewer],
+                InspectionStatus::AwaitingRelease => [InspectionResponsibility::Releaser, OperationalRole::Releaser],
+                default => null,
+            };
+            if ($recipient !== null && ! $inspection->responsibles()
+                ->where('responsibility', $recipient[0]->value)
+                ->whereHas('user', fn ($query) => $query->where('organization_id', $inspection->organization_id)
+                    ->where('status', 'active')->where('operational_role', $recipient[1]->value)
+                    ->where('account_type', UserAccountType::Member->value))->exists()) {
+                throw ValidationException::withMessages(['inspection' => 'Vincule um '.$recipient[1]->label().' ativo e habilitado antes de encaminhar a inspeção.']);
             }
 
             if ($inspection->report_date !== null) {

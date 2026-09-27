@@ -24,6 +24,7 @@ final class DefectLocationMapVersionFactory extends Factory
             'defect_location_map_id' => null,
             'created_for_assessment_id' => null,
             'version' => 1,
+            'project_number' => null,
             'processing_status' => InspectionLocationMapProcessingStatus::Pending,
             'lock_version' => 1,
         ];

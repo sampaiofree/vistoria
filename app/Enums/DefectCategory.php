@@ -10,6 +10,7 @@ enum DefectCategory: string
     case AnticorrosiveTreatment = 'TAC';
     case StructuralRecovery = 'REC';
     case RoofCladding = 'TEL';
+    case SolidaryStructures = 'ES';
 
     public function label(): string
     {
@@ -18,6 +19,7 @@ enum DefectCategory: string
             self::AnticorrosiveTreatment => 'TAC',
             self::StructuralRecovery => 'REC',
             self::RoofCladding => 'Telhado/Tapamento',
+            self::SolidaryStructures => 'Estruturas Solidárias',
         };
     }
 
@@ -33,6 +35,7 @@ enum DefectCategory: string
             self::AnticorrosiveTreatment => 'Avarias relacionadas ao tratamento anticorrosivo.',
             self::StructuralRecovery => 'Avarias relacionadas à recuperação estrutural.',
             self::RoofCladding => 'Avarias relacionadas a telhados e tapamentos laterais.',
+            self::SolidaryStructures => 'Avarias relacionadas a estruturas solidárias.',
         };
     }
 
@@ -43,7 +46,28 @@ enum DefectCategory: string
             self::AnticorrosiveTreatment => 2,
             self::StructuralRecovery => 3,
             self::RoofCladding => 4,
+            self::SolidaryStructures => 5,
         };
+    }
+
+    public function requiresQuantities(): bool
+    {
+        return ! in_array($this, [self::RoofCladding, self::SolidaryStructures], true);
+    }
+
+    public function requiresGut(): bool
+    {
+        return ! in_array($this, [self::RoofCladding, self::SolidaryStructures], true);
+    }
+
+    public function allowsEngineeringNote(): bool
+    {
+        return in_array($this, [self::Civil, self::AnticorrosiveTreatment, self::StructuralRecovery], true);
+    }
+
+    public function requiresLocationMap(): bool
+    {
+        return $this !== self::SolidaryStructures;
     }
 
     /** @return array{code:string,name:string,description:string,position:int} */

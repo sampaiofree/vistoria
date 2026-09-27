@@ -5,11 +5,9 @@ declare(strict_types=1);
 namespace App\Actions\Inspections;
 
 use App\Actions\Inspections\Concerns\ValidatesInspectionTransition;
-use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionCorrectionRequestFlow;
 use App\Enums\InspectionCorrectionRequestStatus;
 use App\Enums\InspectionStatus;
-use App\Enums\OperationalRole;
 use App\Models\Inspection;
 use App\Models\InspectionCorrectionRequest;
 use App\Models\User;
@@ -35,38 +33,24 @@ final class SubmitInspectionForReview
 
     public function handle(Inspection $inspection, User $actor): Inspection
     {
+        return $this->withLockedInspection($inspection, $actor, 'submitForReview',
+            fn (Inspection $locked): Inspection => $this->perform($locked, $actor));
+    }
+
+    private function perform(Inspection $inspection, User $actor): Inspection
+    {
         $this->validateTenant($inspection, $actor);
-        if (in_array($inspection->status, [InspectionStatus::InProgress, InspectionStatus::InCorrection], true)) {
-            if ($actor->operational_role !== OperationalRole::Inspector
-                || ! $inspection->hasAnyResponsibilityForUser($actor, ...InspectionResponsibility::cases())) {
-                throw ValidationException::withMessages([
-                    'actor' => 'Somente o Inspetor vinculado pode enviar a inspeção para revisão.',
-                ]);
-            }
+        if ($inspection->status !== InspectionStatus::AwaitingM2 || ! $actor->can('submitForReview', $inspection)) {
+            throw ValidationException::withMessages(['status' => 'Somente o Planejador vinculado pode encaminhar as notas para revisão nesta etapa.']);
         }
 
-        if (! in_array($inspection->status, [
-            InspectionStatus::InProgress,
-            InspectionStatus::InCorrection,
-        ], true)) {
-            throw ValidationException::withMessages([
-                'status' => 'A inspeção não está pronta para envio à revisão.',
-            ]);
-        }
-
-        if ($inspection->status === InspectionStatus::InCorrection) {
-            $pending = InspectionCorrectionRequest::query()
-                ->forOrganization($inspection->organization_id)
-                ->where('inspection_id', $inspection->id)
-                ->where('flow', InspectionCorrectionRequestFlow::ReviewerToInspector->value)
-                ->where('status', InspectionCorrectionRequestStatus::Requested)
-                ->count();
-
-            if ($pending > 0) {
-                throw ValidationException::withMessages([
-                    'inspection' => sprintf('Existem %d solicitação(ões) de correção ainda não atendida(s).', $pending),
-                ]);
-            }
+        $pending = InspectionCorrectionRequest::query()
+            ->where('inspection_id', $inspection->id)
+            ->where('flow', InspectionCorrectionRequestFlow::PlannerToInspector->value)
+            ->whereIn('status', [InspectionCorrectionRequestStatus::Marked, InspectionCorrectionRequestStatus::Requested, InspectionCorrectionRequestStatus::Addressed])
+            ->count();
+        if ($pending > 0) {
+            throw ValidationException::withMessages(['inspection' => 'Confira e encerre os apontamentos do Planejador antes de enviar para revisão.']);
         }
 
         $this->coverageValidator->validate($inspection);
@@ -75,21 +59,9 @@ final class SubmitInspectionForReview
         $this->generalAspectsCoverageValidator->validate($inspection);
         $this->classificationM2CoverageValidator->validate($inspection);
 
-        $attributes = [];
-
-        if ($inspection->status === InspectionStatus::InProgress && $inspection->field_completed_at === null) {
-            $attributes['field_completed_at'] = now();
-        }
-
         return $this->transition->handle(
-            $actor,
-            $inspection,
-            [InspectionStatus::InProgress, InspectionStatus::InCorrection],
-            InspectionStatus::AwaitingReview,
-            $attributes,
-            $inspection->status === InspectionStatus::InCorrection
-                ? 'Inspeção reenviada para revisão.'
-                : 'Inspeção enviada para revisão.',
+            $actor, $inspection, [InspectionStatus::AwaitingM2], InspectionStatus::AwaitingReview,
+            [], 'Notas conferidas pelo Planejador. Inspeção enviada para revisão.',
         );
     }
 }

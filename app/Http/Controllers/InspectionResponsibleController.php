@@ -6,8 +6,10 @@ namespace App\Http\Controllers;
 
 use App\Actions\Inspections\AssignInspectionResponsible;
 use App\Actions\Inspections\RemoveInspectionResponsible;
+use App\Actions\Inspections\SelfAssignInspectionResponsible;
 use App\Actions\Inspections\SetPrimaryInspectionResponsible;
 use App\Http\Controllers\Concerns\ResolvesTenantStructure;
+use App\Http\Requests\Inspections\SelfAssignInspectionRequest;
 use App\Http\Requests\Inspections\StoreInspectionResponsibleRequest;
 use App\Http\Requests\Inspections\UpdateInspectionResponsibleRequest;
 use App\Models\Inspection;
@@ -20,6 +22,18 @@ use Illuminate\Http\Request;
 final class InspectionResponsibleController extends Controller
 {
     use ResolvesTenantStructure;
+
+    public function selfAssign(SelfAssignInspectionRequest $request, TenantContext $tenant, Inspection $inspection, SelfAssignInspectionResponsible $action): RedirectResponse
+    {
+        $inspection = $this->tenantInspection($tenant, $inspection);
+        $assignment = $action->handle($inspection, $request->user());
+        if ($assignment === null) {
+            return redirect()->route('inspections.index', ['scope' => 'available'])
+                ->with('error', 'Esta função já foi assumida por outra pessoa. A lista de inspeções disponíveis foi atualizada.');
+        }
+
+        return redirect()->route('inspections.show', $inspection)->with('success', 'Você está atribuído como '.$assignment->responsibility->label().'.');
+    }
 
     public function store(
         StoreInspectionResponsibleRequest $request,

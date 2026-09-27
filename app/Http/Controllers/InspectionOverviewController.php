@@ -77,6 +77,7 @@ final class InspectionOverviewController extends Controller
             ['key' => 'photos', 'label' => 'Fotografias', 'url' => route('inspections.photos', $inspection)],
             ['key' => 'history', 'label' => 'Histórico', 'url' => route('inspections.history', $inspection)],
             ['key' => 'report', 'label' => 'Relatório', 'url' => route('inspections.report-preview', $inspection)],
+            ['key' => 'quantitative', 'label' => 'Quantitativo', 'url' => route('inspections.quantitative', $inspection)],
         ];
     }
 }

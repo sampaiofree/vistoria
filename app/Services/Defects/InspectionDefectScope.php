@@ -29,6 +29,17 @@ final class InspectionDefectScope
             'equipment.defects.assessments',
         ]);
 
+        if ($inspection->reinspection_scope_version !== null) {
+            $inspection->loadMissing('defectScopes');
+            $ids = $inspection->defectScopes->pluck('defect_id')->all();
+
+            return $inspection->equipment->defects
+                ->filter(fn (Defect $defect): bool => in_array($defect->id, $ids, true)
+                    || $defect->first_inspection_id === $inspection->id
+                    || $defect->assessments->contains('inspection_id', $inspection->id))
+                ->sortBy('sequence_number')->values();
+        }
+
         $ancestorIds = $this->ancestorInspectionIds($inspection);
 
         return $inspection->equipment->defects

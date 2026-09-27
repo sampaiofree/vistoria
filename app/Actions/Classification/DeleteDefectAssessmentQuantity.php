@@ -57,6 +57,12 @@ final class DeleteDefectAssessmentQuantity
 
     private function ensureEditable(User $actor, DefectAssessment $assessment): void
     {
+        if (! $assessment->defect->category->requiresQuantities()) {
+            throw ValidationException::withMessages([
+                'quantity' => 'Esta categoria não possui quantitativo.',
+            ]);
+        }
+
         if (! $actor->isActive()
             || $actor->isSuperAdmin()
             || ! $actor->belongsToOrganization($this->tenant->id())

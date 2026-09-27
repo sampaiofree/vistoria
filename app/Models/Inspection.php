@@ -24,6 +24,7 @@ final class Inspection extends Model
         'organization_id',
         'equipment_id',
         'previous_inspection_id',
+        'reinspection_scope_version',
         'number',
         'inspection_type',
         'status',
@@ -32,6 +33,7 @@ final class Inspection extends Model
         'report_designer',
         'designer_i_report_number',
         'procedure_number',
+        'general_drawing',
         'atmospheric_classification',
         'planned_start_on', // Data inicial planejada para a inspeção.
         'planned_end_on', // Prazo final planejado para a inspeção.
@@ -59,6 +61,7 @@ final class Inspection extends Model
         // created_at e updated_at são mantidos automaticamente pelo Eloquent.
         return [
             'inspection_type' => InspectionType::class,
+            'reinspection_scope_version' => 'integer',
             'status' => InspectionStatus::class,
             'planned_start_on' => 'date',
             'planned_end_on' => 'date',
@@ -116,6 +119,11 @@ final class Inspection extends Model
             ->orderBy('assessed_at');
     }
 
+    public function defectScopes(): HasMany
+    {
+        return $this->hasMany(InspectionDefectScope::class);
+    }
+
     public function assessmentPhotos(): HasMany
     {
         return $this->hasMany(AssessmentPhoto::class);
@@ -134,6 +142,11 @@ final class Inspection extends Model
     public function classificationM2Links(): HasMany
     {
         return $this->hasMany(InspectionClassificationM2Link::class);
+    }
+
+    public function specialAssessmentNotes(): HasMany
+    {
+        return $this->hasMany(InspectionSpecialAssessmentNote::class);
     }
 
     public function correctionRequests(): HasMany

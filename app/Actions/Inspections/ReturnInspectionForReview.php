@@ -24,8 +24,14 @@ final class ReturnInspectionForReview
 
     public function handle(Inspection $inspection, User $actor, ?string $reason): Inspection
     {
+        return $this->withLockedInspection($inspection, $actor, 'returnForReview',
+            fn (Inspection $locked): Inspection => $this->perform($locked, $actor, $reason));
+    }
+
+    private function perform(Inspection $inspection, User $actor, ?string $reason): Inspection
+    {
         $this->validateTenant($inspection, $actor);
-        if ($actor->operational_role !== OperationalRole::Releaser || ! $inspection->hasAnyResponsibilityForUser($actor, ...InspectionResponsibility::cases())) {
+        if ($actor->operational_role !== OperationalRole::Releaser || ! $inspection->hasAnyResponsibilityForUser($actor, InspectionResponsibility::Releaser)) {
             throw ValidationException::withMessages(['actor' => 'Somente o Liberador vinculado pode devolver a inspeção para revisão.']);
         }
 

@@ -1,19 +1,17 @@
 <script setup>
+import { computed, watch } from 'vue';
 import { useForm } from '@inertiajs/vue3';
+import { eligibleAssignmentUsers } from '@/lib/inspectionAssignment.js';
 const props = defineProps({ action: { type: String, required: true }, users: { type: Array, default: () => [] }, roles: { type: Array, default: () => [] } });
 const form = useForm({ user_id: '', responsibility: '' });
+const eligibleUsers = computed(() => eligibleAssignmentUsers(props.users, form.responsibility));
+watch(eligibleUsers, users => {
+    if (!users.some(user => String(user.id) === String(form.user_id))) form.user_id = '';
+});
 function submit() { form.post(props.action, { preserveScroll: true, onSuccess: () => form.reset() }); }
 </script>
 <template>
     <form class="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end" @submit.prevent="submit">
-        <label class="text-sm font-medium text-slate-700">
-            Responsável
-            <select v-model="form.user_id" required class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2">
-                <option value="" disabled>Selecione</option>
-                <option v-for="user in users" :key="user.id" :value="user.id">{{ user.name }}</option>
-            </select>
-            <span v-if="form.errors.user_id" class="mt-1 block text-xs text-rose-600">{{ form.errors.user_id }}</span>
-        </label>
         <label class="text-sm font-medium text-slate-700">
             Função
             <select v-model="form.responsibility" required class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2">
@@ -21,6 +19,14 @@ function submit() { form.post(props.action, { preserveScroll: true, onSuccess: (
                 <option v-for="role in roles" :key="role.value" :value="role.value">{{ role.label }}</option>
             </select>
             <span v-if="form.errors.responsibility" class="mt-1 block text-xs text-rose-600">{{ form.errors.responsibility }}</span>
+        </label>
+        <label class="text-sm font-medium text-slate-700">
+            Responsável
+            <select v-model="form.user_id" required class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2">
+                <option value="" disabled>Selecione</option>
+                <option v-for="user in eligibleUsers" :key="user.id" :value="user.id">{{ user.name }}</option>
+            </select>
+            <span v-if="form.errors.user_id" class="mt-1 block text-xs text-rose-600">{{ form.errors.user_id }}</span>
         </label>
         <button :disabled="form.processing" class="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white">Definir responsável</button>
     </form>

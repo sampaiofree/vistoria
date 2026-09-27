@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Requests\Inspections;
 
 use App\Enums\EquipmentRevisionEmissionType;
+use App\Enums\OperationalRole;
 use App\Models\Inspection;
 use App\Support\TextNormalizer;
 use Illuminate\Foundation\Http\FormRequest;
@@ -22,7 +23,7 @@ final class UpdateReportMetadataRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        $this->merge([
+        $data = [
             'emission_type' => blank($this->input('emission_type')) ? null : strtoupper(trim((string) $this->input('emission_type'))),
             'report_date' => blank($this->input('report_date')) ? null : $this->input('report_date'),
             'service_order' => TextNormalizer::nullableText($this->input('service_order')),
@@ -30,8 +31,13 @@ final class UpdateReportMetadataRequest extends FormRequest
             'first_page_text_template' => blank($this->input('first_page_text_template'))
                 ? null
                 : trim((string) $this->input('first_page_text_template')),
-        ]);
+        ];
 
+        if ($this->has('designer_i_report_number')) {
+            $data['designer_i_report_number'] = TextNormalizer::nullableText($this->input('designer_i_report_number'));
+        }
+
+        $this->merge($data);
     }
 
     public function rules(): array
@@ -46,7 +52,9 @@ final class UpdateReportMetadataRequest extends FormRequest
             'service_order' => ['required', 'nullable', 'string', 'max:100'],
             'external_report_number' => ['nullable', 'string', 'max:150'],
             'report_designer' => ['prohibited'],
-            'designer_i_report_number' => ['prohibited'],
+            'designer_i_report_number' => $this->user()?->operational_role === OperationalRole::Reviewer
+                ? ['required', 'string', 'max:100']
+                : ['prohibited'],
             'first_page_text_template' => ['required', 'nullable', 'string', 'max:5000'],
         ];
     }

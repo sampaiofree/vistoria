@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Database\Factories;
 
 use App\Enums\DefectAssessmentCondition;
+use App\Enums\DefectAssessmentClassificationMethod;
 use App\Enums\DefectAssessmentStatus;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
@@ -31,6 +32,8 @@ final class DefectAssessmentFactory extends Factory
             'inspection_id' => null,
             'previous_assessment_id' => null,
             'condition' => DefectAssessmentCondition::New,
+            'is_unsafe_condition' => false,
+            'classification_method' => DefectAssessmentClassificationMethod::Gut,
             'status' => DefectAssessmentStatus::Draft,
             'location_description' => null,
             'comment' => null,

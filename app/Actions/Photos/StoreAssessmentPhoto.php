@@ -30,6 +30,7 @@ final class StoreAssessmentPhoto
 
         $position = DB::transaction(function () use ($assessment, $actor, $file, $data): int {
             $locked = DefectAssessment::query()->forOrganization($this->tenant->id())->lockForUpdate()->findOrFail($assessment->getKey());
+            app(\App\Services\Defects\InspectionAssessmentResolver::class)->ensureMutable($locked);
             $position = ((int) AssessmentPhoto::query()->where('defect_assessment_id', $locked->getKey())->max('position')) + 1;
             $photo = AssessmentPhoto::query()->create([
                 'organization_id' => $this->tenant->id(),

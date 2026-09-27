@@ -17,7 +17,6 @@ const historyItems = computed(() => props.correction?.history ?? []);
 const items = computed(() => activeTab.value === 'open' ? openItems.value : historyItems.value);
 const openCount = computed(() => props.correction?.counts?.open ?? openItems.value.length);
 const historyCount = computed(() => props.correction?.counts?.history ?? historyItems.value.length);
-const assessmentOptions = computed(() => props.correction?.assessment_options ?? []);
 
 function create() {
     if (!props.correction?.create_url) return;
@@ -69,7 +68,7 @@ function create() {
             </div>
 
             <div v-if="items.length" class="mt-4 space-y-3">
-                <CorrectionRequestCard v-for="request in items" :key="request.public_id" :request="request" :assessment-options="assessmentOptions" />
+                <CorrectionRequestCard v-for="request in items" :key="request.public_id" :request="request" />
             </div>
             <div v-else class="mt-4 rounded-xl border border-dashed border-amber-300 bg-white/70 p-3 text-sm text-slate-600">
                 <template v-if="activeTab === 'open' && historyCount">

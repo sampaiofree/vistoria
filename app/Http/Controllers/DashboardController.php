@@ -8,6 +8,7 @@ use App\Models\Inspection;
 use App\Models\InspectionStatusHistory;
 use App\Models\User;
 use App\Services\Inspections\InspectionReadModelPresenter;
+use App\Services\Inspections\InspectionSelfAssignment;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -41,6 +42,7 @@ final class DashboardController extends Controller
                     'clients_index' => null,
                     'priority' => [
                         'overdue' => null,
+                        'awaiting_m2' => null,
                         'awaiting_review' => null,
                         'in_correction' => null,
                         'awaiting_release' => null,
@@ -77,6 +79,8 @@ final class DashboardController extends Controller
                 'dashboard' => route('dashboard'),
                 'organizations_index' => null,
                 'inspections_index' => route('inspections.index', $personalFilters),
+                'available_inspections' => app(InspectionSelfAssignment::class)->roleFor($user) !== null
+                    ? route('inspections.index', ['scope' => 'available']) : null,
                 'inspections_create' => $request->user()->can('create', Inspection::class) ? route('inspections.create') : null,
                 'equipments_index' => route('equipments.index'),
                 'clients_index' => route('clients.index'),
@@ -84,6 +88,11 @@ final class DashboardController extends Controller
                     'overdue' => route('inspections.index', array_merge([
                         'status' => InspectionStatus::Planned->value,
                         'scheduled_to' => $today->subDay()->toDateString(),
+                    ], $personalFilters, $companySummary ? [] : [
+                        'responsibility' => InspectionResponsibility::Preparer->value,
+                    ])),
+                    'awaiting_m2' => route('inspections.index', array_merge([
+                        'status' => InspectionStatus::AwaitingM2->value,
                     ], $personalFilters, $companySummary ? [] : [
                         'responsibility' => InspectionResponsibility::Preparer->value,
                     ])),
@@ -106,6 +115,7 @@ final class DashboardController extends Controller
                 'workflow' => [
                     'planned' => route('inspections.index', array_merge(['status' => InspectionStatus::Planned->value], $personalFilters)),
                     'in_progress' => route('inspections.index', array_merge(['status' => InspectionStatus::InProgress->value], $personalFilters)),
+                    'awaiting_m2' => route('inspections.index', array_merge(['status' => InspectionStatus::AwaitingM2->value], $personalFilters)),
                     'awaiting_review' => route('inspections.index', array_merge(['status' => InspectionStatus::AwaitingReview->value], $personalFilters)),
                     'in_correction' => route('inspections.index', array_merge(['status' => InspectionStatus::InCorrection->value], $personalFilters)),
                     'in_review' => route('inspections.index', array_merge(['status' => InspectionStatus::InReview->value], $personalFilters)),
@@ -218,6 +228,10 @@ final class DashboardController extends Controller
                     ->where('status', InspectionStatus::Planned->value)
                     ->whereDate('planned_end_on', '<', $today->toDateString())
                     ->count(),
+                'awaiting_m2' => Inspection::query()
+                    ->forOrganization($organizationId)
+                    ->where('status', InspectionStatus::AwaitingM2->value)
+                    ->count(),
                 'awaiting_review' => Inspection::query()
                     ->forOrganization($organizationId)
                     ->where('status', InspectionStatus::AwaitingReview->value)
@@ -238,6 +252,13 @@ final class DashboardController extends Controller
                 ->forOrganization($organizationId)
                 ->where('status', InspectionStatus::Planned->value)
                 ->whereDate('planned_end_on', '<', $today->toDateString())
+                ->whereHas('responsibles', fn ($query) => $query
+                    ->where('user_id', $userId)
+                    ->where('responsibility', InspectionResponsibility::Preparer->value))
+                ->count(),
+            'awaiting_m2' => Inspection::query()
+                ->forOrganization($organizationId)
+                ->where('status', InspectionStatus::AwaitingM2->value)
                 ->whereHas('responsibles', fn ($query) => $query
                     ->where('user_id', $userId)
                     ->where('responsibility', InspectionResponsibility::Preparer->value))
@@ -309,13 +330,15 @@ final class DashboardController extends Controller
                         WHEN status = ? THEN 4
                         WHEN status = ? THEN 5
                         WHEN status = ? THEN 6
-                        ELSE 7
+                        WHEN status = ? THEN 7
+                        ELSE 8
                     END
                 SQL,
                 [
                     InspectionStatus::Planned->value,
                     $today->toDateString(),
                     InspectionStatus::InCorrection->value,
+                    InspectionStatus::AwaitingM2->value,
                     InspectionStatus::AwaitingReview->value,
                     InspectionStatus::InReview->value,
                     InspectionStatus::AwaitingRelease->value,
@@ -370,7 +393,7 @@ final class DashboardController extends Controller
                 ],
                 'next_action' => [
                     'label' => $this->nextActionLabel($inspection, $user),
-                    'href' => route('inspections.show', $inspection),
+                    'href' => route($inspection->status === InspectionStatus::AwaitingM2 ? 'inspections.classifications' : 'inspections.show', $inspection),
                 ],
             ];
         })->all();
@@ -404,6 +427,7 @@ final class DashboardController extends Controller
         $steps = [
             InspectionStatus::Planned->value => 'Planejadas',
             InspectionStatus::InProgress->value => 'Em inspeção',
+            InspectionStatus::AwaitingM2->value => 'Preenchimento de notas',
             InspectionStatus::AwaitingReview->value => 'Aguardando revisão',
             InspectionStatus::InReview->value => 'Em revisão',
             InspectionStatus::InCorrection->value => 'Correção',
@@ -484,9 +508,10 @@ final class DashboardController extends Controller
             InspectionStatus::Planned => $user->can('start', $inspection)
                 ? 'Iniciar inspeção'
                 : 'Ver planejamento',
-            InspectionStatus::InProgress => $user->can('submitForReview', $inspection)
+            InspectionStatus::InProgress => $user->can('submitForPlanning', $inspection)
                 ? 'Concluir inspeção'
                 : 'Acompanhar inspeção',
+            InspectionStatus::AwaitingM2 => $user->can('manageClassificationM2', $inspection) ? 'Preencher notas' : 'Acompanhar preenchimento de notas',
             InspectionStatus::AwaitingReview => (
                 $user->can('startReview', $inspection)
             ) ? 'Iniciar revisão' : 'Acompanhar revisão',
@@ -494,7 +519,7 @@ final class DashboardController extends Controller
                 $user->can('approve', $inspection)
                 || $user->can('returnForCorrection', $inspection)
             ) ? 'Revisar inspeção' : 'Acompanhar revisão',
-            InspectionStatus::InCorrection => $user->can('submitForReview', $inspection)
+            InspectionStatus::InCorrection => $user->can('submitForPlanning', $inspection)
                 ? 'Corrigir pendências'
                 : 'Acompanhar correção',
             InspectionStatus::AwaitingRelease => $user->can('release', $inspection)
@@ -554,7 +579,18 @@ final class DashboardController extends Controller
         $inspectionNumber = $history->inspection?->number ?? 'inspeção';
         $actor = $history->actor?->name ?? 'Sistema';
 
+        if (data_get($history->metadata, 'event') === 'responsibility_self_assigned') {
+            $role = InspectionResponsibility::tryFrom((string) data_get($history->metadata, 'responsibility'))?->label() ?? 'responsável';
+
+            return sprintf('%s assumiu como %s na inspeção %s.', $actor, $role, $inspectionNumber);
+        }
+
+        if (data_get($history->metadata, 'event') === 'classification_updated') {
+            return $actor.' atualizou a Classificação/M2 da inspeção '.$inspectionNumber.'.';
+        }
+
         return match ($history->to_status) {
+            InspectionStatus::AwaitingM2 => sprintf('%s enviou a inspeção %s ao Planejador.', $actor, $inspectionNumber),
             InspectionStatus::Planned => sprintf('%s planejou a inspeção %s.', $actor, $inspectionNumber),
             InspectionStatus::InProgress => sprintf('%s iniciou a inspeção %s.', $actor, $inspectionNumber),
             InspectionStatus::AwaitingReview => sprintf('%s enviou a inspeção %s para revisão.', $actor, $inspectionNumber),

@@ -5,14 +5,18 @@ declare(strict_types=1);
 namespace App\Actions\Inspections;
 
 use App\Actions\Inspections\Concerns\ValidatesInspectionTransition;
-use App\Enums\InspectionResponsibility;
-use App\Enums\InspectionCorrectionRequestFlow;
 use App\Enums\InspectionCorrectionRequestStatus;
+use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
 use App\Enums\OperationalRole;
 use App\Models\Inspection;
 use App\Models\InspectionCorrectionRequest;
 use App\Models\User;
+use App\Services\Defects\AssessmentPhotoCoverageValidator;
+use App\Services\Defects\ReinspectionCoverageValidator;
+use App\Services\Inspections\GeneralAspectsCoverageValidator;
+use App\Services\Inspections\InspectionClassificationM2CoverageValidator;
+use App\Services\Inspections\InspectionOverviewCoverageValidator;
 use Illuminate\Validation\ValidationException;
 
 final class ReleaseInspection
@@ -25,8 +29,14 @@ final class ReleaseInspection
 
     public function handle(Inspection $inspection, User $actor): Inspection
     {
+        return $this->withLockedInspection($inspection, $actor, 'release',
+            fn (Inspection $locked): Inspection => $this->perform($locked, $actor));
+    }
+
+    private function perform(Inspection $inspection, User $actor): Inspection
+    {
         $this->validateTenant($inspection, $actor);
-        if ($actor->operational_role !== OperationalRole::Releaser || ! $inspection->hasAnyResponsibilityForUser($actor, ...InspectionResponsibility::cases())) {
+        if ($actor->operational_role !== OperationalRole::Releaser || ! $inspection->hasAnyResponsibilityForUser($actor, InspectionResponsibility::Releaser)) {
             throw ValidationException::withMessages(['actor' => 'Somente o Liberador vinculado pode liberar a inspeção.']);
         }
 
@@ -39,7 +49,6 @@ final class ReleaseInspection
         $openRequests = InspectionCorrectionRequest::query()
             ->forOrganization($inspection->organization_id)
             ->where('inspection_id', $inspection->id)
-            ->where('flow', InspectionCorrectionRequestFlow::ReleaserToReviewer->value)
             ->whereIn('status', [
                 InspectionCorrectionRequestStatus::Marked,
                 InspectionCorrectionRequestStatus::Requested,
@@ -52,6 +61,12 @@ final class ReleaseInspection
                 'inspection' => sprintf('Existem %d apontamento(s) do Liberador que precisam ser encerrados antes da liberação.', $openRequests),
             ]);
         }
+
+        app(ReinspectionCoverageValidator::class)->validate($inspection);
+        app(AssessmentPhotoCoverageValidator::class)->validate($inspection);
+        app(InspectionOverviewCoverageValidator::class)->validate($inspection);
+        app(GeneralAspectsCoverageValidator::class)->validate($inspection);
+        app(InspectionClassificationM2CoverageValidator::class)->validate($inspection);
 
         return $this->transition->handle(
             $actor,

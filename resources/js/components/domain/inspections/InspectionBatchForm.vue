@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { Link, useForm } from '@inertiajs/vue3';
+import ReinspectionDefectSelect from './ReinspectionDefectSelect.vue';
 import {
     Combobox,
     ComboboxButton,
@@ -11,6 +12,7 @@ import {
 
 const props = defineProps({
     createAction: { type: String, required: true },
+    reinspectionOptionsUrl: { type: String, required: true },
     cancelUrl: { type: String, required: true },
     equipmentSearchUrl: { type: String, required: true },
     selectedEquipment: { type: Array, default: () => [] },
@@ -28,6 +30,9 @@ function blankInspection() {
         planned_start_on: '',
         planned_end_on: '',
         inspector_id: '',
+        reinspection_defect_ids: [],
+        reinspection_base_id: null,
+        scope_status: 'ready',
     };
 }
 
@@ -160,7 +165,9 @@ function selectEquipment(row, equipment) {
         rememberEquipment([equipment]);
     }
 
+    const equipmentChanged = row.equipment_id !== (equipment?.id ?? '');
     row.equipment_id = equipment?.id ?? '';
+    if (equipmentChanged) row.scope_status = equipment ? 'loading' : 'ready';
     row.equipment_search = '';
     equipmentOptionsByRow.value[row.row_key] = [];
     clearPendingEquipmentSearch(row);
@@ -200,6 +207,7 @@ const invalidRowCount = computed(() => new Set(
 const creationLabel = computed(() => `Criar ${form.inspections.length} inspeç${form.inspections.length === 1 ? 'ão' : 'ões'}`);
 
 function createBatch() {
+    if (form.inspections.some((row) => row.scope_status !== 'ready')) return;
     form.post(props.createAction, {
         preserveScroll: true,
         preserveState: true,
@@ -217,7 +225,7 @@ function createBatch() {
         <div class="space-y-4">
             <section
                 v-for="(inspection, index) in form.inspections"
-                :key="index"
+                :key="inspection.row_key"
                 class="rounded-2xl border p-4 shadow-sm"
                 :class="hasRowErrors(index) ? 'border-rose-300 bg-rose-50/30' : 'border-slate-200 bg-white'"
             >
@@ -322,6 +330,16 @@ function createBatch() {
                         </button>
                     </div>
                 </div>
+                <ReinspectionDefectSelect
+                    v-if="inspection.equipment_id"
+                    v-model="inspection.reinspection_defect_ids"
+                    class="mt-4"
+                    :equipment-id="inspection.equipment_id"
+                    :options-url="reinspectionOptionsUrl"
+                    :error="fieldError(index, 'reinspection_defect_ids')"
+                    @base-change="inspection.reinspection_base_id = $event"
+                    @status="inspection.scope_status = $event"
+                />
             </section>
         </div>
 
@@ -333,7 +351,7 @@ function createBatch() {
         <p v-if="form.errors.actor" class="text-sm text-rose-600">{{ form.errors.actor }}</p>
         <div class="flex flex-wrap justify-end gap-3 border-t border-slate-200 pt-5">
             <Link :href="cancelUrl" class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700">Cancelar</Link>
-            <button :disabled="form.processing" class="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+            <button :disabled="form.processing || form.inspections.some((row) => row.scope_status !== 'ready')" class="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
                 {{ form.processing ? 'Criando inspeções…' : creationLabel }}
             </button>
         </div>

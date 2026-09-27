@@ -33,6 +33,7 @@ final class InspectionLocationReportComposerTest extends TestCase
         foreach ([$civil, $tac, $firstCivil, $canceled] as $assessment) {
             $this->locateAssessment($assessment);
         }
+        $firstCivil->locationMapVersion()->update(['project_number' => 'PRJ-CV-001']);
 
         $report = app(InspectionLocationReportComposer::class)->compose($inspection);
 
@@ -40,6 +41,14 @@ final class InspectionLocationReportComposerTest extends TestCase
         $this->assertSame(
             ['TA-001', 'CV-001', 'CV-002'],
             collect($report['sheets'])->pluck('maps.0.markers.0.defect.code')->all(),
+        );
+        $this->assertSame(
+            ['TA-001', 'CV-001', 'CV-002'],
+            collect($report['sheets'])->pluck('maps.0.damage_rows.0.defect.code')->all(),
+        );
+        $this->assertSame(
+            [null, 'PRJ-CV-001', null],
+            collect($report['sheets'])->pluck('maps.0.damage_rows.0.defect.project_number')->all(),
         );
         $this->assertCount(3, $report['sheets']);
         $this->assertFalse(collect($report['sheets'])->contains(

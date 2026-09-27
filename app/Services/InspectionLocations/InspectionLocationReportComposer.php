@@ -24,9 +24,7 @@ final class InspectionLocationReportComposer
     /** @return array<string,mixed> */
     public function compose(Inspection $inspection): array
     {
-        $assessments = DefectAssessment::query()
-            ->forOrganization($inspection->organization_id)
-            ->where('inspection_id', $inspection->id)
+        $assessments = app(\App\Services\Defects\InspectionAssessmentResolver::class)->query($inspection)
             ->where('status', DefectAssessmentStatus::Complete->value)
             ->with(['defect', 'quantities', 'photos', 'location', 'locationMapVersion.map'])
             ->get()
@@ -41,7 +39,7 @@ final class InspectionLocationReportComposer
 
         $numbering = $this->photoNumbering->buildForReport($inspection, $assessments);
         $categories = $this->categoryOrder->sort(collect(DefectCategory::cases()))
-            ->map(function (DefectCategory $category) use ($assessments, $numbering): array {
+            ->map(function (DefectCategory $category) use ($assessments, $numbering, $inspection): array {
                 $categoryAssessments = $assessments->filter(
                     fn (DefectAssessment $assessment): bool => $assessment->defect->category === $category,
                 );
@@ -49,7 +47,7 @@ final class InspectionLocationReportComposer
                 return [
                     'category' => $category->toArray(),
                     'maps' => $categoryAssessments
-                        ->map(fn (DefectAssessment $assessment): array => $this->mapPayload($assessment, $numbering))
+                        ->map(fn (DefectAssessment $assessment): array => $this->mapPayload($assessment, $numbering, $inspection))
                         ->values()->all(),
                 ];
             })
@@ -76,7 +74,7 @@ final class InspectionLocationReportComposer
     }
 
     /** @param array<string,int> $numbering @return array<string,mixed> */
-    private function mapPayload(DefectAssessment $assessment, array $numbering): array
+    private function mapPayload(DefectAssessment $assessment, array $numbering, Inspection $inspection): array
     {
         $version = $assessment->locationMapVersion;
         $map = $version->map;
@@ -92,6 +90,7 @@ final class InspectionLocationReportComposer
             'assessment_public_id' => $assessment->public_id,
             'title' => $assessment->defect->code.' · '.$assessment->defect->title,
             'report_title' => $assessment->defect->code.' · '.$assessment->defect->title,
+            'historical_label' => app(\App\Services\Defects\InspectionAssessmentResolver::class)->historicalLabel($inspection, $assessment),
             'description' => $assessment->location_description,
             'observations' => $location->label ?? $assessment->location_description,
             'position' => (int) $assessment->defect->sequence_number,
@@ -122,7 +121,11 @@ final class InspectionLocationReportComposer
             'marker_count' => 1,
             'damage_rows' => [[
                 'assessment' => ['public_id' => $assessment->public_id],
-                'defect' => ['public_id' => $assessment->defect->public_id, 'code' => $assessment->defect->code],
+                'defect' => [
+                    'public_id' => $assessment->defect->public_id,
+                    'code' => $assessment->defect->code,
+                    'project_number' => $version->project_number,
+                ],
                 'photo_numbers' => $numbers,
                 'photo_interval' => $this->photoNumbering->format($numbers),
                 'quantity' => $this->quantityPayload($quantitySnapshot),
@@ -189,13 +192,30 @@ final class InspectionLocationReportComposer
         ];
     }
 
-    /** @return array{score:?int,color:?string} */
+    /** @return array{score:?int,color:?string,group?:array{code:?string,label:?string}} */
     private function gutCriterionPayload(DefectAssessment $assessment, string $criterion): array
     {
-        return [
+        $payload = [
             'score' => data_get($assessment->gut_snapshot, "criteria.{$criterion}.score") ?? $assessment->{$criterion},
             'color' => data_get($assessment->gut_snapshot, "criteria.{$criterion}.color"),
         ];
+
+        if ($criterion !== 'trend') {
+            return $payload;
+        }
+
+        $group = data_get($assessment->gut_snapshot, 'criteria.trend.group');
+
+        if (! is_array($group)) {
+            return $payload;
+        }
+
+        $payload['group'] = [
+            'code' => isset($group['code']) ? (string) $group['code'] : null,
+            'label' => isset($group['label']) ? (string) $group['label'] : null,
+        ];
+
+        return $payload;
     }
 
     /** @param array<string,int> $numbering @return array<int,array<string,mixed>> */

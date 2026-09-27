@@ -8,10 +8,26 @@ use App\Enums\InspectionResponsibility;
 use App\Models\Inspection;
 use App\Models\User;
 use App\Services\Tenancy\TenantContext;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 trait ValidatesInspectionTransition
 {
+    private function withLockedInspection(Inspection $inspection, User $actor, string $ability, \Closure $callback): Inspection
+    {
+        return DB::transaction(function () use ($inspection, $actor, $ability, $callback): Inspection {
+            $this->validateTenant($inspection, $actor);
+            $inspection = Inspection::query()->forOrganization($inspection->organization_id)
+                ->lockForUpdate()->findOrFail($inspection->id);
+            $actor->refresh();
+            if (! $actor->can($ability, $inspection)) {
+                throw ValidationException::withMessages(['status' => 'A etapa ou o responsável mudou. Atualize a página antes de continuar.']);
+            }
+
+            return $callback($inspection);
+        });
+    }
+
     private function validateTenant(Inspection $inspection, User $actor): int
     {
         $organizationId = app(TenantContext::class)->id();

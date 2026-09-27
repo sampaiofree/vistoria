@@ -22,6 +22,10 @@ final class DefectLocationMapVersionPruner
         $assets = [];
         foreach (['source', 'background'] as $kind) {
             try {
+                if ($this->isReferencedByAnotherVersion($version, $kind)) {
+                    continue;
+                }
+
                 $asset = $kind === 'source'
                     ? $this->assetGuard->source($version)
                     : $this->assetGuard->background($version);
@@ -50,5 +54,23 @@ final class DefectLocationMapVersionPruner
         if (! $map->versions()->exists()) {
             $map->delete();
         }
+    }
+
+    private function isReferencedByAnotherVersion(DefectLocationMapVersion $version, string $kind): bool
+    {
+        $pathColumn = $kind === 'source' ? 'source_path' : 'background_path';
+        $diskColumn = $kind === 'source' ? 'source_disk' : 'background_disk';
+        $path = $version->getAttribute($pathColumn);
+        $disk = $version->getAttribute($diskColumn);
+
+        if ($path === null || $disk === null) {
+            return false;
+        }
+
+        return DefectLocationMapVersion::query()
+            ->whereKeyNot($version->getKey())
+            ->where($diskColumn, $disk)
+            ->where($pathColumn, $path)
+            ->exists();
     }
 }

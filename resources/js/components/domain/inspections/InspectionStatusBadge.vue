@@ -7,6 +7,7 @@ const statuses = {
     planned: ['Planejada', 'bg-slate-100 text-slate-700'],
     in_progress: ['Em inspeção', 'bg-blue-100 text-blue-800'],
     awaiting_review: ['Aguardando revisão', 'bg-amber-100 text-amber-800'],
+    awaiting_m2: ['Aguardando preenchimento de notas', 'bg-cyan-100 text-cyan-800'],
     in_review: ['Em revisão', 'bg-violet-100 text-violet-800'],
     in_correction: ['Em correção', 'bg-orange-100 text-orange-800'],
     awaiting_release: ['Aguardando liberação', 'bg-indigo-100 text-indigo-800'],

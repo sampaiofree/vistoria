@@ -43,6 +43,8 @@ final class ViewFirstReadModelTest extends TestCase
             route('inspections.photos', $inspection),
             route('inspections.history', $inspection),
             route('inspections.report-preview', $inspection),
+            route('inspections.quantitative', $inspection),
+            route('inspections.quantitative.export', $inspection),
             route('defect-assessments.show', $assessment),
         ] as $url) {
             $this->get($url)->assertRedirect(route('login'));
@@ -71,7 +73,8 @@ final class ViewFirstReadModelTest extends TestCase
                         ->component('Inspections/ReportOverview')
                         ->where('active_tab', 'report_overview')
                         ->has('overview.blocks', 2)
-                        ->has('tabs', 6));
+                        ->has('tabs', 8)
+                        ->where('tabs.7.key', 'quantitative'));
 
                 continue;
             }
@@ -94,7 +97,8 @@ final class ViewFirstReadModelTest extends TestCase
                     ->has('summary.criticality.code')
                     ->has('summary.condition_breakdown')
                     ->has('summary.classification_breakdown')
-                    ->has('tabs', 6)
+                    ->has('tabs', 8)
+                    ->where('tabs.7.key', 'quantitative')
                     ->where('tabs', fn ($tabs): bool => collect($tabs)->doesntContain('key', 'locations'))
                     ->has('content')
                     ->missing('demo'));
@@ -508,15 +512,15 @@ final class ViewFirstReadModelTest extends TestCase
         ]);
         DefectAssessment::factory()->forDefect($defect, $inspection)->complete()->create([
             'condition' => DefectAssessmentCondition::New,
-            'gravity' => 1,
+            'gravity' => 2,
             'urgency' => 2,
             'trend' => 2,
-            'gut_score' => 4,
-            'classification_code' => 'IE-5',
-            'classification_snapshot' => ['color' => '#A9D18E'],
+            'gut_score' => 8,
+            'classification_code' => 'IE-4',
+            'classification_snapshot' => ['color' => '#92D050'],
             'gut_snapshot' => [
                 'criteria' => [
-                    'gravity' => ['score' => 1, 'color' => '#70AD47', 'safety_impact' => ['label' => 'Sem possibilidade de acidente'], 'asset_impact' => ['label' => 'Sem impacto no ativo']],
+                    'gravity' => ['score' => 2, 'color' => '#92D050', 'safety_impact' => ['score' => 1, 'label' => 'Sem possibilidade de acidente'], 'asset_impact' => ['score' => 2, 'label' => 'Sem impacto no ativo']],
                     'urgency' => ['score' => 2, 'color' => '#FFD966', 'option' => ['label' => 'Guarda-corpos']],
                     'trend' => ['score' => 2, 'color' => '#FFD966', 'group' => ['label' => 'DEFORMAÇÃO'], 'option' => ['label' => 'Deformação']],
                 ],
@@ -540,7 +544,7 @@ final class ViewFirstReadModelTest extends TestCase
                 ->has('content.rec_quantity_rows', 2)
                 ->where('content.rec_quantity_rows.0.code', 'VT002-REC-001')
                 ->where('content.rec_quantity_rows.0.registered_on', '11/05/2026')
-                ->where('content.rec_quantity_rows.0.project', $inspection->context_snapshot['equipment']['numero_cliente'])
+                ->where('content.rec_quantity_rows.0.project', '—')
                 ->where('content.rec_quantity_rows.0.item', 'Guarda-corpo')
                 ->where('content.rec_quantity_rows.0.element', 'Guarda-corpo')
                 ->where('content.rec_quantity_rows.0.quantity', '1,0')
@@ -548,10 +552,10 @@ final class ViewFirstReadModelTest extends TestCase
                 ->where('content.rec_quantity_rows.0.total_weight_label', '90,00')
                 ->where('content.rec_quantity_rows.1.element', 'Perfil L')
                 ->where('content.rec_quantity_rows.1.total_weight_label', '38,51')
-                ->where('content.rec_quantity_rows.0.gravity.label', 'IMP. ATIV. / IMP. SEG.')
+                ->where('content.rec_quantity_rows.0.gravity.label', 'IMP. ATIV.')
                 ->where('content.rec_quantity_rows.0.trend.label', 'DEFORMAÇÃO')
-                ->where('content.rec_quantity_rows.0.gut_score', 4)
-                ->where('content.rec_quantity_rows.0.classification.code', 'IE-5'));
+                ->where('content.rec_quantity_rows.0.gut_score', 8)
+                ->where('content.rec_quantity_rows.0.classification.code', 'IE-4'));
     }
 
     public function test_report_excludes_draft_rec_until_it_is_completed(): void
@@ -573,9 +577,9 @@ final class ViewFirstReadModelTest extends TestCase
             'classification_snapshot' => ['code' => 'IE-4', 'color' => '#92D050'],
             'gut_snapshot' => [
                 'criteria' => [
-                    'gravity' => ['score' => 2, 'color' => '#92D050', 'safety_impact' => ['label' => 'Impacto de segurança'], 'asset_impact' => ['label' => 'Impacto no ativo']],
+                    'gravity' => ['score' => 2, 'color' => '#92D050', 'safety_impact' => ['score' => 2, 'label' => 'Impacto de segurança'], 'asset_impact' => ['score' => 2, 'label' => 'Impacto no ativo']],
                     'urgency' => ['score' => 3, 'color' => '#FFFF00', 'option' => ['label' => 'Travessa / Longarina']],
-                    'trend' => ['score' => 2, 'color' => '#92D050', 'option' => ['label' => 'Deformação']],
+                    'trend' => ['score' => 2, 'color' => '#92D050', 'group' => ['label' => 'DEFORMAÇÃO'], 'option' => ['label' => 'Deformação']],
                 ],
             ],
             'quantity_snapshot' => [
@@ -615,6 +619,7 @@ final class ViewFirstReadModelTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->has('content.rec_quantity_rows', 1)
                 ->where('content.rec_quantity_rows.0.code', 'VT002-REC-002')
+                ->where('content.rec_quantity_rows.0.gravity.label', 'IMP. ATIV. / IMP. SEG.')
                 ->has('content.location_sequence', 1)
                 ->where('content.location_sequence.0.category.code', 'REC')
                 ->has('content.photographic_documentation.blocks', 1));
@@ -640,7 +645,7 @@ final class ViewFirstReadModelTest extends TestCase
             'classification_snapshot' => ['color' => '#FFFF00'],
             'gut_snapshot' => [
                 'criteria' => [
-                    'gravity' => ['score' => 3, 'color' => '#FFD966', 'safety_impact' => ['label' => 'Sem possibilidade de acidente'], 'asset_impact' => ['label' => 'Impacto na atividade']],
+                    'gravity' => ['score' => 3, 'color' => '#FFD966', 'safety_impact' => ['score' => 3, 'label' => 'Sem possibilidade de acidente'], 'asset_impact' => ['score' => 2, 'label' => 'Impacto na atividade']],
                     'urgency' => ['score' => 4, 'color' => '#FFD966', 'option' => ['label' => 'Bases de sustentação de equipamentos']],
                     'trend' => ['score' => 2, 'color' => '#A9D18E', 'group' => ['label' => 'Infiltração'], 'option' => ['label' => 'Infiltração localizada']],
                 ],
@@ -673,7 +678,7 @@ final class ViewFirstReadModelTest extends TestCase
                 ->has('content.civil_quantity_rows', 2)
                 ->where('content.civil_quantity_rows.0.code', 'VT002-CV-010')
                 ->where('content.civil_quantity_rows.0.registered_on', '11/05/2026')
-                ->where('content.civil_quantity_rows.0.project', $inspection->context_snapshot['equipment']['numero_cliente'])
+                ->where('content.civil_quantity_rows.0.project', 'PRJ-TESTE-001')
                 ->where('content.civil_quantity_rows.0.photos', '1 E 2')
                 ->where('content.civil_quantity_rows.0.item', 'Laje')
                 ->where('content.civil_quantity_rows.0.element', 'Bases de sustentação de equipamentos')
@@ -682,6 +687,7 @@ final class ViewFirstReadModelTest extends TestCase
                 ->where('content.civil_quantity_rows.0.total_volume_label', '1,60')
                 ->where('content.civil_quantity_rows.1.total_volume_label', '4,80')
                 ->where('content.civil_quantity_rows.0.trend.label', 'Infiltração')
+                ->where('content.civil_quantity_rows.0.gravity.label', 'IMP. SEG.')
                 ->where('content.civil_quantity_rows.0.gut_score', 24)
                 ->where('content.civil_quantity_rows.0.classification.code', 'CV-3'));
     }

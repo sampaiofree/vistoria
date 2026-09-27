@@ -43,6 +43,7 @@ final class DefectAssessmentLocationRoutesTest extends TestCase
         $this->actingAs($user)
             ->post(route('defect-assessments.location-map.store', $assessment), [
                 'file' => UploadedFile::fake()->image('mapa.png', 1200, 800),
+                'project_number' => 'PRJ-2026-A01',
             ])
             ->assertRedirect()
             ->assertSessionHasNoErrors();
@@ -58,6 +59,7 @@ final class DefectAssessmentLocationRoutesTest extends TestCase
         $this->actingAs($user)
             ->post(route('defect-assessments.location-map.store', $assessment), [
                 'file' => UploadedFile::fake()->image('mapa-2.jpg', 1000, 700),
+                'project_number' => 'PRJ-2026-A02',
             ])
             ->assertRedirect();
 
@@ -86,6 +88,7 @@ final class DefectAssessmentLocationRoutesTest extends TestCase
         $this->actingAs($user)
             ->post(route('defect-assessments.location-map.store', $assessment), [
                 'file' => UploadedFile::fake()->image('substituto.png', 900, 600),
+                'project_number' => 'PRJ-2026-A01',
             ])
             ->assertForbidden();
 
@@ -99,6 +102,7 @@ final class DefectAssessmentLocationRoutesTest extends TestCase
         $this->actingAs($user)
             ->post(route('defect-assessments.location-map.store', $assessment), [
                 'file' => UploadedFile::fake()->image('substituto.png', 900, 600),
+                'project_number' => 'PRJ-2026-A02',
             ])
             ->assertRedirect();
 
@@ -109,6 +113,20 @@ final class DefectAssessmentLocationRoutesTest extends TestCase
         $this->assertNotSame($oldVersion->id, $assessment->defect_location_map_version_id);
         $this->assertDatabaseHas('defect_location_map_versions', ['id' => $oldVersion->id]);
         $this->assertSame($oldVersion->id, $historical->refresh()->defect_location_map_version_id);
+    }
+
+    public function test_upload_requires_a_project_number(): void
+    {
+        Storage::fake('inspection_maps');
+        [$user, , $assessment] = $this->context();
+
+        $this->actingAs($user)
+            ->post(route('defect-assessments.location-map.store', $assessment), [
+                'file' => UploadedFile::fake()->image('mapa.png', 1200, 800),
+            ])
+            ->assertSessionHasErrors('project_number');
+
+        $this->assertDatabaseCount('defect_location_map_versions', 0);
     }
 
     public function test_location_save_confirms_multiple_regions_and_rejects_client_style_and_stale_writes(): void
@@ -192,6 +210,42 @@ final class DefectAssessmentLocationRoutesTest extends TestCase
         $this->assertSame($assessment->location->geometry, $next->location->geometry);
         $this->assertNull($next->location->confirmed_at);
         $this->assertSame(DefectAssessmentStatus::Draft, $next->status);
+    }
+
+    public function test_changing_the_project_number_on_a_reinspection_creates_a_new_map_version(): void
+    {
+        Storage::fake('inspection_maps');
+        [$user, $inspection, $assessment] = $this->context();
+        $assessment->update(['status' => DefectAssessmentStatus::Complete, 'assessed_at' => now()]);
+        $previousVersion = $this->locateAssessment($assessment);
+        Storage::disk('inspection_maps')->put($previousVersion->background_path, 'mapa-historico');
+        $nextInspection = Inspection::factory()->reinspection($inspection)->create(['status' => InspectionStatus::InProgress]);
+        InspectionResponsible::factory()->forInspection($nextInspection, $user)->create(['responsibility' => InspectionResponsibility::Preparer]);
+
+        $this->actingAs($user)
+            ->post(route('inspections.defects.assessments.store', [$nextInspection, $assessment->defect]), [
+                'condition' => DefectAssessmentCondition::Reinspected->value,
+                'assessment_action' => DefectAssessmentStatus::Draft->value,
+                'comment' => 'Reinspeção pendente de confirmação.',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $next = DefectAssessment::query()->where('inspection_id', $nextInspection->id)->firstOrFail();
+        $this->actingAs($user)
+            ->patch(route('defect-assessments.location-map.project-number.update', $next), [
+                'project_number' => 'PRJ-2027-B02',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $newVersion = $next->refresh()->locationMapVersion;
+        $this->assertNotSame($previousVersion->id, $newVersion->id);
+        $this->assertSame('PRJ-TESTE-001', $previousVersion->refresh()->project_number);
+        $this->assertSame('PRJ-2027-B02', $newVersion->project_number);
+        $this->assertNotSame($previousVersion->background_path, $newVersion->background_path);
+        Storage::disk('inspection_maps')->assertExists($newVersion->background_path);
+        $this->assertSame($assessment->location->geometry, $next->location->geometry);
     }
 
     public function test_processor_ignores_stale_jobs_retries_failures_and_never_switches_versions(): void

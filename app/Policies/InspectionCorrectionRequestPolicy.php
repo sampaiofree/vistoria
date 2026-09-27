@@ -6,8 +6,10 @@ namespace App\Policies;
 
 use App\Enums\InspectionCorrectionRequestFlow;
 use App\Enums\InspectionCorrectionRequestStatus;
+use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
 use App\Enums\OperationalRole;
+use App\Enums\UserAccountType;
 use App\Models\Inspection;
 use App\Models\InspectionCorrectionRequest;
 use App\Models\User;
@@ -39,13 +41,14 @@ final class InspectionCorrectionRequestPolicy
 
     public function close(User $user, InspectionCorrectionRequest $request): bool
     {
-        return $request->status === InspectionCorrectionRequestStatus::Addressed
+        return in_array($request->status, [InspectionCorrectionRequestStatus::Addressed, InspectionCorrectionRequestStatus::Closed], true)
             && $this->isRequester($user, $request);
     }
 
     public function replace(User $user, InspectionCorrectionRequest $request): bool
     {
-        return $this->close($user, $request);
+        return $request->status === InspectionCorrectionRequestStatus::Addressed
+            && $this->isRequester($user, $request);
     }
 
     public function createChild(User $user, InspectionCorrectionRequest $request): bool
@@ -59,6 +62,7 @@ final class InspectionCorrectionRequestPolicy
     private function isRequester(User $user, InspectionCorrectionRequest $request): bool
     {
         [$role, $status] = match ($request->flow) {
+            InspectionCorrectionRequestFlow::PlannerToInspector => [OperationalRole::Planner, InspectionStatus::AwaitingM2],
             InspectionCorrectionRequestFlow::ReviewerToInspector => [OperationalRole::Reviewer, InspectionStatus::InReview],
             InspectionCorrectionRequestFlow::ReleaserToReviewer => [OperationalRole::Releaser, InspectionStatus::AwaitingRelease],
         };
@@ -69,6 +73,7 @@ final class InspectionCorrectionRequestPolicy
     private function isResponder(User $user, InspectionCorrectionRequest $request): bool
     {
         [$role, $status] = match ($request->flow) {
+            InspectionCorrectionRequestFlow::PlannerToInspector => [OperationalRole::Inspector, InspectionStatus::InCorrection],
             InspectionCorrectionRequestFlow::ReviewerToInspector => [OperationalRole::Inspector, InspectionStatus::InCorrection],
             InspectionCorrectionRequestFlow::ReleaserToReviewer => [OperationalRole::Reviewer, InspectionStatus::InReview],
         };
@@ -85,6 +90,12 @@ final class InspectionCorrectionRequestPolicy
             && $inspection->organization_id === $user->organization_id
             && $inspection->status === $status
             && $user->operational_role === $role
-            && $inspection->hasAnyResponsibilityForUser($user, ...\App\Enums\InspectionResponsibility::cases());
+            && $user->account_type === UserAccountType::Member
+            && $inspection->hasAnyResponsibilityForUser($user, match ($role) {
+                OperationalRole::Planner => InspectionResponsibility::Preparer,
+                OperationalRole::Inspector => InspectionResponsibility::Reviewer,
+                OperationalRole::Reviewer => InspectionResponsibility::Approver,
+                OperationalRole::Releaser => InspectionResponsibility::Releaser,
+            });
     }
 }

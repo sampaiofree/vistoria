@@ -7,7 +7,8 @@ import ReportGeneralAspectsPaginator from '@/components/domain/view-first/Report
 import ReportSummaryPage from '@/components/domain/view-first/ReportSummaryPage.vue';
 import ReportSummaryPaginator from '@/components/domain/view-first/ReportSummaryPaginator.vue';
 import GeneralAspectsDocument from '@/components/domain/inspections/GeneralAspectsDocument.vue';
-import ClassificationSummaryTable from '@/components/domain/inspections/ClassificationSummaryTable.vue';
+import ClassificationReportPaginator from '@/components/domain/view-first/ClassificationReportPaginator.vue';
+import ClassificationReportTables from '@/components/domain/view-first/ClassificationReportTables.vue';
 import {
     buildReportSummaryEntries,
     numberGeneralAspectsDocument,
@@ -21,6 +22,9 @@ const props = defineProps({
 const cover = computed(() => props.content.cover ?? {});
 const locations = computed(() => props.content.locations ?? []);
 const photographicBlocks = computed(() => props.content.photographic_documentation?.blocks ?? []);
+const solidaryStructuresPhotographicBlocks = computed(() => photographicBlocks.value.filter((block) =>
+    categoryKey(block.category || block.category_label) === 'ES',
+));
 const reportFindings = computed(() => props.content.findings ?? []);
 const textualFindings = computed(() => reportFindings.value.filter((finding) =>
     ['canceled', 'canceled_sr'].includes(finding.condition),
@@ -28,6 +32,7 @@ const textualFindings = computed(() => reportFindings.value.filter((finding) =>
 const generalAspects = computed(() => props.content.general_aspects?.document ?? null);
 const reportOverview = computed(() => props.content.overview ?? { blocks: [] });
 const classificationSummary = computed(() => props.content.classification_summary ?? null);
+const reportAnnexPlan = computed(() => classificationSummary.value?.report_annex_plan ?? null);
 const locationSequence = computed(() => props.content.location_sequence ?? []);
 const recQuantityRows = computed(() => props.content.rec_quantity_rows ?? []);
 const civilQuantityRows = computed(() => props.content.civil_quantity_rows ?? []);
@@ -37,6 +42,8 @@ const generalAspectsReady = ref(!generalAspects.value);
 const summaryPages = ref([[]]);
 const summaryPageCount = ref(1);
 const summaryReady = ref(false);
+const classificationPages = ref([]);
+const classificationReady = ref(!classificationSummary.value);
 const observationLayouts = ref({});
 const previewRoot = ref(null);
 
@@ -92,11 +99,21 @@ watch(locations, (sheets) => {
     observationLayouts.value = layouts;
 }, { immediate: true });
 
-const layoutReady = computed(() => generalAspectsReady.value && summaryReady.value && locations.value.every((sheet) =>
+const layoutReady = computed(() => generalAspectsReady.value && summaryReady.value && classificationReady.value && locations.value.every((sheet) =>
     (sheet.maps || []).every((map) => observationChunks(map).every((chunk) => chunk.fitted)),
 ));
 
 watch(layoutReady, (ready) => emit('layout-ready', ready), { immediate: true });
+
+watch(classificationSummary, (summary) => {
+    if (summary) return;
+    classificationPages.value = [];
+    classificationReady.value = true;
+}, { immediate: true });
+
+function updateClassificationPages(value) {
+    classificationPages.value = value;
+}
 
 function observationChunks(map) {
     return observationLayouts.value[map.public_id]?.chunks
@@ -247,6 +264,18 @@ function quantityPages(items, type, category) {
     }));
 }
 
+function solidaryStructuresPhotographicPages() {
+    return photographicPages(
+        solidaryStructuresPhotographicBlocks.value,
+        'solidary-structures',
+        'ESTRUTURAS SOLIDÁRIAS',
+    ).map((page, index) => ({
+        ...page,
+        isSolidaryStructuresAnnex: true,
+        annex_title: index === 0 ? 'ESTRUTURAS SOLIDÁRIAS' : null,
+    }));
+}
+
 function categoryPosition(category) {
     return ({ TAC: 0, REC: 1, CV: 2, CIVIL: 2, TEL: 3 })[categoryKey(category)] ?? -1;
 }
@@ -294,21 +323,51 @@ function assignAnnexTitles(contentPages) {
         'civil-quantity': 'QUANTITATIVO GERAL – CIVIL',
     };
 
+    const plan = reportAnnexPlan.value;
+
     return contentPages.map((page) => {
         if (page.type === 'overview') {
             const suffix = String(reportOverview.value.title || 'ANEXO A – LOCALIZAÇÃO E DOCUMENTAÇÃO FOTOGRÁFICA - TAC')
                 .replace(/^ANEXO\s+[A-Z]+\s+–\s+/u, '');
+
+            if (plan?.overview) return { ...page, annexTitle: annexTitle(plan.overview, suffix) };
 
             return { ...page, annexTitle: annexTitle(annexLetter(nextAnnex++), suffix) };
         }
 
         if (page.type === 'location-map' && page.annexTitle) {
             const suffix = String(page.annexTitle).replace(/^ANEXO\s+[A-Z]+\s+–\s+/u, '');
+            const category = categoryKey(page.category?.code || page.category?.name || page.category);
+            const letter = plan?.category_letters?.[category];
+
+            if (letter) return { ...page, annexTitle: annexTitle(letter, suffix) };
 
             return { ...page, annexTitle: annexTitle(annexLetter(nextAnnex++), suffix) };
         }
 
+        if (page.type === 'photographic' && page.annex_title) {
+            if (page.isSolidaryStructuresAnnex && plan?.solidary_structures) {
+                return {
+                    ...page,
+                    annexTitle: annexTitle(plan.solidary_structures, page.annex_title),
+                };
+            }
+
+            return {
+                ...page,
+                annexTitle: annexTitle(annexLetter(nextAnnex++), page.annex_title),
+            };
+        }
+
         if (quantityAnnexSuffixes[page.type] && !page.continuation) {
+            const category = page.type === 'rec-quantity' ? 'REC' : 'CV';
+            const letter = plan?.quantity_letters?.[category];
+            if (letter) {
+                quantityAnnexTitles[page.type] = annexTitle(letter, quantityAnnexSuffixes[page.type]);
+
+                return { ...page, annexTitle: quantityAnnexTitles[page.type] };
+            }
+
             quantityAnnexTitles[page.type] = annexTitle(annexLetter(nextAnnex++), quantityAnnexSuffixes[page.type]);
 
             return { ...page, annexTitle: quantityAnnexTitles[page.type] };
@@ -335,7 +394,11 @@ const reportContentPages = computed(() => {
     );
 
     return assignAnnexTitles([
-        ...(classificationSummary.value ? [{ type: 'classification-summary', key: 'classification-summary' }] : []),
+        ...classificationPages.value.map((classificationPage, index) => ({
+            type: 'classification-summary',
+            key: `classification-summary-${index}`,
+            ...classificationPage,
+        })),
         ...generalAspectsPages.value.map((document, index) => ({
             type: 'general-aspects',
             key: `general-aspects-${index}`,
@@ -350,6 +413,7 @@ const reportContentPages = computed(() => {
             items,
             continuation: index > 0,
         })),
+        ...solidaryStructuresPhotographicPages(),
     ]);
 });
 
@@ -436,6 +500,14 @@ function mapQuantityHeader(map) {
     return units.length === 1 ? units[0] : 'QUANT.';
 }
 
+function mapShowsDefectCode(category) {
+    return ['REC', 'CV', 'CIVIL'].includes(categoryKey(category?.code || category?.name || category));
+}
+
+function mapShowsTrendDetail(category) {
+    return mapShowsDefectCode(category);
+}
+
 function damageQuantity(row, map) {
     if (row.quantity?.value === null || row.quantity?.value === undefined) return '—';
 
@@ -464,6 +536,12 @@ function visualClass(photo) {
             :signature="summarySignature"
             @pages="updateSummaryPages"
             @ready="updateSummaryReady"
+        />
+        <ClassificationReportPaginator
+            v-if="classificationSummary"
+            :summary="classificationSummary"
+            @pages="updateClassificationPages"
+            @ready="classificationReady = $event"
         />
         <ReportA4Page
             v-for="(page, index) in pages"
@@ -601,29 +679,7 @@ function visualClass(photo) {
             </template>
 
             <template v-else-if="page.type === 'classification-summary'">
-                <div class="report-general-aspects-page">
-                    <h2 class="report-general-aspects-title">1. RESUMO DA CLASSIFICAÇÃO DO EQUIPAMENTO – GUT</h2>
-                    <table class="report-classification-summary-header">
-                        <colgroup>
-                            <col class="report-classification-summary-area">
-                            <col class="report-classification-summary-subarea">
-                            <col class="report-classification-summary-installation">
-                            <col class="report-classification-summary-abc">
-                            <col class="report-classification-summary-date">
-                            <col class="report-classification-summary-criticality">
-                        </colgroup>
-                        <thead>
-                            <tr><th>ÁREA</th><th>SUBÁREA</th><th>LOCAL DE INSTALAÇÃO</th><th>CÓD. ABC</th><th>DATA DA INSP.</th><th>CRITICIDADE</th></tr>
-                        </thead>
-                        <tbody>
-                            <tr><td>{{ classificationSummary.header?.area || '—' }}</td><td>{{ classificationSummary.header?.subarea || '—' }}</td><td>{{ classificationSummary.header?.installation_location || '—' }}</td><td>{{ classificationSummary.header?.abc_code || '—' }}</td><td>{{ classificationSummary.header?.inspection_date || '—' }}</td><td></td></tr>
-                            <tr class="report-classification-summary-header-labels"><th>EQUIPAMENTO</th><th>TAG</th><th>DESENHO GERAL</th><th>ORDEM</th><th colspan="2">PROC. INSPEÇÃO</th></tr>
-                            <tr><td>{{ classificationSummary.header?.equipment || '—' }}</td><td>{{ classificationSummary.header?.tag || '—' }}</td><td></td><td>{{ classificationSummary.header?.work_order || '—' }}</td><td colspan="2"></td></tr>
-                        </tbody>
-                    </table>
-                    <h3 class="report-classification-summary-table-title">Tabela 2 – Resumo das classificações das avarias e seus quantitativos.</h3>
-                    <ClassificationSummaryTable :summary="classificationSummary" variant="report" />
-                </div>
+                <ClassificationReportTables :summary="classificationSummary" v-bind="page" />
             </template>
 
             <template v-else-if="page.type === 'overview'">
@@ -675,7 +731,7 @@ function visualClass(photo) {
                     <table class="report-quantity-table">
                         <thead>
                             <tr>
-                                <th>{{ page.type === 'civil-quantity' ? 'CÓD.' : 'CÓD. REC' }}</th><th>DATA DE CADASTRO</th><th>PROJETO</th><th>FOTO</th>
+                                <th>CÓD.</th><th>DATA DE CADASTRO</th><th>PROJETO</th><th>FOTO</th>
                                 <th>ITEM / SUBITEM</th><th>ELEMENTO</th><th>QTD.</th><th>{{ page.type === 'civil-quantity' ? 'M³ TOTAL' : 'PESO TOTAL' }}</th>
                                 <th>G</th><th>U</th><th>T</th><th>PONT. TOTAL</th><th>CLASS.</th>
                             </tr>
@@ -684,9 +740,9 @@ function visualClass(photo) {
                             <tr v-for="item in page.items" :key="item.key">
                                 <td>{{ item.code }}</td><td>{{ item.registered_on }}</td><td>{{ item.project }}</td><td>{{ item.photos }}</td>
                                 <td>{{ item.item }}</td><td>{{ item.element }}</td><td>{{ item.quantity }}</td><td>{{ page.type === 'civil-quantity' ? item.total_volume_label : item.total_weight_label }}</td>
-                                <td><span>{{ item.gravity.label }}</span><strong :style="damageColorStyle(item.gravity.color)">{{ item.gravity.score ?? '—' }}</strong></td>
-                                <td><span>{{ item.urgency.label }}</span><strong :style="damageColorStyle(item.urgency.color)">{{ item.urgency.score ?? '—' }}</strong></td>
-                                <td><span>{{ item.trend.label }}</span><strong :style="damageColorStyle(item.trend.color)">{{ item.trend.score ?? '—' }}</strong></td>
+                                <td class="report-quantity-gravity"><div><span>{{ item.gravity.label }}</span><strong :style="damageColorStyle(item.gravity.color)">{{ item.gravity.score ?? '—' }}</strong></div></td>
+                                <td class="report-quantity-urgency"><strong :style="damageColorStyle(item.urgency.color)">{{ item.urgency.score ?? '—' }}</strong></td>
+                                <td class="report-quantity-trend"><div><span>{{ item.trend.label }}</span><strong :style="damageColorStyle(item.trend.color)">{{ item.trend.score ?? '—' }}</strong></div></td>
                                 <td class="report-quantity-score">{{ item.gut_score }}</td>
                                 <td class="report-quantity-class" :style="damageColorStyle(item.classification.color)">{{ item.classification.code }}</td>
                             </tr>
@@ -704,7 +760,7 @@ function visualClass(photo) {
                         LOCALIZAÇÃO FOTOGRÁFICA - {{ page.category?.name || page.category?.code || 'SEM CATEGORIA' }}
                     </h2>
                     <article class="report-map-card">
-                        <div class="report-map-title-box">{{ page.map.report_title || page.map.title }}</div>
+                        <div class="report-map-title-box">{{ page.map.report_title || page.map.title }}<span v-if="page.map.historical_label" class="mt-1 block text-[8pt] font-normal">{{ page.map.historical_label }}</span></div>
                         <InspectionLocationReportMap class="report-map-visual" :map="page.map" />
 
                         <div class="report-map-footer">
@@ -738,30 +794,41 @@ function visualClass(photo) {
 
                                 <table v-else class="report-map-damage-table">
                                     <colgroup>
+                                        <col v-if="mapShowsDefectCode(page.category)" class="report-map-damage-code">
+                                        <col v-if="mapShowsDefectCode(page.category)" class="report-map-damage-project">
                                         <col class="report-map-damage-photos">
                                         <col class="report-map-damage-quantity">
                                         <col class="report-map-damage-gut">
                                         <col class="report-map-damage-gut">
-                                        <col class="report-map-damage-gut">
+                                        <col v-if="mapShowsTrendDetail(page.category)" class="report-map-damage-trend-label">
+                                        <col v-if="mapShowsTrendDetail(page.category)" class="report-map-damage-trend-score">
+                                        <col v-else class="report-map-damage-gut">
                                         <col class="report-map-damage-classification">
                                     </colgroup>
                                     <thead>
-                                        <tr><th colspan="6" class="report-map-table-title">CLASSIFICAÇÃO GUT</th></tr>
-                                        <tr><th>FOTOS</th><th>{{ mapQuantityHeader(page.map) }}</th><th>GRAV.</th><th>URG.</th><th>TEND.</th><th>GRAV. DANO</th></tr>
+                                        <tr><th :colspan="mapShowsTrendDetail(page.category) ? 9 : 6" class="report-map-table-title">CLASSIFICAÇÃO GUT</th></tr>
+                                        <tr>
+                                            <th v-if="mapShowsDefectCode(page.category)">CÓDIGO DA AVARIA</th><th v-if="mapShowsDefectCode(page.category)">PROJETO</th><th>FOTOS</th><th>{{ mapQuantityHeader(page.map) }}</th><th>GRAV.</th><th>URG.</th><th v-if="mapShowsTrendDetail(page.category)" colspan="2">T</th><th v-else>TEND.</th><th>GRAV. DANO</th>
+                                        </tr>
                                     </thead>
                                     <tbody>
                                         <tr
                                             v-for="(row, rowIndex) in (page.map.damage_rows || [])"
                                             :key="row.assessment?.public_id || row.defect?.public_id || rowIndex"
                                         >
+                                            <td v-if="mapShowsDefectCode(page.category)">{{ row.defect?.code || '—' }}</td>
+                                            <td v-if="mapShowsDefectCode(page.category)">{{ row.defect?.project_number || '—' }}</td>
                                             <td>{{ row.photo_interval || '—' }}</td>
                                             <td>{{ damageQuantity(row, page.map) }}</td>
                                             <td :style="damageColorStyle(row.gut?.gravity?.color)">{{ row.gut?.gravity?.score ?? '—' }}</td>
                                             <td :style="damageColorStyle(row.gut?.urgency?.color)">{{ row.gut?.urgency?.score ?? '—' }}</td>
+                                            <td v-if="mapShowsTrendDetail(page.category)">{{ row.gut?.trend?.group?.label || '—' }}</td>
                                             <td :style="damageColorStyle(row.gut?.trend?.color)">{{ row.gut?.trend?.score ?? '—' }}</td>
                                             <td :style="damageColorStyle(row.classification?.color)">{{ row.classification?.code || '—' }}</td>
                                         </tr>
-                                        <tr v-if="!(page.map.damage_rows || []).length"><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+                                        <tr v-if="!(page.map.damage_rows || []).length">
+                                            <td v-if="mapShowsDefectCode(page.category)">—</td><td v-if="mapShowsDefectCode(page.category)">—</td><td>—</td><td>—</td><td>—</td><td>—</td><td v-if="mapShowsTrendDetail(page.category)">—</td><td>—</td><td>—</td>
+                                        </tr>
                                     </tbody>
                                 </table>
 
@@ -801,7 +868,7 @@ function visualClass(photo) {
                     <h2 class="report-page-title report-blue-title report-location-title">
                         LOCALIZAÇÃO FOTOGRÁFICA - {{ page.category?.name || page.category?.code || 'SEM CATEGORIA' }}
                     </h2>
-                    <div class="report-map-title-box">{{ page.map.report_title || page.map.title }}</div>
+                    <div class="report-map-title-box">{{ page.map.report_title || page.map.title }}<span v-if="page.map.historical_label" class="mt-1 block text-[8pt] font-normal">{{ page.map.historical_label }}</span></div>
                     <div class="report-map-observations report-map-observations-continuation">
                         <div class="report-map-observations-title">OBSERVAÇÕES — CONTINUAÇÃO</div>
                         <ReportMapObservationText
@@ -818,7 +885,10 @@ function visualClass(photo) {
             </template>
 
             <template v-else-if="page.type === 'photographic'">
-                <h2 class="report-page-title report-blue-title report-location-title">
+                <h2 v-if="page.annexTitle" class="report-page-title report-blue-title report-location-title">
+                    {{ page.annexTitle }}
+                </h2>
+                <h2 v-if="!page.isSolidaryStructuresAnnex" class="report-page-title report-blue-title report-location-title">
                     DOCUMENTAÇÃO FOTOGRÁFICA - {{ page.category }}
                 </h2>
                 <article v-for="block in page.items" :key="block.id" class="report-photo-block">
@@ -836,6 +906,7 @@ function visualClass(photo) {
                         </article>
                     </div>
                     <div class="report-photo-classification">
+                        <span v-if="block.historical_label" class="block">{{ block.historical_label }}</span>
                         {{ block.defect_code || '—' }} | {{ block.condition_label || '—' }} |
                         Anterior: {{ block.previous_classification?.code || '—' }} |
                         Atual: {{ block.current_classification?.code || block.classification_code || '—' }}
@@ -859,6 +930,7 @@ function visualClass(photo) {
                     <div class="report-textual-finding-title">
                         <strong>{{ finding.code }} — {{ finding.title }}</strong>
                         <span>{{ finding.condition_label }}</span>
+                        <span v-if="finding.historical_label">{{ finding.historical_label }}</span>
                     </div>
                     <div class="report-textual-finding-classes">
                         Classe anterior: <strong>{{ finding.previous_classification?.code || '—' }}</strong>
@@ -896,8 +968,8 @@ function visualClass(photo) {
 .report-quantity-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 5.5pt; }
 .report-quantity-table th, .report-quantity-table td { border: 1px solid #062b68; padding: 1mm .8mm; text-align: center; vertical-align: middle; overflow-wrap: anywhere; }
 .report-quantity-table th { background: #062b68; color: #fff; font-size: 5.5pt; font-weight: 800; white-space: nowrap; }
-.report-quantity-table td:nth-child(1) { width: 7%; }.report-quantity-table td:nth-child(2) { width: 8%; }.report-quantity-table td:nth-child(3) { width: 11%; }.report-quantity-table td:nth-child(4) { width: 5%; }.report-quantity-table td:nth-child(5) { width: 11%; }.report-quantity-table td:nth-child(6) { width: 9%; }.report-quantity-table td:nth-child(7) { width: 4%; }.report-quantity-table td:nth-child(8) { width: 7%; }.report-quantity-table td:nth-child(9), .report-quantity-table td:nth-child(10), .report-quantity-table td:nth-child(11) { width: 10%; }.report-quantity-table td:nth-child(12) { width: 6%; }.report-quantity-table td:nth-child(13) { width: 5%; }
-.report-quantity-table td:nth-child(9), .report-quantity-table td:nth-child(10), .report-quantity-table td:nth-child(11) { padding: 0; }.report-quantity-table td:nth-child(9) span, .report-quantity-table td:nth-child(10) span, .report-quantity-table td:nth-child(11) span { display: block; min-height: 7mm; padding: 1mm .8mm; }.report-quantity-table td:nth-child(9) strong, .report-quantity-table td:nth-child(10) strong, .report-quantity-table td:nth-child(11) strong { display: block; padding: 1mm; color: #111827; font-size: 7pt; }
+.report-quantity-table td:nth-child(1) { width: 7%; }.report-quantity-table td:nth-child(2) { width: 8%; }.report-quantity-table td:nth-child(3) { width: 8%; }.report-quantity-table td:nth-child(4) { width: 3%; }.report-quantity-table td:nth-child(5) { width: 12%; }.report-quantity-table td:nth-child(6) { width: 9%; }.report-quantity-table td:nth-child(7) { width: 3%; }.report-quantity-table td:nth-child(8) { width: 6%; }.report-quantity-table td:nth-child(9) { width: 14%; }.report-quantity-table td:nth-child(10) { width: 3%; }.report-quantity-table td:nth-child(11) { width: 18%; }.report-quantity-table td:nth-child(12) { width: 5%; }.report-quantity-table td:nth-child(13) { width: 4%; }
+.report-quantity-gravity, .report-quantity-urgency, .report-quantity-trend { padding: 0 !important; }.report-quantity-gravity > div, .report-quantity-trend > div { display: grid; min-height: 7mm; grid-template-columns: minmax(0, 1fr) 6mm; align-items: stretch; }.report-quantity-gravity span, .report-quantity-trend span { display: flex; min-width: 0; align-items: center; justify-content: center; padding: 1mm .6mm; overflow-wrap: normal; font-size: 5pt; white-space: nowrap; }.report-quantity-gravity strong, .report-quantity-trend strong, .report-quantity-urgency > strong { display: flex; min-height: 5mm; align-items: center; justify-content: center; padding: 1mm; color: #111827; font-size: 7pt; }
 .report-quantity-score { background: #dbeafe; color: #0759a0; font-size: 7pt; font-weight: 800; }.report-quantity-class { font-size: 7pt; font-weight: 800; }
 .report-textual-finding { margin-bottom: 6mm; border: 1px solid #94a3b8; font-family: Georgia, 'Times New Roman', serif; }
 .report-textual-finding-title { display: flex; justify-content: space-between; gap: 4mm; padding: 3mm; background: #e2e8f0; font-size: 9pt; }
@@ -992,10 +1064,18 @@ function visualClass(photo) {
 .report-map-damage-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 7pt; }
 .report-map-damage-table th,
 .report-map-damage-table td { height: 5.5mm; padding: .7mm 1.5mm; border: 1px solid #111827; line-height: 1.05; text-align: center; vertical-align: middle; }
+.report-map-damage-code { width: 12%; }
+.report-map-damage-project { width: 14%; }
 .report-map-damage-photos { width: 18%; }
 .report-map-damage-quantity { width: 16%; }
 .report-map-damage-gut { width: 15%; }
 .report-map-damage-classification { width: 21%; }
+.report-map-damage-trend-label { width: 20%; }
+.report-map-damage-trend-score { width: 5%; }
+.report-map-damage-code ~ .report-map-damage-photos { width: 10%; }
+.report-map-damage-code ~ .report-map-damage-quantity { width: 10%; }
+.report-map-damage-code ~ .report-map-damage-gut { width: 9%; }
+.report-map-damage-code ~ .report-map-damage-classification { width: 11%; }
 .report-map-damage-table .report-map-table-title { height: 6mm; padding: 1mm 2mm; background: #062b68; color: #fff; font-size: 8pt; font-weight: 800; }
 .report-map-legend { width: 100%; overflow: hidden; border: 1px solid #111827; font-family: Georgia, 'Times New Roman', serif; font-size: 7pt; }
 .report-map-legend > strong { display: flex; min-height: 6mm; align-items: center; padding: 1mm 2mm; border-bottom: 1px solid #111827; font-size: 8pt; }

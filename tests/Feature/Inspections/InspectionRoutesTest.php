@@ -99,10 +99,9 @@ final class InspectionRoutesTest extends TestCase
                 ->has('inspection.context_snapshot')
                 ->has('inspection.history', 1)
                 ->has('capabilities.update_planned.action')
-                ->where('capabilities.assign_responsibles', false)
-                ->where('capabilities.transition', true)
-                ->has('transitions', 1)
-                ->where('transitions.0.key', 'cancel'));
+                ->where('capabilities.assign_responsibles.action', route('inspections.responsibles.store', $inspection))
+                ->where('capabilities.transition', false)
+                ->has('transitions', 0));
     }
 
     public function test_company_admin_sees_equipment_error_when_an_open_inspection_already_exists(): void

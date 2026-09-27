@@ -9,6 +9,21 @@ function positiveNumber(value) {
     return Number.isFinite(number) && number > 0 ? number : null;
 }
 
+function positiveInteger(value) {
+    const number = positiveNumber(value);
+
+    return number !== null && Number.isInteger(number) ? number : null;
+}
+
+export function normalizeNativeQuantityMultiplier(value) {
+    if (typeof value !== 'string') return value;
+
+    const normalized = value.trim();
+    const match = normalized.match(/^(\d+)\.0+$/);
+
+    return match ? match[1] : value;
+}
+
 function requiredValues(inputs, keys) {
     const values = Object.fromEntries(keys.map((key) => [key, positiveNumber(inputs[key])]));
 
@@ -97,7 +112,7 @@ const manualRecElements = new Set(['bolted_connection', 'roof_sheet', 'floor_gra
 
 export function calculateCivilQuantity(inputs) {
     const value = requiredValues(inputs, ['length', 'height', 'width', 'quantity']);
-    if (!value) return null;
+    if (!value || !Number.isInteger(value.quantity)) return null;
 
     const unitValue = value.length * value.height * value.width;
 
@@ -119,7 +134,7 @@ export function calculateRecQuantity(inputs) {
     }
 
     const unitValue = recCalculators[element]?.(inputs) ?? null;
-    const quantity = positiveNumber(inputs.quantity);
+    const quantity = positiveInteger(inputs.quantity);
     if (unitValue === null || !Number.isFinite(unitValue) || unitValue <= 0 || quantity === null) return null;
 
     return { unitValue, totalValue: unitValue * quantity, unit: 'kg', mode: 'calculated' };

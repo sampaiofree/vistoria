@@ -365,7 +365,7 @@ final class NativeDefectCatalog
     /** @return Collection<int, DefectClassificationDefinition> */
     public static function classifications(DefectCategory $category): Collection
     {
-        return collect(self::CLASSIFICATIONS[$category->value])
+        return collect(self::CLASSIFICATIONS[$category->value] ?? [])
             ->map(fn (array $definition): DefectClassificationDefinition => new DefectClassificationDefinition(
                 code: $definition['code'],
                 name: $definition['name'],
@@ -558,7 +558,7 @@ final class NativeDefectCatalog
     {
         return self::findOption(match ($category) {
             DefectCategory::Civil => [],
-            DefectCategory::AnticorrosiveTreatment, DefectCategory::StructuralRecovery, DefectCategory::RoofCladding => [],
+            DefectCategory::AnticorrosiveTreatment, DefectCategory::StructuralRecovery, DefectCategory::RoofCladding, DefectCategory::SolidaryStructures => [],
         }, $code);
     }
 
@@ -573,7 +573,7 @@ final class NativeDefectCatalog
     /** @return array{code:string,label:string,score:int,color:string}|null */
     public static function trend(DefectCategory $category, ?string $groupCode, ?string $optionCode): ?array
     {
-        if ($category === DefectCategory::RoofCladding) {
+        if (! $category->requiresGut()) {
             return null;
         }
 
@@ -589,7 +589,7 @@ final class NativeDefectCatalog
     /** @return list<array{code:string,label:string,options:list<array{code:string,label:string,score:int,color:string}>}> */
     private static function trendGroups(DefectCategory $category): array
     {
-        if (in_array($category, [DefectCategory::AnticorrosiveTreatment, DefectCategory::RoofCladding], true)) {
+        if (in_array($category, [DefectCategory::AnticorrosiveTreatment, DefectCategory::RoofCladding, DefectCategory::SolidaryStructures], true)) {
             return [];
         }
 

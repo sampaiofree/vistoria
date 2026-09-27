@@ -85,9 +85,11 @@ final class GutClassificationResolver
 
         $assessment->loadMissing(['defect', 'inspection.equipment']);
         $category = $assessment->defect->category;
-        if ($category === DefectCategory::RoofCladding) {
+        if (! $category->requiresGut()) {
             throw ValidationException::withMessages([
-                'category' => 'A categoria Telhado/Tapamento utiliza a classificação TEL, não GUT.',
+                'category' => $category === DefectCategory::RoofCladding
+                    ? 'A categoria Telhado/Tapamento utiliza a classificação TEL, não GUT.'
+                    : 'Esta categoria não utiliza classificação GUT.',
             ]);
         }
         $criteria = match ($category) {

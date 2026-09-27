@@ -246,11 +246,12 @@ final class DefectAssessmentQuantityTest extends TestCase
         $this->assertStringContainsString('blockInvalidIntegerKey', $source);
         $this->assertStringContainsString('M³ UNI.', $source);
         $this->assertStringContainsString('M³ TOTAL', $source);
-        $this->assertStringContainsString('quantity: item?.quantity ?? inputs.quantity ?? 1', $source);
+        $this->assertStringContainsString('normalizeNativeQuantityMultiplier(persistedQuantity)', $source);
+        $this->assertStringContainsString('Informe uma quantidade inteira positiva.', $source);
         $this->assertStringContainsString('civilInputUnit(key)', $source);
     }
 
-    public function test_editing_a_legacy_fractional_civil_item_preserves_its_multiplier(): void
+    public function test_editing_a_legacy_fractional_civil_item_requires_an_integer_multiplier(): void
     {
         [$actor, $assessment] = $this->scenario(DefectCategory::Civil);
         $item = DefectAssessmentQuantity::factory()->forAssessment($assessment)->create([
@@ -261,15 +262,13 @@ final class DefectAssessmentQuantityTest extends TestCase
         $this->actingAs($actor)->put(route('defect-assessment-quantities.update', $item), [
             'description' => 'Trecho legado revisado',
             'quantity' => ['length' => 2, 'height' => 0.5, 'width' => 0.3, 'quantity' => 1.5],
-        ])->assertRedirect()->assertSessionHasNoErrors();
+        ])->assertRedirect()->assertSessionHasErrors('quantity.quantity');
 
         $item->refresh();
         $this->assertSame('1.5000000000000000', $item->quantity);
-        $this->assertSame('0.4500000000000000', $item->measurement_value);
-        $this->assertSame('Trecho legado revisado', $item->description);
     }
 
-    public function test_rec_quantity_form_displays_the_multiplier_and_legacy_fractional_item_preserves_it(): void
+    public function test_rec_quantity_form_uses_an_integer_multiplier_and_rejects_legacy_fractional_items(): void
     {
         $source = file_get_contents(resource_path('js/pages/DefectAssessments/Show.vue'));
         $recFieldsStart = strpos($source, 'const recQuantityFields = computed');
@@ -278,6 +277,8 @@ final class DefectAssessmentQuantityTest extends TestCase
 
         $this->assertStringNotContainsString("field.key !== 'quantity'", $recFields);
         $this->assertStringContainsString("field.key !== 'total_weight'", $recFields);
+        $this->assertStringContainsString("field.key === 'quantity' ? 'numeric' : 'decimal'", $source);
+        $this->assertStringNotContainsString('allowsLegacyFractionalMultiplier', $source);
 
         [$actor, $assessment] = $this->scenario(DefectCategory::StructuralRecovery);
         $item = DefectAssessmentQuantity::factory()->forAssessment($assessment)->create([
@@ -290,12 +291,10 @@ final class DefectAssessmentQuantityTest extends TestCase
             'quantity' => [
                 'element' => 'profile_l', 'width' => 76, 'thickness' => 6, 'length' => 2.8, 'quantity' => 1.5,
             ],
-        ])->assertRedirect()->assertSessionHasNoErrors();
+        ])->assertRedirect()->assertSessionHasErrors('quantity.quantity');
 
         $item->refresh();
         $this->assertSame('1.5000000000000000', $item->quantity);
-        $this->assertSame('28.8817200000000000', $item->measurement_value);
-        $this->assertSame('Perfil legado revisado', $item->description);
     }
 
     public function test_rec_rejects_fractional_multiplier_for_new_items(): void

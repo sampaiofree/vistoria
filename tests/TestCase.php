@@ -16,7 +16,7 @@ abstract class TestCase extends BaseTestCase
     protected function satisfyAssessmentPublicationRequirements(DefectAssessment $assessment): void
     {
         $assessment->loadMissing('defect');
-        if ($assessment->defect->category !== DefectCategory::RoofCladding
+        if ($assessment->defect->category->requiresQuantities()
             && ! $assessment->quantities()->exists()) {
             DefectAssessmentQuantity::factory()->forAssessment($assessment)->create();
         }
@@ -33,13 +33,18 @@ abstract class TestCase extends BaseTestCase
             ]);
         }
 
-        $this->locateAssessment($assessment);
+        if ($assessment->defect->category->requiresLocationMap()) {
+            $this->locateAssessment($assessment);
+        }
     }
 
     protected function locateAssessment(DefectAssessment $assessment, bool $confirmed = true): DefectLocationMapVersion
     {
         $assessment->refresh()->load(['defect', 'locationMapVersion', 'location']);
         if ($assessment->locationMapVersion?->isReady()) {
+            if (blank($assessment->locationMapVersion->project_number)) {
+                $assessment->locationMapVersion->update(['project_number' => 'PRJ-TESTE-001']);
+            }
             if ($assessment->location === null) {
                 $location = DefectAssessmentLocation::factory()->forAssessment($assessment);
                 ($confirmed ? $location->confirmed() : $location)->create();
@@ -64,7 +69,10 @@ abstract class TestCase extends BaseTestCase
         $version = DefectLocationMapVersion::factory()
             ->forMapAndAssessment($map, $assessment)
             ->ready()
-            ->create(['version' => ((int) $map->versions()->max('version')) + 1]);
+            ->create([
+                'version' => ((int) $map->versions()->max('version')) + 1,
+                'project_number' => 'PRJ-TESTE-001',
+            ]);
         $version->update(['background_path' => sprintf(
             'organizations/%d/defects/%s/maps/%s/versions/%s/derivatives/test/background.webp',
             $assessment->organization_id,

@@ -4,6 +4,7 @@ import { Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/components/ui/AppLayout.vue';
 import Pagination from '@/components/ui/Pagination.vue';
 import InspectionStatusBadge from '@/components/domain/inspections/InspectionStatusBadge.vue';
+import SelfAssignmentButton from '@/components/domain/inspections/SelfAssignmentButton.vue';
 
 const props = defineProps({
     inspections: {
@@ -49,6 +50,8 @@ watch(() => props.filters, (filters) => {
 function applyFilters() {
     const filters = Object.fromEntries(Object.entries(filterForm).filter(([, value]) => value !== ''));
 
+    if (props.capabilities.available_queue) filters.scope = props.filters.scope;
+
     router.get('/inspections', filters, {
         preserveScroll: true,
         preserveState: true,
@@ -64,11 +67,16 @@ function clearFilters() {
         scheduled_to: '',
     });
 
-    router.get('/inspections', {}, {
+    router.get('/inspections', props.capabilities.available_queue ? { scope: props.filters.scope } : {}, {
         preserveScroll: true,
         preserveState: true,
         replace: true,
     });
+}
+
+function changeScope(scope) {
+    const filters = Object.fromEntries(Object.entries(filterForm).filter(([, value]) => value !== ''));
+    router.get('/inspections', { ...filters, scope }, { preserveScroll: true, preserveState: true });
 }
 </script>
 
@@ -77,6 +85,11 @@ function clearFilters() {
         title="Inspeções"
         subtitle="Planejamento, execução e liberação de inspeções."
     >
+        <nav v-if="capabilities.available_queue" class="mb-4 flex gap-2" aria-label="Fila de inspeções">
+            <button v-for="tab in [{ value: 'mine', label: 'Minhas inspeções' }, { value: 'available', label: 'Disponíveis para mim' }]" :key="tab.value" type="button" :aria-current="filters.scope === tab.value ? 'page' : undefined" class="rounded-lg px-4 py-2 text-sm font-semibold" :class="filters.scope === tab.value ? 'bg-teal-700 text-white' : 'border border-slate-300 bg-white text-slate-700'" @click="changeScope(tab.value)">
+                {{ tab.label }}
+            </button>
+        </nav>
         <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                 <form class="grid flex-1 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(15rem,1fr)_13rem_10rem_10rem_auto]" @submit.prevent="applyFilters">
@@ -148,6 +161,7 @@ function clearFilters() {
                             </td>
                             <td class="px-5 py-4 text-right">
                                 <div class="flex justify-end gap-2">
+                                    <SelfAssignmentButton :capability="inspection.self_assign" />
                                     <Link :href="inspection.show_url" class="inline-flex min-h-9 items-center justify-center rounded-lg border border-teal-700 px-3 text-sm font-semibold text-teal-700 transition hover:bg-teal-50">
                                         Ver
                                     </Link>

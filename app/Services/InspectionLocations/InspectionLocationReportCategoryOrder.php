@@ -16,6 +16,7 @@ final class InspectionLocationReportCategoryOrder
         'CV' => 2,
         'CIVIL' => 2,
         'TEL' => 3,
+        'ES' => 4,
     ];
 
     public function priority(?string $code, ?string $name = null): int

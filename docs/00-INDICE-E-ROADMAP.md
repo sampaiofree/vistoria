@@ -49,6 +49,7 @@ aprovar e liberar inspeções técnicas. O estado atual inclui:
 | [15 — Padrão visual](15-PADRAO-VISUAL-E-LAYOUT-DO-RELATORIO.md) | Referência visual e itens não entregues |
 | [16 — Pauta SEND](16-PAUTA-SEND-QUANTITATIVOS-REC.md) | Perguntas de negócio pendentes |
 | [17 — Pendências verificadas](17-AJUSTES-FINAIS-DOCUMENTOS-09-A-13.md) | Lacunas conhecidas dos documentos 09 a 13 |
+| [18 — Prazos de tratativa e RGI](18-PRAZOS-DE-TRATATIVA-E-RGI.md) | Referência técnica de prazos e risco grave e iminente |
 
 ## Limites verificados
 

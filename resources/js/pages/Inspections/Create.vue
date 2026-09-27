@@ -7,6 +7,7 @@ defineProps({
         type: String,
         required: true,
     },
+    reinspection_options_url: { type: String, required: true },
     cancel_url: {
         type: String,
         required: true,
@@ -34,6 +35,7 @@ defineProps({
         <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <InspectionBatchForm
                 :create-action="create_action"
+                :reinspection-options-url="reinspection_options_url"
                 :cancel-url="cancel_url"
                 :equipment-search-url="equipment_search_url"
                 :selected-equipment="selected_equipment"

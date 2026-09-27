@@ -6,6 +6,7 @@ import {
     calculateRecQuantity,
     calculateTacQuantity,
     formatNativeMeasurement,
+    normalizeNativeQuantityMultiplier,
 } from '../../resources/js/lib/nativeQuantity.js';
 
 function close(actual, expected) {
@@ -47,9 +48,9 @@ test('calculates every REC formula from document 09', () => {
     ];
 
     for (const [element, inputs, unit] of cases) {
-        const result = calculateRecQuantity({ element, ...inputs, quantity: 1.5 });
+        const result = calculateRecQuantity({ element, ...inputs, quantity: 2 });
         close(result.unitValue, unit);
-        close(result.totalValue, unit * 1.5);
+        close(result.totalValue, unit * 2);
     }
 
     const tubular = calculateRecQuantity({ element: 'tubular_profile', outer_diameter: 100, thickness: 5, length: 2000, quantity: 2 });
@@ -63,6 +64,20 @@ test('handles manual REC weights and rejects impossible geometry', () => {
     });
     assert.equal(calculateRecQuantity({ element: 'tubular_profile', outer_diameter: 10, thickness: 5, length: 1000, quantity: 1 }), null);
     assert.equal(calculateRecQuantity({ element: 'profile_w', flange_width: 100, flange_thickness: 5, web_height: 10, web_thickness: 5, length: 1, quantity: 1 }), null);
+});
+
+test('rejects fractional calculated quantities', () => {
+    assert.equal(calculateCivilQuantity({ length: 2, height: 0.5, width: 0.3, quantity: 1.5 }), null);
+    assert.equal(calculateRecQuantity({
+        element: 'profile_l', width: 76, thickness: 6, length: 2.8, quantity: 1.5,
+    }), null);
+});
+
+test('normalizes persisted integer multipliers without changing legacy fractions', () => {
+    assert.equal(normalizeNativeQuantityMultiplier('2.0000000000000000'), '2');
+    assert.equal(normalizeNativeQuantityMultiplier('0002.000'), '0002');
+    assert.equal(normalizeNativeQuantityMultiplier('1.5000000000000000'), '1.5000000000000000');
+    assert.equal(normalizeNativeQuantityMultiplier(2), 2);
 });
 
 test('builds a REC request from definition fields and formats only the presentation', () => {

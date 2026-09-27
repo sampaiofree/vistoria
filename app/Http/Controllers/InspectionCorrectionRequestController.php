@@ -127,11 +127,7 @@ final class InspectionCorrectionRequestController extends Controller
         $parent = $this->requestForTenant($tenant, $correctionRequest);
         $this->authorize('createChild', $parent);
 
-        $assessment = $request->validated('defect_assessment_id') === null
-            ? null
-            : $this->tenantDefectAssessment($tenant, DefectAssessment::query()->findOrFail($request->validated('defect_assessment_id')));
-
-        $action->createChild($request->user(), $parent, $request->validated('request_message'), $assessment);
+        $action->createChild($request->user(), $parent, $request->validated('request_message'));
 
         return back()->with('success', 'Ajuste encaminhado ao Inspetor.');
     }

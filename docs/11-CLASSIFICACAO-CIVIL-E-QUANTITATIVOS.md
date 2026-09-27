@@ -599,7 +599,7 @@ As opções e as duas notas de entrada devem ser preservadas no snapshot, além 
 
 ### Quantitativo
 
-A unidade principal é `m³`. O inspetor registra cada medição como um item independente e informa Comprimento, Altura, Largura e Quantidade. Para novos itens, a quantidade é um número inteiro positivo; itens legados com quantidade decimal permanecem editáveis para preservar seu histórico.
+A unidade principal é `m³`. O inspetor registra cada medição como um item independente e informa Comprimento, Altura, Largura e Quantidade. A quantidade deve ser sempre um número inteiro positivo. Itens legados com quantidade decimal são preservados no histórico, mas precisam ser corrigidos para um inteiro antes de serem salvos novamente.
 
 ```text
 M³ do item = Comprimento × Altura × Largura × Quantidade

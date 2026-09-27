@@ -20,7 +20,7 @@ final class DefectLocationMapVersion extends Model
 
     protected $fillable = [
         'public_id', 'organization_id', 'equipment_id', 'defect_location_map_id', 'created_for_assessment_id',
-        'version', 'source_disk', 'source_path', 'source_mime_type', 'source_size', 'source_checksum',
+        'version', 'project_number', 'source_disk', 'source_path', 'source_mime_type', 'source_size', 'source_checksum',
         'source_uploaded_by', 'background_disk', 'background_path', 'background_mime_type', 'background_size',
         'background_width', 'background_height', 'background_checksum', 'processing_status', 'processing_error',
         'processed_at', 'lock_version',

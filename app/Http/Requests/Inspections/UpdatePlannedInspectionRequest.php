@@ -42,6 +42,9 @@ final class UpdatePlannedInspectionRequest extends FormRequest
         $organizationId = $this->user()?->organization_id;
 
         return [
+            'reinspection_defect_ids' => ['sometimes', 'array'],
+            'reinspection_defect_ids.*' => ['required', 'integer', 'distinct'],
+            'reinspection_base_id' => ['sometimes', 'nullable', 'integer'],
             'equipment_id' => [
                 'required',
                 'integer',

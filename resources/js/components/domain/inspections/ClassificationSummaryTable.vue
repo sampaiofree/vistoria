@@ -1,12 +1,16 @@
 <script setup>
+import { computed } from 'vue';
+
 const props = defineProps({
     summary: { type: Object, required: true },
+    categories: { type: Array, default: null },
     editable: { type: Boolean, default: false },
     m2Links: { type: Array, default: () => [] },
     variant: { type: String, default: 'workspace' },
 });
 
 const emit = defineEmits(['update:m2']);
+const displayedCategories = computed(() => props.categories ?? props.summary.categories ?? []);
 
 function validHexColor(color) {
     return /^#[0-9A-F]{6}$/i.test(String(color || ''));
@@ -43,12 +47,12 @@ function updateM2(category, classificationCode, event) {
             <col class="classification-summary-m2">
         </colgroup>
         <thead><tr><th>RESUMO DA PRIORIZAÇÃO</th><th>CLASSIFICAÇÃO</th><th>QTDE. AVARIAS</th><th>DATA</th><th>QUANTITATIVO</th><th>NOTA M2 (SAP)</th></tr></thead>
-        <tbody v-for="category in summary.categories" :key="category.code">
+        <tbody v-for="category in displayedCategories" :key="category.code">
             <tr v-for="(row, index) in category.report_rows" :key="row.classification_code">
                 <td v-if="index === 0" :rowspan="category.report_rows.length" class="classification-summary-prioritization-cell">{{ category.report_name }}</td>
                 <td class="classification-summary-classification-cell" :style="colorStyle(row.color)">{{ row.classification_code }}</td>
                 <td>{{ row.defect_count || '—' }}</td>
-                <td></td>
+                <td>{{ row.m2_due_date || '' }}</td>
                 <td>{{ category.code === 'TEL' ? '—' : (row.quantity?.display || '—') }}</td>
                 <td>
                     <input

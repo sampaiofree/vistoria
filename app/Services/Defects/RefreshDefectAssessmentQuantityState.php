@@ -21,15 +21,18 @@ final class RefreshDefectAssessmentQuantityState
         $assessment->load(['defect', 'quantities', 'locationMapVersion', 'location']);
 
         if ($wasComplete) {
-            $keepPublished = ($assessment->defect->category === DefectCategory::RoofCladding || $assessment->quantities->isNotEmpty())
-                && $assessment->locationMapVersion?->isReady()
-                && $assessment->location?->isConfirmed();
+            $category = $assessment->defect->category;
+            $keepPublished = (! $category->requiresQuantities() || $assessment->quantities->isNotEmpty())
+                && (! $category->requiresLocationMap() || (
+                    $assessment->locationMapVersion?->isReady()
+                    && $assessment->location?->isConfirmed()
+                ));
 
             if ($keepPublished) {
                 $assessment->assessed_at = now();
-                $assessment->quantity_snapshot = $assessment->defect->category === DefectCategory::RoofCladding
+                $assessment->quantity_snapshot = ! $category->requiresQuantities()
                     ? null
-                    : $this->snapshot->build($assessment->defect->category, $assessment->quantities);
+                    : $this->snapshot->build($category, $assessment->quantities);
             } else {
                 $assessment->fill([
                     'status' => DefectAssessmentStatus::Draft,

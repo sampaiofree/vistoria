@@ -15,6 +15,7 @@ final class ReinspectionCoverageValidator
     public function validate(Inspection $inspection): void
     {
         $pending = $this->scope->handle($inspection)
+            ->filter(fn (Defect $defect): bool => app(InspectionAssessmentResolver::class)->requiresAssessment($inspection, $defect))
             ->filter(function (Defect $defect) use ($inspection): bool {
                 $assessment = $defect->assessments->firstWhere('inspection_id', $inspection->getKey());
 

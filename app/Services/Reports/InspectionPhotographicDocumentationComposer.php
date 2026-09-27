@@ -59,6 +59,7 @@ final class InspectionPhotographicDocumentationComposer
                     'classification_code' => data_get($item, 'classification.code') ?? data_get($item, 'assessment.classification_code'),
                     'condition' => data_get($item, 'assessment.condition'),
                     'condition_label' => data_get($item, 'assessment.condition_label'),
+                    'historical_label' => $item['historical_label'] ?? null,
                     'previous_classification' => data_get($item, 'previous_assessment_summary.classification'),
                     'current_classification' => $item['classification'] ?? null,
                     'defect_title' => $item['title'] ?? 'Avaria',

@@ -121,6 +121,8 @@ final class CreateInspection
                 ]);
             }
 
+            app(\App\Services\Inspections\ReinspectionScopePlanner::class)->save($inspection, $actor, $data);
+
             return $inspection->refresh();
         });
     }

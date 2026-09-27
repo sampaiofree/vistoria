@@ -28,9 +28,8 @@ final class UpdateDefectAssessmentQuantityRequest extends FormRequest
         $rules = NativeDefectQuantityCalculator::rules(
             $assessment->defect->category,
             $this->input('quantity.element'),
-            $this->allowsLegacyFractionalMultiplier(),
         );
-        if ($assessment->defect->category === DefectCategory::RoofCladding) {
+        if (! $assessment->defect->category->requiresQuantities()) {
             return $rules;
         }
         $rules['quantity'] = collect($rules['quantity'])
@@ -79,13 +78,5 @@ final class UpdateDefectAssessmentQuantityRequest extends FormRequest
         return $quantity instanceof DefectAssessmentQuantity
             ? $quantity->assessment()->with('defect')->first()
             : null;
-    }
-
-    private function allowsLegacyFractionalMultiplier(): bool
-    {
-        $quantity = $this->route('defectAssessmentQuantity');
-
-        return $quantity instanceof DefectAssessmentQuantity
-            && $quantity->hasFractionalMultiplier();
     }
 }

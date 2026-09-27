@@ -6,6 +6,7 @@ enum InspectionStatus: string
 {
     case Planned = 'planned';
     case InProgress = 'in_progress';
+    case AwaitingM2 = 'awaiting_m2';
     case AwaitingReview = 'awaiting_review';
     case InReview = 'in_review';
     case InCorrection = 'in_correction';
@@ -18,6 +19,7 @@ enum InspectionStatus: string
         return match ($this) {
             self::Planned => 'Planejada',
             self::InProgress => 'Em inspeção',
+            self::AwaitingM2 => 'Aguardando preenchimento de notas',
             self::AwaitingReview => 'Aguardando revisão',
             self::InReview => 'Em revisão',
             self::InCorrection => 'Em correção',

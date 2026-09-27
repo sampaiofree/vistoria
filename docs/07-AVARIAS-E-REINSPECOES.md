@@ -54,3 +54,34 @@ avaria não são duplicados.
 O mapa e a geometria podem ser herdados, mas a localização precisa de confirmação
 na nova avaliação. O relatório considera avaliações `complete`; dados de inspeções
 canceladas permanecem auditáveis, mas não definem o estado corrente da avaria.
+
+## Reinspeção seletiva
+
+O planejamento permite escolher as avarias que exigem nova avaliação. Todas começam
+selecionadas; havendo avarias elegíveis, ao menos uma deve permanecer selecionada.
+A seleção pode ser alterada pelo Planejador vinculado somente em `planned`. Novas
+avarias cadastradas na visita sempre exigem avaliação.
+
+`inspection_defect_scopes` fixa a seleção e a avaliação publicada de origem de cada
+avaria herdada. As desmarcadas aparecem preenchidas, com identificação de histórico
+mantido e edição bloqueada, sem criar outra avaliação ou copiar arquivos. Avarias
+sem avaliação histórica publicada não podem ser desmarcadas. O vínculo mantém a
+composição do relatório mesmo se a avaria for reparada em um ciclo posterior.
+
+`InspectionAssessmentResolver` fornece avaliações atuais e referências históricas
+para listas, mapas, fotos, classificação e exportações. O progresso e a cobertura
+obrigatória consideram somente avarias selecionadas e novas. Prazos herdados são
+preservados; grupos com vencimentos diferentes exibem o menor vencimento. Notas M2
+e tratativas especiais pertencem ao ciclo atual e começam vazias.
+
+As opções são consultadas em `GET /inspections/reinspection-options` por
+`equipment_id`, com `inspection_id` opcional para editar um planejamento. Criação
+e atualização aceitam `reinspection_defect_ids` e `reinspection_base_id` (proteção
+contra histórico alterado após carregar o formulário). A leitura das desmarcadas
+usa `inspections/{inspection}/defects/{defect}/historical`, mantendo a navegação na
+inspeção atual.
+
+Inspeções sem `reinspection_scope_version` mantêm o comportamento anterior.
+Criações sem seleção explícita incluem todas as avarias; atualizações sem o campo
+preservam o escopo, exceto quando o equipamento muda. Nenhum relatório antigo é
+reescrito pela migração.

@@ -34,7 +34,7 @@ final class CreateInspectionBatch
         return DB::transaction(function () use ($actor, $records): Collection {
             $this->validateRecords($records, true);
 
-            return collect($records)->map(function (array $record) use ($actor): Inspection {
+            return collect($records)->map(function (array $record, int $index) use ($actor): Inspection {
                 $equipment = Equipment::query()
                     ->forOrganization($this->tenant->id())
                     ->whereKey($record['equipment_id'])
@@ -45,7 +45,12 @@ final class CreateInspectionBatch
                     ->whereKey($record['inspector_id'])
                     ->firstOrFail();
 
-                $inspection = $this->createInspection->handle($actor, $equipment, $record);
+                try {
+                    $inspection = $this->createInspection->handle($actor, $equipment, $record);
+                } catch (ValidationException $exception) {
+                    throw ValidationException::withMessages(collect($exception->errors())
+                        ->mapWithKeys(fn ($messages, $field): array => ["inspections.$index.$field" => $messages])->all());
+                }
                 $this->assignResponsible->handle(
                     $inspection,
                     $actor,

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Requests\Defects;
 
 use App\Enums\DefectAssessmentCondition;
+use App\Enums\DefectAssessmentClassificationMethod;
 use App\Enums\DefectAssessmentStatus;
 use App\Models\DefectAssessment;
 use App\Support\TextNormalizer;
@@ -23,7 +24,7 @@ final class UpdateDefectAssessmentRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        $this->merge([
+        $normalized = [
             'condition' => strtolower(trim((string) $this->input('condition'))),
             'location_description' => TextNormalizer::nullableText($this->input('location_description')),
             'comment' => TextNormalizer::nullableText($this->input('comment')),
@@ -33,7 +34,17 @@ final class UpdateDefectAssessmentRequest extends FormRequest
             'item_description' => TextNormalizer::nullableText($this->input('item_description')),
             'project_reference' => TextNormalizer::nullableText($this->input('project_reference')),
             'status' => strtolower(trim((string) $this->input('status'))),
-        ]);
+        ];
+
+        if ($this->exists('classification_method')) {
+            $normalized['classification_method'] = strtolower(trim((string) $this->input('classification_method')));
+        }
+
+        if ($this->exists('is_unsafe_condition')) {
+            $normalized['is_unsafe_condition'] = $this->boolean('is_unsafe_condition');
+        }
+
+        $this->merge($normalized);
     }
 
     public function rules(): array
@@ -69,6 +80,8 @@ final class UpdateDefectAssessmentRequest extends FormRequest
             'item_description' => ['nullable', 'string', 'max:180'],
             'project_reference' => ['nullable', 'string', 'max:180'],
             'impacts_activity' => ['nullable', 'boolean'],
+            'is_unsafe_condition' => ['sometimes', 'boolean'],
+            'classification_method' => ['nullable', Rule::enum(DefectAssessmentClassificationMethod::class)],
             'status' => ['nullable', Rule::in([
                 DefectAssessmentStatus::Draft->value,
                 DefectAssessmentStatus::Complete->value,

@@ -51,6 +51,10 @@ final class AssessExistingDefect
 
             $this->validateActor($actor, $inspection);
 
+            if (! app(\App\Services\Defects\InspectionAssessmentResolver::class)->requiresAssessment($inspection, $defect)) {
+                throw ValidationException::withMessages(['defect' => 'Esta avaria mantém o histórico e não faz parte do escopo de reinspeção.']);
+            }
+
             if ($defect->equipment_id !== $inspection->equipment_id) {
                 throw ValidationException::withMessages([
                     'defect' => 'A avaria não pertence ao equipamento desta inspeção.',
@@ -81,6 +85,7 @@ final class AssessExistingDefect
             $previousAssessment?->loadMissing(['locationMapVersion', 'location', 'quantities']);
 
             $inheritedMapVersionId = $condition->requiresEvidence()
+                && $defect->category->requiresLocationMap()
                 && $previousAssessment?->locationMapVersion?->isReady()
                 ? $previousAssessment->defect_location_map_version_id
                 : null;
@@ -106,7 +111,9 @@ final class AssessExistingDefect
                 'updated_by' => $actor->getKey(),
             ]);
 
-            $this->copyQuantities($previousAssessment, $assessment);
+            if ($defect->category->requiresQuantities()) {
+                $this->copyQuantities($previousAssessment, $assessment);
+            }
 
             if ($inheritedMapVersionId !== null && $previousAssessment?->location !== null) {
                 DefectAssessmentLocation::query()->create([
@@ -124,10 +131,11 @@ final class AssessExistingDefect
             }
 
             if (($data['assessment_action'] ?? DefectAssessmentStatus::Draft->value) === DefectAssessmentStatus::Complete->value) {
-                $assessment = match ($defect->category) {
-                    DefectCategory::RoofCladding => $this->saveTel->handle($actor, $assessment, $data),
-                    default => $this->saveGut->handle($actor, $assessment, $data),
-                };
+                if ($defect->category === DefectCategory::RoofCladding) {
+                    $assessment = $this->saveTel->handle($actor, $assessment, $data);
+                } elseif ($defect->category->requiresGut()) {
+                    $assessment = $this->saveGut->handle($actor, $assessment, $data);
+                }
 
                 return $this->completeAssessment->handle($actor, $assessment, $data);
             }

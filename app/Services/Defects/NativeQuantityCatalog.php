@@ -105,6 +105,13 @@ final class NativeQuantityCatalog
                 'unit' => null,
                 'fields' => [],
             ],
+            DefectCategory::SolidaryStructures => [
+                'category' => $category->value,
+                'available' => false,
+                'mode' => null,
+                'unit' => null,
+                'fields' => [],
+            ],
         };
     }
 
