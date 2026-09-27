@@ -7,6 +7,8 @@ namespace Tests\Feature\Pwa;
 use App\Models\Organization;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Imagick;
 use ImagickDraw;
@@ -146,6 +148,46 @@ final class CompanyAppTest extends TestCase
         $this->assertSame($previous, Imagick::getResourceLimit(Imagick::RESOURCETYPE_THREAD));
         $this->assertSame($response->getContent(), $this->get($url)->getContent());
         $this->withHeader('If-None-Match', $response->headers->get('ETag'))->get($url)->assertStatus(304);
+    }
+
+    public function test_icon_cache_values_are_text_safe_and_cache_hits_still_return_pngs(): void
+    {
+        config(['cache.default' => 'database']);
+        $organization = $this->organizationWithLogo($this->image(400, 100, 'red'));
+
+        foreach ([192, 512] as $size) {
+            $url = route('pwa.icon', ['organization' => $organization, 'size' => $size]);
+            $contents = $this->get($url)->assertOk()->assertHeader('Content-Type', 'image/png')->getContent();
+            $this->assertSame($contents, $this->get($url)->assertOk()->getContent());
+            $dimensions = getimagesizefromstring($contents);
+            $this->assertSame([$size, $size], [$dimensions[0], $dimensions[1]]);
+            $this->assertPixel($contents, (int) ($size / 2), (int) ($size / 2), [255, 0, 0]);
+        }
+
+        $prefix = Cache::getStore()->getPrefix();
+        $keys = DB::table('cache')->pluck('key');
+        $this->assertCount(2, $keys);
+        foreach ($keys as $key) {
+            // MySQL's TEXT cache column rejects binary PNG bytes. SQLite and
+            // the array store used by other tests do not enforce this constraint.
+            $cached = Cache::get(substr($key, strlen($prefix)));
+            $this->assertIsString($cached);
+            $this->assertTrue(mb_check_encoding($cached, 'UTF-8'), 'Icon cache values must be valid text for MySQL.');
+        }
+    }
+
+    public function test_legacy_binary_cache_entries_do_not_break_icon_responses(): void
+    {
+        $logo = $this->image(100, 100, 'red');
+        $organization = $this->organizationWithLogo($logo);
+        $legacyKey = 'pwa:icon:'.$organization->public_id.':'.hash('sha256', 'v1|'.$logo).':192';
+        Cache::put($legacyKey, $this->image(192, 192, 'blue'), now()->addDays(30));
+
+        $contents = $this->get(route('pwa.icon', ['organization' => $organization, 'size' => 192]))
+            ->assertOk()->assertHeader('Content-Type', 'image/png')->getContent();
+
+        $this->assertPixel($contents, 96, 96, [255, 0, 0]);
+        $this->assertNotSame(Cache::get($legacyKey), $contents);
     }
 
     public function test_unknown_inactive_deleted_companies_and_unsupported_sizes_return_not_found(): void

@@ -85,6 +85,8 @@ O app usa o nome, a cor primária e o campo **Logotipo** de **Configurações �
 O ícone do menu lateral é independente. O logotipo é centralizado, sem distorção,
 em ícones PNG de 192 e 512 pixels; na ausência de imagem válida, usa-se o símbolo
 do Vistoria. O processamento utiliza Imagick e cache por empresa e conteúdo da imagem.
+No cache, os PNGs são armazenados em Base64 para compatibilidade com colunas de
+texto do MySQL; as rotas públicas continuam retornando imagens `image/png`.
 Manifesto e ícones são públicos e não contêm dados operacionais ou credenciais.
 
 Ao abrir, o app acessa o dashboard e solicita login se a sessão expirou. O uso

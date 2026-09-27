@@ -50,9 +50,13 @@ final class OrganizationAppBranding
     public function icon(Organization $organization, int $size): string
     {
         $logo = $this->logo($organization);
-        $key = 'pwa:icon:'.$organization->public_id.':'.$this->version($logo).':'.$size;
+        $key = 'pwa:icon:base64:'.$organization->public_id.':'.$this->version($logo).':'.$size;
 
-        return Cache::remember($key, now()->addDays(30), fn (): string => $this->render($logo, $size));
+        // Database caches may use a UTF-8 TEXT column, which cannot store raw PNG bytes.
+        // A new namespace prevents treating legacy binary entries as Base64.
+        $encoded = Cache::remember($key, now()->addDays(30), fn (): string => base64_encode($this->render($logo, $size)));
+
+        return base64_decode($encoded, strict: true);
     }
 
     private function logo(Organization $organization): ?string
