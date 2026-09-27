@@ -22,7 +22,9 @@ use App\Models\InspectionOverviewPhoto;
 use App\Models\InspectionResponsible;
 use App\Models\Organization;
 use App\Models\User;
+use App\Services\Classification\NativeDefectCatalog;
 use App\Services\InspectionLocations\InspectionLocationReportComposer;
+use App\Services\Reports\GutGravityLegend;
 use App\Services\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Validation\ValidationException;
@@ -51,8 +53,8 @@ final class DefectAssessmentGutTest extends TestCase
         $this->assertSame('#FFFF00', $assessment->classification_snapshot['color']);
         $this->assertSame([16, 35], [$assessment->classification_snapshot['lower_limit'], $assessment->classification_snapshot['upper_limit']]);
         $this->assertSame('native_catalog', $assessment->gut_snapshot['source']);
-        $this->assertSame(4, $assessment->gut_snapshot['catalog_version']);
-        $this->assertSame(4, $assessment->classification_snapshot['catalog_version']);
+        $this->assertSame(5, $assessment->gut_snapshot['catalog_version']);
+        $this->assertSame(5, $assessment->classification_snapshot['catalog_version']);
         $this->assertSame('calculated', $assessment->gut_snapshot['criteria']['gravity']['mode']);
         $this->assertSame('catalog', $assessment->gut_snapshot['criteria']['urgency']['mode']);
         $this->assertSame('structural_function', $assessment->gut_snapshot['criteria']['urgency']['matrix']['code']);
@@ -66,7 +68,7 @@ final class DefectAssessmentGutTest extends TestCase
                 ->has('gut_options.gravity', 5)
                 ->where('gut_options.gravity.0.score', 1)
                 ->where('gut_options.gravity.0.color', '#00AEEF')
-                ->where('gut_definition.catalog_version', 4)
+                ->where('gut_definition.catalog_version', 5)
                 ->where('gut_definition.category.code', 'REC')
                 ->where('gut_definition.safety_impact_options.0.score', 1)
                 ->where('gut_definition.safety_impact_options.0.color', '#00AEEF')
@@ -319,6 +321,9 @@ final class DefectAssessmentGutTest extends TestCase
                     ...$base,
                     'urgency_context_code' => $context['code'],
                     'urgency_option_code' => $option['code'],
+                    ...($context['code'] === 'machine_running_path' ? [
+                        'trend_group_code' => 'rail_joint', 'trend_option_code' => 'joint_gap',
+                    ] : []),
                 ]);
 
                 $urgency = $resolved['criteria']['urgency'];
@@ -336,6 +341,8 @@ final class DefectAssessmentGutTest extends TestCase
                     ...$base,
                     'trend_group_code' => $group['code'],
                     'trend_option_code' => $option['code'],
+                    'urgency_context_code' => $group['urgency_context_code'],
+                    'urgency_option_code' => $group['urgency_context_code'] === 'function' ? 'building_support_column' : 'running_rail',
                 ]);
 
                 $trend = $resolved['criteria']['trend'];
@@ -351,6 +358,42 @@ final class DefectAssessmentGutTest extends TestCase
         }
         $railJoint = collect($definition['trend_groups'])->firstWhere('code', 'rail_joint');
         $this->assertSame([1, 2], array_column($railJoint['options'], 'score'));
+    }
+
+    public function test_civil_rejects_trend_groups_from_the_other_urgency_context_without_changing_saved_data(): void
+    {
+        [$actor, $assessment] = $this->scenario(DefectCategory::Civil);
+        $base = $this->technicalGutPayload(DefectCategory::Civil);
+        $assessment = app(SaveDefectAssessmentGut::class)->handle($actor, $assessment, $base);
+        $before = $assessment->getRawOriginal();
+
+        foreach ([
+            [...$base, 'trend_group_code' => 'rail_joint', 'trend_option_code' => 'joint_gap'],
+            [...$base, 'urgency_context_code' => 'machine_running_path', 'urgency_option_code' => 'running_rail'],
+        ] as $payload) {
+            $this->actingAs($actor)->put(route('defect-assessments.gut.update', $assessment), ['condition' => 'new', ...$payload])
+                ->assertSessionHasErrors(['trend_group_code' => 'Escolha um tipo de degradação compatível com o contexto de urgência informado.']);
+            $this->assertSame($before, $assessment->refresh()->getRawOriginal());
+        }
+    }
+
+    public function test_reading_a_legacy_crossed_civil_snapshot_preserves_the_saved_choices(): void
+    {
+        [$actor, $assessment] = $this->scenario(DefectCategory::Civil);
+        $assessment = app(SaveDefectAssessmentGut::class)->handle($actor, $assessment, $this->technicalGutPayload(DefectCategory::Civil));
+        $snapshot = $assessment->gut_snapshot;
+        $snapshot['criteria']['trend']['group'] = ['code' => 'rail_joint', 'label' => 'Emenda dos trilhos'];
+        $snapshot['criteria']['trend']['option'] = NativeDefectCatalog::trend(DefectCategory::Civil, 'rail_joint', 'joint_gap');
+        $snapshot['criteria']['trend']['score'] = 1;
+        $snapshot['criteria']['trend']['color'] = NativeDefectCatalog::colorForScore(1);
+        $assessment->update(['gut_snapshot' => $snapshot]);
+        $before = $assessment->getRawOriginal();
+
+        $this->actingAs($actor)->get(route('defect-assessments.show', $assessment))
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+                ->where('gut_snapshot.criteria.urgency.context.code', 'function')
+                ->where('gut_snapshot.criteria.trend.group.code', 'rail_joint'));
+        $this->assertSame($before, $assessment->refresh()->getRawOriginal());
     }
 
     public function test_civil_requires_compatible_contextual_choices_and_rejects_manual_notes(): void
@@ -392,7 +435,7 @@ final class DefectAssessmentGutTest extends TestCase
             'trend_option_code' => 'joint_alignment',
         ]);
 
-        $this->assertSame(4, $saved->gut_snapshot['catalog_version']);
+        $this->assertSame(5, $saved->gut_snapshot['catalog_version']);
         $this->assertSame('machine_running_path', $saved->gut_snapshot['criteria']['urgency']['context']['code']);
         $this->assertSame('rail_joint', $saved->gut_snapshot['criteria']['urgency']['option']['code']);
         $this->assertSame('rail_joint', $saved->gut_snapshot['criteria']['trend']['group']['code']);
@@ -571,6 +614,92 @@ final class DefectAssessmentGutTest extends TestCase
             ->assertSessionHasNoErrors();
 
         $this->assertFalse($published->refresh()->is_unsafe_condition);
+    }
+
+    public function test_one_not_applicable_impact_uses_the_other_score_and_preserves_the_choice(): void
+    {
+        foreach ([DefectCategory::Civil, DefectCategory::StructuralRecovery] as $category) {
+            [$actor, $assessment] = $this->scenario($category);
+            $definition = NativeDefectCatalog::technicalDefinition($category);
+
+            foreach (['safety_impact', 'asset_impact'] as $applicable) {
+                $notApplicable = $applicable === 'safety_impact' ? 'asset_impact' : 'safety_impact';
+                $options = $definition[$applicable.'_options'];
+                $this->assertSame([1, 2, 3, 4, 5, null], array_column($options, 'score'));
+                $this->assertSame([
+                    'code' => 'not_applicable', 'label' => 'Não se aplica', 'score' => null, 'color' => null,
+                ], $options[5]);
+
+                foreach (array_slice($options, 0, 5) as $option) {
+                    $this->actingAs($actor)->put(route('defect-assessments.gut.update', $assessment), [
+                        'condition' => 'new', ...$this->technicalGutPayload($category),
+                        $applicable.'_code' => $option['code'],
+                        $notApplicable.'_code' => 'not_applicable',
+                    ])->assertRedirect()->assertSessionHasNoErrors();
+
+                    $assessment->refresh();
+                    $gravity = $assessment->gut_snapshot['criteria']['gravity'];
+                    $this->assertSame($option['score'], $assessment->gravity);
+                    $this->assertSame($option['score'] * $assessment->urgency * $assessment->trend, $assessment->gut_score);
+                    $this->assertSame($options[5], $gravity[$notApplicable]);
+                    $this->assertSame($option, $gravity[$applicable]);
+                    $this->assertSame($applicable === 'safety_impact' ? 'IMP. SEG.' : 'IMP. ATIV.', GutGravityLegend::fromSnapshot($gravity));
+                    $this->actingAs($actor)->get(route('defect-assessments.show', $assessment))
+                        ->assertOk()->assertInertia(fn (Assert $page) => $page
+                            ->where('gut_snapshot.criteria.gravity.'.$notApplicable.'.code', 'not_applicable')
+                            ->where('gut_snapshot.criteria.gravity.'.$notApplicable.'.score', null)
+                            ->where('gut_snapshot.criteria.gravity.score', $option['score']));
+                }
+            }
+        }
+    }
+
+    public function test_invalid_impact_combinations_do_not_change_the_saved_assessment(): void
+    {
+        foreach ([DefectCategory::Civil, DefectCategory::StructuralRecovery] as $category) {
+            [$actor, $assessment] = $this->scenario($category);
+            $assessment = app(SaveDefectAssessmentGut::class)->handle($actor, $assessment, $this->technicalGutPayload($category));
+            $before = $assessment->getRawOriginal();
+            $base = $this->technicalGutPayload($category);
+
+            $this->actingAs($actor)->put(route('defect-assessments.gut.update', $assessment), [
+                'condition' => 'new', ...$base,
+                'safety_impact_code' => 'not_applicable', 'asset_impact_code' => 'not_applicable',
+            ])->assertSessionHasErrors([
+                'safety_impact_code' => 'Não se aplica não pode ser selecionado nos dois impactos.',
+                'asset_impact_code' => 'Não se aplica não pode ser selecionado nos dois impactos.',
+            ]);
+            $this->assertSame($before, $assessment->refresh()->getRawOriginal());
+
+            foreach (['safety_impact_code', 'asset_impact_code'] as $field) {
+                $otherField = $field === 'safety_impact_code' ? 'asset_impact_code' : 'safety_impact_code';
+                foreach (['', null, 'unknown', 'missing'] as $invalid) {
+                    $payload = ['condition' => 'new', ...$base, $otherField => 'not_applicable', $field => $invalid];
+                    if ($invalid === 'missing') {
+                        unset($payload[$field]);
+                    }
+                    $this->actingAs($actor)->put(route('defect-assessments.gut.update', $assessment), $payload)
+                        ->assertSessionHasErrors($field);
+                    $this->assertSame($before, $assessment->refresh()->getRawOriginal());
+                }
+            }
+        }
+    }
+
+    public function test_reading_a_previous_catalog_snapshot_does_not_upgrade_it(): void
+    {
+        [$actor, $assessment] = $this->scenario();
+        $assessment = app(SaveDefectAssessmentGut::class)->handle($actor, $assessment, $this->technicalGutPayload(DefectCategory::Civil));
+        $assessment->update([
+            'gut_snapshot' => [...$assessment->gut_snapshot, 'catalog_version' => 4],
+            'classification_snapshot' => [...$assessment->classification_snapshot, 'catalog_version' => 4],
+        ]);
+        $before = $assessment->getRawOriginal();
+        $this->actingAs($actor)->get(route('defect-assessments.show', $assessment))
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+                ->where('gut_snapshot.catalog_version', 4)
+                ->where('gut_definition.catalog_version', 5));
+        $this->assertSame($before, $assessment->refresh()->getRawOriginal());
     }
 
     /** @return array{User,DefectAssessment} */

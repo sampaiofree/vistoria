@@ -12,7 +12,7 @@ use Illuminate\Support\Collection;
 
 final class NativeDefectCatalog
 {
-    public const VERSION = 4;
+    public const VERSION = 5;
 
     public const TEL_CATALOG_VERSION = 1;
 
@@ -86,22 +86,24 @@ final class NativeDefectCatalog
         5 => '#FF0000',
     ];
 
-    /** @var list<array{code:string,label:string,score:int}> */
+    /** @var list<array{code:string,label:string,score:int|null}> */
     private const SAFETY_IMPACTS = [
         ['code' => 'no_accident_risk', 'label' => 'Sem possibilidade de acidente', 'score' => 1],
         ['code' => 'secondary_up_to_2m', 'label' => 'Dano em elemento estrutural secundário, com possibilidade de acidente até 2 m', 'score' => 2],
         ['code' => 'secondary_above_2m', 'label' => 'Dano em elemento estrutural secundário, com possibilidade de acidente acima de 2 m', 'score' => 3],
         ['code' => 'primary_up_to_2m', 'label' => 'Dano em elemento estrutural primário, com possibilidade de acidente até 2 m', 'score' => 4],
         ['code' => 'primary_above_2m', 'label' => 'Dano em elemento estrutural primário, com possibilidade de acidente acima de 2 m', 'score' => 5],
+        ['code' => 'not_applicable', 'label' => 'Não se aplica', 'score' => null],
     ];
 
-    /** @var list<array{code:string,label:string,score:int}> */
+    /** @var list<array{code:string,label:string,score:int|null}> */
     private const ASSET_IMPACTS = [
         ['code' => 'secondary_without_asset_impact', 'label' => 'Dano ou ausência de elemento estrutural secundário que não impacta o ativo', 'score' => 1],
         ['code' => 'primary_local_low_criticality', 'label' => 'Dano pontual em elemento estrutural primário de ativos de baixa criticidade (C e D)', 'score' => 2],
         ['code' => 'primary_local_high_criticality', 'label' => 'Dano pontual em elemento estrutural primário de ativos de alta criticidade (A e B)', 'score' => 3],
         ['code' => 'primary_general_low_criticality', 'label' => 'Dano generalizado ou ausência de elemento estrutural primário de ativos de baixa criticidade (C e D)', 'score' => 4],
         ['code' => 'primary_general_high_criticality', 'label' => 'Dano generalizado ou ausência de elemento estrutural primário de ativos de alta criticidade (A e B)', 'score' => 5],
+        ['code' => 'not_applicable', 'label' => 'Não se aplica', 'score' => null],
     ];
 
     /** @var list<array{code:string,label:string,options:list<array{code:string,label:string,score:int}>}> */
@@ -213,106 +215,106 @@ final class NativeDefectCatalog
         ]],
     ];
 
-    /** @var list<array{code:string,label:string,options:list<array{code:string,label:string,score:int}>}> */
+    /** @var list<array{code:string,label:string,urgency_context_code:string,options:list<array{code:string,label:string,score:int}>}> */
     private const CIVIL_TREND_GROUPS = [
-        ['code' => 'cracking', 'label' => 'Fissuração', 'options' => [
+        ['code' => 'cracking', 'label' => 'Fissuração', 'urgency_context_code' => 'function', 'options' => [
             ['code' => 'superficial_without_limit_state', 'label' => 'Fissuração superficial, cuja orientação não remeta a estados limites', 'score' => 1],
             ['code' => 'reinforced_compatible_with_caa', 'label' => 'Fissuras em elementos de concreto armado com abertura compatível com a CAA do ativo', 'score' => 2],
             ['code' => 'reinforced_between_caa_and_2mm', 'label' => 'Trincas em elementos de concreto armado com abertura entre a admitida para a CAA e 2,0 mm', 'score' => 3],
             ['code' => 'reinforced_above_2mm', 'label' => 'Rachaduras em elementos de concreto armado com abertura superior a 2,0 mm', 'score' => 4],
             ['code' => 'prestressed_or_structural_mechanism', 'label' => 'Rachaduras não superficiais em elementos protendidos e/ou relacionadas a mecanismos estruturais', 'score' => 5],
         ]],
-        ['code' => 'segregation_and_disaggregation', 'label' => 'Segregação e Desagregação', 'options' => [
+        ['code' => 'segregation_and_disaggregation', 'label' => 'Segregação e Desagregação', 'urgency_context_code' => 'function', 'options' => [
             ['code' => 'surface_protection_loss', 'label' => 'Perda da camada de proteção superficial do concreto, tal como pintura', 'score' => 1],
             ['code' => 'surface_abrasion_without_exposed_rebar', 'label' => 'Abrasão superficial do concreto, com perda de parte do cobrimento nominal sem armadura aparente', 'score' => 2],
             ['code' => 'small_area_concrete_loss', 'label' => 'Perda de concreto em pequenas áreas, entre 0,1 m² e 0,5 m², com ou sem armadura aparente', 'score' => 3],
             ['code' => 'large_area_concrete_loss', 'label' => 'Perda de concreto em área superior a 0,5 m², com ou sem armadura aparente', 'score' => 4],
             ['code' => 'concrete_rupture_exposed_rebar', 'label' => 'Rompimento do concreto, com armadura aparente', 'score' => 5],
         ]],
-        ['code' => 'reinforcement_corrosion', 'label' => 'Corrosão em armaduras', 'options' => [
+        ['code' => 'reinforcement_corrosion', 'label' => 'Corrosão em armaduras', 'urgency_context_code' => 'function', 'options' => [
             ['code' => 'insufficient_cover_without_exposed_rebar', 'label' => 'Cobrimento insuficiente com ou sem desplacamento de concreto. Armadura não exposta', 'score' => 1],
             ['code' => 'exposed_rebar_without_corrosion', 'label' => 'Armadura exposta, sem indício de corrosão ou perda de espessura', 'score' => 2],
             ['code' => 'primary_below_15_or_secondary_above_15', 'label' => 'Armadura principal exposta e corroída, com perda de seção inferior a 15% da seção transversal original; ou armadura secundária exposta e corroída com perda de seção maior que 15%', 'score' => 3],
             ['code' => 'primary_15_to_50_or_deformation', 'label' => 'Armadura principal exposta e corroída, com perda de seção entre 15% e 50% da seção transversal original; elementos estruturais com deformação acima do permitido em norma', 'score' => 4],
             ['code' => 'primary_above_50_or_prestressed_exposed', 'label' => 'Perda de mais de 50% da seção transversal do vergalhão em pelo menos uma das barras da armadura principal; armadura protendida exposta; chumbador exposto, com ou sem corrosão', 'score' => 5],
         ]],
-        ['code' => 'chemical_effects', 'label' => 'Efeitos químicos', 'options' => [
+        ['code' => 'chemical_effects', 'label' => 'Efeitos químicos', 'urgency_context_code' => 'function', 'options' => [
             ['code' => 'non_generalized_leaching_or_carbonation', 'label' => 'Lixiviação e carbonatação no concreto não generalizada', 'score' => 1],
             ['code' => 'non_generalized_leaching_and_efflorescence', 'label' => 'Lixiviação no concreto e eflorescência com formação de estalactites de maneira não generalizada', 'score' => 2],
             ['code' => 'generalized_leaching_and_efflorescence', 'label' => 'Lixiviação no concreto e eflorescência, com ou sem formação de estalactites, de maneira generalizada', 'score' => 3],
         ]],
-        ['code' => 'permanent_deformation_and_displacement', 'label' => 'Deformação permanente e deslocamentos', 'options' => [
+        ['code' => 'permanent_deformation_and_displacement', 'label' => 'Deformação permanente e deslocamentos', 'urgency_context_code' => 'function', 'options' => [
             ['code' => 'slight_nonrecurring', 'label' => 'Deformação leve, causada por evento não recorrente', 'score' => 1],
             ['code' => 'medium_nonrecurring', 'label' => 'Deformação média, causada por evento não recorrente', 'score' => 2],
             ['code' => 'slight_maintenance_or_vehicle_area', 'label' => 'Deformação leve em região de manutenção e/ou passagem de veículos e equipamentos', 'score' => 3],
             ['code' => 'severe_maintenance_or_vehicle_area', 'label' => 'Deformação severa em região de manutenção e/ou passagem de veículos', 'score' => 4],
             ['code' => 'global_load_eccentricity', 'label' => 'Deformação com influência global no elemento, causada por excentricidade de carga', 'score' => 5],
         ]],
-        ['code' => 'nonconforming_execution', 'label' => 'Execução em desconformidade com projeto', 'options' => [
+        ['code' => 'nonconforming_execution', 'label' => 'Execução em desconformidade com projeto', 'urgency_context_code' => 'function', 'options' => [
             ['code' => 'non_structural_nonconformity', 'label' => 'Inconformidade de elementos não estruturais', 'score' => 1],
             ['code' => 'secondary_up_to_10_percent', 'label' => 'Redução das dimensões em até 10% para estruturas auxiliares ou secundárias; diâmetro da armação secundária diminuído para o primeiro diâmetro comercial abaixo do especificado em projeto; espaçamento das armações aumentado em até 10% em lajes, cisalhamento e pele', 'score' => 2],
             ['code' => 'secondary_up_to_20_or_primary_up_to_10', 'label' => 'Redução das dimensões em até 20% para estruturas auxiliares ou secundárias; redução das dimensões em até 10% para elementos principais; alterações significativas das premissas e dimensionamento que não prejudicam a segurança estrutural', 'score' => 3],
             ['code' => 'additional_loads_or_dimension_reduction', 'label' => 'Inclusão de solicitações adicionais em até 20% das cargas previstas em projeto; redução das dimensões em até 15% para elementos principais e superior a 20% para demais elementos; diâmetro das armaduras principais diminuído para o primeiro diâmetro comercial abaixo do especificado em projeto', 'score' => 4],
             ['code' => 'severe_design_nonconformity', 'label' => 'Inclusão de solicitações que ultrapassem 20% das cargas previstas ou cargas significativas de difícil mensuração; alterações significativas das premissas de projeto; corpos de prova não atendem à resistência de projeto; dimensões de estruturas principais e armação severamente abaixo do indicado em projeto', 'score' => 5],
         ]],
-        ['code' => 'infiltration', 'label' => 'Infiltração', 'options' => [
+        ['code' => 'infiltration', 'label' => 'Infiltração', 'urgency_context_code' => 'function', 'options' => [
             ['code' => 'localized_without_consequences', 'label' => 'Infiltração insignificante e localizada. Ausência de consequências estruturais ou superficiais para o concreto', 'score' => 1],
             ['code' => 'recurring_non_generalized_abrasion', 'label' => 'Infiltração recorrente. Presença não generalizada de concreto deteriorado por abrasão', 'score' => 2],
             ['code' => 'recurring_flow_without_pressure', 'label' => 'Infiltração recorrente com fluxo sem pressão. Acúmulo de água dificulta a operação do local. Pontos de abrasão generalizada, sem exposição de armadura. Presença mínima ou inexistente de trincas', 'score' => 3],
             ['code' => 'generalized_local_pressure_cracks', 'label' => 'Infiltração generalizada. Presença de trincas pontuais por onde extravasa água com pressão. Acúmulo de água paralisa as operações do local recorrentemente', 'score' => 4],
             ['code' => 'generalized_safety_or_asset_compromise', 'label' => 'Infiltração generalizada. Presença generalizada de trincas e rachaduras, com extravasamento de água com pressão. Desplacamento de concreto com armadura exposta devido à pressão da água. Acúmulo de água compromete a segurança das pessoas e a integridade dos ativos', 'score' => 5],
         ]],
-        ['code' => 'anchors', 'label' => 'Chumbadores', 'options' => [
+        ['code' => 'anchors', 'label' => 'Chumbadores', 'urgency_context_code' => 'function', 'options' => [
             ['code' => 'generalized_corrosion_without_function_loss', 'label' => 'Corrosão generalizada do chumbador sem perda de função estrutural', 'score' => 1],
             ['code' => 'thread_and_nut_loss_up_to_30', 'label' => 'Perda de espessura de até 30% na rosca e porca', 'score' => 2],
             ['code' => 'thread_and_nut_loss_above_30', 'label' => 'Perda de espessura superior a 30% na rosca e porca', 'score' => 3],
             ['code' => 'anchor_body_crack', 'label' => 'Fissura ou trincas no corpo do chumbador', 'score' => 4],
             ['code' => 'anchor_absent_or_total_thread_nut_loss', 'label' => 'Ausência de chumbador ou perda total de rosca e porca', 'score' => 5],
         ]],
-        ['code' => 'rail_longitudinal_inclination', 'label' => 'Inclinação longitudinal dos trilhos', 'options' => [
+        ['code' => 'rail_longitudinal_inclination', 'label' => 'Inclinação longitudinal dos trilhos', 'urgency_context_code' => 'machine_running_path', 'options' => [
             ['code' => 'up_to_3mm', 'label' => 'Até 3 mm acima do admissível', 'score' => 1],
             ['code' => 'up_to_6mm', 'label' => 'Até 6 mm acima do admissível', 'score' => 2],
             ['code' => 'up_to_12mm', 'label' => 'Até 12 mm acima do admissível', 'score' => 3],
             ['code' => 'up_to_18mm', 'label' => 'Até 18 mm acima do admissível', 'score' => 4],
             ['code' => 'above_18mm', 'label' => 'Mais de 18 mm acima do admissível', 'score' => 5],
         ]],
-        ['code' => 'rail_vertical_curvature', 'label' => 'Curvatura vertical dos trilhos', 'options' => [
+        ['code' => 'rail_vertical_curvature', 'label' => 'Curvatura vertical dos trilhos', 'urgency_context_code' => 'machine_running_path', 'options' => [
             ['code' => 'up_to_2mm', 'label' => 'Até 2 mm acima do admissível', 'score' => 1],
             ['code' => 'up_to_3mm', 'label' => 'Até 3 mm acima do admissível', 'score' => 2],
             ['code' => 'up_to_5mm', 'label' => 'Até 5 mm acima do admissível', 'score' => 3],
             ['code' => 'up_to_8mm', 'label' => 'Até 8 mm acima do admissível', 'score' => 4],
             ['code' => 'above_8mm', 'label' => 'Mais de 8 mm acima do admissível', 'score' => 5],
         ]],
-        ['code' => 'rail_lateral_curvature', 'label' => 'Curvatura lateral dos trilhos', 'options' => [
+        ['code' => 'rail_lateral_curvature', 'label' => 'Curvatura lateral dos trilhos', 'urgency_context_code' => 'machine_running_path', 'options' => [
             ['code' => 'up_to_2mm', 'label' => 'Até 2 mm acima do admissível', 'score' => 1],
             ['code' => 'up_to_3mm', 'label' => 'Até 3 mm acima do admissível', 'score' => 2],
             ['code' => 'up_to_5mm', 'label' => 'Até 5 mm acima do admissível', 'score' => 3],
             ['code' => 'up_to_8mm', 'label' => 'Até 8 mm acima do admissível', 'score' => 4],
             ['code' => 'above_8mm', 'label' => 'Mais de 8 mm acima do admissível', 'score' => 5],
         ]],
-        ['code' => 'rail_level_difference', 'label' => 'Desnível entre trilhos', 'options' => [
+        ['code' => 'rail_level_difference', 'label' => 'Desnível entre trilhos', 'urgency_context_code' => 'machine_running_path', 'options' => [
             ['code' => 'up_to_3mm', 'label' => 'Até 3 mm acima do admissível', 'score' => 1],
             ['code' => 'up_to_5mm', 'label' => 'Até 5 mm acima do admissível', 'score' => 2],
             ['code' => 'up_to_10mm', 'label' => 'Até 10 mm acima do admissível', 'score' => 3],
             ['code' => 'up_to_15mm', 'label' => 'Até 15 mm acima do admissível', 'score' => 4],
             ['code' => 'above_15mm', 'label' => 'Mais de 15 mm acima do admissível', 'score' => 5],
         ]],
-        ['code' => 'rail_wear', 'label' => 'Desgaste dos trilhos', 'options' => [
+        ['code' => 'rail_wear', 'label' => 'Desgaste dos trilhos', 'urgency_context_code' => 'machine_running_path', 'options' => [
             ['code' => 'vertical_wear', 'label' => 'Desgaste vertical', 'score' => 1],
             ['code' => 'lateral_wear', 'label' => 'Desgaste lateral', 'score' => 2],
             ['code' => 'corrugation', 'label' => 'Corrugação', 'score' => 3],
         ]],
-        ['code' => 'rail_fixing', 'label' => 'Fixação dos trilhos', 'options' => [
+        ['code' => 'rail_fixing', 'label' => 'Fixação dos trilhos', 'urgency_context_code' => 'machine_running_path', 'options' => [
             ['code' => 'loose_fasteners', 'label' => 'Falta de aperto em fixadores', 'score' => 1],
             ['code' => 'corrosion_thickness_loss_above_20', 'label' => 'Corrosão com perda de espessura superior a 20%', 'score' => 2],
             ['code' => 'missing_fasteners', 'label' => 'Ausência de fixadores', 'score' => 3],
         ]],
-        ['code' => 'sleepers', 'label' => 'Dormentes', 'options' => [
+        ['code' => 'sleepers', 'label' => 'Dormentes', 'urgency_context_code' => 'machine_running_path', 'options' => [
             ['code' => 'cracks', 'label' => 'Rachaduras', 'score' => 1],
             ['code' => 'uneven_settlement', 'label' => 'Assentamento desnivelado', 'score' => 2],
             ['code' => 'differential_settlement', 'label' => 'Recalque diferencial', 'score' => 3],
         ]],
-        ['code' => 'rail_joint', 'label' => 'Emenda dos trilhos', 'options' => [
+        ['code' => 'rail_joint', 'label' => 'Emenda dos trilhos', 'urgency_context_code' => 'machine_running_path', 'options' => [
             ['code' => 'joint_gap', 'label' => 'Folga na emenda dos trilhos', 'score' => 1],
             ['code' => 'joint_alignment', 'label' => 'Alinhamento na emenda dos trilhos', 'score' => 2],
         ]],
@@ -541,13 +543,13 @@ final class NativeDefectCatalog
         ];
     }
 
-    /** @return array{code:string,label:string,score:int,color:string}|null */
+    /** @return array{code:string,label:string,score:int|null,color:string|null}|null */
     public static function safetyImpact(?string $code): ?array
     {
         return self::findOption(self::SAFETY_IMPACTS, $code);
     }
 
-    /** @return array{code:string,label:string,score:int,color:string}|null */
+    /** @return array{code:string,label:string,score:int|null,color:string|null}|null */
     public static function assetImpact(?string $code): ?array
     {
         return self::findOption(self::ASSET_IMPACTS, $code);
@@ -562,7 +564,7 @@ final class NativeDefectCatalog
         }, $code);
     }
 
-    /** @return array{code:string,label:string,options:list<array{code:string,label:string,score:int,color:string}>}|null */
+    /** @return array{code:string,label:string,urgency_context_code?:string,options:list<array{code:string,label:string,score:int,color:string}>}|null */
     public static function trendGroup(DefectCategory $category, ?string $code): ?array
     {
         $group = collect(self::trendGroups($category))->firstWhere('code', $code);
@@ -586,7 +588,7 @@ final class NativeDefectCatalog
         return $group === null ? null : collect($group['options'])->firstWhere('code', $optionCode);
     }
 
-    /** @return list<array{code:string,label:string,options:list<array{code:string,label:string,score:int,color:string}>}> */
+    /** @return list<array{code:string,label:string,urgency_context_code?:string,options:list<array{code:string,label:string,score:int,color:string}>}> */
     private static function trendGroups(DefectCategory $category): array
     {
         if (in_array($category, [DefectCategory::AnticorrosiveTreatment, DefectCategory::RoofCladding, DefectCategory::SolidaryStructures], true)) {
@@ -597,6 +599,7 @@ final class NativeDefectCatalog
             return array_map(fn (array $group): array => [
                 'code' => $group['code'],
                 'label' => $group['label'],
+                'urgency_context_code' => $group['urgency_context_code'],
                 'options' => self::withColors($group['options']),
             ], self::CIVIL_TREND_GROUPS);
         }
@@ -608,16 +611,16 @@ final class NativeDefectCatalog
         ], self::REC_TREND_GROUPS);
     }
 
-    /** @param list<array{code:string,label:string,score:int}> $options @return list<array{code:string,label:string,score:int,color:string}> */
+    /** @param list<array{code:string,label:string,score:int|null}> $options @return list<array{code:string,label:string,score:int|null,color:string|null}> */
     private static function withColors(array $options): array
     {
         return array_map(fn (array $option): array => [
             ...$option,
-            'color' => self::colorForScore($option['score']),
+            'color' => $option['score'] === null ? null : self::colorForScore($option['score']),
         ], $options);
     }
 
-    /** @param list<array{code:string,label:string,score:int}> $options @return array{code:string,label:string,score:int,color:string}|null */
+    /** @param list<array{code:string,label:string,score:int|null}> $options @return array{code:string,label:string,score:int|null,color:string|null}|null */
     private static function findOption(array $options, ?string $code): ?array
     {
         if ($code === null || $code === '') {

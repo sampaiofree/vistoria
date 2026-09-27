@@ -79,6 +79,48 @@ test('keeps mandatory defects selected and restores saved planning selection', t
     assert.deepEqual(props.modelValue, []);
 });
 
+test('clears all selections under a filter, allows choosing one and selects all including hidden defects', t => {
+    const { props, selector } = mountSelect(t, { initialOptions: payload() });
+    selector.search.value = 'civil';
+    assert.deepEqual(selector.visible.value.map(item => item.id), [11]);
+
+    selector.clearSelection();
+    assert.deepEqual(props.modelValue, []);
+    assert.equal(selector.search.value, 'civil');
+    assert.deepEqual(selector.visible.value.map(item => item.id), [11]);
+
+    selector.toggle(selector.visible.value[0], true);
+    assert.deepEqual(props.modelValue, [11]);
+
+    selector.selectAll();
+    assert.deepEqual(props.modelValue, [11, 12]);
+    assert.equal(selector.search.value, 'civil');
+
+    selector.search.value = '';
+    selector.clearSelection();
+    assert.deepEqual(props.modelValue, []);
+    assert.deepEqual(selector.visible.value.map(item => item.id), [11, 12]);
+});
+
+test('searches classification variations, codes and categories without changing selection', t => {
+    const data = payload([11, 12, 13, 14]);
+    data.defects[0].classification_code = 'TA-2';
+    data.defects[1].classification_code = 'TA-1';
+    data.defects[2].classification_code = null;
+    const { props, selector } = mountSelect(t, { initialOptions: data });
+    selector.toggle(data.defects[0], false);
+
+    for (const [query, expected] of [
+        ['TA-2', [11]], ['ta-2', [11]], ['TA 2', [11]], ['TA2', [11]],
+        ['TA-1', [12]], ['TA-3', []], ['AV-13', [13]], ['av-14', [14]],
+        ['civil', [11]], ['CV', [11]], ['rec', [12, 13, 14]], ['', [11, 12, 13, 14]],
+    ]) {
+        selector.search.value = query;
+        assert.deepEqual(selector.visible.value.map(item => item.id), expected, query);
+        assert.deepEqual(props.modelValue, [12, 13, 14]);
+    }
+});
+
 test('ignores an old equipment response even if it arrives after the new one', async t => {
     const { props, selector, calls } = mountSelect(t);
     props.equipmentId = 2;

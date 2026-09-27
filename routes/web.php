@@ -22,6 +22,7 @@ use App\Http\Controllers\InspectionResponsibleController;
 use App\Http\Controllers\InspectionTransitionController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\OrganizationSettingsController;
+use App\Http\Controllers\PwaController;
 use App\Http\Controllers\ReinspectionChecklistController;
 use App\Http\Controllers\UserSettingsController;
 use Illuminate\Support\Facades\Route;
@@ -31,6 +32,11 @@ Route::get('/', function () {
         ? redirect()->route('dashboard')
         : redirect()->route('login');
 });
+
+Route::get('/pwa/{organization}/manifest.webmanifest', [PwaController::class, 'manifest'])->name('pwa.manifest');
+Route::get('/pwa/{organization}/icons/{size}.png', [PwaController::class, 'icon'])
+    ->whereIn('size', ['192', '512'])
+    ->name('pwa.icon');
 
 Route::middleware('guest')->group(function () {
     Route::get('/login', [AuthenticatedSessionController::class, 'create'])->name('login');

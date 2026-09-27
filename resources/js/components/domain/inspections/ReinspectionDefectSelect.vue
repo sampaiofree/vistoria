@@ -18,8 +18,11 @@ let initialized = false;
 
 const visible = computed(() => {
     const query = search.value.trim().toLocaleLowerCase('pt-BR');
+    const classificationQuery = query.replace(/[\s-]+/g, '');
     return (options.value?.defects ?? []).filter((item) =>
-        `${item.code} ${item.category} ${item.category_label}`.toLocaleLowerCase('pt-BR').includes(query));
+        `${item.code} ${item.category} ${item.category_label}`.toLocaleLowerCase('pt-BR').includes(query)
+        || (classificationQuery !== '' && (item.classification_code ?? '').toLocaleLowerCase('pt-BR')
+            .replace(/[\s-]+/g, '').includes(classificationQuery)));
 });
 const selected = computed(() => new Set(props.modelValue.map(Number)));
 
@@ -70,6 +73,14 @@ async function load() {
     }
 }
 
+function selectAll() {
+    emit('update:modelValue', options.value.defects.map((item) => item.id));
+}
+
+function clearSelection() {
+    emit('update:modelValue', []);
+}
+
 function toggle(item, checked) {
     if (item.must_reinspect) return;
     const values = new Set(selected.value);
@@ -109,8 +120,11 @@ onBeforeUnmount(() => controller?.abort());
                     {{ modelValue.length }} de {{ options.defects.length }} selecionadas
                 </summary>
                 <div class="absolute z-40 mt-1 w-full min-w-0 rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
-                    <input v-model="search" type="search" aria-label="Pesquisar avarias por código ou categoria" placeholder="Pesquisar código ou categoria" class="w-full rounded-lg border border-slate-300 px-3 py-2">
-                    <button type="button" class="my-2 font-semibold text-teal-700" @click="emit('update:modelValue', options.defects.map((item) => item.id))">Selecionar todas</button>
+                    <input v-model="search" type="search" aria-label="Pesquisar código, categoria ou classificação" placeholder="Pesquisar código, categoria ou classificação" class="w-full rounded-lg border border-slate-300 px-3 py-2">
+                    <div class="my-2 flex flex-wrap gap-x-4 gap-y-2">
+                        <button type="button" class="font-semibold text-teal-700" @click="selectAll">Selecionar todas</button>
+                        <button type="button" class="font-semibold text-teal-700" @click="clearSelection">Desmarcar todas</button>
+                    </div>
                     <div class="max-h-72 space-y-1 overflow-y-auto">
                         <label v-for="item in visible" :key="item.id" class="flex cursor-pointer items-start gap-3 rounded-lg p-2 hover:bg-slate-50">
                             <input type="checkbox" :checked="selected.has(item.id)" :disabled="item.must_reinspect" class="mt-1 rounded border-slate-300 text-teal-700" @change="toggle(item, $event.target.checked)">

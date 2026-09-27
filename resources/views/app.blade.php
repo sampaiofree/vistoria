@@ -4,6 +4,12 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    @php($appOrganization = auth()->user()?->organization)
+    @if ($appOrganization?->isActive())
+        <link rel="manifest" href="{{ route('pwa.manifest', $appOrganization, false) }}">
+        <link rel="icon" type="image/png" sizes="192x192" href="{{ app(\App\Services\Pwa\OrganizationAppBranding::class)->iconUrl($appOrganization) }}">
+        <meta name="theme-color" content="{{ $appOrganization->primary_color ?? '#0F172A' }}">
+    @endif
     <title inertia>{{ config('app.name', 'Vistoria') }}</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     @inertiaHead

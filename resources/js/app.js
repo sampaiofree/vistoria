@@ -4,6 +4,13 @@ import { createInertiaApp } from '@inertiajs/vue3';
 import { createApp, Fragment, h } from 'vue';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import NavigationLoader from '@/components/ui/NavigationLoader.vue';
+import { appInstall } from '@/lib/appInstall';
+
+appInstall.start();
+
+if (import.meta.hot) {
+    import.meta.hot.dispose(() => appInstall.stop());
+}
 
 const appName = import.meta.env.VITE_APP_NAME || 'Vistoria';
 

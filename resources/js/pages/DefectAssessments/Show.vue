@@ -20,8 +20,11 @@ import {
 import {
     buildTechnicalGutPayload,
     calculateTechnicalGut,
+    impactOptionsFor,
+    restoreCompatibleTrend,
     technicalGutReady,
     transporterTypesFor,
+    trendGroupsFor,
     trendOptionsFor,
     urgencyContextsFor,
     urgencyMatricesFor,
@@ -189,6 +192,8 @@ const hasTechnicalGut = computed(() => Boolean(props.gut_definition?.category));
 const gutConfigured = computed(() => hasTechnicalGut.value);
 const technicalGutPreview = computed(() => hasTechnicalGut.value ? calculateTechnicalGut(props.gut_definition, gutForm) : null);
 const gutReady = computed(() => hasTechnicalGut.value && technicalGutReady(props.gut_definition, gutForm));
+const safetyImpactOptions = computed(() => impactOptionsFor(props.gut_definition?.safety_impact_options, gutForm.asset_impact_code));
+const assetImpactOptions = computed(() => impactOptionsFor(props.gut_definition?.asset_impact_options, gutForm.safety_impact_code));
 const classificationDisplay = computed(() => props.classification ?? {
     code: props.assessment.classification_code,
     label: props.assessment.gut_score === null ? 'Não classificada' : 'Sem classificação para este resultado GUT',
@@ -234,7 +239,8 @@ const quantityMultiplierIsValid = computed(() => {
         && Number.isInteger(value);
 });
 const quantityReady = computed(() => quantityPreview.value !== null && quantityMultiplierIsValid.value);
-const trendOptions = computed(() => trendOptionsFor(props.gut_definition, gutForm.trend_group_code));
+const civilTrendGroups = computed(() => trendGroupsFor(props.gut_definition, gutForm));
+const trendOptions = computed(() => trendOptionsFor(props.gut_definition, gutForm.trend_group_code, gutForm));
 const civilUrgencyContexts = computed(() => urgencyContextsFor(props.gut_definition));
 const civilUrgencyOptions = computed(() => urgencyOptionsFor(
     props.gut_definition,
@@ -452,6 +458,13 @@ function startEditing(card) {
     if (card === 'gut') {
         gutForm.defaults(gutDefaults());
         gutForm.reset();
+        gutForm.clearErrors();
+        const restored = restoreCompatibleTrend(props.gut_definition, gutForm.data());
+        if (restored.trend_group_code !== gutForm.trend_group_code || restored.trend_option_code !== gutForm.trend_option_code) {
+            gutForm.trend_group_code = restored.trend_group_code;
+            gutForm.trend_option_code = restored.trend_option_code;
+            gutForm.setError('trend_group_code', 'Selecione novamente a tendência para o contexto de urgência informado.');
+        }
     }
     if (card === 'tel') {
         telForm.defaults({
@@ -475,10 +488,17 @@ function startEditing(card) {
 
 function changeTrendGroup() {
     gutForm.trend_option_code = '';
+    gutForm.clearErrors('trend_group_code', 'trend_option_code');
 }
 
 function changeCivilUrgencyContext() {
     gutForm.urgency_option_code = '';
+    changeCivilUrgencyOption();
+}
+
+function changeCivilUrgencyOption() {
+    gutForm.trend_group_code = '';
+    changeTrendGroup();
 }
 
 function changeRecUrgencyMatrix() {
@@ -1009,7 +1029,7 @@ onUnmounted(() => {
                             <span :class="labelClass">Impacto na Segurança</span>
                             <GutScoreSelect
                                 v-model="gutForm.safety_impact_code"
-                                :options="gut_definition.safety_impact_options"
+                                :options="safetyImpactOptions"
                                 criterion="G"
                                 aria-label="Impacto na Segurança"
                                 placeholder="Selecione o impacto"
@@ -1020,13 +1040,14 @@ onUnmounted(() => {
                             <span :class="labelClass">Impacto no Ativo</span>
                             <GutScoreSelect
                                 v-model="gutForm.asset_impact_code"
-                                :options="gut_definition.asset_impact_options"
+                                :options="assetImpactOptions"
                                 criterion="G"
                                 aria-label="Impacto no Ativo"
                                 placeholder="Selecione o impacto"
                             />
                             <p v-if="gutForm.errors.asset_impact_code" :class="errorClass">{{ gutForm.errors.asset_impact_code }}</p>
                         </div>
+                        <p class="text-sm text-slate-600 md:col-span-2">Selecione um impacto válido em pelo menos um dos campos.</p>
                     </div>
 
                     <div v-if="isCivil" class="rounded-2xl border border-slate-200 p-4">
@@ -1048,6 +1069,7 @@ onUnmounted(() => {
                                     aria-label="Função ou elemento CIVIL"
                                     placeholder="Selecione a função ou elemento"
                                     :disabled="!gutForm.urgency_context_code"
+                                    @change="changeCivilUrgencyOption"
                                 />
                                 <p v-if="gutForm.errors.urgency_option_code" :class="errorClass">{{ gutForm.errors.urgency_option_code }}</p>
                             </div>
@@ -1100,14 +1122,16 @@ onUnmounted(() => {
 
                     <div class="rounded-2xl border border-slate-200 p-4">
                         <template v-if="isCivil">
+                            <p v-if="!civilUrgencyPreview" class="mb-3 text-sm text-slate-600">Selecione a urgência para informar a tendência.</p>
                             <div class="grid gap-4 md:grid-cols-2">
                                 <div>
                                     <span :class="labelClass">Tipo de degradação</span>
                                     <GutScoreSelect
                                         v-model="gutForm.trend_group_code"
-                                        :options="gut_definition.trend_groups"
+                                        :options="civilTrendGroups"
                                         aria-label="Tipo de degradação"
                                         placeholder="Selecione o tipo"
+                                        :disabled="!civilUrgencyPreview"
                                         @change="changeTrendGroup"
                                     />
                                     <p v-if="gutForm.errors.trend_group_code" :class="errorClass">{{ gutForm.errors.trend_group_code }}</p>
@@ -1120,7 +1144,7 @@ onUnmounted(() => {
                                         criterion="T"
                                         aria-label="Condição técnica CIVIL"
                                         placeholder="Selecione a condição"
-                                        :disabled="!gutForm.trend_group_code"
+                                        :disabled="!civilUrgencyPreview || !trendOptions.length"
                                     />
                                     <p v-if="gutForm.errors.trend_option_code" :class="errorClass">{{ gutForm.errors.trend_option_code }}</p>
                                 </div>

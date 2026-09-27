@@ -16,12 +16,42 @@ function scoreOf(value) {
     return Number.isInteger(score) && score >= 1 && score <= 5 ? score : null;
 }
 
-export function trendOptionsFor(definition, groupCode) {
+export function impactOptionsFor(options, otherImpactCode) {
+    return (options ?? []).map((option) => ({
+        ...option,
+        disabled: Boolean(option.disabled || (option.code === 'not_applicable' && otherImpactCode === 'not_applicable')),
+    }));
+}
+
+export function trendGroupsFor(definition, values = {}) {
+    const groups = definition?.trend_groups ?? [];
+    if (categoryCode(definition) !== 'CV') return groups;
+
+    const urgency = findOption(urgencyOptionsFor(definition, values.urgency_context_code), values.urgency_option_code);
+    if (scoreOf(urgency?.score) === null) return [];
+
+    return groups.filter((group) => group.urgency_context_code === values.urgency_context_code);
+}
+
+export function trendOptionsFor(definition, groupCode, values = {}) {
     if (categoryCode(definition) === 'TAC') return definition?.trend_options ?? [];
 
-    return (definition?.trend_groups ?? [])
+    return trendGroupsFor(definition, values)
         .find((group) => optionCode(group) === groupCode)
         ?.options ?? [];
+}
+
+export function restoreCompatibleTrend(definition, values) {
+    if (categoryCode(definition) !== 'CV') return { ...values };
+
+    const group = findOption(trendGroupsFor(definition, values), values.trend_group_code);
+    const option = findOption(group?.options, values.trend_option_code);
+
+    return {
+        ...values,
+        trend_group_code: group ? values.trend_group_code : '',
+        trend_option_code: option ? values.trend_option_code : '',
+    };
 }
 
 export function urgencyMatricesFor(definition) {
@@ -70,10 +100,15 @@ export function calculateTechnicalGut(definition, values) {
         )?.score);
         trend = scoreOf(findOption(definition?.trend_options, values.trend_option_code)?.score);
     } else if (category === 'CV' || category === 'REC') {
-        const safety = scoreOf(findOption(definition?.safety_impact_options, values.safety_impact_code)?.score);
-        const asset = scoreOf(findOption(definition?.asset_impact_options, values.asset_impact_code)?.score);
+        const safety = findOption(definition?.safety_impact_options, values.safety_impact_code);
+        const asset = findOption(definition?.asset_impact_options, values.asset_impact_code);
+        const impacts = [safety, asset];
+        const validImpacts = impacts.every((option) => option
+            && (option.code === 'not_applicable' || scoreOf(option.score) !== null));
+        const scores = impacts.filter((option) => option && option.code !== 'not_applicable')
+            .map((option) => scoreOf(option.score));
 
-        gravity = safety !== null && asset !== null ? Math.max(safety, asset) : null;
+        gravity = validImpacts && scores.length > 0 ? Math.max(...scores) : null;
         urgency = category === 'REC'
             ? scoreOf(findOption(
                 urgencyOptionsFor(definition, values.urgency_matrix_code, values.transporter_type_code),
@@ -85,7 +120,7 @@ export function calculateTechnicalGut(definition, values) {
             )?.score);
 
         trend = scoreOf(findOption(
-            trendOptionsFor(definition, values.trend_group_code),
+            trendOptionsFor(definition, values.trend_group_code, values),
             values.trend_option_code,
         )?.score);
     }

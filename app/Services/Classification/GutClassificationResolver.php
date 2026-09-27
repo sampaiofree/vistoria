@@ -135,6 +135,12 @@ final class GutClassificationResolver
             ]);
         }
 
+        if ($group['urgency_context_code'] !== $urgency['context']['code']) {
+            throw ValidationException::withMessages([
+                'trend_group_code' => 'Escolha um tipo de degradação compatível com o contexto de urgência informado.',
+            ]);
+        }
+
         $option = NativeDefectCatalog::trend(
             DefectCategory::Civil,
             $group['code'],
@@ -272,7 +278,14 @@ final class GutClassificationResolver
             throw ValidationException::withMessages($errors);
         }
 
-        $score = max($safety['score'], $asset['score']);
+        if ($safety['code'] === 'not_applicable' && $asset['code'] === 'not_applicable') {
+            throw ValidationException::withMessages([
+                'safety_impact_code' => 'Não se aplica não pode ser selecionado nos dois impactos.',
+                'asset_impact_code' => 'Não se aplica não pode ser selecionado nos dois impactos.',
+            ]);
+        }
+
+        $score = max(array_filter([$safety['score'], $asset['score']], fn ($score) => $score !== null));
 
         return [
             'score' => $score,

@@ -741,7 +741,7 @@ function visualClass(photo) {
                                 <td>{{ item.code }}</td><td>{{ item.registered_on }}</td><td>{{ item.project }}</td><td>{{ item.photos }}</td>
                                 <td>{{ item.item }}</td><td>{{ item.element }}</td><td>{{ item.quantity }}</td><td>{{ page.type === 'civil-quantity' ? item.total_volume_label : item.total_weight_label }}</td>
                                 <td class="report-quantity-gravity"><div><span>{{ item.gravity.label }}</span><strong :style="damageColorStyle(item.gravity.color)">{{ item.gravity.score ?? '—' }}</strong></div></td>
-                                <td class="report-quantity-urgency"><strong :style="damageColorStyle(item.urgency.color)">{{ item.urgency.score ?? '—' }}</strong></td>
+                                <td class="report-quantity-urgency" :style="damageColorStyle(item.urgency.color)"><strong>{{ item.urgency.score ?? '—' }}</strong></td>
                                 <td class="report-quantity-trend"><div><span>{{ item.trend.label }}</span><strong :style="damageColorStyle(item.trend.color)">{{ item.trend.score ?? '—' }}</strong></div></td>
                                 <td class="report-quantity-score">{{ item.gut_score }}</td>
                                 <td class="report-quantity-class" :style="damageColorStyle(item.classification.color)">{{ item.classification.code }}</td>
@@ -808,7 +808,7 @@ function visualClass(photo) {
                                     <thead>
                                         <tr><th :colspan="mapShowsTrendDetail(page.category) ? 9 : 6" class="report-map-table-title">CLASSIFICAÇÃO GUT</th></tr>
                                         <tr>
-                                            <th v-if="mapShowsDefectCode(page.category)">CÓDIGO DA AVARIA</th><th v-if="mapShowsDefectCode(page.category)">PROJETO</th><th>FOTOS</th><th>{{ mapQuantityHeader(page.map) }}</th><th>GRAV.</th><th>URG.</th><th v-if="mapShowsTrendDetail(page.category)" colspan="2">T</th><th v-else>TEND.</th><th>GRAV. DANO</th>
+                                            <th v-if="mapShowsDefectCode(page.category)">CÓD.</th><th v-if="mapShowsDefectCode(page.category)">PROJETO</th><th>FOTOS</th><th>{{ mapQuantityHeader(page.map) }}</th><th>GRAV.</th><th>URG.</th><th v-if="mapShowsTrendDetail(page.category)" colspan="2">T</th><th v-else>TEND.</th><th>GRAV. DANO</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -965,11 +965,14 @@ function visualClass(photo) {
 .report-general-aspects-body { min-height: 0; flex: 1; overflow: hidden; font-family: Georgia, 'Times New Roman', serif; font-size: 10pt; }
 .report-quantity-page { width: 100%; height: 165mm; overflow: hidden; font-family: Arial, sans-serif; }
 .report-quantity-title { margin: 0 0 4mm; font-family: Georgia, 'Times New Roman', serif; font-size: 10pt; font-weight: 800; }
-.report-quantity-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 5.5pt; }
+.report-quantity-table { width: 100%; border-collapse: collapse; table-layout: auto; font-size: 5.5pt; line-height: 1.2; }
 .report-quantity-table th, .report-quantity-table td { border: 1px solid #062b68; padding: 1mm .8mm; text-align: center; vertical-align: middle; overflow-wrap: anywhere; }
-.report-quantity-table th { background: #062b68; color: #fff; font-size: 5.5pt; font-weight: 800; white-space: nowrap; }
-.report-quantity-table td:nth-child(1) { width: 7%; }.report-quantity-table td:nth-child(2) { width: 8%; }.report-quantity-table td:nth-child(3) { width: 8%; }.report-quantity-table td:nth-child(4) { width: 3%; }.report-quantity-table td:nth-child(5) { width: 12%; }.report-quantity-table td:nth-child(6) { width: 9%; }.report-quantity-table td:nth-child(7) { width: 3%; }.report-quantity-table td:nth-child(8) { width: 6%; }.report-quantity-table td:nth-child(9) { width: 14%; }.report-quantity-table td:nth-child(10) { width: 3%; }.report-quantity-table td:nth-child(11) { width: 18%; }.report-quantity-table td:nth-child(12) { width: 5%; }.report-quantity-table td:nth-child(13) { width: 4%; }
-.report-quantity-gravity, .report-quantity-urgency, .report-quantity-trend { padding: 0 !important; }.report-quantity-gravity > div, .report-quantity-trend > div { display: grid; min-height: 7mm; grid-template-columns: minmax(0, 1fr) 6mm; align-items: stretch; }.report-quantity-gravity span, .report-quantity-trend span { display: flex; min-width: 0; align-items: center; justify-content: center; padding: 1mm .6mm; overflow-wrap: normal; font-size: 5pt; white-space: nowrap; }.report-quantity-gravity strong, .report-quantity-trend strong, .report-quantity-urgency > strong { display: flex; min-height: 5mm; align-items: center; justify-content: center; padding: 1mm; color: #111827; font-size: 7pt; }
+.report-quantity-table th { background: #062b68; color: #fff; font-size: 5.5pt; font-weight: 800; white-space: normal; overflow-wrap: normal; }
+/* Auto layout lets compact columns grow to fit their headers and values. */
+.report-quantity-table :is(th, td):is(:nth-child(2), :nth-child(4), :nth-child(7), :nth-child(8), :nth-child(10), :nth-child(12), :nth-child(13)) { width: 1%; }
+.report-quantity-table td:is(:nth-child(2), :nth-child(7), :nth-child(8), :nth-child(10), :nth-child(12), :nth-child(13)) { white-space: nowrap; }
+.report-quantity-gravity, .report-quantity-urgency, .report-quantity-trend { padding: 0 !important; }.report-quantity-gravity > div, .report-quantity-trend > div { display: grid; min-height: 7mm; grid-template-columns: minmax(0, 1fr) 6mm; align-items: stretch; }.report-quantity-gravity span, .report-quantity-trend span { display: flex; min-width: 0; align-items: center; justify-content: center; padding: 1mm .6mm; overflow-wrap: anywhere; font-size: 5pt; white-space: normal; }.report-quantity-gravity strong, .report-quantity-trend strong, .report-quantity-urgency > strong { display: flex; min-height: 5mm; align-items: center; justify-content: center; padding: 1mm; color: #111827; font-size: 7pt; }
+.report-quantity-urgency > strong { color: inherit; }
 .report-quantity-score { background: #dbeafe; color: #0759a0; font-size: 7pt; font-weight: 800; }.report-quantity-class { font-size: 7pt; font-weight: 800; }
 .report-textual-finding { margin-bottom: 6mm; border: 1px solid #94a3b8; font-family: Georgia, 'Times New Roman', serif; }
 .report-textual-finding-title { display: flex; justify-content: space-between; gap: 4mm; padding: 3mm; background: #e2e8f0; font-size: 9pt; }

@@ -13,6 +13,19 @@ use Tests\TestCase;
 
 final class NativeDefectCatalogTest extends TestCase
 {
+    public function test_civil_trend_groups_match_the_two_documented_urgency_contexts(): void
+    {
+        $groups = collect(NativeDefectCatalog::technicalDefinition(DefectCategory::Civil)['trend_groups']);
+        $this->assertSame([
+            'cracking', 'segregation_and_disaggregation', 'reinforcement_corrosion', 'chemical_effects',
+            'permanent_deformation_and_displacement', 'nonconforming_execution', 'infiltration', 'anchors',
+        ], $groups->where('urgency_context_code', 'function')->pluck('code')->all());
+        $this->assertSame([
+            'rail_longitudinal_inclination', 'rail_vertical_curvature', 'rail_lateral_curvature', 'rail_level_difference',
+            'rail_wear', 'rail_fixing', 'sleepers', 'rail_joint',
+        ], $groups->where('urgency_context_code', 'machine_running_path')->pluck('code')->all());
+    }
+
     public function test_native_definitions_preserve_codes_names_colors_recommendations_and_inclusive_ranges(): void
     {
         $expected = [

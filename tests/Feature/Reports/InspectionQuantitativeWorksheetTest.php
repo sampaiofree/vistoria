@@ -193,6 +193,8 @@ final class InspectionQuantitativeWorksheetTest extends TestCase
             'segurança' => [['asset_impact' => ['score' => 2], 'safety_impact' => ['score' => 4]], 'IMP. SEG.'],
             'empate' => [['asset_impact' => ['score' => 4], 'safety_impact' => ['score' => 4]], 'IMP. ATIV. / IMP. SEG.'],
             'histórico incompleto' => [[], 'IMP. ATIV. / IMP. SEG.'],
+            'segurança não se aplica' => [['asset_impact' => ['score' => 4], 'safety_impact' => ['code' => 'not_applicable', 'score' => null]], 'IMP. ATIV.'],
+            'ativo não se aplica' => [['asset_impact' => ['code' => 'not_applicable', 'score' => null], 'safety_impact' => ['score' => 4]], 'IMP. SEG.'],
         ];
     }
 

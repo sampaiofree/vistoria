@@ -9,6 +9,7 @@ import WorkflowSummary from '@/components/dashboard/WorkflowSummary.vue';
 import RecentActivities from '@/components/dashboard/RecentActivities.vue';
 import DashboardLoadError from '@/components/dashboard/DashboardLoadError.vue';
 import FeaturedInspection from '@/components/dashboard/FeaturedInspection.vue';
+import { appInstall } from '@/lib/appInstall';
 
 const props = defineProps({
     mode: {
@@ -50,6 +51,8 @@ const props = defineProps({
 });
 
 const title = 'Dashboard';
+const { state: installation, visible: canInstall, install } = appInstall;
+const showInstallButton = computed(() => props.mode === 'operational' && Boolean(props.organization) && canInstall.value);
 
 const subtitle = computed(() => {
     if (props.mode === 'global') {
@@ -108,6 +111,16 @@ function retry(prop) {
 <template>
     <AppLayout :title="title" :subtitle="subtitle" wide>
         <template #actions>
+            <button
+                v-if="showInstallButton"
+                type="button"
+                :disabled="installation.pending"
+                :aria-describedby="installation.showHelp ? 'app-install-help' : undefined"
+                class="inline-flex min-h-11 w-full items-center justify-center rounded-md border border-teal-700 px-4 py-2 text-sm font-semibold text-teal-700 hover:bg-teal-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600 disabled:cursor-wait disabled:opacity-60 sm:w-auto"
+                @click="install"
+            >
+                {{ installation.pending ? 'Aguardando confirmação…' : 'Instalar aplicativo' }}
+            </button>
             <Link v-if="links.available_inspections" :href="links.available_inspections" class="inline-flex min-h-11 items-center justify-center rounded-md border border-teal-700 px-4 py-2 text-sm font-semibold text-teal-700 hover:bg-teal-50">
                 Disponíveis para mim
             </Link>
@@ -148,6 +161,14 @@ function retry(prop) {
         </section>
 
         <template v-else>
+            <p
+                v-if="showInstallButton && installation.showHelp"
+                id="app-install-help"
+                role="status"
+                class="mb-6 rounded-md border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-900"
+            >
+                No Chrome, abra o menu ⋮ e procure ‘Instalar aplicativo’ ou ‘Adicionar à tela inicial’.
+            </p>
             <FeaturedInspection :inspection="featured_inspection" />
 
             <section class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">

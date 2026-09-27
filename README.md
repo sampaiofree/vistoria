@@ -70,6 +70,32 @@ testes de aceite está documentado em
 completo para repasse está em
 [`docs/14A-PASSO-A-PASSO-DEPLOY-PRODUCAO.md`](docs/14A-PASSO-A-PASSO-DEPLOY-PRODUCAO.md).
 
+## Instalar no Android
+
+Abra o sistema no Chrome pelo endereço HTTPS, entre na conta da empresa e toque
+em **Instalar aplicativo** no dashboard. Confirme a instalação na janela do
+navegador. Se a janela não estiver disponível, use o menu **⋮ → Instalar aplicativo**
+ou **Adicionar à tela inicial**. A disponibilidade depende do navegador e dos seus
+[critérios de instalação](https://web.dev/articles/install-criteria).
+
+O app usa o nome, a cor primária e o campo **Logotipo** de **Configurações → Empresa**.
+O ícone do menu lateral é independente. O logotipo é centralizado, sem distorção,
+em ícones PNG de 192 e 512 pixels; na ausência de imagem válida, usa-se o símbolo
+do Vistoria. O processamento utiliza Imagick e cache por empresa e conteúdo da imagem.
+Manifesto e ícones são públicos e não contêm dados operacionais ou credenciais.
+
+Ao abrir, o app acessa o dashboard e solicita login se a sessão expirou. O uso
+continua dependendo de internet. Não há modo offline ou publicação na Play Store.
+O botão fica oculto dentro do app e após confirmar a instalação. Ao alterar o
+logotipo, novas leituras do manifesto usam a nova imagem; a atualização de um
+ícone já instalado depende do navegador e pode exigir reinstalação.
+
+Para o aceite em um Android real, valide em HTTPS: instalação pelo dashboard e
+pelo menu do Chrome, nome e ícone de duas empresas, abertura em janela própria,
+cancelamento da confirmação, orientação quando indisponível e novo login após
+encerrar a sessão. Use **Application → Manifest** no DevTools para conferir os
+recursos. Não é necessário executar migrações para essa funcionalidade.
+
 ## Demonstração View First
 
 O cenário visual do documento 06B pode ser restaurado sem recriar o banco:
