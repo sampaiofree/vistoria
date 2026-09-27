@@ -74,8 +74,11 @@ completo para repasse está em
 
 Abra o sistema no Chrome pelo endereço HTTPS, entre na conta da empresa e toque
 em **Instalar aplicativo** no dashboard. Confirme a instalação na janela do
-navegador. Se a janela não estiver disponível, use o menu **⋮ → Instalar aplicativo**
-ou **Adicionar à tela inicial**. A disponibilidade depende do navegador e dos seus
+navegador. Se a janela não estiver disponível, use o menu **⋮ → Instalar aplicativo**.
+Em versões que mostram **Adicionar à tela inicial** ou **Instalar e criar atalho**,
+abra essa opção e escolha **Instalar**. **Criar atalho** salva um acesso que abre
+no navegador. Faça a instalação após o login, quando o sistema já identificou a
+empresa e disponibilizou seu manifesto. A disponibilidade depende do navegador e dos seus
 [critérios de instalação](https://web.dev/articles/install-criteria).
 
 O app usa o nome, a cor primária e o campo **Logotipo** de **Configurações → Empresa**.

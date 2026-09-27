@@ -23,6 +23,7 @@ use App\Http\Controllers\InspectionTransitionController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\OrganizationSettingsController;
 use App\Http\Controllers\PwaController;
+use App\Http\Controllers\ReportResponsiblesController;
 use App\Http\Controllers\ReinspectionChecklistController;
 use App\Http\Controllers\UserSettingsController;
 use Illuminate\Support\Facades\Route;
@@ -91,6 +92,11 @@ Route::middleware([
         Route::put('/settings/users/{user}', [UserSettingsController::class, 'update'])->name('settings.users.update');
         Route::patch('/settings/users/{user}/status', [UserSettingsController::class, 'updateStatus'])->name('settings.users.status');
         Route::post('/settings/users/{user}/temporary-password', [UserSettingsController::class, 'resetPassword'])->name('settings.users.reset-password');
+
+        Route::get('settings/inspection-report/responsibles', [ReportResponsiblesController::class, 'edit'])
+            ->name('settings.inspection-report.responsibles.edit');
+        Route::put('settings/inspection-report/responsibles', [ReportResponsiblesController::class, 'update'])
+            ->name('settings.inspection-report.responsibles.update');
 
         Route::resource('settings/inspection-report/general-aspects', GeneralAspectsTemplateController::class)
             ->parameters(['general-aspects' => 'generalAspectsTemplate'])

@@ -12,6 +12,7 @@ use App\Models\Inspection;
 use App\Models\InspectionStatusHistory;
 use App\Models\User;
 use App\Services\Inspections\InspectionTransitionGuard;
+use App\Services\Reports\ReportResponsibleNames;
 use App\Services\Tenancy\TenantContext;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
@@ -84,6 +85,10 @@ final class TransitionInspection
 
             if ($inspection->report_date !== null) {
                 unset($attributes['report_date']);
+            }
+
+            if ($toStatus->isFinal()) {
+                $attributes['report_responsibles_snapshot'] = app(ReportResponsibleNames::class)->forOrganization($inspection->organization_id);
             }
 
             $inspection->update(array_merge($attributes, [

@@ -153,6 +153,11 @@ final class HandleInertiaRequests extends Middleware
                         'active' => $request->routeIs('settings.inspection-report.*'),
                         'children' => [
                             [
+                                'label' => 'Responsáveis do relatório',
+                                'href' => route('settings.inspection-report.responsibles.edit'),
+                                'active' => $request->routeIs('settings.inspection-report.responsibles.*'),
+                            ],
+                            [
                                 'label' => 'Aspectos gerais',
                                 'href' => route('settings.inspection-report.general-aspects.index'),
                                 'active' => $request->routeIs('settings.inspection-report.general-aspects.*'),

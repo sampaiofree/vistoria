@@ -19,6 +19,8 @@ class Organization extends Model
         'name',
         'legal_name',
         'document', 'logo_path', 'primary_color', 'icon_path',
+        'report_reviewer_name',
+        'report_releaser_name',
         'timezone',
         'status',
         'suspended_at',

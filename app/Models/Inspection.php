@@ -40,6 +40,7 @@ final class Inspection extends Model
         'inspected_on', // Data em que a inspeção foi realizada em campo.
         'context_snapshot',
         'snapshot_version',
+        'report_responsibles_snapshot',
         'general_notes',
         'started_at', // Data e hora de início da execução da inspeção.
         'field_completed_at', // Data e hora de conclusão da etapa de campo.
@@ -67,6 +68,7 @@ final class Inspection extends Model
             'planned_end_on' => 'date',
             'inspected_on' => 'date',
             'context_snapshot' => 'array',
+            'report_responsibles_snapshot' => 'array',
             'started_at' => 'datetime',
             'field_completed_at' => 'datetime',
             'reviewed_at' => 'datetime',

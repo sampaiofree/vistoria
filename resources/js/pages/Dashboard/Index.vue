@@ -167,7 +167,9 @@ function retry(prop) {
                 role="status"
                 class="mb-6 rounded-md border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-900"
             >
-                No Chrome, abra o menu ⋮ e procure ‘Instalar aplicativo’ ou ‘Adicionar à tela inicial’.
+                No Chrome, abra o menu ⋮ e escolha ‘Instalar aplicativo’. Se aparecer ‘Adicionar à tela inicial’
+                ou ‘Instalar e criar atalho’, entre nessa opção e selecione ‘Instalar’.
+                A opção ‘Criar atalho’ abre o site no navegador.
             </p>
             <FeaturedInspection :inspection="featured_inspection" />
 

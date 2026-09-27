@@ -614,7 +614,7 @@ function visualClass(photo) {
                         <div class="report-cover-approval">
                             <div v-for="item in (cover.approval_flow || [])" :key="item.key">
                                 <span>{{ item.label }}</span>
-                                <strong>{{ item.name || '—' }}</strong>
+                                <strong>{{ item.name || (['approved', 'released'].includes(item.key) ? 'Não definido' : '—') }}</strong>
                             </div>
                             <div>
                                 <span>Data</span>

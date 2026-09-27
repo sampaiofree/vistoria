@@ -37,11 +37,11 @@ final class EquipmentRevisionChronology
         $currentKey = 'system:'.$inspection->public_id;
         $previous = $inspection->equipment->inspections
             ->filter(fn (Inspection $entry): bool => $entry->status === InspectionStatus::Released && $entry->public_id !== $inspection->public_id)
-            ->map(fn (Inspection $entry): array => $this->systemEntry($entry))
+            ->map(fn (Inspection $entry): array => $this->systemEntry($entry, true))
             ->sortByDesc(fn (array $entry): array => [$entry['revision_number'] ?? -1, $entry['source_id']])
             ->values();
 
-        $current = $this->systemEntry($inspection);
+        $current = $this->systemEntry($inspection, true);
         $current['is_current'] = true;
         $current['date'] = $inspection->report_date?->format('d/m/Y');
         $current['date_label'] = 'Data do relatório';
@@ -67,7 +67,7 @@ final class EquipmentRevisionChronology
     }
 
     /** @return array<string,mixed> */
-    private function systemEntry(Inspection $inspection): array
+    private function systemEntry(Inspection $inspection, bool $forReport = false): array
     {
         $date = $inspection->report_date ?? $inspection->inspected_on ?? $inspection->planned_start_on ?? $inspection->created_at;
         $revision = $inspection->report_revision;
@@ -89,7 +89,8 @@ final class EquipmentRevisionChronology
             'date_is_provisional' => $inspection->report_date === null,
             'emission_type' => $inspection->emission_type?->value,
             'emission_type_label' => $inspection->emission_type?->label(),
-            'responsibles' => $this->inspectionResponsibleNames($inspection),
+            'responsibles' => array_replace($this->inspectionResponsibleNames($inspection),
+                $forReport ? app(ReportResponsibleNames::class)->forInspection($inspection) : []),
             'is_current' => false,
             'show_url' => route('inspections.show', $inspection),
         ];
@@ -116,7 +117,9 @@ final class EquipmentRevisionChronology
     private function initials(?string $name): ?string
     {
         $name = $this->withoutSuffix($name);
-        if ($name === null || $name === '') return null;
+        if ($name === null || $name === '') {
+            return null;
+        }
 
         return collect(preg_split('/\s+/u', $name) ?: [])->filter()
             ->map(fn (string $part): string => mb_strtoupper(mb_substr($part, 0, 1)))->implode('');

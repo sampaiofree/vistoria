@@ -104,6 +104,25 @@ dois blocos de vista geral e templates de aspectos gerais por organização. A r
 apenas pelo Inspetor responsável nos estados de campo. Ela substitui as antigas
 revisões autônomas de equipamento.
 
+## Responsáveis exibidos no relatório
+
+Em **Configurações → Relatório de Inspeção → Responsáveis do relatório**, o
+administrador define os nomes documentais de Revisor (`approver`, coluna Aprov.)
+e Liberador (`releaser`, coluna Liber.). São dois campos opcionais por empresa,
+com até 150 caracteres, sem vínculo com contas ou permissões operacionais.
+
+Inspeções abertas usam os nomes atuais da empresa. A liberação ou o cancelamento
+grava `report_responsibles_snapshot` na mesma transação da finalização, inclusive
+quando os nomes estão vazios. Capa e quadro de revisões usam essa mesma origem,
+tanto na prévia quanto nas exportações PDF e DOCX. Campos vazios aparecem como
+“Não definido” no nome completo e “—” nas iniciais, sem bloquear o fluxo.
+
+A migração preserva, para inspeções já finalizadas, os nomes apresentados pelas
+atribuições anteriores. Alterar o cadastro da empresa, renomear usuários ou
+substituir responsáveis não altera os nomes documentais preservados. Os nomes de
+Planejador e Inspetor e os registros dos autores das ações continuam seguindo as
+regras operacionais existentes.
+
 ## Dashboard, prévia e exportação
 
 A dashboard global é exclusiva do superadministrador. A dashboard operacional

@@ -1680,7 +1680,7 @@ class ViewFirstDemoPresenter
             ['key' => 'verified', 'label' => 'Verificado', 'responsibility' => InspectionResponsibility::Reviewer],
             ['key' => 'approved', 'label' => 'Aprovado', 'responsibility' => InspectionResponsibility::Approver],
             ['key' => 'released', 'label' => 'Liberado', 'responsibility' => InspectionResponsibility::Releaser],
-        ])->map(function (array $definition) use ($responsibles): array {
+        ])->map(function (array $definition) use ($responsibles, $revisionHistory): array {
             $responsible = $responsibles->first(
                 fn (array $item): bool => ($item['responsibility'] ?? null) === $definition['responsibility']->value
                     && (bool) ($item['is_primary'] ?? false),
@@ -1689,9 +1689,9 @@ class ViewFirstDemoPresenter
             return [
                 'key' => $definition['key'],
                 'label' => $definition['label'],
-                'name' => $responsible === null
-                    ? null
-                    : $this->withoutNameSuffix(data_get($responsible, 'user.name') ?? $responsible['name'] ?? null),
+                'name' => in_array($definition['responsibility'], [InspectionResponsibility::Approver, InspectionResponsibility::Releaser], true)
+                    ? ($revisionHistory['current']['full_responsibles'][$definition['responsibility']->value] ?? null)
+                    : ($responsible === null ? null : $this->withoutNameSuffix(data_get($responsible, 'user.name') ?? $responsible['name'] ?? null)),
             ];
         })->values();
         $titleTemplate = trim((string) ($inspection->first_page_text_template ?? ''));

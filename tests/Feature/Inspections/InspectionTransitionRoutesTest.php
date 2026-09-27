@@ -98,6 +98,7 @@ final class InspectionTransitionRoutesTest extends TestCase
         $inspection->refresh();
         $this->assertSame(InspectionStatus::Released, $inspection->status);
         $this->assertNotNull($inspection->released_at);
+        $this->assertSame(['approver' => null, 'releaser' => null], $inspection->report_responsibles_snapshot);
         $this->assertSame(6, $inspection->statusHistories()->count());
     }
 
