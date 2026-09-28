@@ -64,6 +64,191 @@ class AuthenticationTest extends TestCase
         $this->assertGuest();
     }
 
+    public function test_five_failed_logins_block_the_correct_password_until_the_lockout_expires(): void
+    {
+        User::factory()->create([
+            'email' => 'admin@vistoria.test',
+            'password' => 'password',
+        ]);
+        $this->withServerVariables(['REMOTE_ADDR' => '192.0.2.10']);
+
+        for ($attempt = 1; $attempt <= 5; $attempt++) {
+            $this->from('/login')->post('/login', [
+                'email' => $attempt === 5 ? 'ADMIN@VISTORIA.TEST' : 'admin@vistoria.test',
+                'password' => 'wrong-password',
+            ])->assertRedirect('/login')->assertSessionHasErrors('email');
+        }
+
+        $this->assertMatchesRegularExpression('/Aguarde [1-9][0-9]* segundos/', session('errors')->first('email'));
+
+        $this->from('/login')->post('/login', [
+            'email' => 'admin@vistoria.test',
+            'password' => 'password',
+        ])->assertRedirect('/login')->assertSessionHasErrors('email');
+        $this->assertGuest();
+
+        $this->travel(301)->seconds();
+
+        $this->post('/login', [
+            'email' => 'admin@vistoria.test',
+            'password' => 'password',
+        ])->assertRedirectToRoute('dashboard');
+        $this->assertAuthenticated();
+    }
+
+    public function test_lockout_lasts_five_minutes_from_the_fifth_failure(): void
+    {
+        User::factory()->create(['email' => 'admin@vistoria.test', 'password' => 'password']);
+
+        $this->post('/login', ['email' => 'admin@vistoria.test', 'password' => 'wrong-password'])
+            ->assertSessionHasErrors('email');
+        $this->travel(240)->seconds();
+
+        for ($attempt = 0; $attempt < 4; $attempt++) {
+            $this->post('/login', [
+                'email' => 'admin@vistoria.test',
+                'password' => 'wrong-password',
+            ])->assertSessionHasErrors('email');
+        }
+
+        $this->travel(61)->seconds();
+        $this->from('/login')->post('/login', [
+            'email' => 'admin@vistoria.test',
+            'password' => 'password',
+        ])->assertRedirect('/login')->assertSessionHasErrors('email');
+        $this->assertGuest();
+
+        $this->travel(240)->seconds();
+        $this->post('/login', [
+            'email' => 'admin@vistoria.test',
+            'password' => 'password',
+        ])->assertRedirectToRoute('dashboard');
+    }
+
+    public function test_failed_attempts_expire_without_a_lockout_if_fewer_than_five_occur_in_five_minutes(): void
+    {
+        User::factory()->create(['email' => 'admin@vistoria.test', 'password' => 'password']);
+
+        for ($attempt = 0; $attempt < 4; $attempt++) {
+            $this->post('/login', [
+                'email' => 'admin@vistoria.test',
+                'password' => 'wrong-password',
+            ])->assertSessionHasErrors('email');
+        }
+
+        $this->travel(301)->seconds();
+
+        for ($attempt = 0; $attempt < 4; $attempt++) {
+            $this->post('/login', [
+                'email' => 'admin@vistoria.test',
+                'password' => 'wrong-password',
+            ])->assertSessionHasErrors([
+                'email' => 'E-mail ou senha incorretos, ou a conta está inativa.',
+            ]);
+        }
+
+        $this->post('/login', [
+            'email' => 'admin@vistoria.test',
+            'password' => 'password',
+        ])->assertRedirectToRoute('dashboard');
+    }
+
+    public function test_successful_login_clears_the_failed_attempt_counter(): void
+    {
+        User::factory()->create([
+            'email' => 'admin@vistoria.test',
+            'password' => 'password',
+        ]);
+
+        for ($attempt = 0; $attempt < 4; $attempt++) {
+            $this->from('/login')->post('/login', [
+                'email' => 'admin@vistoria.test',
+                'password' => 'wrong-password',
+            ])->assertSessionHasErrors([
+                'email' => 'E-mail ou senha incorretos, ou a conta está inativa.',
+            ]);
+        }
+
+        $this->post('/login', [
+            'email' => 'admin@vistoria.test',
+            'password' => 'password',
+        ])->assertRedirectToRoute('dashboard');
+        $this->post(route('logout'))->assertRedirectToRoute('login');
+
+        for ($attempt = 0; $attempt < 4; $attempt++) {
+            $this->from('/login')->post('/login', [
+                'email' => 'admin@vistoria.test',
+                'password' => 'wrong-password',
+            ])->assertSessionHasErrors([
+                'email' => 'E-mail ou senha incorretos, ou a conta está inativa.',
+            ]);
+        }
+
+        $this->post('/login', [
+            'email' => 'admin@vistoria.test',
+            'password' => 'password',
+        ])->assertRedirectToRoute('dashboard');
+        $this->assertAuthenticated();
+    }
+
+    public function test_failed_attempts_are_separate_by_email_and_ip(): void
+    {
+        User::factory()->create(['email' => 'admin@vistoria.test', 'password' => 'password']);
+        User::factory()->create(['email' => 'other@vistoria.test', 'password' => 'password']);
+        $this->withServerVariables(['REMOTE_ADDR' => '192.0.2.20']);
+
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            $this->post('/login', [
+                'email' => 'admin@vistoria.test',
+                'password' => 'wrong-password',
+            ])->assertSessionHasErrors('email');
+        }
+
+        $this->post('/login', [
+            'email' => 'other@vistoria.test',
+            'password' => 'password',
+        ])->assertRedirectToRoute('dashboard');
+        $this->post(route('logout'))->assertRedirectToRoute('login');
+
+        $this->withServerVariables(['REMOTE_ADDR' => '192.0.2.21']);
+        $this->post('/login', [
+            'email' => 'admin@vistoria.test',
+            'password' => 'password',
+        ])->assertRedirectToRoute('dashboard');
+    }
+
+    public function test_unknown_and_existing_emails_share_the_invalid_credentials_message(): void
+    {
+        User::factory()->create(['email' => 'admin@vistoria.test', 'password' => 'password']);
+
+        foreach (['admin@vistoria.test', 'unknown@vistoria.test'] as $email) {
+            $this->from('/login')->post('/login', [
+                'email' => $email,
+                'password' => 'wrong-password',
+            ])->assertSessionHasErrors([
+                'email' => 'E-mail ou senha incorretos, ou a conta está inativa.',
+            ]);
+        }
+
+        $this->assertGuest();
+    }
+
+    public function test_sixty_first_login_submission_from_one_ip_is_rate_limited(): void
+    {
+        $this->withServerVariables(['REMOTE_ADDR' => '192.0.2.30']);
+
+        for ($attempt = 0; $attempt < 60; $attempt++) {
+            $this->post('/login', [])->assertRedirect();
+        }
+
+        $response = $this->post('/login', []);
+        $response->assertStatus(429)->assertHeader('Retry-After');
+        $this->assertGreaterThan(0, (int) $response->headers->get('Retry-After'));
+
+        $this->withServerVariables(['REMOTE_ADDR' => '192.0.2.31']);
+        $this->post('/login', [])->assertRedirect();
+    }
+
     public function test_dashboard_requires_authentication(): void
     {
         $this->get('/dashboard')->assertRedirectToRoute('login');

@@ -6,6 +6,7 @@ const props = defineProps({
     categories: { type: Array, default: null },
     editable: { type: Boolean, default: false },
     m2Links: { type: Array, default: () => [] },
+    m2Errors: { type: Object, default: () => ({}) },
     variant: { type: String, default: 'workspace' },
 });
 
@@ -29,6 +30,17 @@ function colorStyle(color) {
 
 function m2Value(category, classificationCode) {
     return props.m2Links.find((link) => link.category === category && link.classification_code === classificationCode)?.sap_number ?? '';
+}
+
+function m2Error(category, classificationCode) {
+    const index = props.m2Links.findIndex((link) => link.category === category && link.classification_code === classificationCode);
+    const serverError = props.m2Errors[`links.${index}.sap_number`];
+    if (serverError) return serverError;
+
+    const normalized = m2Value(category, classificationCode).trim().replace(/\s+/gu, ' ');
+    return normalized && Array.from(normalized).length !== 8
+        ? 'A Nota M2 deve ter exatamente 8 caracteres.'
+        : '';
 }
 
 function updateM2(category, classificationCode, event) {
@@ -55,14 +67,17 @@ function updateM2(category, classificationCode, event) {
                 <td>{{ row.m2_due_date || '' }}</td>
                 <td>{{ category.code === 'TEL' ? '—' : (row.quantity?.display || '—') }}</td>
                 <td>
-                    <input
-                        v-if="editable && row.defect_count > 0"
-                        :value="m2Value(category.code, row.classification_code)"
-                        class="classification-summary-m2-input"
-                        maxlength="100"
-                        :aria-label="`Nota M2 para ${row.classification_code}`"
-                        @input="updateM2(category.code, row.classification_code, $event)"
-                    >
+                    <template v-if="editable && row.defect_count > 0">
+                        <input
+                            :value="m2Value(category.code, row.classification_code)"
+                            class="classification-summary-m2-input"
+                            :aria-label="`Nota M2 para ${row.classification_code}, exatamente 8 caracteres`"
+                            :aria-invalid="Boolean(m2Error(category.code, row.classification_code))"
+                            placeholder="8 caracteres"
+                            @input="updateM2(category.code, row.classification_code, $event)"
+                        >
+                        <p v-if="m2Error(category.code, row.classification_code)" class="mt-1 text-xs text-rose-700" role="alert">{{ m2Error(category.code, row.classification_code) }}</p>
+                    </template>
                     <template v-else>{{ row.sap_m2_number || '—' }}</template>
                 </td>
             </tr>

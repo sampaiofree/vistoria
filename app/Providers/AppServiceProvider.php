@@ -3,6 +3,9 @@
 namespace App\Providers;
 
 use App\Services\Tenancy\TenantContext;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -20,5 +23,9 @@ class AppServiceProvider extends ServiceProvider
     /**
      * Bootstrap any application services.
      */
-    public function boot(): void {}
+    public function boot(): void
+    {
+        RateLimiter::for('login-ip', fn (Request $request): Limit => Limit::perMinute(60)
+            ->by('ip:'.$request->ip()));
+    }
 }

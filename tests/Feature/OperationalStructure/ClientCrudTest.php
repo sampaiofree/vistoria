@@ -178,9 +178,10 @@ final class ClientCrudTest extends TestCase
 
         $this->actingAs($admin)->get(route('dashboard'))->assertInertia(fn (Assert $page) => $page
             ->where('navigation.3.label', 'Configurações')
-            ->where('navigation.3.children.2.label', 'Cliente')
-            ->where('navigation.3.children.2.href', route('clients.index'))
-            ->missing('navigation.3.children.3'));
+            ->where('navigation.3.children.3.label', 'Cliente')
+            ->where('navigation.3.children.3.href', route('clients.index'))
+            ->where('navigation.3.children.4.label', 'Relatório de inspeção')
+            ->missing('navigation.3.children.5'));
 
         $this->actingAs($member)->get(route('dashboard'))->assertInertia(fn (Assert $page) => $page
             ->has('navigation', 2));

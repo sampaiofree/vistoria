@@ -129,10 +129,15 @@ final class HandleInertiaRequests extends Middleware
             ];
             $navigation[] = [
                 'label' => 'Configurações',
-                'href' => route('settings.company.edit'),
+                'href' => route('settings.overview.show'),
                 'icon' => 'settings',
                 'active' => $request->routeIs('settings.*', 'clients.*'),
                 'children' => [
+                    [
+                        'label' => 'Resumo',
+                        'href' => route('settings.overview.show'),
+                        'active' => $request->routeIs('settings.overview.*'),
+                    ],
                     [
                         'label' => 'Empresa',
                         'href' => route('settings.company.edit'),

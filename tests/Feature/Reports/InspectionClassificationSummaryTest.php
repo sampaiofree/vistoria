@@ -95,12 +95,12 @@ final class InspectionClassificationSummaryTest extends TestCase
         ], $summary['header']);
 
         app(UpdateInspectionClassificationM2Links::class)->handle($actor, $inspection, ['links' => [
-            ['category' => 'TAC', 'classification_code' => 'TA-2', 'sap_number' => '0011503853'],
-            ['category' => 'CV', 'classification_code' => 'CV-3', 'sap_number' => '0011503853'],
+            ['category' => 'TAC', 'classification_code' => 'TA-2', 'sap_number' => '11503853'],
+            ['category' => 'CV', 'classification_code' => 'CV-3', 'sap_number' => '11503853'],
         ]]);
         $updated = app(BuildInspectionClassificationSummary::class)->build($inspection);
         $updatedTac = collect($updated['categories'])->firstWhere('code', 'TAC');
-        $this->assertSame('0011503853', collect($updatedTac['rows'])->firstWhere('classification_code', 'TA-2')['sap_m2_number']);
+        $this->assertSame('11503853', collect($updatedTac['rows'])->firstWhere('classification_code', 'TA-2')['sap_m2_number']);
 
         $this->actingAs($actor)
             ->get(route('inspections.report-preview', $inspection))
@@ -111,7 +111,7 @@ final class InspectionClassificationSummaryTest extends TestCase
                 ->where('content.classification_summary.header.criticality_color', '#FF0000')
                 ->where('content.classification_summary.header.general_drawing', null)
                 ->where('content.classification_summary.categories.0.rows.1.m2_due_date', '10/05/2029')
-                ->where('content.classification_summary.categories.0.rows.1.sap_m2_number', '0011503853'));
+                ->where('content.classification_summary.categories.0.rows.1.sap_m2_number', '11503853'));
     }
 
     public function test_only_the_assigned_planner_can_edit_m2_during_planning(): void
@@ -301,19 +301,19 @@ final class InspectionClassificationSummaryTest extends TestCase
         [$actor, $inspection, $equipment] = $this->scenario();
         $this->assessment($inspection, $equipment, DefectCategory::Civil, 'CV-2', 2, '1');
         app(UpdateInspectionClassificationM2Links::class)->handle($actor, $inspection, ['links' => [
-            ['category' => 'CV', 'classification_code' => 'CV-2', 'sap_number' => '0011503853'],
+            ['category' => 'CV', 'classification_code' => 'CV-2', 'sap_number' => '11503853'],
         ]]);
 
         $before = collect(collect(app(BuildInspectionClassificationSummary::class)->build($inspection)['categories'])->firstWhere('code', 'CV')['rows'])
             ->firstWhere('classification_code', 'CV-2');
         $this->assertSame('10/05/2028', $before['m2_due_date']);
-        $this->assertSame('0011503853', $before['sap_m2_number']);
+        $this->assertSame('11503853', $before['sap_m2_number']);
 
         $inspection->update(['inspected_on' => '2027-01-20']);
         $after = collect(collect(app(BuildInspectionClassificationSummary::class)->build($inspection->fresh())['categories'])->firstWhere('code', 'CV')['rows'])
             ->firstWhere('classification_code', 'CV-2');
         $this->assertSame('20/01/2029', $after['m2_due_date']);
-        $this->assertSame('0011503853', $after['sap_m2_number']);
+        $this->assertSame('11503853', $after['sap_m2_number']);
     }
 
     public function test_criticality_uses_the_most_severe_non_tac_classification(): void

@@ -341,6 +341,13 @@ php artisan horizon:status
 curl -fsS https://<DOMINIO>/up
 ```
 
+O `POST /login` limita cinco falhas por e-mail e IP em cinco minutos e 60 envios
+por IP por minuto. Antes de liberar o acesso, confirme que o `CACHE_STORE` aponta
+para um cache compartilhado entre os processos da aplicação (o guia usa
+`database`) e que a tabela `cache` foi migrada. Se houver proxy ou CDN, confirme
+que o IP visto pelo Laravel é o do visitante. Configure somente proxies
+confiáveis; não aceite cabeçalhos de IP enviados diretamente pelo navegador.
+
 Evite concorrência de dois deploys. Preserve o storage compartilhado, `.env` e
 `APP_KEY` em toda troca de release.
 

@@ -139,9 +139,13 @@ function saveM2Links() {
 }
 
 function updateM2Link({ category, classificationCode, sapNumber }) {
-    const link = m2Form.links.find((item) => item.category === category && item.classification_code === classificationCode);
+    const index = m2Form.links.findIndex((item) => item.category === category && item.classification_code === classificationCode);
+    const link = m2Form.links[index];
 
-    if (link) link.sap_number = sapNumber;
+    if (link) {
+        link.sap_number = sapNumber;
+        m2Form.clearErrors(`links.${index}.sap_number`);
+    }
 }
 
 function updateSpecialAssessmentValue({ assessmentPublicId, field, value }) {
@@ -371,7 +375,7 @@ async function exportReport(format) {
                     <div>
                         <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Resumo técnico</p>
                         <h2 class="mt-2 text-xl font-semibold text-slate-950">Classificação e Notas M2</h2>
-                        <p class="mt-1 text-sm text-slate-500">O planejador deve conferir as Notas M2 e as tratativas especiais antes de enviar para revisão.</p>
+                        <p class="mt-1 text-sm text-slate-500">Cada Nota M2 preenchida deve ter exatamente 8 caracteres. O planejador deve conferir as notas e as tratativas especiais antes de enviar para revisão.</p>
                     </div>
                     <button v-if="classificationSummary.can_edit_m2" type="button" class="rounded-xl bg-teal-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" :disabled="m2Form.processing" @click="saveM2Links">Salvar Notas M2 e ENDs</button>
                 </div>
@@ -384,6 +388,7 @@ async function exportReport(format) {
                         :summary="classificationSummary"
                         :editable="classificationSummary.can_edit_m2"
                         :m2-links="m2Form.links"
+                        :m2-errors="m2Form.errors"
                         @update:m2="updateM2Link"
                     />
                 </div>

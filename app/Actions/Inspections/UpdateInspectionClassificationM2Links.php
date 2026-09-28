@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Services\Inspections\RecordClassificationChange;
 use App\Services\Reports\BuildInspectionClassificationSummary;
 use App\Services\Tenancy\TenantContext;
+use App\Support\TextNormalizer;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
@@ -38,11 +39,17 @@ final class UpdateInspectionClassificationM2Links
                     ->all())
                 ->all();
 
-            foreach ($data['links'] as $row) {
+            foreach ($data['links'] as $index => $row) {
                 $groupKey = $row['category'].'|'.$row['classification_code'];
                 if (! isset($eligibleGroups[$groupKey])) {
                     throw ValidationException::withMessages([
                         'links' => 'A Nota M2 só pode ser vinculada a uma classificação com avarias publicadas nesta inspeção.',
+                    ]);
+                }
+                $number = TextNormalizer::nullableText($row['sap_number']);
+                if ($number !== null && mb_strlen($number) !== 8) {
+                    throw ValidationException::withMessages([
+                        "links.$index.sap_number" => 'A Nota M2 de '.$row['category'].' '.$row['classification_code'].' deve ter exatamente 8 caracteres.',
                     ]);
                 }
                 $query = InspectionClassificationM2Link::query()
@@ -51,7 +58,7 @@ final class UpdateInspectionClassificationM2Links
                     ->where('category', $row['category'])
                     ->where('classification_code', $row['classification_code']);
 
-                if ($row['sap_number'] === null) {
+                if ($number === null) {
                     $query->delete();
 
                     continue;
@@ -60,7 +67,7 @@ final class UpdateInspectionClassificationM2Links
                 $note = SapM2Note::query()->firstOrCreate([
                     'organization_id' => $this->tenant->id(),
                     'equipment_id' => $inspection->equipment_id,
-                    'sap_number' => $row['sap_number'],
+                    'sap_number' => $number,
                 ], [
                     'created_by' => $actor->id,
                     'updated_by' => $actor->id,

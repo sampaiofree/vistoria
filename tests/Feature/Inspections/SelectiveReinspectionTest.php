@@ -367,7 +367,7 @@ final class SelectiveReinspectionTest extends TestCase
         $this->assertSame(InspectionStatus::AwaitingM2, $inspection->fresh()->status);
         $this->actingAs($c['planner'])->post(route('inspections.submit-for-review', $inspection))->assertSessionHasErrors('inspection');
         $this->put(route('inspections.classification-m2-links.update', $inspection), ['links' => [[
-            'category' => 'CV', 'classification_code' => 'CV-1', 'sap_number' => 'M2-NOVA',
+            'category' => 'CV', 'classification_code' => 'CV-1', 'sap_number' => 'M2-NOVA1',
         ]]])->assertSessionHasNoErrors();
         $this->post(route('inspections.submit-for-review', $inspection))->assertSessionHasNoErrors();
         $this->actingAs($reviewer)->post(route('inspections.start-review', $inspection))->assertSessionHasNoErrors();

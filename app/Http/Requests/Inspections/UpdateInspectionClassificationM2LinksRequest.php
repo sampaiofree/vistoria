@@ -41,12 +41,19 @@ final class UpdateInspectionClassificationM2LinksRequest extends FormRequest
             'links' => ['present', 'array'],
             'links.*.category' => ['required', 'string', 'in:TAC,REC,CV,TEL'],
             'links.*.classification_code' => ['required', 'string', 'max:20'],
-            'links.*.sap_number' => ['nullable', 'string', 'max:100'],
+            'links.*.sap_number' => ['nullable', 'string', 'size:8'],
             'special_rows' => ['sometimes', 'array'],
             'special_rows.*.assessment_public_id' => ['required', 'string', 'max:26', 'distinct'],
             'special_rows.*.service' => ['nullable', 'string', 'max:100'],
             'special_rows.*.priority' => ['nullable', 'string', 'max:100'],
             'special_rows.*.note' => ['nullable', 'string', 'max:100'],
+        ];
+    }
+
+    public function messages(): array
+    {
+        return [
+            'links.*.sap_number.size' => 'A Nota M2 deve ter exatamente 8 caracteres.',
         ];
     }
 }

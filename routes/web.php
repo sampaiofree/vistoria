@@ -10,8 +10,8 @@ use App\Http\Controllers\DefectAssessmentLocationController;
 use App\Http\Controllers\DefectController;
 use App\Http\Controllers\EquipmentController;
 use App\Http\Controllers\EquipmentImportController;
-use App\Http\Controllers\GlobalOrganizationController;
 use App\Http\Controllers\GeneralAspectsTemplateController;
+use App\Http\Controllers\GlobalOrganizationController;
 use App\Http\Controllers\InspectionController;
 use App\Http\Controllers\InspectionCorrectionRequestController;
 use App\Http\Controllers\InspectionLocationMapAssetController;
@@ -21,10 +21,11 @@ use App\Http\Controllers\InspectionQuantitativeController;
 use App\Http\Controllers\InspectionResponsibleController;
 use App\Http\Controllers\InspectionTransitionController;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\OrganizationOverviewController;
 use App\Http\Controllers\OrganizationSettingsController;
 use App\Http\Controllers\PwaController;
-use App\Http\Controllers\ReportResponsiblesController;
 use App\Http\Controllers\ReinspectionChecklistController;
+use App\Http\Controllers\ReportResponsiblesController;
 use App\Http\Controllers\UserSettingsController;
 use Illuminate\Support\Facades\Route;
 
@@ -41,7 +42,7 @@ Route::get('/pwa/{organization}/icons/{size}.png', [PwaController::class, 'icon'
 
 Route::middleware('guest')->group(function () {
     Route::get('/login', [AuthenticatedSessionController::class, 'create'])->name('login');
-    Route::post('/login', [AuthenticatedSessionController::class, 'store']);
+    Route::post('/login', [AuthenticatedSessionController::class, 'store'])->middleware('throttle:login-ip');
 });
 
 Route::middleware([
@@ -79,6 +80,9 @@ Route::middleware([
         Route::get('notifications', [NotificationController::class, 'index'])->name('notifications.index');
         Route::patch('notifications/read-all', [NotificationController::class, 'readAll'])->name('notifications.read-all');
         Route::patch('notifications/{notification}/read', [NotificationController::class, 'read'])->name('notifications.read');
+
+        Route::get('/settings/overview', [OrganizationOverviewController::class, 'show'])->name('settings.overview.show');
+        Route::get('/settings/overview/storage', [OrganizationOverviewController::class, 'storage'])->name('settings.overview.storage');
 
         Route::get('/settings/company', [OrganizationSettingsController::class, 'edit'])->name('settings.company.edit');
         Route::put('/settings/company', [OrganizationSettingsController::class, 'update'])->name('settings.company.update');

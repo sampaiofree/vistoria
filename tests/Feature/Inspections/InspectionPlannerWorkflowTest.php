@@ -17,11 +17,13 @@ use App\Models\Defect;
 use App\Models\DefectAssessment;
 use App\Models\Equipment;
 use App\Models\Inspection;
+use App\Models\InspectionClassificationM2Link;
 use App\Models\InspectionCorrectionRequest;
 use App\Models\InspectionOverviewBlock;
 use App\Models\InspectionOverviewPhoto;
 use App\Models\InspectionResponsible;
 use App\Models\Organization;
+use App\Models\SapM2Note;
 use App\Models\User;
 use App\Services\Reports\BuildInspectionClassificationSummary;
 use App\Services\Tenancy\TenantContext;
@@ -65,6 +67,74 @@ final class InspectionPlannerWorkflowTest extends TestCase
         $this->actingAs($team['planner'])->put(route('inspections.classification-m2-links.update', $inspection), $this->notes())->assertSessionHasNoErrors();
         $this->actingAs($team['planner'])->post(route('inspections.submit-for-review', $inspection))->assertSessionHasNoErrors();
         $this->assertSame(InspectionStatus::AwaitingReview, $inspection->fresh()->status);
+    }
+
+    public function test_nonempty_m2_note_must_have_eight_characters_after_normalization(): void
+    {
+        [$inspection, $team] = $this->scenario(InspectionStatus::AwaitingM2);
+        $this->assessment($inspection);
+
+        $this->actingAs($team['planner'])->put(route('inspections.classification-m2-links.update', $inspection), $this->notes(''))
+            ->assertSessionHasNoErrors();
+        foreach (['1234567', '123456789', '0011503853', '  1234567  '] as $invalid) {
+            $this->actingAs($team['planner'])->put(route('inspections.classification-m2-links.update', $inspection), $this->notes($invalid))
+                ->assertSessionHasErrors('links.0.sap_number');
+        }
+        $this->assertSame(0, $inspection->classificationM2Links()->count());
+
+        foreach (['00123456', 'AB12CD34', ' ÁB  12345 '] as $valid) {
+            $this->actingAs($team['planner'])->put(route('inspections.classification-m2-links.update', $inspection), $this->notes($valid))
+                ->assertSessionHasNoErrors();
+        }
+        $this->assertSame('ÁB 12345', $inspection->classificationM2Links()->sole()->note->sap_number);
+
+        app(TenantContext::class)->set($inspection->organization);
+        try {
+            app(UpdateInspectionClassificationM2Links::class)->handle($team['planner'], $inspection, $this->notes('1234567'));
+            $this->fail('A ação direta não deve aceitar Nota M2 com tamanho inválido.');
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey('links.0.sap_number', $e->errors());
+        }
+        $this->assertSame('ÁB 12345', $inspection->classificationM2Links()->sole()->note->sap_number);
+    }
+
+    public function test_legacy_m2_note_remains_stored_but_blocks_each_forward_handoff_until_corrected(): void
+    {
+        [$inspection, $team] = $this->scenario(InspectionStatus::AwaitingM2);
+        $this->assessment($inspection);
+        $legacy = SapM2Note::query()->create([
+            'organization_id' => $inspection->organization_id,
+            'equipment_id' => $inspection->equipment_id,
+            'sap_number' => '0011503853',
+        ]);
+        InspectionClassificationM2Link::query()->create([
+            'organization_id' => $inspection->organization_id,
+            'inspection_id' => $inspection->id,
+            'category' => 'TAC',
+            'classification_code' => 'TA-2',
+            'sap_m2_note_id' => $legacy->id,
+        ]);
+
+        $this->actingAs($team['planner'])->post(route('inspections.submit-for-review', $inspection))->assertSessionHasErrors('inspection');
+        $this->assertStringContainsString('TAC TA-2', session('errors')->first('inspection'));
+        $this->assertSame('0011503853', $legacy->fresh()->sap_number);
+
+        $inspection->update(['status' => InspectionStatus::InReview]);
+        $this->actingAs($team['reviewer'])->post(route('inspections.approve', $inspection))->assertSessionHasErrors('inspection');
+        $this->assertStringContainsString('TAC TA-2', session('errors')->first('inspection'));
+
+        $inspection->update(['status' => InspectionStatus::AwaitingRelease]);
+        $this->actingAs($team['releaser'])->post(route('inspections.release', $inspection))->assertSessionHasErrors('inspection');
+        $this->assertStringContainsString('TAC TA-2', session('errors')->first('inspection'));
+
+        $inspection->update(['status' => InspectionStatus::AwaitingM2]);
+        $this->actingAs($team['planner'])->put(route('inspections.classification-m2-links.update', $inspection), $this->notes('AB12CD34'))
+            ->assertSessionHasNoErrors();
+        $this->assertSame('0011503853', $legacy->fresh()->sap_number);
+        $this->actingAs($team['planner'])->post(route('inspections.submit-for-review', $inspection))->assertSessionHasNoErrors();
+        $this->actingAs($team['reviewer'])->post(route('inspections.start-review', $inspection))->assertSessionHasNoErrors();
+        $this->actingAs($team['reviewer'])->post(route('inspections.approve', $inspection))->assertSessionHasNoErrors();
+        $this->actingAs($team['releaser'])->post(route('inspections.release', $inspection))->assertSessionHasNoErrors();
     }
 
     public function test_special_fields_are_required_only_on_forward_handoff_and_accept_empty_m2_array(): void
@@ -174,7 +244,7 @@ final class InspectionPlannerWorkflowTest extends TestCase
         $this->assertSame(1, $inspection->classificationM2Links()->count());
     }
 
-    private function notes(string $number = '000123'): array
+    private function notes(string $number = '00000123'): array
     {
         return ['links' => [['category' => 'TAC', 'classification_code' => 'TA-2', 'sap_number' => $number]]];
     }
