@@ -90,6 +90,99 @@ final class OrganizationSettingsTest extends TestCase
         Storage::disk('branding_images')->assertExists('organizations/company/branding/logo.png');
     }
 
+    public function test_company_admin_can_upload_replace_and_remove_a_separate_pwa_icon(): void
+    {
+        Storage::fake('branding_images');
+        $organization = Organization::factory()->create([
+            'logo_path' => 'organizations/company/branding/logo.png',
+            'icon_path' => 'organizations/company/branding/icon.png',
+        ]);
+        Storage::disk('branding_images')->put($organization->logo_path, 'logo');
+        Storage::disk('branding_images')->put($organization->icon_path, 'sidebar-icon');
+        $admin = User::factory()->for($organization)->create(['account_type' => UserAccountType::CompanyAdmin]);
+        $defaultUrl = $this->get(route('pwa.manifest', $organization))->json('icons.0.src');
+
+        $this->actingAs($admin)->post(route('settings.company.update'), [
+            '_method' => 'put',
+            'name' => $organization->name,
+            'primary_color' => '#0F172A',
+            'pwa_icon' => UploadedFile::fake()->image('app.png', 256, 256),
+        ])->assertRedirect(route('settings.company.edit'));
+
+        $firstPath = $organization->refresh()->pwa_icon_path;
+        $this->assertNotNull($firstPath);
+        Storage::disk('branding_images')->assertExists($firstPath);
+        $firstUrl = $this->get(route('pwa.manifest', $organization))->json('icons.0.src');
+        $this->assertNotSame($defaultUrl, $firstUrl);
+        $this->get(route('settings.company.edit'))->assertInertia(fn ($page) => $page
+            ->where('organization.has_pwa_icon', true)
+            ->where('organization.pwa_icon_url', $firstUrl));
+
+        $this->post(route('settings.company.update'), [
+            '_method' => 'put',
+            'name' => $organization->name,
+            'primary_color' => '#0F172A',
+            'pwa_icon' => UploadedFile::fake()->image('replacement.webp', 512, 512),
+        ])->assertRedirect(route('settings.company.edit'));
+
+        $secondPath = $organization->refresh()->pwa_icon_path;
+        $this->assertNotSame($firstPath, $secondPath);
+        Storage::disk('branding_images')->assertMissing($firstPath);
+        Storage::disk('branding_images')->assertExists($secondPath);
+        $this->assertNotSame($firstUrl, $this->get(route('pwa.manifest', $organization))->json('icons.0.src'));
+
+        $this->delete(route('settings.company.pwa-icon.destroy'))->assertRedirect(route('settings.company.edit'));
+        $organization->refresh();
+        $this->assertNull($organization->pwa_icon_path);
+        $this->assertSame('organizations/company/branding/logo.png', $organization->logo_path);
+        $this->assertSame('organizations/company/branding/icon.png', $organization->icon_path);
+        Storage::disk('branding_images')->assertMissing($secondPath);
+        Storage::disk('branding_images')->assertExists($organization->logo_path);
+        Storage::disk('branding_images')->assertExists($organization->icon_path);
+        $this->assertSame($defaultUrl, $this->get(route('pwa.manifest', $organization))->json('icons.0.src'));
+    }
+
+    public function test_pwa_icon_upload_requires_an_exactly_square_supported_image(): void
+    {
+        Storage::fake('branding_images');
+        $organization = Organization::factory()->create();
+        $oldPath = 'organizations/'.$organization->public_id.'/branding/previous.png';
+        Storage::disk('branding_images')->put($oldPath, 'previous-icon');
+        $organization->update(['pwa_icon_path' => $oldPath]);
+        $admin = User::factory()->for($organization)->create(['account_type' => UserAccountType::CompanyAdmin]);
+
+        foreach ([
+            UploadedFile::fake()->image('almost-square.png', 1024, 1023),
+            UploadedFile::fake()->create('icon.svg', 20, 'image/svg+xml'),
+            UploadedFile::fake()->image('too-large.png', 128, 128)->size(2049),
+        ] as $file) {
+            $this->actingAs($admin)->post(route('settings.company.update'), [
+                '_method' => 'put',
+                'name' => $organization->name,
+                'primary_color' => '#0F172A',
+                'pwa_icon' => $file,
+            ])->assertSessionHasErrors('pwa_icon');
+        }
+
+        $this->assertSame($oldPath, $organization->refresh()->pwa_icon_path);
+        Storage::disk('branding_images')->assertExists($oldPath);
+    }
+
+    public function test_members_cannot_change_the_company_pwa_icon(): void
+    {
+        $organization = Organization::factory()->create();
+        $member = User::factory()->for($organization)->create(['account_type' => UserAccountType::Member]);
+
+        $this->actingAs($member)->post(route('settings.company.update'), [
+            '_method' => 'put',
+            'name' => $organization->name,
+            'primary_color' => '#0F172A',
+            'pwa_icon' => UploadedFile::fake()->image('app.png', 128, 128),
+        ])->assertForbidden();
+        $this->delete(route('settings.company.pwa-icon.destroy'))->assertForbidden();
+        $this->assertNull($organization->refresh()->pwa_icon_path);
+    }
+
     public function test_failed_company_icon_upload_preserves_the_previous_icon(): void
     {
         Storage::fake('branding_images');

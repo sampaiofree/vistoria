@@ -68,7 +68,7 @@ defineProps({
     width: 210mm;
     min-height: 297mm;
     margin: 0 auto 12mm;
-    padding: 13mm 14mm 12mm;
+    padding: 10mm 8mm 10mm 25mm;
     overflow: hidden;
     background: #fff;
     color: #111827;
@@ -77,14 +77,10 @@ defineProps({
     -webkit-print-color-adjust: exact;
 }
 
-.report-a4-cover {
-    padding-top: 12mm;
-}
-
 .report-a4-landscape {
     width: 297mm;
     min-height: 210mm;
-    padding: 10mm 14mm 9mm;
+    padding: 8mm 10mm 25mm;
 }
 
 .report-a4-landscape .report-a4-content {
@@ -189,7 +185,7 @@ defineProps({
         width: 297mm;
         height: 210mm;
         min-height: 210mm;
-        padding: 10mm 14mm 9mm;
+        padding: 8mm 10mm 25mm;
     }
 }
 
@@ -199,7 +195,7 @@ defineProps({
         height: 297mm;
         min-height: 297mm;
         margin: 0;
-        padding: 13mm 14mm 12mm;
+        padding: 10mm 8mm 10mm 25mm;
         overflow: hidden;
         box-shadow: none;
         break-after: page;
@@ -210,7 +206,7 @@ defineProps({
         width: 297mm;
         height: 210mm;
         min-height: 210mm;
-        padding: 10mm 14mm 9mm;
+        padding: 8mm 10mm 25mm;
     }
 
     .report-a4-page:last-child {

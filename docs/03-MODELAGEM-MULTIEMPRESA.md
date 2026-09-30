@@ -80,9 +80,13 @@ O administrador da empresa acessa `/settings/company` para manter:
 - logotipo público;
 - cor primária;
 - ícone público da navegação.
+- ícone do aplicativo PWA no Android.
 
-Logotipo e ícone podem ser substituídos ou removidos. A organização do usuário é
-sempre obtida do `TenantContext`; o formulário não escolhe outro tenant.
+Logotipo e ícones podem ser substituídos ou removidos. O ícone do PWA exige uma
+imagem quadrada (1:1), em JPG, PNG ou WebP, de até 2 MB; ela gera os PNGs de
+192×192 e 512×512. Sem essa imagem, o aplicativo usa o ícone padrão, sem
+recorrer ao logotipo ou ao ícone da navegação. A organização do usuário é sempre
+obtida do `TenantContext`; o formulário não escolhe outro tenant.
 
 ## Gestão de usuários
 

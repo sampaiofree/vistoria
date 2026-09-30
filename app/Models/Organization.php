@@ -18,7 +18,7 @@ class Organization extends Model
     protected $fillable = [
         'name',
         'legal_name',
-        'document', 'logo_path', 'primary_color', 'icon_path',
+        'document', 'logo_path', 'primary_color', 'icon_path', 'pwa_icon_path',
         'report_reviewer_name',
         'report_releaser_name',
         'timezone',

@@ -19,13 +19,16 @@ final class UpdateOrganization
         $logo = $data['logo'] ?? null;
         /** @var UploadedFile|null $icon */
         $icon = $data['icon'] ?? null;
+        /** @var UploadedFile|null $pwaIcon */
+        $pwaIcon = $data['pwa_icon'] ?? null;
         $oldLogo = $organization->logo_path;
         $oldIcon = $organization->icon_path;
+        $oldPwaIcon = $organization->pwa_icon_path;
 
         $newPaths = [];
 
         try {
-            $organization = DB::transaction(function () use ($organization, $data, $logo, $icon, &$newPaths): Organization {
+            $organization = DB::transaction(function () use ($organization, $data, $logo, $icon, $pwaIcon, &$newPaths): Organization {
                 $organization->update([
                     'name' => TextNormalizer::text((string) $data['name']),
                     'legal_name' => TextNormalizer::nullableText($data['legal_name'] ?? null),
@@ -33,7 +36,7 @@ final class UpdateOrganization
                     'primary_color' => TextNormalizer::hexColor((string) $data['primary_color']),
                 ]);
 
-                foreach (['logo' => $logo, 'icon' => $icon] as $kind => $file) {
+                foreach (['logo' => $logo, 'icon' => $icon, 'pwa_icon' => $pwaIcon] as $kind => $file) {
                     if (! $file instanceof UploadedFile) {
                         continue;
                     }
@@ -62,7 +65,7 @@ final class UpdateOrganization
             throw $exception;
         }
 
-        foreach (['logo' => $oldLogo, 'icon' => $oldIcon] as $kind => $oldPath) {
+        foreach (['logo' => $oldLogo, 'icon' => $oldIcon, 'pwa_icon' => $oldPwaIcon] as $kind => $oldPath) {
             if (! isset($newPaths[$kind]) || $oldPath === null) {
                 continue;
             }

@@ -106,6 +106,6 @@ onMounted(paginate);
 </template>
 
 <style scoped>
-.classification-report-measure { position: fixed; top: 0; left: -10000px; width: 182mm; visibility: hidden; pointer-events: none; }
-.classification-report-probe { width: 182mm; height: 246mm; overflow: auto; }
+.classification-report-measure { position: fixed; top: 0; left: -10000px; width: 177mm; visibility: hidden; pointer-events: none; }
+.classification-report-probe { width: 177mm; height: 246mm; overflow: auto; }
 </style>

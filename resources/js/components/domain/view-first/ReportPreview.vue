@@ -9,6 +9,8 @@ import ReportSummaryPaginator from '@/components/domain/view-first/ReportSummary
 import GeneralAspectsDocument from '@/components/domain/inspections/GeneralAspectsDocument.vue';
 import ClassificationReportPaginator from '@/components/domain/view-first/ClassificationReportPaginator.vue';
 import ClassificationReportTables from '@/components/domain/view-first/ClassificationReportTables.vue';
+import ReportQuantityPage from '@/components/domain/view-first/ReportQuantityPage.vue';
+import ReportQuantityPaginator from '@/components/domain/view-first/ReportQuantityPaginator.vue';
 import {
     buildReportSummaryEntries,
     numberGeneralAspectsDocument,
@@ -36,6 +38,11 @@ const reportAnnexPlan = computed(() => classificationSummary.value?.report_annex
 const locationSequence = computed(() => props.content.location_sequence ?? []);
 const recQuantityRows = computed(() => props.content.rec_quantity_rows ?? []);
 const civilQuantityRows = computed(() => props.content.civil_quantity_rows ?? []);
+const recQuantityPages = ref([]);
+const civilQuantityPages = ref([]);
+const recQuantityReady = ref(false);
+const civilQuantityReady = ref(false);
+const quantityErrors = ref({ rec: null, civil: null });
 const numberedGeneralAspects = computed(() => numberGeneralAspectsDocument(generalAspects.value));
 const generalAspectsPages = ref([]);
 const generalAspectsReady = ref(!generalAspects.value);
@@ -47,7 +54,7 @@ const classificationReady = ref(!classificationSummary.value);
 const observationLayouts = ref({});
 const previewRoot = ref(null);
 
-const emit = defineEmits(['layout-ready']);
+const emit = defineEmits(['layout-ready', 'layout-error']);
 
 defineExpose({
     getPageElements: () => previewRoot.value
@@ -99,11 +106,17 @@ watch(locations, (sheets) => {
     observationLayouts.value = layouts;
 }, { immediate: true });
 
-const layoutReady = computed(() => generalAspectsReady.value && summaryReady.value && classificationReady.value && locations.value.every((sheet) =>
+const layoutReady = computed(() => generalAspectsReady.value && summaryReady.value && classificationReady.value
+    && recQuantityReady.value && civilQuantityReady.value && locations.value.every((sheet) =>
     (sheet.maps || []).every((map) => observationChunks(map).every((chunk) => chunk.fitted)),
 ));
 
 watch(layoutReady, (ready) => emit('layout-ready', ready), { immediate: true });
+
+function updateQuantityError(type, message) {
+    quantityErrors.value = { ...quantityErrors.value, [type]: message };
+    emit('layout-error', quantityErrors.value.rec || quantityErrors.value.civil);
+}
 
 watch(classificationSummary, (summary) => {
     if (summary) return;
@@ -253,17 +266,6 @@ function legacyLocationPages() {
     ]);
 }
 
-function quantityPages(items, type, category) {
-    return chunks(items, 16).map((items, index) => ({
-        type,
-        key: `${type}-${index}`,
-        category,
-        items,
-        orientation: 'landscape',
-        continuation: index > 0,
-    }));
-}
-
 function solidaryStructuresPhotographicPages() {
     return photographicPages(
         solidaryStructuresPhotographicBlocks.value,
@@ -387,10 +389,10 @@ const reportContentPages = computed(() => {
         insertQuantityPages(
             locationPages,
             'REC',
-            quantityPages(recQuantityRows.value, 'rec-quantity', 'REC'),
+            recQuantityPages.value,
         ),
         'CV',
-        quantityPages(civilQuantityRows.value, 'civil-quantity', 'CV'),
+        civilQuantityPages.value,
     );
 
     return assignAnnexTitles([
@@ -542,6 +544,20 @@ function visualClass(photo) {
             :summary="classificationSummary"
             @pages="updateClassificationPages"
             @ready="classificationReady = $event"
+        />
+        <ReportQuantityPaginator
+            :items="recQuantityRows"
+            type="rec-quantity"
+            @pages="recQuantityPages = $event"
+            @ready="recQuantityReady = $event"
+            @error="updateQuantityError('rec', $event)"
+        />
+        <ReportQuantityPaginator
+            :items="civilQuantityRows"
+            type="civil-quantity"
+            @pages="civilQuantityPages = $event"
+            @ready="civilQuantityReady = $event"
+            @error="updateQuantityError('civil', $event)"
         />
         <ReportA4Page
             v-for="(page, index) in pages"
@@ -724,31 +740,7 @@ function visualClass(photo) {
             </template>
 
             <template v-else-if="page.type === 'rec-quantity' || page.type === 'civil-quantity'">
-                <div class="report-quantity-page">
-                    <h2 class="report-quantity-title">
-                        {{ page.annexTitle || (page.type === 'civil-quantity' ? 'QUANTITATIVO GERAL – CIVIL' : 'QUANTITATIVO GERAL – REC') }}<span v-if="page.continuation"> — CONTINUAÇÃO</span>
-                    </h2>
-                    <table class="report-quantity-table">
-                        <thead>
-                            <tr>
-                                <th>CÓD.</th><th>DATA DE CADASTRO</th><th>PROJETO</th><th>FOTO</th>
-                                <th>ITEM / SUBITEM</th><th>ELEMENTO</th><th>QTD.</th><th>{{ page.type === 'civil-quantity' ? 'M³ TOTAL' : 'PESO TOTAL' }}</th>
-                                <th>G</th><th>U</th><th>T</th><th>PONT. TOTAL</th><th>CLASS.</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr v-for="item in page.items" :key="item.key">
-                                <td>{{ item.code }}</td><td>{{ item.registered_on }}</td><td>{{ item.project }}</td><td>{{ item.photos }}</td>
-                                <td>{{ item.item }}</td><td>{{ item.element }}</td><td>{{ item.quantity }}</td><td>{{ page.type === 'civil-quantity' ? item.total_volume_label : item.total_weight_label }}</td>
-                                <td class="report-quantity-gravity"><div><span>{{ item.gravity.label }}</span><strong :style="damageColorStyle(item.gravity.color)">{{ item.gravity.score ?? '—' }}</strong></div></td>
-                                <td class="report-quantity-urgency" :style="damageColorStyle(item.urgency.color)"><strong>{{ item.urgency.score ?? '—' }}</strong></td>
-                                <td class="report-quantity-trend"><div><span>{{ item.trend.label }}</span><strong :style="damageColorStyle(item.trend.color)">{{ item.trend.score ?? '—' }}</strong></div></td>
-                                <td class="report-quantity-score">{{ item.gut_score }}</td>
-                                <td class="report-quantity-class" :style="damageColorStyle(item.classification.color)">{{ item.classification.code }}</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
+                <ReportQuantityPage :page="page" />
             </template>
 
             <template v-else-if="page.type === 'location-map'">
@@ -957,23 +949,15 @@ function visualClass(photo) {
 
 <style scoped>
 .report-preview-pages { display: flex; flex-direction: column; gap: 0; overflow-x: auto; padding: 0 4mm 12mm; }
+/* Keep visible pages and pagination probes on the same report font. */
+.report-preview-pages,
+.report-preview-pages :deep(*) { font-family: 'Times New Roman', Times, serif !important; }
 .report-page-title { margin: 0 0 6mm; padding-bottom: 2mm; border-bottom: 1px solid #111827; font-size: 11pt; font-weight: 800; letter-spacing: .02em; }
 .report-blue-title { color: #fff; padding: 2mm 3mm; border: 0; background: #062b68; font-size: 9pt; text-align: center; }
 .report-location-title { font-family: Georgia, 'Times New Roman', serif; font-size: 11pt; line-height: 1.1; text-transform: uppercase; }
 .report-general-aspects-page { display: flex; width: 100%; height: 252mm; min-height: 0; flex-direction: column; overflow: hidden; }
 .report-general-aspects-title { flex: none; margin: 0 0 8mm; padding: 0; border: 0; background: transparent; color: #111827; font-family: Georgia, 'Times New Roman', serif; font-size: 10pt; font-weight: 800; line-height: 1.1; text-align: left; }
 .report-general-aspects-body { min-height: 0; flex: 1; overflow: hidden; font-family: Georgia, 'Times New Roman', serif; font-size: 10pt; }
-.report-quantity-page { width: 100%; height: 165mm; overflow: hidden; font-family: Arial, sans-serif; }
-.report-quantity-title { margin: 0 0 4mm; font-family: Georgia, 'Times New Roman', serif; font-size: 10pt; font-weight: 800; }
-.report-quantity-table { width: 100%; border-collapse: collapse; table-layout: auto; font-size: 5.5pt; line-height: 1.2; }
-.report-quantity-table th, .report-quantity-table td { border: 1px solid #062b68; padding: 1mm .8mm; text-align: center; vertical-align: middle; overflow-wrap: anywhere; }
-.report-quantity-table th { background: #062b68; color: #fff; font-size: 5.5pt; font-weight: 800; white-space: normal; overflow-wrap: normal; }
-/* Auto layout lets compact columns grow to fit their headers and values. */
-.report-quantity-table :is(th, td):is(:nth-child(2), :nth-child(4), :nth-child(7), :nth-child(8), :nth-child(10), :nth-child(12), :nth-child(13)) { width: 1%; }
-.report-quantity-table td:is(:nth-child(2), :nth-child(7), :nth-child(8), :nth-child(10), :nth-child(12), :nth-child(13)) { white-space: nowrap; }
-.report-quantity-gravity, .report-quantity-urgency, .report-quantity-trend { padding: 0 !important; }.report-quantity-gravity > div, .report-quantity-trend > div { display: grid; min-height: 7mm; grid-template-columns: minmax(0, 1fr) 6mm; align-items: stretch; }.report-quantity-gravity span, .report-quantity-trend span { display: flex; min-width: 0; align-items: center; justify-content: center; padding: 1mm .6mm; overflow-wrap: anywhere; font-size: 5pt; white-space: normal; }.report-quantity-gravity strong, .report-quantity-trend strong, .report-quantity-urgency > strong { display: flex; min-height: 5mm; align-items: center; justify-content: center; padding: 1mm; color: #111827; font-size: 7pt; }
-.report-quantity-urgency > strong { color: inherit; }
-.report-quantity-score { background: #dbeafe; color: #0759a0; font-size: 7pt; font-weight: 800; }.report-quantity-class { font-size: 7pt; font-weight: 800; }
 .report-textual-finding { margin-bottom: 6mm; border: 1px solid #94a3b8; font-family: Georgia, 'Times New Roman', serif; }
 .report-textual-finding-title { display: flex; justify-content: space-between; gap: 4mm; padding: 3mm; background: #e2e8f0; font-size: 9pt; }
 .report-textual-finding-classes { padding: 2.5mm 3mm; border-top: 1px solid #94a3b8; font-size: 8pt; }
@@ -1092,5 +1076,5 @@ function visualClass(photo) {
 .report-map-observations-continuation { display: flex; min-height: 0; flex: 1; flex-direction: column; margin-top: 0; }
 .report-map-observations-continuation :deep(.report-map-observation-copy) { flex: none; text-align: left; }
 .report-photo-block { margin-bottom: 5mm; break-inside: avoid; }.report-photo-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1mm; }.report-photo-pair-single .report-photo-card { grid-column: 1 / -1; width: 50%; justify-self: center; }.report-photo-card { min-width: 0; overflow: hidden; break-inside: avoid; }.report-photo-equipment { min-height: 6mm; padding: 1.2mm 2mm; background: #d1d1d1; color: #111827; font-family: Georgia, serif; font-size: 8pt; line-height: 1.1; }.report-photo-title { display: flex; align-items: baseline; gap: 3mm; min-height: 7mm; padding: 1.2mm 2mm; background: #fff; font-family: Georgia, serif; font-size: 9pt; line-height: 1.1; }.report-photo-title span { min-width: 5mm; font-size: 10pt; }.report-photo-title strong { font-weight: 700; }.report-photo-image { position: relative; height: 48mm; background: #e5e7eb; background-image: linear-gradient(145deg, #cbd5e1, #475569); }.report-photo-image img { display: block; width: 100%; height: 100%; object-fit: contain; background: #f3f4f6; }.report-photo-unavailable { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 4mm; background: rgba(15, 23, 42, .72); color: #fff; font-size: 8pt; font-weight: 700; text-align: center; }.report-photo-structure { background-image: linear-gradient(115deg, transparent 35%, rgba(15,23,42,.45) 36% 41%, transparent 42%), linear-gradient(30deg, #94a3b8, #475569); }.report-photo-surface { background-image: repeating-linear-gradient(105deg, rgba(255,255,255,.12) 0 2px, transparent 2px 18px), linear-gradient(145deg, #64748b, #334155); }.report-photo-repair { background-image: linear-gradient(90deg, transparent 47%, rgba(13,148,136,.78) 48% 52%, transparent 53%), linear-gradient(145deg, #cbd5e1, #64748b); }.report-photo-classification { min-height: 6mm; margin-top: 1mm; padding: 1.5mm 2mm; background: #fff; border: 1px solid #d1d5db; font-family: Georgia, serif; font-size: 8.5pt; font-weight: 700; line-height: 1.1; text-align: center; }.report-photo-text-section { margin-top: 1mm; break-inside: avoid; }.report-photo-blue-bar { padding: 1.2mm 2mm; background: #062b68; color: #fff; font-family: Georgia, serif; font-size: 9pt; line-height: 1.1; text-align: center; }.report-photo-text-section p { min-height: 10mm; margin: 0; padding: 3mm 5mm; font-family: Georgia, serif; font-size: 8.5pt; line-height: 1.35; text-align: center; white-space: pre-line; }
-@media print { .report-preview-pages { display: block; } }
+@media print { .report-preview-pages { display: block; padding: 0; overflow: visible; } }
 </style>

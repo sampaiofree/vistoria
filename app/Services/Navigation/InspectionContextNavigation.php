@@ -131,7 +131,7 @@ final class InspectionContextNavigation
                 ],
                 [
                     'key' => 'report_overview',
-                    'label' => 'Vista geral',
+                    'label' => 'Fotos panorâmicas',
                     'href' => route('inspections.report-overview', $inspection),
                     'icon' => 'photos',
                     'active' => $request->routeIs(

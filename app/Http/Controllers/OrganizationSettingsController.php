@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Actions\Settings\UpdateOrganization;
 use App\Http\Requests\Settings\UpdateOrganizationRequest;
 use App\Services\Branding\BrandingImageUrls;
+use App\Services\Pwa\OrganizationAppBranding;
 use App\Services\Tenancy\TenantContext;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -14,7 +15,7 @@ use Inertia\Response as InertiaResponse;
 
 final class OrganizationSettingsController extends Controller
 {
-    public function edit(Request $request, TenantContext $tenant, BrandingImageUrls $brandingUrls): InertiaResponse
+    public function edit(Request $request, TenantContext $tenant, BrandingImageUrls $brandingUrls, OrganizationAppBranding $appBranding): InertiaResponse
     {
         $organization = $tenant->organization();
         $this->authorize('update', $organization);
@@ -27,10 +28,13 @@ final class OrganizationSettingsController extends Controller
                 'logo_url' => $brandingUrls->companyLogo($organization),
                 'primary_color' => $organization->primary_color,
                 'icon_url' => $brandingUrls->companyIcon($organization),
+                'pwa_icon_url' => $appBranding->iconUrl($organization),
+                'has_pwa_icon' => $organization->pwa_icon_path !== null,
             ],
             'action' => route('settings.company.update'),
             'remove_logo_url' => route('settings.company.logo.destroy'),
             'remove_icon_url' => route('settings.company.icon.destroy'),
+            'remove_pwa_icon_url' => route('settings.company.pwa-icon.destroy'),
         ]);
     }
 
@@ -67,5 +71,18 @@ final class OrganizationSettingsController extends Controller
         }
 
         return redirect()->route('settings.company.edit')->with('success', 'Ícone removido.');
+    }
+
+    public function destroyPwaIcon(Request $request, TenantContext $tenant): RedirectResponse
+    {
+        $organization = $tenant->organization();
+        $this->authorize('update', $organization);
+
+        if ($organization->pwa_icon_path !== null) {
+            Storage::disk('branding_images')->delete($organization->pwa_icon_path);
+            $organization->update(['pwa_icon_path' => null]);
+        }
+
+        return redirect()->route('settings.company.edit')->with('success', 'Ícone do aplicativo removido.');
     }
 }

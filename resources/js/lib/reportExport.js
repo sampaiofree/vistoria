@@ -29,16 +29,124 @@ function nextFrame() {
     return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 }
 
-async function waitForImages(elements) {
-    const images = elements.flatMap((element) => [...element.querySelectorAll('img')]);
+const REPORT_IMAGE_SELECTOR = 'img, svg image';
+const XLINK_NAMESPACE = 'http://www.w3.org/1999/xlink';
 
-    await Promise.all(images.map((image) => {
-        if (image.complete) return Promise.resolve();
+export class ReportImageLoadError extends Error {
+    constructor(page, label) {
+        super(`Não foi possível carregar ${label} na página ${page} do relatório. Verifique a imagem e tente novamente.`);
+        this.name = 'ReportImageLoadError';
+    }
+}
 
-        return new Promise((resolve) => {
-            image.addEventListener('load', resolve, { once: true });
-            image.addEventListener('error', resolve, { once: true });
-        });
+function imageLabel(element) {
+    if (element.localName === 'image') {
+        const label = element.closest('svg')?.getAttribute('aria-label');
+        return label ? `o ${label}` : 'o mapa';
+    }
+
+    const label = element.getAttribute('alt');
+    return label ? `a ${label}` : 'a fotografia';
+}
+
+function imageUrl(element) {
+    return element.localName === 'image'
+        ? element.getAttribute('href') || element.getAttributeNS(XLINK_NAMESPACE, 'href')
+        : element.currentSrc || element.getAttribute('src');
+}
+
+function blobDataUrl(blob) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => typeof reader.result === 'string'
+            ? resolve(reader.result)
+            : reject(new Error('Imagem inválida'));
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(blob);
+    });
+}
+
+function validateImageDataUrl(dataUrl) {
+    return new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => image.naturalWidth ? resolve() : reject(new Error('Imagem inválida'));
+        image.onerror = () => reject(new Error('Imagem inválida'));
+        image.src = dataUrl;
+    });
+}
+
+async function fetchImageDataUrl(url) {
+    if (url.startsWith('data:image/')) return url;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+
+    try {
+        const response = await fetch(url, { credentials: 'same-origin', signal: controller.signal });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const blob = await response.blob();
+        if (!blob.size || !blob.type.startsWith('image/')) throw new Error('Resposta sem imagem válida');
+
+        return await blobDataUrl(blob);
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
+export async function prepareReportPageImages(pageElement, pageNumber) {
+    const images = [...pageElement.querySelectorAll(REPORT_IMAGE_SELECTOR)];
+    const dataUrls = new Map();
+
+    return Promise.all(images.map(async (element) => {
+        const url = imageUrl(element)?.trim();
+        if (!url) return null;
+
+        try {
+            if (!dataUrls.has(url)) dataUrls.set(url, fetchImageDataUrl(url));
+            const dataUrl = await dataUrls.get(url);
+            if (element.localName === 'image') await validateImageDataUrl(dataUrl);
+            return dataUrl;
+        } catch {
+            throw new ReportImageLoadError(pageNumber, imageLabel(element));
+        }
+    }));
+}
+
+export async function embedReportPageImages(clonedPage, dataUrls, pageNumber) {
+    const images = [...clonedPage.querySelectorAll(REPORT_IMAGE_SELECTOR)];
+    if (images.length !== dataUrls.length) {
+        throw new Error(`A página ${pageNumber} mudou durante a exportação. Tente novamente.`);
+    }
+
+    await Promise.all(images.map(async (element, index) => {
+        const dataUrl = dataUrls[index];
+        if (!dataUrl) return;
+
+        if (element.localName === 'image') {
+            element.setAttribute('href', dataUrl);
+            if (element.hasAttributeNS(XLINK_NAMESPACE, 'href')) {
+                element.setAttributeNS(XLINK_NAMESPACE, 'xlink:href', dataUrl);
+            }
+            return;
+        }
+
+        element.removeAttribute('srcset');
+        element.setAttribute('src', dataUrl);
+
+        try {
+            if (typeof element.decode === 'function') {
+                await element.decode();
+            } else if (!element.complete) {
+                await new Promise((resolve, reject) => {
+                    element.addEventListener('load', resolve, { once: true });
+                    element.addEventListener('error', reject, { once: true });
+                });
+            }
+            if (!element.naturalWidth) throw new Error('Imagem inválida');
+        } catch {
+            throw new ReportImageLoadError(pageNumber, imageLabel(element));
+        }
     }));
 }
 
@@ -74,7 +182,6 @@ export async function captureReportPages(elements, onProgress = () => {}) {
     if (document.fonts?.ready) {
         await document.fonts.ready;
     }
-    await waitForImages(elements);
     await nextFrame();
 
     const { default: html2canvas } = await import('html2canvas');
@@ -82,6 +189,7 @@ export async function captureReportPages(elements, onProgress = () => {}) {
 
     for (let index = 0; index < elements.length; index += 1) {
         onProgress({ current: index + 1, total: elements.length });
+        const imageDataUrls = await prepareReportPageImages(elements[index], index + 1);
         const canvas = await html2canvas(elements[index], {
             backgroundColor: '#FFFFFF',
             scale: 2,
@@ -90,10 +198,11 @@ export async function captureReportPages(elements, onProgress = () => {}) {
             logging: false,
             imageTimeout: 30000,
             removeContainer: true,
-            onclone: (clonedDocument) => {
+            onclone: async (clonedDocument, clonedPage) => {
                 clonedDocument.documentElement.style.setProperty('background-color', '#FFFFFF', 'important');
                 clonedDocument.body.style.setProperty('background-color', '#FFFFFF', 'important');
                 clonedDocument.querySelector('.report-preview-pages')?.classList.add('report-exporting');
+                await embedReportPageImages(clonedPage, imageDataUrls, index + 1);
             },
         });
         const blob = await pngBlob(canvas);

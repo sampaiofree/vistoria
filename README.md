@@ -81,10 +81,11 @@ no navegador. Faça a instalação após o login, quando o sistema já identific
 empresa e disponibilizou seu manifesto. A disponibilidade depende do navegador e dos seus
 [critérios de instalação](https://web.dev/articles/install-criteria).
 
-O app usa o nome, a cor primária e o campo **Logotipo** de **Configurações → Empresa**.
-O ícone do menu lateral é independente. O logotipo é centralizado, sem distorção,
-em ícones PNG de 192 e 512 pixels; na ausência de imagem válida, usa-se o símbolo
-do Vistoria. O processamento utiliza Imagick e cache por empresa e conteúdo da imagem.
+O app usa o nome, a cor primária e o campo **Ícone do aplicativo (PWA)** de
+**Configurações → Empresa**. A imagem deve ser quadrada (1:1), em JPG, PNG ou WebP,
+com até 2 MB. Ela ocupa toda a área dos ícones PNG de 192 e 512 pixels; sem uma
+imagem válida, usa-se o símbolo do Vistoria. O logotipo e o ícone do menu lateral
+são independentes. O processamento utiliza Imagick e cache por empresa e conteúdo da imagem.
 No cache, os PNGs são armazenados em Base64 para compatibilidade com colunas de
 texto do MySQL; as rotas públicas continuam retornando imagens `image/png`.
 Manifesto e ícones são públicos e não contêm dados operacionais ou credenciais.

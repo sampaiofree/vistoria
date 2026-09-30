@@ -216,6 +216,6 @@ onMounted(paginate);
 </template>
 
 <style>
-.report-general-aspects-measure { position: fixed; left: -10000px; top: 0; width: 182mm; visibility: hidden; pointer-events: none; }
-.report-general-aspects-probe { width: 182mm; height: 237mm; overflow: auto; color: #111827; font-family: Georgia, 'Times New Roman', serif; font-size: 10pt; }
+.report-general-aspects-measure { position: fixed; left: -10000px; top: 0; width: 177mm; visibility: hidden; pointer-events: none; }
+.report-general-aspects-probe { width: 177mm; height: 237mm; overflow: auto; color: #111827; font-family: Georgia, 'Times New Roman', serif; font-size: 10pt; }
 </style>

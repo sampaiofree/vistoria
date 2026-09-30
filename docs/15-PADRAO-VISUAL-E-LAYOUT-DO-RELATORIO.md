@@ -83,6 +83,10 @@ Times New Roman
 
 O próprio DOCX define **Times New Roman** como fonte padrão dos caracteres.
 
+No aplicativo, essa família também se aplica à capa, aos cabeçalhos, ao sumário,
+às tabelas e às áreas que medem a paginação. O navegador utiliza a fonte instalada
+no dispositivo; quando ela não estiver disponível, usa `Times` ou outra fonte serifada.
+
 ### 3.1 Texto corrido
 
 Padrão:
@@ -199,10 +203,10 @@ As páginas internas possuem cabeçalho técnico fixo contendo:
 
 Visualmente, o cabeçalho funciona como uma tabela horizontal.
 
-A tipografia predominante dos campos pequenos do cabeçalho é:
+A tipografia dos campos pequenos do cabeçalho no aplicativo é:
 
 ```text
-Fonte: Arial
+Fonte: Times New Roman
 Tamanho aproximado: 8 pt
 ```
 
@@ -427,7 +431,7 @@ Valores base recomendados para implementação:
 }
 
 .report-header {
-    font-family: Arial, Helvetica, sans-serif;
+    font-family: "Times New Roman", Times, serif;
     font-size: 8pt;
 }
 ```

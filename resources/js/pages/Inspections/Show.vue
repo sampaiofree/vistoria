@@ -25,6 +25,7 @@ import {
     captureReportPages,
     downloadReportDoc,
     downloadReportPdf,
+    ReportImageLoadError,
     reportFilename,
 } from '@/lib/reportExport.js';
 
@@ -188,7 +189,9 @@ async function exportReport(format) {
         }
     } catch (error) {
         console.error(error);
-        exportError.value = 'Não foi possível gerar o arquivo. Verifique as imagens do relatório e tente novamente.';
+        exportError.value = error instanceof ReportImageLoadError
+            ? error.message
+            : 'Não foi possível gerar o arquivo. Tente novamente.';
     } finally {
         exportingFormat.value = null;
         exportStatus.value = '';
@@ -509,7 +512,12 @@ async function exportReport(format) {
                 </div>
             </div>
 
-            <ReportPreview ref="reportPreview" :content="content" @layout-ready="reportLayoutReady = $event" />
+            <ReportPreview
+                ref="reportPreview"
+                :content="content"
+                @layout-ready="reportLayoutReady = $event"
+                @layout-error="exportError = $event || ''"
+            />
         </div>
 
         <div v-else-if="false" class="mt-6">

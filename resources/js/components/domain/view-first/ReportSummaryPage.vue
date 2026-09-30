@@ -29,7 +29,7 @@ defineProps({
 .report-summary-page-measuring { height: auto; overflow: visible; }
 .report-summary-title { margin: 0 0 12mm; font-size: 16pt; font-weight: 700; line-height: 1.1; }
 .report-summary-list { display: grid; gap: 2.3mm; margin: 0; padding: 0; list-style: none; }
-.report-summary-entry { display: flex; align-items: flex-end; font-size: 9.5pt; font-weight: 700; line-height: 1.2; }
+.report-summary-entry { display: flex; align-items: flex-end; font-size: 12pt; font-weight: 700; line-height: 1.2; }
 .report-summary-entry-subsection { padding-left: 8mm; font-weight: 400; }
 .report-summary-entry-annex { margin-top: 1mm; }
 .report-summary-label { min-width: 0; }

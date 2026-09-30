@@ -1,4 +1,5 @@
 <script setup>
+import { onBeforeUnmount, ref } from 'vue';
 import { useForm, router } from '@inertiajs/vue3';
 import AppLayout from '@/components/ui/AppLayout.vue';
 
@@ -7,7 +8,11 @@ const props = defineProps({
     action: { type: String, required: true },
     remove_logo_url: { type: String, required: true },
     remove_icon_url: { type: String, required: true },
+    remove_pwa_icon_url: { type: String, required: true },
 });
+
+const pwaIconInput = ref(null);
+const pwaIconPreview = ref(null);
 
 const form = useForm({
     _method: 'put',
@@ -17,10 +22,19 @@ const form = useForm({
     primary_color: props.organization.primary_color ?? '#0F172A',
     logo: null,
     icon: null,
+    pwa_icon: null,
 });
 
 function submit() {
-    form.post(props.action, { forceFormData: true, preserveScroll: true });
+    form.post(props.action, {
+        forceFormData: true,
+        preserveScroll: true,
+        onSuccess: () => {
+            form.reset('pwa_icon');
+            clearPwaIconPreview();
+            if (pwaIconInput.value) pwaIconInput.value.value = '';
+        },
+    });
 }
 
 function removeLogo() {
@@ -40,6 +54,31 @@ function removeIcon() {
 function selectIcon(event) {
     form.icon = event.target.files?.[0] ?? null;
 }
+
+function clearPwaIconPreview() {
+    if (pwaIconPreview.value) URL.revokeObjectURL(pwaIconPreview.value);
+    pwaIconPreview.value = null;
+}
+
+function selectPwaIcon(event) {
+    clearPwaIconPreview();
+    form.pwa_icon = event.target.files?.[0] ?? null;
+    if (form.pwa_icon) pwaIconPreview.value = URL.createObjectURL(form.pwa_icon);
+}
+
+function removePwaIcon() {
+    if (!window.confirm('Remover o ícone do aplicativo?')) return;
+    router.delete(props.remove_pwa_icon_url, {
+        preserveScroll: true,
+        onSuccess: () => {
+            form.reset('pwa_icon');
+            clearPwaIconPreview();
+            if (pwaIconInput.value) pwaIconInput.value.value = '';
+        },
+    });
+}
+
+onBeforeUnmount(clearPwaIconPreview);
 
 function selectPrimaryColor(event) {
     form.primary_color = event.target.value.toUpperCase();
@@ -133,6 +172,22 @@ function selectPrimaryColor(event) {
                                     <button v-if="organization.icon_url" type="button" class="mt-3 text-sm font-semibold text-rose-700 hover:text-rose-900" @click="removeIcon">Remover ícone</button>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="border-t border-slate-100 pt-6">
+                    <h2 class="text-lg font-semibold text-slate-950">Ícone do aplicativo (PWA)</h2>
+                    <p class="mt-1 text-sm text-slate-500">Imagem exibida ao instalar o aplicativo no Android. Sem uma imagem própria, será usado o ícone padrão.</p>
+                    <div class="mt-4 flex flex-wrap items-center gap-5">
+                        <div class="flex h-28 w-28 items-center justify-center overflow-hidden rounded-2xl border border-dashed border-slate-300 bg-white">
+                            <img :src="pwaIconPreview ?? organization.pwa_icon_url" alt="Prévia do ícone do aplicativo" class="h-full w-full object-contain">
+                        </div>
+                        <div>
+                            <input ref="pwaIconInput" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" class="block max-w-full text-sm text-slate-600" @change="selectPwaIcon">
+                            <p class="mt-2 text-xs text-slate-500">JPG, PNG ou WebP, até 2 MB. A imagem deve ser quadrada (1:1).</p>
+                            <p v-if="form.errors.pwa_icon" class="mt-1 text-xs text-rose-600">{{ form.errors.pwa_icon }}</p>
+                            <button v-if="organization.has_pwa_icon" type="button" class="mt-3 text-sm font-semibold text-rose-700 hover:text-rose-900" @click="removePwaIcon">Remover ícone do aplicativo</button>
                         </div>
                     </div>
                 </div>

@@ -82,6 +82,6 @@ onMounted(paginate);
 </template>
 
 <style scoped>
-.report-summary-measure { position: fixed; left: -10000px; top: 0; width: 182mm; visibility: hidden; pointer-events: none; }
-.report-summary-probe { width: 182mm; height: 252mm; overflow: auto; }
+.report-summary-measure { position: fixed; left: -10000px; top: 0; width: 177mm; visibility: hidden; pointer-events: none; }
+.report-summary-probe { width: 177mm; height: 252mm; overflow: auto; }
 </style>

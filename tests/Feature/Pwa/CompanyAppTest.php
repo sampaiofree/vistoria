@@ -54,8 +54,8 @@ final class CompanyAppTest extends TestCase
 
     public function test_metadata_and_icons_remain_bound_to_the_url_company_regardless_of_session(): void
     {
-        $first = $this->organizationWithLogo($this->image(100, 100, '#ff0000'));
-        $second = $this->organizationWithLogo($this->image(100, 100, '#0000ff'));
+        $first = $this->organizationWithPwaIcon($this->image(100, 100, '#ff0000'));
+        $second = $this->organizationWithPwaIcon($this->image(100, 100, '#0000ff'));
         $firstManifest = $this->get(route('pwa.manifest', $first))->json();
         $this->actingAs(User::factory()->for($first)->create());
         $secondManifest = $this->get(route('pwa.manifest', $second))->assertJsonPath('name', $second->name)->json();
@@ -66,9 +66,9 @@ final class CompanyAppTest extends TestCase
         $this->assertPixel($this->get($secondManifest['icons'][0]['src'])->getContent(), 96, 96, [0, 0, 255]);
     }
 
-    public function test_horizontal_logo_is_centered_without_stretching_in_both_sizes(): void
+    public function test_uploaded_square_icon_fills_both_sizes(): void
     {
-        $organization = $this->organizationWithLogo($this->image(400, 100, '#ff0000'));
+        $organization = $this->organizationWithPwaIcon($this->image(100, 100, '#ff0000'));
 
         foreach ([192, 512] as $size) {
             $response = $this->get(route('pwa.icon', ['organization' => $organization, 'size' => $size]))
@@ -77,8 +77,8 @@ final class CompanyAppTest extends TestCase
             $dimensions = getimagesizefromstring($contents);
             $this->assertSame([$size, $size], [$dimensions[0], $dimensions[1]]);
             $this->assertPixel($contents, (int) ($size / 2), (int) ($size / 2), [255, 0, 0]);
-            $this->assertPixel($contents, (int) ($size / 2), (int) ($size / 4), [255, 255, 255]);
-            $this->assertPixel($contents, 0, (int) ($size / 2), [255, 255, 255]);
+            $this->assertPixel($contents, (int) ($size / 2), (int) ($size / 4), [255, 0, 0]);
+            $this->assertPixel($contents, 0, (int) ($size / 2), [255, 0, 0]);
         }
     }
 
@@ -90,39 +90,52 @@ final class CompanyAppTest extends TestCase
         $draw->setFillColor('#ff0000');
         $draw->rectangle(30, 30, 70, 70);
         $image->drawImage($draw);
-        $organization = $this->organizationWithLogo($image->getImageBlob());
+        $organization = $this->organizationWithPwaIcon($image->getImageBlob());
         $image->clear();
         $contents = $this->get(route('pwa.icon', ['organization' => $organization, 'size' => 192]))->assertOk()->getContent();
 
-        $this->assertPixel($contents, 30, 96, [255, 255, 255]);
+        $this->assertPixel($contents, 20, 96, [255, 255, 255]);
         $this->assertPixel($contents, 96, 96, [255, 0, 0]);
     }
 
-    public function test_missing_invalid_and_unsafe_logos_use_the_default_icon(): void
+    public function test_missing_invalid_and_unsafe_uploaded_icons_use_the_default_icon(): void
     {
         $organization = Organization::factory()->create();
         $url = route('pwa.icon', ['organization' => $organization, 'size' => 192]);
         $fallback = $this->get($url)->assertOk()->getContent();
 
-        $organization->update(['logo_path' => 'missing.png']);
+        $organization->update(['pwa_icon_path' => 'missing.png']);
         $this->assertSame($fallback, $this->get($url)->assertOk()->getContent());
         Storage::disk('branding_images')->put('missing.png', 'not an image');
         $this->assertSame($fallback, $this->get($url)->assertOk()->getContent());
         Storage::disk('branding_images')->put('missing.png', '<svg xmlns="http://www.w3.org/2000/svg"><rect width="192" height="192" fill="red"/></svg>');
+        $this->assertSame($fallback, $this->get($url)->assertOk()->getContent());
+        Storage::disk('branding_images')->put('missing.png', $this->image(400, 100, 'red'));
         $this->assertSame($fallback, $this->get($url)->assertOk()->getContent());
         Storage::disk('branding_images')->put('missing.png', $this->image(100, 100, 'red'));
         config(['photos.limits.max_dimension' => 50]);
         $this->assertSame($fallback, $this->get($url)->assertOk()->getContent());
     }
 
-    public function test_changing_and_removing_logo_refreshes_icons_without_changing_app_identity(): void
+    public function test_logo_and_sidebar_icon_do_not_replace_the_default_pwa_icon(): void
     {
-        $organization = $this->organizationWithLogo($this->image(100, 100, 'red'));
+        $organization = Organization::factory()->create();
+        $default = $this->get(route('pwa.icon', ['organization' => $organization, 'size' => 192]))->assertOk()->getContent();
+        Storage::disk('branding_images')->put('logo.png', $this->image(100, 100, 'red'));
+        Storage::disk('branding_images')->put('sidebar.png', $this->image(100, 100, 'blue'));
+        $organization->update(['logo_path' => 'logo.png', 'icon_path' => 'sidebar.png']);
+
+        $this->assertSame($default, $this->get(route('pwa.icon', ['organization' => $organization, 'size' => 192]))->assertOk()->getContent());
+    }
+
+    public function test_changing_and_removing_uploaded_icon_refreshes_icons_without_changing_app_identity(): void
+    {
+        $organization = $this->organizationWithPwaIcon($this->image(100, 100, 'red'));
         $manifestUrl = route('pwa.manifest', $organization);
         $original = $this->get($manifestUrl)->json();
         $oldIcon = $this->get($original['icons'][0]['src'])->assertOk();
 
-        Storage::disk('branding_images')->put($organization->logo_path, $this->image(100, 100, 'blue'));
+        Storage::disk('branding_images')->put($organization->pwa_icon_path, $this->image(100, 100, 'blue'));
         $organization->update(['name' => 'Nome atualizado', 'primary_color' => '#654321']);
         $updated = $this->get($manifestUrl)->assertJsonPath('name', 'Nome atualizado')->assertJsonPath('theme_color', '#654321')->json();
         $this->assertSame($original['id'], $updated['id']);
@@ -131,7 +144,7 @@ final class CompanyAppTest extends TestCase
         $this->assertNotSame($oldIcon->headers->get('ETag'), $newIcon->headers->get('ETag'));
         $this->assertPixel($newIcon->getContent(), 96, 96, [0, 0, 255]);
 
-        $organization->update(['logo_path' => null]);
+        $organization->update(['pwa_icon_path' => null]);
         $removed = $this->get($manifestUrl)->json();
         $this->assertSame($original['id'], $removed['id']);
         $this->assertNotSame($updated['icons'][0]['src'], $removed['icons'][0]['src']);
@@ -140,7 +153,7 @@ final class CompanyAppTest extends TestCase
 
     public function test_icons_support_revalidation_and_restore_imagick_limits(): void
     {
-        $organization = $this->organizationWithLogo($this->image(100, 100, 'red'));
+        $organization = $this->organizationWithPwaIcon($this->image(100, 100, 'red'));
         $url = route('pwa.icon', ['organization' => $organization, 'size' => 192]);
         $previous = Imagick::getResourceLimit(Imagick::RESOURCETYPE_THREAD);
         config(['photos.processing.threads' => 1]);
@@ -153,7 +166,7 @@ final class CompanyAppTest extends TestCase
     public function test_icon_cache_values_are_text_safe_and_cache_hits_still_return_pngs(): void
     {
         config(['cache.default' => 'database']);
-        $organization = $this->organizationWithLogo($this->image(400, 100, 'red'));
+        $organization = $this->organizationWithPwaIcon($this->image(100, 100, 'red'));
 
         foreach ([192, 512] as $size) {
             $url = route('pwa.icon', ['organization' => $organization, 'size' => $size]);
@@ -178,9 +191,9 @@ final class CompanyAppTest extends TestCase
 
     public function test_legacy_binary_cache_entries_do_not_break_icon_responses(): void
     {
-        $logo = $this->image(100, 100, 'red');
-        $organization = $this->organizationWithLogo($logo);
-        $legacyKey = 'pwa:icon:'.$organization->public_id.':'.hash('sha256', 'v1|'.$logo).':192';
+        $icon = $this->image(100, 100, 'red');
+        $organization = $this->organizationWithPwaIcon($icon);
+        $legacyKey = 'pwa:icon:'.$organization->public_id.':'.hash('sha256', 'v1|'.$icon).':192';
         Cache::put($legacyKey, $this->image(192, 192, 'blue'), now()->addDays(30));
 
         $contents = $this->get(route('pwa.icon', ['organization' => $organization, 'size' => 192]))
@@ -223,12 +236,12 @@ final class CompanyAppTest extends TestCase
         $this->get('/login')->assertOk()->assertDontSee('rel="manifest"', false);
     }
 
-    private function organizationWithLogo(string $contents): Organization
+    private function organizationWithPwaIcon(string $contents): Organization
     {
         $organization = Organization::factory()->create();
-        $path = 'organizations/'.$organization->public_id.'/logo.png';
+        $path = 'organizations/'.$organization->public_id.'/pwa-icon.png';
         Storage::disk('branding_images')->put($path, $contents);
-        $organization->update(['logo_path' => $path]);
+        $organization->update(['pwa_icon_path' => $path]);
 
         return $organization;
     }

@@ -94,6 +94,7 @@ Route::middleware([
         Route::put('/settings/company', [OrganizationSettingsController::class, 'update'])->name('settings.company.update');
         Route::delete('/settings/company/logo', [OrganizationSettingsController::class, 'destroyLogo'])->name('settings.company.logo.destroy');
         Route::delete('/settings/company/icon', [OrganizationSettingsController::class, 'destroyIcon'])->name('settings.company.icon.destroy');
+        Route::delete('/settings/company/pwa-icon', [OrganizationSettingsController::class, 'destroyPwaIcon'])->name('settings.company.pwa-icon.destroy');
 
         Route::get('/settings/users', [UserSettingsController::class, 'index'])->name('settings.users.index');
         Route::get('/settings/users/create', [UserSettingsController::class, 'create'])->name('settings.users.create');
