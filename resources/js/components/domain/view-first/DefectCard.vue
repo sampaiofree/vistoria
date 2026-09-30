@@ -19,6 +19,7 @@ const props = defineProps({
 const startingAssessment = ref(false);
 
 const assessment = computed(() => props.defect.current_assessment ?? props.defect.assessment ?? {});
+const engineeringNote = computed(() => assessment.value.classification_method === 'engineering_note');
 const condition = computed(() => assessment.value.condition ?? props.defect.condition ?? null);
 const status = computed(() => assessment.value.status ?? props.defect.assessment_status ?? 'not_assessed');
 const classification = computed(() => props.defect.classification ?? {});
@@ -100,6 +101,7 @@ const element = computed(() => {
                 <p class="mt-2 truncate text-xs text-slate-500">
                     {{ discipline }} · {{ defect.origin_type === 'inherited' ? 'Herdada' : 'Nova nesta inspeção' }} · {{ conditionLabel }} ·
                     <span v-if="gutSummary">{{ gutSummary }} · </span>
+                    <span v-if="engineeringNote">Nota de Engenharia · </span>
                     {{ evidenceCount }} {{ evidenceCount === 1 ? 'foto' : 'fotos' }}
                     <span v-if="classification.code"> · {{ classification.code }}</span>
                     <span v-if="element !== '—'"> · {{ element }}</span>
@@ -150,16 +152,17 @@ const element = computed(() => {
                 </div>
             </div>
 
-            <CivilClassificationBadge :code="classification.code" :label="classification.label" :historical="classification.historical" large />
+            <span v-if="engineeringNote" class="rounded-xl bg-teal-50 px-3 py-2 text-sm font-semibold text-teal-800">Nota de Engenharia</span>
+            <CivilClassificationBadge v-else :code="classification.code" :label="classification.label" :historical="classification.historical" large />
         </div>
 
         <div class="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <div class="rounded-xl bg-slate-50 px-3.5 py-3">
+            <div v-if="!engineeringNote" class="rounded-xl bg-slate-50 px-3.5 py-3">
                 <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Notas GUT</div>
                 <div class="mt-1 font-semibold text-slate-900">{{ gutSummary || 'Não informadas' }}</div>
                 <div class="mt-0.5 text-xs text-slate-500">Produto pendente de definição</div>
             </div>
-            <div class="rounded-xl bg-slate-50 px-3.5 py-3">
+            <div v-if="!engineeringNote" class="rounded-xl bg-slate-50 px-3.5 py-3">
                 <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Quantitativo</div>
                 <div class="mt-1 font-semibold text-slate-900">{{ quantitySummary }}</div>
                 <div class="mt-0.5 text-xs text-slate-500">{{ item }}</div>

@@ -136,8 +136,11 @@ REDIS_HOST=127.0.0.1
 REDIS_PASSWORD=<SENHA_REDIS>
 REDIS_PORT=6379
 
-INSPECTION_PHOTOS_ROOT=/var/lib/vistoria/inspection-photos
-INSPECTION_MAPS_ROOT=/var/lib/vistoria/inspection-maps
+USER_IMAGES_STORAGE=r2
+R2_ASSETS_ACCESS_KEY_ID=<ACCESS_KEY_ID>
+R2_ASSETS_SECRET_ACCESS_KEY=<SECRET_ACCESS_KEY>
+R2_ASSETS_BUCKET=vistoria-assets
+R2_ENDPOINT=https://<ACCOUNT_ID>.r2.cloudflarestorage.com
 ```
 
 Adicione a configuração real de e-mail para que notificações possam ser
@@ -153,30 +156,31 @@ php artisan key:generate
 Preserve `APP_KEY` nos deploys e backups. Alterá-la invalida dados criptografados,
 sessões e tokens existentes.
 
-## 6. Preparar armazenamento persistente
+## 6. Preparar o R2 e os temporários
 
-Crie os discos privados fora de um diretório de release descartável:
+Na conta Cloudflare, crie o bucket `vistoria-assets`. Mantenha desabilitados o
+domínio público e o endereço `r2.dev`. Crie um API Token R2 com permissão
+**Object Read & Write** limitada somente a esse bucket. Copie o Access Key ID,
+Secret Access Key e endpoint S3 para o `.env` protegido. A região S3 é `auto`;
+não use as variáveis `AWS_*` do disco genérico da aplicação.
 
-```bash
-sudo install -d -o www-data -g www-data -m 2770 /var/lib/vistoria
-sudo install -d -o www-data -g www-data -m 2770 /var/lib/vistoria/inspection-photos
-sudo install -d -o www-data -g www-data -m 2770 /var/lib/vistoria/inspection-maps
-```
+PHP-FPM e Horizon precisam conseguir gravar no diretório temporário do sistema:
+o job de mapas usa um arquivo local apenas durante o processamento. Fotos,
+mapas, logos e ícones enviados ficam no bucket privado. As rotas da aplicação
+controlam o acesso às imagens. `storage:link` não é necessário para elas.
 
-Fotos e mapas são privados. O Nginx não deve expor esses caminhos;
-as respostas autorizadas passam pela aplicação.
-
-Também preserve `storage/app/public`, onde ficam logos e ícones. Em um deploy
-por releases, compartilhe todo o diretório `storage/` entre releases. Em um
-deploy no mesmo checkout, não o apague e inclua-o no backup.
+Antes de liberar a instalação, use `php artisan tinker` para confirmar no R2
+as operações de `put`, `get`, `listContents`, `copy` e `delete` em um caminho
+temporário do disco `inspection_maps`. Para a cópia, use
+`$disk->getDriver()->copy($origem, $destino, ['visibility' => 'private'])`,
+como faz a aplicação. Remova os dois objetos de teste ao final. Repita escrita,
+leitura e exclusão nos discos `inspection_photos` e `branding_images`. Verifique
+no painel da Cloudflare que o bucket continua sem domínio público e sem `r2.dev`.
 
 ```bash
 sudo chown -R <deploy>:www-data storage bootstrap/cache
 sudo chmod -R ug+rwX storage bootstrap/cache
-php artisan storage:link
 ```
-
-O link publica somente `storage/app/public` em `public/storage`.
 
 ## 7. Ajustar PHP-FPM e Nginx
 
@@ -224,7 +228,6 @@ o acesso. Mantenha `APP_URL` coerente com a URL pública.
 
 ```bash
 php artisan migrate --force
-php artisan storage:link
 php artisan optimize
 php artisan app:bootstrap-super-admin --email=<ADMIN_EMAIL> --name="Administrador Master"
 ```
@@ -310,8 +313,13 @@ Valide no navegador:
 7. confirmar no Horizon a execução na fila `images` e a disponibilidade das
    variantes otimizada e miniatura;
 8. enviar uma imagem de mapa e validar fundo, editor e miniatura;
-9. conferir `/up` e logs de Laravel, Nginx, PHP-FPM, Redis e Supervisor;
-10. reiniciar a VPS e confirmar que todos os serviços retornam.
+9. enviar logos do cliente e da empresa e ícone da empresa; confirmar que só
+   usuários da empresa recebem os uploads e que o ícone gerado do PWA funciona;
+10. gerar a prévia e exportar PDF/DOC com fotos, mapa e logos;
+11. simular falha de gravação do R2 em homologação e confirmar que fotos/mapas
+    não ficam `ready` sem derivados e que a troca de logo preserva o anterior;
+12. conferir `/up` e logs de Laravel, Nginx, PHP-FPM, Redis e Supervisor;
+13. reiniciar a VPS e confirmar que todos os serviços retornam.
 
 ## 12. Releases posteriores
 
@@ -327,7 +335,6 @@ composer install --no-dev --optimize-autoloader --no-interaction
 npm ci
 npm run build
 php artisan migrate --force
-php artisan storage:link
 php artisan optimize
 php artisan horizon:terminate
 php artisan up
@@ -353,15 +360,9 @@ Evite concorrência de dois deploys. Preserve o storage compartilhado, `.env` e
 
 ## 13. Backup e rollback
 
-O backup precisa incluir:
-
-- dump consistente do MySQL;
-- `.env` ou os segredos equivalentes;
-- os três diretórios privados em `/var/lib/vistoria`;
-- `storage/app/public`, com as identidades visuais.
-
-Armazene uma cópia fora da VPS e teste periodicamente a restauração conjunta de
-banco e arquivos.
+O procedimento de backup do MySQL e de cópia independente dos assets será
+definido em etapa separada. O bucket R2 é o armazenamento principal das
+imagens, não uma cópia de segurança.
 
 Para rollback de código, volte ao último release aprovado, reinstale exatamente
 as dependências e assets daquele release, execute `php artisan optimize` e

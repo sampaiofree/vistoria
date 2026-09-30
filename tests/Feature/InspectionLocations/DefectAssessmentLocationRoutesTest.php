@@ -26,6 +26,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
+use Mockery;
 use RuntimeException;
 use Tests\TestCase;
 use Throwable;
@@ -67,6 +68,67 @@ final class DefectAssessmentLocationRoutesTest extends TestCase
         $this->assertSame(1, DefectLocationMap::query()->where('defect_id', $assessment->defect_id)->count());
         $this->assertSame(2, $assessment->locationMapVersion->version);
         $this->assertSame(1, DefectLocationMapVersion::query()->count(), 'A versão substituída sem referência deve ser eliminada.');
+    }
+
+    public function test_failed_map_derivative_write_keeps_version_pending(): void
+    {
+        Storage::fake('inspection_maps');
+        Queue::fake();
+        [$user, , $assessment] = $this->context();
+        $this->actingAs($user)
+            ->post(route('defect-assessments.location-map.store', $assessment), [
+                'file' => UploadedFile::fake()->image('mapa.png', 800, 600),
+                'project_number' => 'PRJ-2026-A01',
+            ])->assertRedirect()->assertSessionHasNoErrors();
+
+        $version = $assessment->refresh()->locationMapVersion;
+        $disk = Mockery::mock(Storage::disk('inspection_maps'))->makePartial();
+        $disk->shouldReceive('put')->once()->andReturn(false);
+        $disk->shouldReceive('delete')->once()->andThrow(new RuntimeException('R2 indisponível'));
+        Storage::shouldReceive('disk')->with('inspection_maps')->andReturn($disk);
+
+        try {
+            (new ProcessInspectionLocationMap($version->id, $version->source_checksum))
+                ->handle(app(InspectionLocationAssetGuard::class));
+            $this->fail('A gravação do fundo deveria falhar.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('Nao foi possivel armazenar os derivados do mapa.', $exception->getMessage());
+        }
+
+        $version->refresh();
+        $this->assertSame('pending', $version->processing_status->value);
+        $this->assertNull($version->background_path);
+        $this->assertNotNull($version->source_path);
+    }
+
+    public function test_map_processing_uses_a_temporary_local_source_and_keeps_only_webp_derivatives(): void
+    {
+        Storage::fake('inspection_maps');
+        Queue::fake();
+        [$user, , $assessment] = $this->context();
+        $this->actingAs($user)
+            ->post(route('defect-assessments.location-map.store', $assessment), [
+                'file' => UploadedFile::fake()->image('mapa.png', 800, 600),
+                'project_number' => 'PRJ-2026-A01',
+            ])->assertRedirect()->assertSessionHasNoErrors();
+
+        $version = $assessment->refresh()->locationMapVersion;
+        $sourcePath = $version->source_path;
+        (new ProcessInspectionLocationMap($version->id, $version->source_checksum))
+            ->handle(app(InspectionLocationAssetGuard::class));
+
+        $version->refresh();
+        $this->assertSame('ready', $version->processing_status->value);
+        $this->assertGreaterThan(0, $version->background_width);
+        $this->assertGreaterThan(0, $version->background_height);
+        $this->assertLessThanOrEqual(3000, $version->background_width);
+        $this->assertLessThanOrEqual(3000, $version->background_height);
+        $this->assertNull($version->source_path);
+        Storage::disk('inspection_maps')->assertMissing($sourcePath);
+        Storage::disk('inspection_maps')->assertExists([
+            $version->background_path,
+            dirname($version->background_path).'/thumbnail.webp',
+        ]);
     }
 
     public function test_published_assessment_must_be_reopened_before_replacing_its_map(): void

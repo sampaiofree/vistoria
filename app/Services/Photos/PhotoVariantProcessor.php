@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Photos;
 
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Imagick;
 use RuntimeException;
@@ -49,29 +50,46 @@ final class PhotoVariantProcessor
             $this->resizeDown($optimized, self::OPTIMIZED_MAX_DIMENSION);
             $optimized->setImageFormat('webp');
             $optimized->setImageCompressionQuality(82);
-            $disk->put($optimizedPath, $optimized->getImagesBlob());
+            if (! $disk->put($optimizedPath, $optimized->getImagesBlob())) {
+                throw new RuntimeException('Não foi possível armazenar a fotografia otimizada.');
+            }
 
             $thumbnail = clone $optimized;
             $this->resizeDown($thumbnail, self::THUMBNAIL_MAX_DIMENSION);
             $thumbnail->setImageFormat('webp');
             $thumbnail->setImageCompressionQuality(78);
-            $disk->put($thumbnailPath, $thumbnail->getImagesBlob());
+            if (! $disk->put($thumbnailPath, $thumbnail->getImagesBlob())) {
+                throw new RuntimeException('Não foi possível armazenar a miniatura da fotografia.');
+            }
+
+            $optimizedSize = $disk->size($optimizedPath);
+            $thumbnailSize = $disk->size($thumbnailPath);
+            if ($optimizedSize < 1 || $thumbnailSize < 1) {
+                throw new RuntimeException('Os derivados da fotografia não foram armazenados.');
+            }
 
             return [
                 'original_width' => $originalWidth,
                 'original_height' => $originalHeight,
                 'checksum' => hash('sha256', $original),
                 'optimized_path' => $optimizedPath,
-                'optimized_size' => $disk->size($optimizedPath),
+                'optimized_size' => $optimizedSize,
                 'optimized_width' => $optimized->getImageWidth(),
                 'optimized_height' => $optimized->getImageHeight(),
                 'thumbnail_path' => $thumbnailPath,
-                'thumbnail_size' => $disk->size($thumbnailPath),
+                'thumbnail_size' => $thumbnailSize,
                 'thumbnail_width' => $thumbnail->getImageWidth(),
                 'thumbnail_height' => $thumbnail->getImageHeight(),
             ];
         } catch (\Throwable $exception) {
-            $disk->delete([$optimizedPath, $thumbnailPath]);
+            try {
+                $disk->delete([$optimizedPath, $thumbnailPath]);
+            } catch (\Throwable $cleanupException) {
+                Log::warning('Não foi possível remover os derivados parciais da fotografia.', [
+                    'original_path' => $originalPath,
+                    'exception' => $cleanupException::class,
+                ]);
+            }
 
             throw $exception;
         } finally {

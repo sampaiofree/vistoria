@@ -48,7 +48,7 @@ final class UpdateReportMetadataRequest extends FormRequest
                 'nullable',
                 Rule::enum(EquipmentRevisionEmissionType::class),
             ],
-            'report_date' => ['required', 'nullable', 'date'],
+            'report_date' => ['nullable', 'date'],
             'service_order' => ['required', 'nullable', 'string', 'max:100'],
             'external_report_number' => ['nullable', 'string', 'max:150'],
             'report_designer' => ['prohibited'],

@@ -180,11 +180,11 @@ final class ViewFirstReadModelTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->where(
                     'content.cover.client_logo_url',
-                    Storage::disk('public')->url('clients/client-logo.png'),
+                    route('branding.client', ['client' => $equipment->client, 'v' => 'client-logo.png']),
                 )
                 ->where(
                     'content.cover.provider_logo_url',
-                    Storage::disk('public')->url('organizations/provider-logo.png'),
+                    route('branding.company', ['organization' => $organization, 'kind' => 'logo', 'v' => 'provider-logo.png']),
                 )
                 ->where('content.cover.external_report_number', 'U0306VT-G-6RI002')
                 ->where('content.cover.report_designer', 'PROJETISTA II')
@@ -234,8 +234,8 @@ final class ViewFirstReadModelTest extends TestCase
                     mb_strtoupper((string) $snapshot['equipment']['tag']),
                 ))
                 ->where('content.title_lines', ['Título histórico da inspeção'])
-                ->where('content.cover.client_logo_url', Storage::disk('public')->url('clients/logo-atual.png'))
-                ->where('content.cover.provider_logo_url', Storage::disk('public')->url('organizations/logo-atual.png')));
+                ->where('content.cover.client_logo_url', route('branding.client', ['client' => $equipment->client, 'v' => 'logo-atual.png']))
+                ->where('content.cover.provider_logo_url', route('branding.company', ['organization' => $organization, 'kind' => 'logo', 'v' => 'logo-atual.png'])));
     }
 
     public function test_report_export_is_disabled_when_external_report_number_is_missing(): void

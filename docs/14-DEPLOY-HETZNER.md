@@ -49,8 +49,11 @@ REDIS_PASSWORD=SEGREDO_REDIS
 REDIS_PORT=6379
 REDIS_QUEUE_RETRY_AFTER=240
 
-INSPECTION_PHOTOS_ROOT=/var/lib/vistoria/inspection-photos
-INSPECTION_MAPS_ROOT=/var/lib/vistoria/inspection-maps
+USER_IMAGES_STORAGE=r2
+R2_ASSETS_ACCESS_KEY_ID=<ACCESS_KEY_ID>
+R2_ASSETS_SECRET_ACCESS_KEY=<SECRET_ACCESS_KEY>
+R2_ASSETS_BUCKET=vistoria-assets
+R2_ENDPOINT=https://<ACCOUNT_ID>.r2.cloudflarestorage.com
 ```
 
 Gere `APP_KEY` apenas na primeira instalação. O valor deve ser preservado como
@@ -58,15 +61,12 @@ segredo entre releases e restaurações.
 
 ## Arquivos persistentes
 
-Os três caminhos privados acima devem existir fora de diretórios descartáveis
-de release e ser graváveis por PHP-FPM e Horizon. Eles nunca devem ser servidos
-diretamente pelo Nginx.
-
-`storage/app/public` também contém identidade visual persistente de empresas e
-clientes. Em deploys por releases, mantenha `storage/` em área compartilhada e
-ligue cada release a ela. Em deploy no mesmo diretório, inclua essa pasta no
-backup. Execute `php artisan storage:link` para publicar somente o disco
-`public`.
+Crie previamente o bucket privado `vistoria-assets` e uma credencial R2 Object
+Read & Write limitada a ele. Não habilite domínio público nem `r2.dev`. Fotos,
+mapas, logos e ícones enviados ficam no R2; somente o arquivo temporário usado
+pelo Imagick durante o processamento do mapa fica na VPS. Garanta que PHP-FPM e
+Horizon possam escrever no diretório temporário do sistema. As imagens são
+entregues por rotas autorizadas da aplicação, sem `storage:link`.
 
 ## Uploads e filas
 
@@ -92,7 +92,6 @@ composer install --no-dev --optimize-autoloader --no-interaction
 npm ci
 npm run build
 php artisan migrate --force
-php artisan storage:link
 php artisan optimize
 php artisan app:bootstrap-super-admin --email=admin@exemplo.com --name="Administrador Master"
 ```
@@ -133,6 +132,6 @@ php artisan config:show queue
 curl -fsS https://app.exemplo.com.br/up
 ```
 
-Faça backup consistente do MySQL, dos três diretórios privados, de
-`storage/app/public` e dos segredos. Teste a restauração e monitore espaço em
-disco, memória, filas com falha e latência das filas.
+O backup do MySQL e uma cópia independente dos assets serão definidos em etapa
+separada. Monitore espaço em disco para temporários, memória, filas com falha e
+latência das filas.

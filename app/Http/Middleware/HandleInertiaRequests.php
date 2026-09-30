@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use App\Enums\UserAccountType;
 use App\Models\User;
+use App\Services\Branding\BrandingImageUrls;
 use App\Services\Navigation\InspectionContextNavigation;
 use Illuminate\Http\Request;
 use Illuminate\Notifications\DatabaseNotification;
@@ -38,9 +39,7 @@ final class HandleInertiaRequests extends Middleware
                         'document' => $user->organization->document,
                         'status' => $user->organization->status->value,
                         'primary_color' => $user->organization->primary_color ?? '#0F172A',
-                        'icon_url' => $user->organization->icon_path !== null
-                            ? asset('storage/'.$user->organization->icon_path)
-                            : null,
+                        'icon_url' => app(BrandingImageUrls::class)->companyIcon($user->organization),
                     ] : null,
                 ] : null,
             ],

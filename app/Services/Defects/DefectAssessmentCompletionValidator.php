@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Defects;
 
 use App\Enums\DefectAssessmentCondition;
+use App\Enums\DefectAssessmentClassificationMethod;
 use App\Enums\DefectCategory;
 use App\Enums\InspectionLocationMapProcessingStatus;
 use App\Enums\PhotoProcessingStatus;
@@ -49,7 +50,9 @@ final class DefectAssessmentCompletionValidator
 
             $assessment->loadMissing(['quantities', 'locationMapVersion', 'location']);
 
-            if ($assessment->defect->category->requiresQuantities() && $assessment->quantities->isEmpty()) {
+            if ($assessment->defect->category->requiresQuantities()
+                && $assessment->classification_method !== DefectAssessmentClassificationMethod::EngineeringNote
+                && $assessment->quantities->isEmpty()) {
                 $errors['quantity'] = 'Informe o quantitativo antes de publicar a avaliação.';
             }
 

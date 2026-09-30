@@ -155,9 +155,7 @@ final class UpdateDefectLocationMapProjectNumber
             $targetThumbnail = dirname($backgroundPath).'/thumbnail.webp';
             $disk = Storage::disk((string) $version->background_disk);
             if ($disk->exists($sourceThumbnail)) {
-                if (! $disk->copy($sourceThumbnail, $targetThumbnail)) {
-                    throw new \RuntimeException('Não foi possível copiar a miniatura do mapa.');
-                }
+                $disk->getDriver()->copy($sourceThumbnail, $targetThumbnail, ['visibility' => 'private']);
                 $copiedAssets[] = ['disk' => (string) $version->background_disk, 'path' => $targetThumbnail];
             }
         }
@@ -174,9 +172,7 @@ final class UpdateDefectLocationMapProjectNumber
 
         $disk = Storage::disk($diskName);
         $targetPath = $directory.'/'.basename($path);
-        if (! $disk->copy($path, $targetPath)) {
-            throw new \RuntimeException('Não foi possível copiar os arquivos do mapa.');
-        }
+        $disk->getDriver()->copy($path, $targetPath, ['visibility' => 'private']);
 
         $copiedAssets[] = ['disk' => $diskName, 'path' => $targetPath];
 

@@ -112,6 +112,7 @@ const mapForm = useForm({
     file: null,
     project_number: props.location_map?.project_number ?? '',
 });
+const mapFileInput = ref(null);
 const mapPreviewUrl = ref(null);
 let mapProcessingPoll = null;
 
@@ -125,6 +126,8 @@ const locationEditorMap = computed(() => props.location_map?.editor
     : null);
 const mapProjectNumberChanged = computed(() => mapForm.project_number.trim()
     !== (props.location_map?.project_number ?? '').trim());
+const canUploadMap = computed(() => Boolean(props.capabilities.location_map_upload_url)
+    && (!props.location_map || props.location_map.processing_status === 'failed'));
 
 const locationPreviewMap = computed(() => {
     const locationMap = props.location_map;
@@ -214,6 +217,11 @@ const usesEngineeringNote = computed(() => supportsEngineeringNote.value
     && form.classification_method === 'engineering_note');
 const requiresClassification = computed(() => ['new', 'reinspected', 'reclassified'].includes(form.condition)
     && !isSolidaryStructures.value);
+const narrativeStep = computed(() => 2
+    + Number(requiresEvidence.value && hasQuantities.value && !usesEngineeringNote.value)
+    + Number(requiresClassification.value && !usesEngineeringNote.value));
+const mapStep = computed(() => narrativeStep.value + 1);
+const photosStep = computed(() => mapStep.value + Number(requiresEvidence.value && hasLocationMap.value));
 const civilFields = [
     { key: 'length', label: 'Comprimento', unit: 'm' },
     { key: 'height', label: 'Altura', unit: 'm' },
@@ -352,15 +360,17 @@ function toggleUnsafeCondition() {
 }
 
 function selectClassificationMethod(method) {
-    if (!props.capabilities.update_url || method === form.classification_method || form.processing) return;
+    if (!supportsEngineeringNote.value || !props.capabilities.update_url || isPublished.value
+        || method === form.classification_method || form.processing) return;
 
     const previousMethod = form.classification_method;
     form.classification_method = method;
     form.status = 'draft';
     editing.gut = false;
+    editing.quantity = false;
     form.patch(props.capabilities.update_url, {
         preserveScroll: true,
-        only: ['assessment', 'classification', 'gut_snapshot', 'capabilities', 'flash'],
+        only: ['assessment', 'classification', 'gut_snapshot', 'quantities', 'quantity_summary', 'capabilities', 'flash'],
         onError: () => { form.classification_method = previousMethod; },
     });
 }
@@ -573,8 +583,29 @@ function clearMapPreview() {
 function selectMapFile(event) {
     clearMapPreview();
     mapForm.file = event.target.files[0] || null;
+    event.target.value = '';
     mapForm.clearErrors();
-    if (mapForm.file) mapPreviewUrl.value = URL.createObjectURL(mapForm.file);
+    if (!mapForm.file) return;
+
+    mapPreviewUrl.value = URL.createObjectURL(mapForm.file);
+    if (!mapForm.project_number.trim()) {
+        mapForm.setError('project_number', 'Informe o número do projeto para enviar o mapa.');
+        return;
+    }
+    uploadMap();
+}
+
+function chooseMapFile() {
+    if (mapForm.processing) return;
+    if (mapForm.file) {
+        if (!mapForm.project_number.trim()) {
+            mapForm.setError('project_number', 'Informe o número do projeto para enviar o mapa.');
+            return;
+        }
+        uploadMap();
+        return;
+    }
+    mapFileInput.value?.click();
 }
 
 function uploadMap() {
@@ -583,6 +614,12 @@ function uploadMap() {
         forceFormData: true,
         preserveScroll: true,
         onSuccess: () => {
+            clearMapPreview();
+            mapForm.reset('file');
+            if (mapFileInput.value) mapFileInput.value.value = '';
+        },
+        onError: (errors) => {
+            if (!errors.file) return;
             clearMapPreview();
             mapForm.reset('file');
         },
@@ -683,6 +720,28 @@ onUnmounted(() => {
                 <p v-else-if="isPublished && !historical_source" class="shrink-0 text-sm font-medium text-slate-500">Mova para rascunho para alterar.</p>
             </section>
 
+            <section v-if="supportsEngineeringNote" class="flex flex-col gap-4 rounded-3xl border p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-6" :class="usesEngineeringNote ? 'border-teal-300 bg-teal-50' : 'border-slate-200 bg-white'">
+                <div class="flex items-start gap-3">
+                    <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-black" :class="usesEngineeringNote ? 'bg-teal-700 text-white' : 'bg-slate-100 text-slate-500'">NE</span>
+                    <div>
+                        <p class="text-xs font-bold uppercase tracking-[0.16em]" :class="usesEngineeringNote ? 'text-teal-800' : 'text-slate-500'">Nota de Engenharia</p>
+                        <h2 class="mt-1 text-lg font-semibold text-slate-950">{{ usesEngineeringNote ? 'Nota de Engenharia selecionada' : 'Classificação GUT selecionada' }}</h2>
+                        <p class="mt-1 text-sm" :class="usesEngineeringNote ? 'text-teal-800' : 'text-slate-500'">{{ usesEngineeringNote ? 'Esta avaliação não possui quantitativo nem classificação GUT.' : 'Ao marcar Nota de Engenharia, os quantitativos cadastrados serão apagados.' }}</p>
+                        <p v-if="form.errors.classification_method" class="mt-2 text-sm font-medium text-rose-700">{{ form.errors.classification_method }}</p>
+                    </div>
+                </div>
+                <button
+                    v-if="capabilities.update_url && !isPublished"
+                    type="button"
+                    class="shrink-0 rounded-xl px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
+                    :class="usesEngineeringNote ? 'border border-teal-300 bg-white text-teal-800 hover:bg-teal-100' : 'bg-teal-700 text-white hover:bg-teal-800'"
+                    :disabled="form.processing"
+                    :aria-pressed="usesEngineeringNote"
+                    @click="selectClassificationMethod(usesEngineeringNote ? 'gut' : 'engineering_note')"
+                >{{ usesEngineeringNote ? 'Remover Nota de Engenharia' : 'Marcar Nota de Engenharia' }}</button>
+                <p v-else-if="isPublished && !historical_source" class="shrink-0 text-sm font-medium text-slate-500">Mova para rascunho para alterar.</p>
+            </section>
+
             <div v-if="workflowErrors.length" class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800" role="alert">
                 <p class="font-semibold">Não foi possível concluir a ação:</p>
                 <ul class="mt-1 list-disc space-y-1 pl-5">
@@ -743,7 +802,7 @@ onUnmounted(() => {
                         </h2>
                         <p class="mt-1 text-sm text-slate-600">
                             {{ previous_assessment_summary.condition_label }} ·
-                            {{ previous_assessment_summary.classification?.code || 'Sem classificação' }} ·
+                            {{ previous_assessment_summary.classification_method === 'engineering_note' ? 'Nota de Engenharia' : (previous_assessment_summary.classification?.code || 'Sem classificação') }} ·
                             {{ previous_assessment_summary.assessed_at || 'Data não informada' }}
                             <span v-if="previous_assessment_summary.quantity">
                                 · {{ previous_assessment_summary.quantity.value }} {{ previous_assessment_summary.quantity.unit_symbol }}
@@ -802,7 +861,7 @@ onUnmounted(() => {
                 </div>
             </section>
 
-            <section v-if="requiresEvidence && hasQuantities" class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+            <section v-if="requiresEvidence && hasQuantities && !usesEngineeringNote" class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
                 <div class="flex flex-wrap items-start justify-between gap-3">
                     <div>
                         <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">02 · Quantitativo</p>
@@ -948,37 +1007,18 @@ onUnmounted(() => {
                 </div>
             </section>
 
-            <section v-if="requiresClassification && !isTel" class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+            <section v-if="requiresClassification && !isTel && !usesEngineeringNote" class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
                 <div class="flex flex-wrap items-start justify-between gap-3">
                     <div>
                         <p class="text-xs font-bold uppercase tracking-[0.16em] text-slate-600">03 · Classificação</p>
-                        <h2 class="mt-2 text-xl font-semibold text-slate-950">{{ usesEngineeringNote ? 'Nota de Engenharia' : 'Notas desta categoria' }}</h2>
-                        <p class="mt-1 text-sm text-slate-500">{{ usesEngineeringNote ? 'Esta avaliação será publicada sem nota e classificação GUT.' : 'O produto G×U×T define automaticamente a classificação da categoria.' }}</p>
+                        <h2 class="mt-2 text-xl font-semibold text-slate-950">Notas desta categoria</h2>
+                        <p class="mt-1 text-sm text-slate-500">O produto G×U×T define automaticamente a classificação da categoria.</p>
                     </div>
-                    <div v-if="!usesEngineeringNote" class="flex items-center gap-2">
+                    <div class="flex items-center gap-2">
                         <span v-if="gut_snapshot" class="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600">Snapshot salvo</span>
                         <button v-if="capabilities.gut_url && !editing.gut" type="button" class="rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 hover:border-slate-400" @click="startEditing('gut')">Editar</button>
                     </div>
                 </div>
-                <div v-if="supportsEngineeringNote" class="mt-5 inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1" role="group" aria-label="Método de classificação">
-                    <button
-                        v-for="method in classification_method_options"
-                        :key="method.value"
-                        type="button"
-                        class="rounded-lg px-3.5 py-2 text-sm font-semibold transition"
-                        :class="form.classification_method === method.value ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:text-slate-950'"
-                        :disabled="form.processing || !capabilities.update_url"
-                        :aria-pressed="form.classification_method === method.value"
-                        @click="selectClassificationMethod(method.value)"
-                    >
-                        {{ method.label }}
-                    </button>
-                </div>
-                <div v-if="usesEngineeringNote" class="mt-5 rounded-2xl border border-teal-200 bg-teal-50 p-4 text-sm text-teal-900">
-                    <p class="font-semibold">Nota de Engenharia selecionada</p>
-                    <p class="mt-1">Nota GUT não é necessaria quando uma nota de engenharia é selecionada.</p>
-                </div>
-                <template v-else>
                 <div v-if="isInherited && previous_assessment_summary?.gut" class="mt-5 rounded-2xl border border-teal-200 bg-teal-50 p-4 text-sm text-slate-700">
                     <p class="text-xs font-bold uppercase tracking-wide text-teal-800">Última revisão · {{ previous_assessment_summary.inspection.number || '—' }} · {{ previous_assessment_summary.assessed_at || 'Data não informada' }}</p>
                     <p class="mt-2"><strong class="text-slate-900">Classificação:</strong> {{ previous_assessment_summary.classification?.code || '—' }} · {{ previous_assessment_summary.classification?.label || 'Sem classificação' }}</p>
@@ -1231,7 +1271,6 @@ onUnmounted(() => {
                     </div>
                     <p v-else class="mt-1 text-slate-600">Ainda não calculado.</p>
                 </div>
-                </template>
             </section>
 
             <section v-if="requiresClassification && isTel" class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
@@ -1302,7 +1341,7 @@ onUnmounted(() => {
             <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
                 <div class="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                        <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">04 · Comentário e recomendação</p>
+                        <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">{{ String(narrativeStep).padStart(2, '0') }} · Comentário e recomendação</p>
                         <h2 class="mt-2 text-xl font-semibold text-slate-950">Registro técnico</h2>
                     </div>
                     <button v-if="capabilities.update_url && !editing.narrative" type="button" class="rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 hover:border-slate-400" @click="startEditing('narrative')">Editar</button>
@@ -1345,7 +1384,7 @@ onUnmounted(() => {
             <section v-if="requiresEvidence && hasLocationMap" class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
                 <div class="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                        <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">05 · Mapa e localização</p>
+                        <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">{{ String(mapStep).padStart(2, '0') }} · Mapa e localização</p>
                         <h2 class="mt-2 text-xl font-semibold text-slate-950">Localização visual da avaria</h2>
                         <p class="mt-1 text-sm text-slate-500">Envie o mapa e identifique uma ou mais regiões da mesma avaria. Obrigatório para publicar.</p>
                     </div>
@@ -1381,7 +1420,7 @@ onUnmounted(() => {
                         <div v-if="capabilities.location_map_upload_url || location_map" class="rounded-2xl border border-slate-200 p-4">
                             <label v-if="capabilities.location_map_upload_url" class="block">
                                 <span :class="labelClass">Número do projeto</span>
-                                <input v-model="mapForm.project_number" type="text" maxlength="150" autocomplete="off" placeholder="Ex.: PRJ-2026-A01" :class="inputClass">
+                                <input v-model="mapForm.project_number" type="text" maxlength="150" autocomplete="off" placeholder="Ex.: PRJ-2026-A01" :class="inputClass" @input="mapForm.clearErrors('project_number')">
                             </label>
                             <div v-else>
                                 <p :class="labelClass">Número do projeto</p>
@@ -1391,24 +1430,24 @@ onUnmounted(() => {
                             <button v-if="location_map?.project_number_update_url" type="button" :disabled="mapForm.processing || !mapForm.project_number.trim() || !mapProjectNumberChanged" class="mt-3 w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:border-slate-400 disabled:opacity-50" @click="saveMapProjectNumber">
                                 {{ mapForm.processing ? 'Salvando…' : 'Salvar número do projeto' }}
                             </button>
-                            <p v-else-if="capabilities.location_map_upload_url" class="mt-2 text-xs text-slate-500">Informe o número antes de enviar o mapa.</p>
+                            <p v-else-if="canUploadMap && !mapForm.project_number.trim()" class="mt-2 text-xs text-slate-500">O número do projeto é necessário para concluir o envio.</p>
                         </div>
-                        <form v-if="capabilities.location_map_upload_url && !locationModalOpen" class="rounded-2xl border border-slate-200 p-4" @submit.prevent="uploadMap">
-                            <h3 class="text-sm font-semibold text-slate-950">{{ location_map ? 'Substituir imagem' : 'Enviar mapa' }}</h3>
-                            <p class="mt-1 text-xs leading-5 text-slate-500">PNG, JPEG ou WEBP, até 50 MB. Uma substituição preserva as versões usadas em avaliações anteriores.</p>
-                            <input type="file" accept="image/png,image/jpeg,image/webp" class="mt-3 block w-full text-xs" @change="selectMapFile">
-                            <p v-if="mapForm.errors.file" class="mt-2 text-xs font-medium text-rose-700">{{ mapForm.errors.file }}</p>
-                            <button type="submit" :disabled="!mapForm.file || !mapForm.project_number.trim() || mapForm.processing" class="mt-3 w-full rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
-                                {{ mapForm.processing ? 'Enviando…' : (location_map ? 'Criar nova versão' : 'Enviar mapa') }}
+                        <template v-if="canUploadMap && !locationModalOpen">
+                            <input ref="mapFileInput" type="file" accept="image/png,image/jpeg,image/webp" class="sr-only" @change="selectMapFile">
+                            <p v-if="mapForm.errors.file" class="text-xs font-medium text-rose-700">{{ mapForm.errors.file }}</p>
+                            <button type="button" :disabled="mapForm.processing" class="w-full rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-50" @click="chooseMapFile">
+                                {{ mapForm.processing ? 'Enviando…' : 'Enviar mapa' }}
                             </button>
-                        </form>
+                            <p v-if="mapForm.file && !mapForm.processing" class="text-xs font-medium text-slate-700">Imagem selecionada: {{ mapForm.file.name }}. {{ mapForm.project_number.trim() ? 'Clique em Enviar mapa para concluir.' : 'Informe o número do projeto e clique em Enviar mapa.' }}</p>
+                            <p class="text-xs leading-5 text-slate-500">PNG, JPEG ou WEBP, até 50 MB. Uma substituição preserva as versões usadas em avaliações anteriores.</p>
+                        </template>
                         <button v-if="locationEditorMap" type="button" class="block w-full rounded-xl bg-slate-950 px-4 py-3 text-center text-sm font-semibold text-white hover:bg-teal-700" @click="locationModalOpen = true">
                             {{ location_map.location ? (location_map.location.confirmed ? 'Editar localização' : 'Confirmar localização') : 'Identificar localização' }}
                         </button>
                         <Link v-if="location_map?.editor_url" :href="location_map.editor_url" class="block rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-center text-sm font-semibold text-slate-700 hover:border-slate-400">
                             Abrir editor ampliado
                         </Link>
-                        <button v-if="capabilities.location_map_delete_url && !locationModalOpen" type="button" class="w-full rounded-xl border border-rose-200 bg-white px-4 py-2.5 text-sm font-semibold text-rose-700" @click="removeMap">Remover desta avaliação</button>
+                        <button v-if="capabilities.location_map_delete_url && !locationModalOpen" type="button" class="w-full rounded-xl border border-rose-200 bg-white px-4 py-2.5 text-sm font-semibold text-rose-700 hover:border-rose-300 hover:bg-rose-50" @click="removeMap">Remover imagem</button>
                     </div>
                 </div>
             </section>
@@ -1416,7 +1455,7 @@ onUnmounted(() => {
             <section v-if="requiresEvidence" class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
                 <div class="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                        <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">06 · Registros fotográficos</p>
+                        <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">{{ String(photosStep).padStart(2, '0') }} · Registros fotográficos</p>
                         <h2 class="mt-2 text-xl font-semibold text-slate-950">Documentação da avaria</h2>
                     </div>
                     <div class="flex flex-wrap items-center gap-2">

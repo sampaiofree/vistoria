@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Inspections;
 
+use App\Actions\Inspections\TransitionInspection;
 use App\Enums\DefectAssessmentCondition;
 use App\Enums\DefectCategory;
 use App\Enums\InspectionResponsibility;
@@ -20,6 +21,7 @@ use App\Models\InspectionOverviewPhoto;
 use App\Models\InspectionResponsible;
 use App\Models\Organization;
 use App\Models\User;
+use App\Services\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -98,6 +100,7 @@ final class InspectionTransitionRoutesTest extends TestCase
         $inspection->refresh();
         $this->assertSame(InspectionStatus::Released, $inspection->status);
         $this->assertNotNull($inspection->released_at);
+        $this->assertSame($inspection->released_at->toDateString(), $inspection->report_date?->toDateString());
         $this->assertSame(['approver' => null, 'releaser' => null], $inspection->report_responsibles_snapshot);
         $this->assertSame(6, $inspection->statusHistories()->count());
     }
@@ -133,6 +136,32 @@ final class InspectionTransitionRoutesTest extends TestCase
         $this->actingAs($actor)
             ->post(route('inspections.start', $inspectionWithInactiveEquipment))
             ->assertForbidden();
+    }
+
+    public function test_release_transition_preserves_an_existing_report_date(): void
+    {
+        $organization = Organization::factory()->create();
+        app(TenantContext::class)->set($organization);
+        $actor = User::factory()->for($organization)->create();
+        $inspection = Inspection::factory()
+            ->forEquipment(Equipment::factory()->for($organization)->create())
+            ->create([
+                'status' => InspectionStatus::AwaitingRelease,
+                'report_date' => '2026-09-01',
+            ]);
+
+        app(TransitionInspection::class)->handle(
+            $actor,
+            $inspection,
+            [InspectionStatus::AwaitingRelease],
+            InspectionStatus::Released,
+            [
+                'released_at' => now(),
+                'report_date' => '2026-09-30',
+            ],
+        );
+
+        $this->assertSame('2026-09-01', $inspection->fresh()->report_date?->toDateString());
     }
 
     public function test_planner_must_fill_m2_after_inspector_submits(): void

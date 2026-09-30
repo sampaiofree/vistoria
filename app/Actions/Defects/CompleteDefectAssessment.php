@@ -76,6 +76,7 @@ final class CompleteDefectAssessment
                 'defect_snapshot' => $this->snapshotBuilder->build($assessment->defect),
                 'quantity_snapshot' => $assessment->condition->requiresEvidence()
                     && $assessment->defect->category->requiresQuantities()
+                    && $assessment->classification_method !== DefectAssessmentClassificationMethod::EngineeringNote
                     ? $this->quantitySnapshot->build($assessment->defect->category, $assessment->quantities)
                     : null,
                 'snapshot_version' => DefectSnapshotBuilder::VERSION,

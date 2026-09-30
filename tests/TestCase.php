@@ -9,6 +9,7 @@ use App\Models\DefectAssessmentQuantity;
 use App\Models\DefectLocationMap;
 use App\Models\DefectLocationMapVersion;
 use App\Enums\DefectCategory;
+use App\Enums\DefectAssessmentClassificationMethod;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 
 abstract class TestCase extends BaseTestCase
@@ -17,6 +18,7 @@ abstract class TestCase extends BaseTestCase
     {
         $assessment->loadMissing('defect');
         if ($assessment->defect->category->requiresQuantities()
+            && $assessment->classification_method !== DefectAssessmentClassificationMethod::EngineeringNote
             && ! $assessment->quantities()->exists()) {
             DefectAssessmentQuantity::factory()->forAssessment($assessment)->create();
         }

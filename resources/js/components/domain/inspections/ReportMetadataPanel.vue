@@ -108,7 +108,7 @@ function submit() {
                 <label class="space-y-1.5 text-sm font-medium text-slate-700">
                     <span>Data do relatório</span>
                     <input v-model="form.report_date" :disabled="!canEditRestrictedFields" type="date" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 disabled:cursor-not-allowed disabled:bg-slate-100">
-                    <span class="block text-xs font-normal text-slate-500">Preencha a data oficial do relatório quando aplicável.</span>
+                    <span class="block text-xs font-normal text-slate-500">Se não informada, será preenchida na liberação.</span>
                     <span v-if="form.errors.report_date" class="block text-xs text-rose-600">{{ form.errors.report_date }}</span>
                 </label>
                 <label class="space-y-1.5 text-sm font-medium text-slate-700 md:col-span-2">

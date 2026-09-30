@@ -9,9 +9,11 @@ const props = defineProps({
     viewHeight: { type: Number, required: true },
     interactive: { type: Boolean, default: false },
     selected: { type: Boolean, default: false },
+    selectableShapes: { type: Boolean, default: false },
+    selectedShapeIndex: { type: Number, default: null },
 });
 
-defineEmits(['select']);
+const emit = defineEmits(['select', 'select-shape']);
 
 const presentation = computed(() => markerPresentationStyle(
     props.marker.style,
@@ -22,11 +24,21 @@ const presentation = computed(() => markerPresentationStyle(
 function points(values = []) {
     return values.map(([x, y]) => `${x * props.viewWidth},${y * props.viewHeight}`).join(' ');
 }
+
+function shapeSelected(index) {
+    return props.selectableShapes ? props.selectedShapeIndex === index : props.selected;
+}
+
+function selectShape(event, index) {
+    if (!props.selectableShapes) return;
+    event.stopPropagation();
+    emit('select-shape', index);
+}
 </script>
 
 <template>
     <g
-        :class="interactive ? 'cursor-pointer' : 'pointer-events-none'"
+        :class="interactive || selectableShapes ? 'cursor-pointer' : 'pointer-events-none'"
         @click.stop="interactive && $emit('select', marker)"
     >
         <title>{{ marker.defect_code || marker.photo_legend || 'Marcação de localização' }}</title>
@@ -38,10 +50,11 @@ function points(values = []) {
                 :cy="shape.y * viewHeight"
                 r="11"
                 :fill="presentation.color"
-                :stroke="presentation.color"
-                :stroke-width="selected ? Math.max(5, presentation.strokeWidth) : presentation.strokeWidth"
+                :stroke="selectableShapes && shapeSelected(index) ? '#0F172A' : presentation.color"
+                :stroke-width="shapeSelected(index) ? Math.max(5, presentation.strokeWidth) : presentation.strokeWidth"
                 :stroke-dasharray="presentation.dashArray"
                 :opacity="presentation.opacity"
+                @click="selectShape($event, index)"
             />
             <rect
                 v-else-if="shape.type === 'rectangle'"
@@ -51,33 +64,36 @@ function points(values = []) {
                 :height="shape.height * viewHeight"
                 :fill="presentation.color"
                 :fill-opacity="presentation.fillOpacity"
-                :stroke="presentation.stroke"
-                :stroke-width="presentation.strokeWidth"
+                :stroke="selectableShapes && shapeSelected(index) ? '#0F172A' : presentation.stroke"
+                :stroke-width="selectableShapes && shapeSelected(index) ? Math.max(5, presentation.strokeWidth) : presentation.strokeWidth"
                 :stroke-dasharray="presentation.dashArray"
-                :stroke-opacity="presentation.opacity"
+                :stroke-opacity="selectableShapes && shapeSelected(index) ? 1 : presentation.opacity"
+                @click="selectShape($event, index)"
             />
             <polygon
                 v-else-if="shape.type === 'polygon'"
                 :points="points(shape.points)"
                 :fill="presentation.color"
                 :fill-opacity="presentation.fillOpacity"
-                :stroke="presentation.stroke"
-                :stroke-width="presentation.strokeWidth"
+                :stroke="selectableShapes && shapeSelected(index) ? '#0F172A' : presentation.stroke"
+                :stroke-width="selectableShapes && shapeSelected(index) ? Math.max(5, presentation.strokeWidth) : presentation.strokeWidth"
                 :stroke-dasharray="presentation.dashArray"
-                :stroke-opacity="presentation.opacity"
+                :stroke-opacity="selectableShapes && shapeSelected(index) ? 1 : presentation.opacity"
+                @click="selectShape($event, index)"
             />
             <polyline
                 v-else
                 :points="points(shape.points)"
                 fill="none"
-                :stroke="presentation.color"
-                :stroke-width="selected ? Math.max(5, presentation.strokeWidth) : presentation.strokeWidth"
+                :stroke="selectableShapes && shapeSelected(index) ? '#0F172A' : presentation.color"
+                :stroke-width="shapeSelected(index) ? Math.max(5, presentation.strokeWidth) : presentation.strokeWidth"
                 :stroke-dasharray="presentation.dashArray"
                 :stroke-opacity="presentation.opacity"
+                @click="selectShape($event, index)"
             />
 
             <rect
-                v-if="selected && !presentation.borderEnabled && shape.type === 'rectangle'"
+                v-if="selected && !selectableShapes && !presentation.borderEnabled && shape.type === 'rectangle'"
                 :x="shape.x * viewWidth"
                 :y="shape.y * viewHeight"
                 :width="shape.width * viewWidth"
@@ -89,7 +105,7 @@ function points(values = []) {
                 pointer-events="none"
             />
             <polygon
-                v-else-if="selected && !presentation.borderEnabled && shape.type === 'polygon'"
+                v-else-if="selected && !selectableShapes && !presentation.borderEnabled && shape.type === 'polygon'"
                 :points="points(shape.points)"
                 fill="none"
                 stroke="#0F172A"

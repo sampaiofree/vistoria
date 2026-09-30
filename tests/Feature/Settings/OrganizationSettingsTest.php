@@ -14,6 +14,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
+use Mockery;
 use Tests\TestCase;
 
 final class OrganizationSettingsTest extends TestCase
@@ -47,9 +48,9 @@ final class OrganizationSettingsTest extends TestCase
 
     public function test_company_admin_can_upload_and_replace_sidebar_icon(): void
     {
-        Storage::fake('public');
+        Storage::fake('branding_images');
         $organization = Organization::factory()->create(['icon_path' => 'organizations/old/icon.png']);
-        Storage::disk('public')->put($organization->icon_path, 'old-icon');
+        Storage::disk('branding_images')->put($organization->icon_path, 'old-icon');
         $admin = User::factory()->for($organization)->create(['account_type' => UserAccountType::CompanyAdmin]);
 
         $this->actingAs($admin)->post(route('settings.company.update'), [
@@ -63,19 +64,19 @@ final class OrganizationSettingsTest extends TestCase
 
         $organization->refresh();
         $this->assertNotNull($organization->icon_path);
-        Storage::disk('public')->assertExists($organization->icon_path);
-        Storage::disk('public')->assertMissing('organizations/old/icon.png');
+        Storage::disk('branding_images')->assertExists($organization->icon_path);
+        Storage::disk('branding_images')->assertMissing('organizations/old/icon.png');
     }
 
     public function test_company_admin_can_remove_icon_without_removing_logo(): void
     {
-        Storage::fake('public');
+        Storage::fake('branding_images');
         $organization = Organization::factory()->create([
             'logo_path' => 'organizations/company/branding/logo.png',
             'icon_path' => 'organizations/company/branding/icon.png',
         ]);
-        Storage::disk('public')->put($organization->logo_path, 'logo');
-        Storage::disk('public')->put($organization->icon_path, 'icon');
+        Storage::disk('branding_images')->put($organization->logo_path, 'logo');
+        Storage::disk('branding_images')->put($organization->icon_path, 'icon');
         $admin = User::factory()->for($organization)->create(['account_type' => UserAccountType::CompanyAdmin]);
 
         $this->actingAs($admin)
@@ -85,13 +86,36 @@ final class OrganizationSettingsTest extends TestCase
         $organization->refresh();
         $this->assertNull($organization->icon_path);
         $this->assertSame('organizations/company/branding/logo.png', $organization->logo_path);
-        Storage::disk('public')->assertMissing('organizations/company/branding/icon.png');
-        Storage::disk('public')->assertExists('organizations/company/branding/logo.png');
+        Storage::disk('branding_images')->assertMissing('organizations/company/branding/icon.png');
+        Storage::disk('branding_images')->assertExists('organizations/company/branding/logo.png');
+    }
+
+    public function test_failed_company_icon_upload_preserves_the_previous_icon(): void
+    {
+        Storage::fake('branding_images');
+        $organization = Organization::factory()->create();
+        $oldPath = 'organizations/'.$organization->public_id.'/branding/old.png';
+        $organization->update(['icon_path' => $oldPath]);
+        Storage::disk('branding_images')->put($oldPath, 'old-icon');
+        $admin = User::factory()->for($organization)->create(['account_type' => UserAccountType::CompanyAdmin]);
+        $disk = Mockery::mock(Storage::disk('branding_images'))->makePartial();
+        $disk->shouldReceive('putFileAs')->once()->andReturn(false);
+        Storage::shouldReceive('disk')->with('branding_images')->andReturn($disk);
+
+        $this->actingAs($admin)->post(route('settings.company.update'), [
+            '_method' => 'put',
+            'name' => $organization->name,
+            'primary_color' => '#0F172A',
+            'icon' => UploadedFile::fake()->image('new.png', 128, 128),
+        ])->assertInternalServerError();
+
+        $this->assertSame($oldPath, $organization->refresh()->icon_path);
+        $disk->assertExists($oldPath);
     }
 
     public function test_company_branding_validation_rejects_invalid_color_and_icon(): void
     {
-        Storage::fake('public');
+        Storage::fake('branding_images');
         $organization = Organization::factory()->create();
         $admin = User::factory()->for($organization)->create(['account_type' => UserAccountType::CompanyAdmin]);
 
@@ -118,9 +142,9 @@ final class OrganizationSettingsTest extends TestCase
             ->get(route('settings.company.edit'))
             ->assertInertia(fn ($page) => $page
                 ->where('organization.primary_color', '#123456')
-                ->where('organization.icon_url', asset('storage/organizations/company/branding/icon.png'))
+                ->where('organization.icon_url', route('branding.company', ['organization' => $organization, 'kind' => 'icon', 'v' => 'icon.png']))
                 ->where('auth.user.organization.primary_color', '#123456')
-                ->where('auth.user.organization.icon_url', asset('storage/organizations/company/branding/icon.png')));
+                ->where('auth.user.organization.icon_url', route('branding.company', ['organization' => $organization, 'kind' => 'icon', 'v' => 'icon.png'])));
     }
 
     public function test_company_admin_receives_a_one_time_temporary_password_for_new_users(): void

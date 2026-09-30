@@ -20,6 +20,7 @@ use App\Models\Equipment;
 use App\Models\Inspection;
 use App\Models\InspectionCorrectionRequest;
 use App\Models\User;
+use App\Services\Branding\BrandingImageUrls;
 use App\Services\Classification\NativeDefectCatalog;
 use App\Services\Defects\DefectAssessmentQuantitySnapshot;
 use App\Services\Defects\InspectionDefectScope;
@@ -34,7 +35,6 @@ use App\Services\Reports\InspectionOverviewPresenter;
 use App\Services\Reports\InspectionPhotographicDocumentationComposer;
 use Brick\Math\BigDecimal;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 /**
@@ -290,7 +290,8 @@ class ViewFirstDemoPresenter
             'tel' => $technical['tel'],
             'gut_options' => NativeDefectCatalog::gutOptions(),
             'gut_definition' => $gutDefinition,
-            'gut_snapshot' => $assessment->gut_snapshot,
+            'gut_snapshot' => $assessment->classification_method === DefectAssessmentClassificationMethod::EngineeringNote
+                ? null : $assessment->gut_snapshot,
             'tel_definition' => $category === \App\Enums\DefectCategory::RoofCladding
                 ? NativeDefectCatalog::telTechnicalDefinition()
                 : null,
@@ -298,7 +299,8 @@ class ViewFirstDemoPresenter
             'tel_classification_ranges' => $category === \App\Enums\DefectCategory::RoofCladding
                 ? NativeDefectCatalog::classifications($category)->map(fn ($classification): array => $classification->toArray())->all()
                 : [],
-            'quantity_snapshot' => $assessment->quantity_snapshot,
+            'quantity_snapshot' => $assessment->classification_method === DefectAssessmentClassificationMethod::EngineeringNote
+                ? null : $assessment->quantity_snapshot,
             'gut_classification_ranges' => $category->requiresGut()
                 ? NativeDefectCatalog::classifications($category)
                     ->map(fn ($classification): array => $classification->toArray())->all()
@@ -382,6 +384,7 @@ class ViewFirstDemoPresenter
                     : null,
                 'quantity_store_url' => $canEdit
                     && $category->requiresQuantities()
+                    && $assessment->classification_method !== DefectAssessmentClassificationMethod::EngineeringNote
                     ? route('defect-assessments.quantities.store', $assessment)
                     : null,
                 'location_map_upload_url' => $canEdit && $category->requiresLocationMap()
@@ -839,6 +842,7 @@ class ViewFirstDemoPresenter
      */
     private function assessmentPayload(DefectAssessment $assessment, bool $withDefect = false): array
     {
+        $engineering = $assessment->classification_method === DefectAssessmentClassificationMethod::EngineeringNote;
         $payload = [
             'id' => $assessment->id,
             'public_id' => $assessment->public_id,
@@ -858,18 +862,18 @@ class ViewFirstDemoPresenter
             'project_reference' => $assessment->project_reference,
             'location_map_project_number' => $assessment->locationMapVersion?->project_number,
             'impacts_activity' => $assessment->impacts_activity,
-            'gravity' => $assessment->gravity,
-            'urgency' => $assessment->urgency,
-            'trend' => $assessment->trend,
-            'gut_score' => $assessment->gut_score,
-            'gut_snapshot' => $assessment->gut_snapshot,
-            'gut_classified_at' => $assessment->gut_classified_at?->format('d/m/Y H:i'),
+            'gravity' => $engineering ? null : $assessment->gravity,
+            'urgency' => $engineering ? null : $assessment->urgency,
+            'trend' => $engineering ? null : $assessment->trend,
+            'gut_score' => $engineering ? null : $assessment->gut_score,
+            'gut_snapshot' => $engineering ? null : $assessment->gut_snapshot,
+            'gut_classified_at' => $engineering ? null : $assessment->gut_classified_at?->format('d/m/Y H:i'),
             'tel_score' => $assessment->tel_score,
             'tel_snapshot' => $assessment->tel_snapshot,
             'tel_classified_at' => $assessment->tel_classified_at?->format('d/m/Y H:i'),
-            'classification_code' => $assessment->classification_code,
-            'classification_snapshot' => $assessment->classification_snapshot,
-            'classification_priority' => $assessment->classification_priority,
+            'classification_code' => $engineering ? null : $assessment->classification_code,
+            'classification_snapshot' => $engineering ? null : $assessment->classification_snapshot,
+            'classification_priority' => $engineering ? null : $assessment->classification_priority,
             'deadline_months' => $assessment->deadline_months,
             'recommended_due_date' => $assessment->recommended_due_date?->format('d/m/Y'),
             'assessed_at' => $assessment->assessed_at?->format('d/m/Y H:i'),
@@ -1181,6 +1185,7 @@ class ViewFirstDemoPresenter
             $totalsByUnit = collect([$singleTotal]);
         }
         $gut = $assessment !== null
+            && $assessment->classification_method !== DefectAssessmentClassificationMethod::EngineeringNote
             && $assessment->gravity !== null
             && $assessment->urgency !== null
             && $assessment->trend !== null
@@ -1284,7 +1289,7 @@ class ViewFirstDemoPresenter
     /** @return array<string, mixed>|null */
     private function quantitySnapshot(?DefectAssessment $assessment): ?array
     {
-        if ($assessment === null) {
+        if ($assessment === null || $assessment->classification_method === DefectAssessmentClassificationMethod::EngineeringNote) {
             return null;
         }
 
@@ -1338,7 +1343,8 @@ class ViewFirstDemoPresenter
     /** @return array<string, mixed> */
     private function persistedClassification(?DefectAssessment $assessment): array
     {
-        if ($assessment?->classification_code === null) {
+        if ($assessment?->classification_method === DefectAssessmentClassificationMethod::EngineeringNote
+            || $assessment?->classification_code === null) {
             return [
                 'code' => '—',
                 'label' => 'Não classificada',
@@ -1788,13 +1794,11 @@ class ViewFirstDemoPresenter
                 'eyebrow' => 'Relatório técnico de inspeção',
                 'title' => $reportNumber,
                 'client' => $snapshotClient['name'] ?? null,
-                'client_logo_url' => $inspection->equipment->client?->logo_path !== null
-                    ? Storage::disk('public')->url($inspection->equipment->client->logo_path)
-                    : null,
+                'client_logo_url' => app(BrandingImageUrls::class)
+                    ->clientLogo($inspection->equipment->client),
                 'provider' => $snapshotOrganization['name'] ?? null,
-                'provider_logo_url' => $inspection->organization?->logo_path !== null
-                    ? Storage::disk('public')->url($inspection->organization->logo_path)
-                    : null,
+                'provider_logo_url' => app(BrandingImageUrls::class)
+                    ->companyLogo($inspection->organization),
                 'equipment_tag' => $snapshotEquipment['tag'] ?? null,
                 'equipment_name' => $snapshotEquipment['name'] ?? null,
                 'inspection_type' => $inspection->inspection_type->label(),
@@ -2416,6 +2420,7 @@ class ViewFirstDemoPresenter
     {
         $classification = $this->snapshotClassification($assessment);
         $quantity = $this->quantitySnapshot($assessment);
+        $engineering = $assessment->classification_method === DefectAssessmentClassificationMethod::EngineeringNote;
 
         return [
             'id' => $assessment->id,
@@ -2429,9 +2434,10 @@ class ViewFirstDemoPresenter
             'condition' => $assessment->condition->value,
             'condition_label' => $assessment->condition->label(),
             'is_unsafe_condition' => $assessment->is_unsafe_condition,
+            'classification_method' => $assessment->classification_method->value,
             'assessed_at' => $assessment->assessed_at?->format('d/m/Y H:i'),
             'classification' => $classification,
-            'gut' => $assessment->defect->category === \App\Enums\DefectCategory::RoofCladding ? null : [
+            'gut' => $engineering || $assessment->defect->category === \App\Enums\DefectCategory::RoofCladding ? null : [
                 'gravity' => $assessment->gravity,
                 'urgency' => $assessment->urgency,
                 'trend' => $assessment->trend,
@@ -2473,7 +2479,7 @@ class ViewFirstDemoPresenter
     /** @return array{code:?string,label:string,color:?string} */
     private function snapshotClassification(?DefectAssessment $assessment): array
     {
-        if ($assessment === null) {
+        if ($assessment === null || $assessment->classification_method === DefectAssessmentClassificationMethod::EngineeringNote) {
             return ['code' => null, 'label' => 'Não classificada', 'color' => null];
         }
 

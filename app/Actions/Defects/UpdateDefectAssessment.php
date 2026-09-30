@@ -96,6 +96,12 @@ final class UpdateDefectAssessment
                 ]);
             }
 
+            if ($classificationMethod === DefectAssessmentClassificationMethod::EngineeringNote) {
+                $assessment->quantities()->delete();
+                $assessment->quantity_snapshot = null;
+                $assessment->unsetRelation('quantities');
+            }
+
             if (! $assessment->condition->requiresGut()
                 || ! $assessment->defect->category->requiresGut()
                 || $assessment->classification_method === DefectAssessmentClassificationMethod::EngineeringNote) {

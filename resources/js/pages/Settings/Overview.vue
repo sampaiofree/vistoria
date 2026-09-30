@@ -111,6 +111,7 @@ onBeforeUnmount(() => abortController.abort());
                     <div v-for="item in [
                         { label: 'Fotografias', usage: storage.photos },
                         { label: 'Mapas', usage: storage.maps },
+                        { label: 'Identidade visual', usage: storage.branding },
                     ]" :key="item.label" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                         <p class="text-sm font-medium text-slate-500">{{ item.label }}</p>
                         <p class="mt-2 text-2xl font-semibold tabular-nums text-slate-950">{{ formatBytes(item.usage.bytes) }}</p>

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Classification;
 
 use App\Enums\DefectAssessmentStatus;
+use App\Enums\DefectAssessmentClassificationMethod;
 use App\Enums\DefectCategory;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
@@ -21,6 +22,8 @@ use App\Models\Organization;
 use App\Models\User;
 use App\Services\Demo\ViewFirstDemoPresenter;
 use App\Services\InspectionLocations\InspectionLocationReportComposer;
+use App\Services\Reports\BuildInspectionClassificationSummary;
+use App\Services\Reports\BuildInspectionQuantitativeWorksheet;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
@@ -197,6 +200,68 @@ final class DefectAssessmentQuantityTest extends TestCase
         $this->assertNull($assessment->quantity_snapshot);
         $this->assertNull($assessment->defect_snapshot);
         $this->assertSame(0, $assessment->quantities()->count());
+    }
+
+    public function test_engineering_note_blocks_quantity_routes_even_with_a_legacy_item(): void
+    {
+        [$actor, $assessment] = $this->scenario(DefectCategory::Civil);
+        $this->store($actor, $assessment, [
+            'quantity' => ['length' => 2, 'height' => 0.5, 'width' => 0.3, 'quantity' => 2],
+        ])->assertSessionHasNoErrors();
+        $oldItem = $assessment->quantities()->firstOrFail();
+
+        $this->actingAs($actor)->patch(route('defect-assessments.update', $assessment), [
+            'condition' => 'new', 'classification_method' => 'engineering_note',
+        ])->assertRedirect()->assertSessionHasNoErrors();
+
+        $this->assertDatabaseMissing('defect_assessment_quantities', ['id' => $oldItem->id]);
+        $this->assertSame(DefectAssessmentClassificationMethod::EngineeringNote, $assessment->refresh()->classification_method);
+        $legacyItem = DefectAssessmentQuantity::factory()->forAssessment($assessment)->create();
+
+        $this->store($actor, $assessment, [
+            'quantity' => ['length' => 1, 'height' => 1, 'width' => 1, 'quantity' => 1],
+        ])->assertSessionHasErrors('quantity');
+        $this->actingAs($actor)->put(route('defect-assessment-quantities.update', $legacyItem), [
+            'quantity' => ['length' => 1, 'height' => 1, 'width' => 1, 'quantity' => 1],
+        ])->assertRedirect()->assertSessionHasErrors('quantity');
+        $this->actingAs($actor)->delete(route('defect-assessment-quantities.destroy', $legacyItem))
+            ->assertRedirect()->assertSessionHasErrors('quantity');
+        $this->assertSame(1, $assessment->quantities()->count());
+    }
+
+    public function test_legacy_engineering_note_quantities_are_absent_from_the_page_and_reports(): void
+    {
+        [$actor, $assessment] = $this->scenario(DefectCategory::Civil);
+        $this->locateAssessment($assessment);
+        DefectAssessmentQuantity::factory()->forAssessment($assessment)->create();
+        $assessment->update([
+            'condition' => 'new',
+            'classification_method' => DefectAssessmentClassificationMethod::EngineeringNote,
+            'status' => DefectAssessmentStatus::Complete,
+            'quantity_snapshot' => ['total' => '9', 'measurement_unit' => 'm3', 'items' => [['total' => '9']]],
+            'gravity' => 5, 'urgency' => 5, 'trend' => 5, 'gut_score' => 125,
+            'classification_code' => 'CV-1',
+            'classification_snapshot' => ['code' => 'CV-1', 'color' => '#FF0000'],
+        ]);
+
+        $this->actingAs($actor)->get(route('defect-assessments.show', $assessment))
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+                ->has('quantities', 0)
+                ->where('quantity_snapshot', null)
+                ->where('gut_snapshot', null)
+                ->where('assessment.gut_score', null)
+                ->where('capabilities.quantity_store_url', null));
+
+        $map = app(InspectionLocationReportComposer::class)->compose($assessment->inspection);
+        $this->assertNull($map['sheets'][0]['maps'][0]['damage_rows'][0]['quantity']);
+        $this->assertNull($map['sheets'][0]['maps'][0]['damage_rows'][0]['gut']);
+        $this->assertSame('#64748B', $map['sheets'][0]['maps'][0]['damage_rows'][0]['classification']['color']);
+        $worksheet = app(BuildInspectionQuantitativeWorksheet::class)->build($assessment->inspection);
+        $this->assertNull($worksheet['rows'][0]['cells']['quantity']['value']);
+        $this->assertSame('', $worksheet['rows'][0]['cells']['quantity']['display']);
+        $summary = app(BuildInspectionClassificationSummary::class)->build($assessment->inspection);
+        $civil = collect($summary['categories'])->firstWhere('code', 'CV');
+        $this->assertNull($civil['total']['value']);
     }
 
     public function test_server_rejects_calculated_values_units_empty_payload_and_long_description(): void

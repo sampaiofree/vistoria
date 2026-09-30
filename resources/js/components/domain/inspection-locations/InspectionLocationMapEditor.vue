@@ -15,8 +15,9 @@ const props = defineProps({
     photoLegend: { type: String, default: 'FOTOS: —' },
     activeTool: { type: String, default: 'select' },
     selectedPublicId: { type: String, default: null },
+    selectedShapeIndex: { type: Number, default: null },
 });
-const emit = defineEmits(['update:geometry', 'zoom', 'working-path', 'select-marker']);
+const emit = defineEmits(['update:geometry', 'zoom', 'working-path', 'select-marker', 'select-shape']);
 const svg = ref(null);
 const zoom = ref(1);
 const pan = ref({ x: 0, y: 0 });
@@ -143,7 +144,7 @@ function cancelPath() {
     pointerPosition.value = null;
     emit('working-path', false);
 }
-function setZoom(next) { zoom.value = Math.max(1, Math.min(5, next)); emit('zoom', zoom.value); }
+function setZoom(next) { zoom.value = Math.max(0.25, Math.min(5, next)); emit('zoom', zoom.value); }
 function resetView() { zoom.value = 1; pan.value = { x: 0, y: 0 }; emit('zoom', zoom.value); }
 function keydown(event) {
     if (event.key === 'Escape') cancelPath();
@@ -177,7 +178,9 @@ defineExpose({ finishPath, cancelPath, setZoom, resetView });
                 :layout="legendLayouts.__active__"
                 :view-width="viewWidth"
                 :view-height="viewHeight"
-                selected
+                :selectable-shapes="activeTool === 'select'"
+                :selected-shape-index="selectedShapeIndex"
+                @select-shape="$emit('select-shape', $event)"
             />
             <g>
                 <rect v-if="rectanglePreview" :x="rectanglePreview.x * viewWidth" :y="rectanglePreview.y * viewHeight" :width="rectanglePreview.width * viewWidth" :height="rectanglePreview.height * viewHeight" :fill="activeStyle.color" :fill-opacity="activeStyle.fillOpacity" :stroke="activeStyle.stroke" :stroke-width="activeStyle.strokeWidth" stroke-dasharray="10 8" :stroke-opacity="activeStyle.opacity" pointer-events="none" />

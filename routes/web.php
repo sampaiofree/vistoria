@@ -15,6 +15,7 @@ use App\Http\Controllers\GlobalOrganizationController;
 use App\Http\Controllers\InspectionController;
 use App\Http\Controllers\InspectionCorrectionRequestController;
 use App\Http\Controllers\InspectionLocationMapAssetController;
+use App\Http\Controllers\BrandingImageController;
 use App\Http\Controllers\InspectionOverviewController;
 use App\Http\Controllers\InspectionOverviewPhotoController;
 use App\Http\Controllers\InspectionQuantitativeController;
@@ -77,6 +78,11 @@ Route::middleware([
         'tenant',
         'password.changed',
     ])->group(function (): void {
+        Route::get('branding/companies/{organization}/{kind}', [BrandingImageController::class, 'company'])
+            ->whereIn('kind', ['logo', 'icon'])->name('branding.company');
+        Route::get('branding/clients/{client}/logo', [BrandingImageController::class, 'client'])
+            ->name('branding.client');
+
         Route::get('notifications', [NotificationController::class, 'index'])->name('notifications.index');
         Route::patch('notifications/read-all', [NotificationController::class, 'readAll'])->name('notifications.read-all');
         Route::patch('notifications/{notification}/read', [NotificationController::class, 'read'])->name('notifications.read');

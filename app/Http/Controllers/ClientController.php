@@ -11,10 +11,10 @@ use App\Http\Requests\Clients\StoreClientRequest;
 use App\Http\Requests\Clients\UpdateClientRequest;
 use App\Http\Requests\UpdateRegistrationStatusRequest;
 use App\Models\Client;
+use App\Services\Branding\BrandingImageUrls;
 use App\Services\Tenancy\TenantContext;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 
@@ -22,7 +22,7 @@ final class ClientController extends Controller
 {
     use ResolvesTenantStructure;
 
-    public function index(Request $request, TenantContext $tenant): InertiaResponse
+    public function index(Request $request, TenantContext $tenant, BrandingImageUrls $brandingUrls): InertiaResponse
     {
         $this->authorize('viewAny', Client::class);
 
@@ -47,9 +47,7 @@ final class ClientController extends Controller
                 'document' => $client->document,
                 'email' => $client->email,
                 'phone' => $client->phone,
-                'logo_url' => $client->logo_path !== null
-                    ? Storage::disk('public')->url($client->logo_path)
-                    : null,
+                'logo_url' => $brandingUrls->clientLogo($client),
                 'status' => $client->status->value,
                 'show_url' => route('clients.show', $client),
                 'edit_url' => route('clients.edit', $client),
@@ -97,6 +95,7 @@ final class ClientController extends Controller
         TenantContext $tenant,
         Request $request,
         Client $client,
+        BrandingImageUrls $brandingUrls,
     ): InertiaResponse {
         $client = $this->tenantClient($tenant, $client);
 
@@ -112,9 +111,7 @@ final class ClientController extends Controller
                 'phone' => $client->phone,
                 'status' => $client->status->value,
                 'notes' => $client->notes,
-                'logo_url' => $client->logo_path !== null
-                    ? Storage::disk('public')->url($client->logo_path)
-                    : null,
+                'logo_url' => $brandingUrls->clientLogo($client),
                 'show_url' => route('clients.show', $client),
                 'edit_url' => route('clients.edit', $client),
                 'status_url' => route('clients.status', $client),

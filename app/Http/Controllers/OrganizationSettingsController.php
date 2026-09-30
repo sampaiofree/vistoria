@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Actions\Settings\UpdateOrganization;
 use App\Http\Requests\Settings\UpdateOrganizationRequest;
+use App\Services\Branding\BrandingImageUrls;
 use App\Services\Tenancy\TenantContext;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -13,7 +14,7 @@ use Inertia\Response as InertiaResponse;
 
 final class OrganizationSettingsController extends Controller
 {
-    public function edit(Request $request, TenantContext $tenant): InertiaResponse
+    public function edit(Request $request, TenantContext $tenant, BrandingImageUrls $brandingUrls): InertiaResponse
     {
         $organization = $tenant->organization();
         $this->authorize('update', $organization);
@@ -23,13 +24,9 @@ final class OrganizationSettingsController extends Controller
                 'name' => $organization->name,
                 'legal_name' => $organization->legal_name,
                 'document' => $organization->document,
-                'logo_url' => $organization->logo_path !== null
-                    ? Storage::disk('public')->url($organization->logo_path)
-                    : null,
+                'logo_url' => $brandingUrls->companyLogo($organization),
                 'primary_color' => $organization->primary_color,
-                'icon_url' => $organization->icon_path !== null
-                    ? Storage::disk('public')->url($organization->icon_path)
-                    : null,
+                'icon_url' => $brandingUrls->companyIcon($organization),
             ],
             'action' => route('settings.company.update'),
             'remove_logo_url' => route('settings.company.logo.destroy'),
@@ -52,7 +49,7 @@ final class OrganizationSettingsController extends Controller
         $this->authorize('update', $organization);
 
         if ($organization->logo_path !== null) {
-            Storage::disk('public')->delete($organization->logo_path);
+            Storage::disk('branding_images')->delete($organization->logo_path);
             $organization->update(['logo_path' => null]);
         }
 
@@ -65,7 +62,7 @@ final class OrganizationSettingsController extends Controller
         $this->authorize('update', $organization);
 
         if ($organization->icon_path !== null) {
-            Storage::disk('public')->delete($organization->icon_path);
+            Storage::disk('branding_images')->delete($organization->icon_path);
             $organization->update(['icon_path' => null]);
         }
 

@@ -118,7 +118,7 @@ final class BuildInspectionQuantitativeWorksheet
                 'discipline' => $this->cell($category === DefectCategory::Civil ? 'CIVIL' : $category->value),
                 'note' => $this->cell(null),
                 'code' => $this->cell(data_get($assessment->defect_snapshot, 'defect.code') ?? $assessment->defect->code),
-                'quantity' => $this->quantityCell($assessment, $category),
+                'quantity' => $engineering ? [...$this->cell(null), 'unit' => null] : $this->quantityCell($assessment, $category),
                 'impact' => $this->cell($impact),
                 'gravity' => $this->cell($gravity),
                 'urgency' => $this->cell($usesGut ? (data_get($criteria, 'urgency.score') ?? $assessment->urgency) : null),

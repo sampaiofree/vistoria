@@ -15,6 +15,7 @@ use App\Enums\InspectionStatus;
 use App\Enums\OperationalRole;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
+use App\Models\DefectAssessmentQuantity;
 use App\Models\Equipment;
 use App\Models\Inspection;
 use App\Models\InspectionOverviewBlock;
@@ -524,6 +525,8 @@ final class DefectAssessmentGutTest extends TestCase
             $assessment,
             $this->technicalGutPayload(DefectCategory::Civil),
         );
+        DefectAssessmentQuantity::factory()->forAssessment($assessment)->create();
+        $this->assertSame(1, $assessment->quantities()->count());
 
         $updated = app(UpdateDefectAssessment::class)->handle($actor, $saved, [
             'condition' => DefectAssessmentCondition::New,
@@ -534,10 +537,14 @@ final class DefectAssessmentGutTest extends TestCase
         foreach (['gravity', 'urgency', 'trend', 'gut_score', 'gut_snapshot', 'classification_code', 'classification_snapshot'] as $field) {
             $this->assertNull($updated->$field);
         }
+        $this->assertSame(0, $updated->quantities()->count());
+        $this->assertNull($updated->quantity_snapshot);
 
         $this->satisfyAssessmentPublicationRequirements($updated);
+        $this->assertSame(0, $updated->quantities()->count());
         $published = app(CompleteDefectAssessment::class)->handle($actor, $updated);
         $this->assertTrue($published->isComplete());
+        $this->assertNull($published->quantity_snapshot);
 
         $this->actingAs($actor)
             ->get(route('defect-assessments.show', $published))
@@ -545,6 +552,8 @@ final class DefectAssessmentGutTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->where('assessment.classification_method', 'engineering_note')
                 ->where('capabilities.gut_url', null)
+                ->where('capabilities.quantity_store_url', null)
+                ->has('quantities', 0)
                 ->has('classification_method_options', 2));
     }
 
@@ -559,7 +568,16 @@ final class DefectAssessmentGutTest extends TestCase
             'condition' => DefectAssessmentCondition::New,
             'classification_method' => 'gut',
         ]);
+        $this->assertSame(0, $gut->quantities()->count());
+        try {
+            app(CompleteDefectAssessment::class)->handle($actor, $gut);
+            $this->fail('Publicação sem novo quantitativo deveria ser rejeitada.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('quantity', $exception->errors());
+        }
+        $gut->refresh();
         $this->satisfyAssessmentPublicationRequirements($gut);
+        $this->assertSame(1, $gut->quantities()->count());
 
         $this->expectException(ValidationException::class);
         app(CompleteDefectAssessment::class)->handle($actor, $gut);
@@ -588,6 +606,10 @@ final class DefectAssessmentGutTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->where('assessment.is_unsafe_condition', true));
 
+        app(TenantContext::class)->set($assessment->organization);
+        $assessment = app(SaveDefectAssessmentGut::class)->handle(
+            $actor, $assessment, $this->technicalGutPayload(DefectCategory::Civil),
+        );
         $this->satisfyAssessmentPublicationRequirements($assessment);
         $published = app(CompleteDefectAssessment::class)->handle($actor, $assessment);
         $this->assertTrue($published->isComplete());

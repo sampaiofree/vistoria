@@ -16,6 +16,7 @@ use App\Models\Organization;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
+use Mockery;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\PreserveGlobalState;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
@@ -135,6 +136,29 @@ final class ProcessAssessmentPhotoTest extends TestCase
 
         $job->failed(new RuntimeException('Falha duplicada.'));
         $this->assertDatabaseCount('notifications', 2);
+    }
+
+    public function test_failed_derivative_write_never_marks_photo_ready(): void
+    {
+        Storage::fake('inspection_photos');
+        $photo = $this->photoWithImage(320, 240);
+        $disk = Mockery::mock(Storage::disk('inspection_photos'))->makePartial();
+        $disk->shouldReceive('put')->once()->andReturn(false);
+        $disk->shouldReceive('delete')->once()->andThrow(new RuntimeException('R2 indisponível'));
+        Storage::shouldReceive('disk')->with('inspection_photos')->andReturn($disk);
+
+        try {
+            (new ProcessAssessmentPhoto($photo->id))->handle();
+            $this->fail('A gravação do derivado deveria falhar.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('Não foi possível armazenar a fotografia otimizada.', $exception->getMessage());
+        }
+
+        $photo->refresh();
+        $this->assertSame(PhotoProcessingStatus::Processing, $photo->processing_status);
+        $this->assertNull($photo->optimized_path);
+        $this->assertNull($photo->thumbnail_path);
+        $this->assertNotNull($photo->original_path);
     }
 
     private function photoWithImage(int $width, int $height, ?int $orientation = null): AssessmentPhoto

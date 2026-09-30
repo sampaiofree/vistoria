@@ -1,5 +1,15 @@
 <?php
 
+$userImagesStorage = env('USER_IMAGES_STORAGE', 'local');
+if (! in_array($userImagesStorage, ['local', 'r2'], true)) {
+    throw new InvalidArgumentException('USER_IMAGES_STORAGE deve ser local ou r2.');
+}
+if ($userImagesStorage === 'r2'
+    && (! env('R2_ASSETS_ACCESS_KEY_ID') || ! env('R2_ASSETS_SECRET_ACCESS_KEY')
+        || ! env('R2_ASSETS_BUCKET') || ! env('R2_ENDPOINT'))) {
+    throw new InvalidArgumentException('As credenciais e o endpoint do R2 devem estar configurados.');
+}
+
 return [
 
     /*
@@ -47,15 +57,48 @@ return [
             'report' => false,
         ],
 
-        'inspection_photos' => [
+        'inspection_photos' => $userImagesStorage === 'r2' ? [
+            'driver' => 'scoped',
+            'disk' => 'r2_assets',
+            'prefix' => 'inspection-photos',
+            'throw' => true,
+        ] : [
             'driver' => 'local',
             'root' => env('INSPECTION_PHOTOS_ROOT', storage_path('app/private/inspection-photos')),
             'throw' => true,
         ],
 
-        'inspection_maps' => [
+        'inspection_maps' => $userImagesStorage === 'r2' ? [
+            'driver' => 'scoped',
+            'disk' => 'r2_assets',
+            'prefix' => 'inspection-maps',
+            'throw' => true,
+        ] : [
             'driver' => 'local',
             'root' => env('INSPECTION_MAPS_ROOT', storage_path('app/private/inspection-maps')),
+            'throw' => true,
+        ],
+
+        'branding_images' => $userImagesStorage === 'r2' ? [
+            'driver' => 'scoped',
+            'disk' => 'r2_assets',
+            'prefix' => 'branding',
+            'throw' => true,
+        ] : [
+            'driver' => 'local',
+            'root' => storage_path('app/private/branding'),
+            'throw' => true,
+        ],
+
+        'r2_assets' => [
+            'driver' => 's3',
+            'key' => env('R2_ASSETS_ACCESS_KEY_ID'),
+            'secret' => env('R2_ASSETS_SECRET_ACCESS_KEY'),
+            'region' => 'auto',
+            'bucket' => env('R2_ASSETS_BUCKET'),
+            'endpoint' => env('R2_ENDPOINT'),
+            'use_path_style_endpoint' => false,
+            'visibility' => 'private',
             'throw' => true,
         ],
 

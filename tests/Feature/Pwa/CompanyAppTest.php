@@ -21,7 +21,7 @@ final class CompanyAppTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        Storage::fake('public');
+        Storage::fake('branding_images');
     }
 
     public function test_manifest_is_public_and_contains_only_installation_metadata(): void
@@ -106,11 +106,11 @@ final class CompanyAppTest extends TestCase
 
         $organization->update(['logo_path' => 'missing.png']);
         $this->assertSame($fallback, $this->get($url)->assertOk()->getContent());
-        Storage::disk('public')->put('missing.png', 'not an image');
+        Storage::disk('branding_images')->put('missing.png', 'not an image');
         $this->assertSame($fallback, $this->get($url)->assertOk()->getContent());
-        Storage::disk('public')->put('missing.png', '<svg xmlns="http://www.w3.org/2000/svg"><rect width="192" height="192" fill="red"/></svg>');
+        Storage::disk('branding_images')->put('missing.png', '<svg xmlns="http://www.w3.org/2000/svg"><rect width="192" height="192" fill="red"/></svg>');
         $this->assertSame($fallback, $this->get($url)->assertOk()->getContent());
-        Storage::disk('public')->put('missing.png', $this->image(100, 100, 'red'));
+        Storage::disk('branding_images')->put('missing.png', $this->image(100, 100, 'red'));
         config(['photos.limits.max_dimension' => 50]);
         $this->assertSame($fallback, $this->get($url)->assertOk()->getContent());
     }
@@ -122,7 +122,7 @@ final class CompanyAppTest extends TestCase
         $original = $this->get($manifestUrl)->json();
         $oldIcon = $this->get($original['icons'][0]['src'])->assertOk();
 
-        Storage::disk('public')->put($organization->logo_path, $this->image(100, 100, 'blue'));
+        Storage::disk('branding_images')->put($organization->logo_path, $this->image(100, 100, 'blue'));
         $organization->update(['name' => 'Nome atualizado', 'primary_color' => '#654321']);
         $updated = $this->get($manifestUrl)->assertJsonPath('name', 'Nome atualizado')->assertJsonPath('theme_color', '#654321')->json();
         $this->assertSame($original['id'], $updated['id']);
@@ -227,7 +227,7 @@ final class CompanyAppTest extends TestCase
     {
         $organization = Organization::factory()->create();
         $path = 'organizations/'.$organization->public_id.'/logo.png';
-        Storage::disk('public')->put($path, $contents);
+        Storage::disk('branding_images')->put($path, $contents);
         $organization->update(['logo_path' => $path]);
 
         return $organization;

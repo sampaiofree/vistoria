@@ -50,7 +50,7 @@ function initials(name) {
             <InspectionTabs :tabs="tabs" :active="active_tab" />
         </div>
 
-        <section class="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+        <!--<section class="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
             <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">{{ responsibles.length }} responsabilidade(s) definida(s)</p>
@@ -78,7 +78,7 @@ function initials(name) {
                     :roles="assignment_options.roles"
                 />
             </div>
-        </section>
+        </section>-->
 
         <section v-if="roleGroups.length" class="mt-6 space-y-4">
             <article v-for="group in roleGroups" :key="group.value" class="rounded-2xl border border-slate-200 bg-white shadow-sm">

@@ -61,7 +61,7 @@ final class OrganizationAppBranding
 
     private function logo(Organization $organization): ?string
     {
-        $disk = Storage::disk('public');
+        $disk = Storage::disk('branding_images');
         $path = $organization->logo_path;
 
         if ($path === null || ! $disk->exists($path) || $disk->size($path) > 2 * 1024 * 1024) {

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Actions\Classification;
 
 use App\Enums\DefectAssessmentStatus;
+use App\Enums\DefectAssessmentClassificationMethod;
 use App\Models\DefectAssessment;
 use App\Models\DefectAssessmentQuantity;
 use App\Models\User;
@@ -57,7 +58,8 @@ final class DeleteDefectAssessmentQuantity
 
     private function ensureEditable(User $actor, DefectAssessment $assessment): void
     {
-        if (! $assessment->defect->category->requiresQuantities()) {
+        if (! $assessment->defect->category->requiresQuantities()
+            || $assessment->classification_method === DefectAssessmentClassificationMethod::EngineeringNote) {
             throw ValidationException::withMessages([
                 'quantity' => 'Esta categoria não possui quantitativo.',
             ]);

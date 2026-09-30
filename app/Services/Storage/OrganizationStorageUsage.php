@@ -17,7 +17,7 @@ final class OrganizationStorageUsage
     /** @return array<string, mixed>|null Null means another request is already calculating. */
     public function get(int $organizationId): ?array
     {
-        $cacheKey = 'organization-storage-usage:v1:'.$organizationId;
+        $cacheKey = 'organization-storage-usage:v2:'.$organizationId;
         $cached = Cache::get($cacheKey);
         if (is_array($cached)) {
             return $cached;

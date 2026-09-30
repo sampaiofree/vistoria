@@ -27,7 +27,7 @@ final class OrganizationOverviewTest extends TestCase
 
         Storage::fake('inspection_photos');
         Storage::fake('inspection_maps');
-        Storage::fake('public');
+        Storage::fake('branding_images');
     }
 
     public function test_only_company_administrators_can_open_the_overview_and_storage_endpoint(): void
@@ -71,7 +71,7 @@ final class OrganizationOverviewTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page->where('counts.clients', 0));
     }
 
-    public function test_storage_counts_only_current_company_photos_and_maps_and_reuses_cache_for_eight_hours(): void
+    public function test_storage_counts_only_current_company_images_and_reuses_cache_for_eight_hours(): void
     {
         $startedAt = now()->startOfSecond();
         $this->travelTo($startedAt);
@@ -88,7 +88,8 @@ final class OrganizationOverviewTest extends TestCase
         Storage::disk('inspection_maps')->put($prefix.'/map/background.webp', '12345678901');
         Storage::disk('inspection_maps')->put($prefix.'/map/thumbnail.webp', '1234');
         Storage::disk('inspection_maps')->put($prefix.'/map/ignored.pdf', str_repeat('p', 20));
-        Storage::disk('public')->put($prefix.'/clients/logo.png', str_repeat('l', 30));
+        Storage::disk('branding_images')->put($prefix.'/clients/logo.png', str_repeat('l', 30));
+        Storage::disk('branding_images')->put('organizations/'.$organization->public_id.'/branding/icon.png', str_repeat('i', 4));
         Storage::disk('inspection_photos')->put('organizations/'.$otherOrganization->id.'/photo.webp', str_repeat('o', 40));
 
         $this->actingAs($admin)->getJson(route('settings.overview.storage'))
@@ -97,13 +98,15 @@ final class OrganizationOverviewTest extends TestCase
             ->assertJsonPath('photos.file_count', 3)
             ->assertJsonPath('maps.bytes', 22)
             ->assertJsonPath('maps.file_count', 3)
-            ->assertJsonPath('total_bytes', 32)
-            ->assertJsonPath('total_file_count', 6)
+            ->assertJsonPath('branding.bytes', 34)
+            ->assertJsonPath('branding.file_count', 2)
+            ->assertJsonPath('total_bytes', 66)
+            ->assertJsonPath('total_file_count', 8)
             ->assertJsonPath('measured_at', $startedAt->toIso8601String());
 
         Storage::disk('inspection_photos')->put($prefix.'/photo/new.jpg', 'new-data');
         $this->actingAs($admin)->getJson(route('settings.overview.storage'))
-            ->assertJsonPath('total_bytes', 32);
+            ->assertJsonPath('total_bytes', 66);
 
         $this->actingAs($otherAdmin)->getJson(route('settings.overview.storage'))
             ->assertJsonPath('total_bytes', 40)
@@ -112,15 +115,15 @@ final class OrganizationOverviewTest extends TestCase
         $this->travelTo($startedAt->copy()->addHours(8)->addSecond());
         $this->actingAs($admin)->getJson(route('settings.overview.storage'))
             ->assertJsonPath('photos.bytes', 18)
-            ->assertJsonPath('total_bytes', 40)
-            ->assertJsonPath('total_file_count', 7);
+            ->assertJsonPath('total_bytes', 74)
+            ->assertJsonPath('total_file_count', 9);
     }
 
     public function test_an_in_progress_scan_returns_calculating_without_starting_another_scan(): void
     {
         $organization = Organization::factory()->create();
         $admin = User::factory()->for($organization)->create(['account_type' => UserAccountType::CompanyAdmin]);
-        $cacheKey = 'organization-storage-usage:v1:'.$organization->id;
+        $cacheKey = 'organization-storage-usage:v2:'.$organization->id;
         $lock = Cache::lock($cacheKey.':lock', 300);
         $this->assertTrue($lock->get());
 
@@ -144,7 +147,7 @@ final class OrganizationOverviewTest extends TestCase
         $organization = Organization::factory()->create();
         $admin = User::factory()->for($organization)->create(['account_type' => UserAccountType::CompanyAdmin]);
         $prefix = 'organizations/'.$organization->id;
-        $cacheKey = 'organization-storage-usage:v1:'.$organization->id;
+        $cacheKey = 'organization-storage-usage:v2:'.$organization->id;
         Storage::disk('inspection_photos')->put($prefix.'/photo.webp', 'photo');
         Storage::disk('inspection_maps')->put($prefix.'/map.webp', 'map');
         $target = Storage::disk('inspection_maps')->path($prefix.'/map.webp');

@@ -164,6 +164,73 @@ final class InspectionReportMetadataTest extends TestCase
         $this->assertSame('SM-IIE-1717', $inspection->designer_i_report_number);
     }
 
+    public function test_assigned_inspector_can_update_the_first_page_title_when_report_date_is_empty(): void
+    {
+        $organization = Organization::factory()->create();
+        $inspector = User::factory()->for($organization)->create([
+            'operational_role' => OperationalRole::Inspector,
+        ]);
+        $inspection = Inspection::factory()
+            ->forEquipment(Equipment::factory()->for($organization)->create())
+            ->create([
+                'status' => InspectionStatus::InProgress,
+                'emission_type' => EquipmentRevisionEmissionType::ForKnowledge,
+                'report_date' => null,
+                'service_order' => 'OS-42',
+                'first_page_text_template' => 'Texto original',
+            ]);
+        InspectionResponsible::factory()->forInspection($inspection, $inspector)->create([
+            'responsibility' => InspectionResponsibility::Reviewer,
+        ]);
+
+        $this->actingAs($inspector)
+            ->put(route('inspections.report-metadata.update', $inspection), [
+                'emission_type' => EquipmentRevisionEmissionType::ForKnowledge->value,
+                'report_date' => null,
+                'service_order' => 'OS-42',
+                'external_report_number' => null,
+                'first_page_text_template' => 'Texto atualizado',
+            ])
+            ->assertRedirect(route('inspections.show', $inspection));
+
+        $inspection->refresh();
+        $this->assertNull($inspection->report_date);
+        $this->assertSame('Texto atualizado', $inspection->first_page_text_template);
+    }
+
+    public function test_assigned_reviewer_can_save_report_metadata_without_a_report_date(): void
+    {
+        $organization = Organization::factory()->create();
+        $reviewer = User::factory()->for($organization)->create([
+            'operational_role' => OperationalRole::Reviewer,
+        ]);
+        $inspection = Inspection::factory()
+            ->forEquipment(Equipment::factory()->for($organization)->create())
+            ->create([
+                'status' => InspectionStatus::InReview,
+                'report_date' => null,
+                'designer_i_report_number' => 'SM-IIE-1717',
+            ]);
+        InspectionResponsible::factory()->forInspection($inspection, $reviewer)->create([
+            'responsibility' => InspectionResponsibility::Approver,
+        ]);
+
+        $this->actingAs($reviewer)
+            ->put(route('inspections.report-metadata.update', $inspection), [
+                'emission_type' => EquipmentRevisionEmissionType::ForApproval->value,
+                'report_date' => null,
+                'service_order' => 'OS-42',
+                'external_report_number' => null,
+                'designer_i_report_number' => 'SM-IIE-1717',
+                'first_page_text_template' => 'Texto revisado',
+            ])
+            ->assertRedirect(route('inspections.show', $inspection));
+
+        $inspection->refresh();
+        $this->assertNull($inspection->report_date);
+        $this->assertSame('Texto revisado', $inspection->first_page_text_template);
+    }
+
     public function test_assigned_reviewer_can_edit_report_metadata_during_review_but_other_users_cannot(): void
     {
         $organization = Organization::factory()->create();

@@ -68,13 +68,16 @@ final class ReleaseInspection
         app(GeneralAspectsCoverageValidator::class)->validate($inspection);
         app(InspectionClassificationM2CoverageValidator::class)->validate($inspection);
 
+        $releasedAt = now();
+
         return $this->transition->handle(
             $actor,
             $inspection,
             [InspectionStatus::AwaitingRelease],
             InspectionStatus::Released,
             [
-                'released_at' => now(),
+                'released_at' => $releasedAt,
+                'report_date' => $releasedAt->toDateString(),
             ],
             'Inspeção liberada.',
         );

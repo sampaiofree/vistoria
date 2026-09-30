@@ -10,6 +10,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Mockery;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
 use RuntimeException;
@@ -151,7 +152,7 @@ final class ClientCrudTest extends TestCase
 
     public function test_member_cannot_access_client_pages(): void
     {
-        Storage::fake('public');
+        Storage::fake('branding_images');
 
         $organization = Organization::factory()->create();
 
@@ -189,7 +190,7 @@ final class ClientCrudTest extends TestCase
 
     public function test_client_show_page_includes_client_logo_url(): void
     {
-        Storage::fake('public');
+        Storage::fake('branding_images');
 
         $organization = Organization::factory()->create();
         $admin = User::factory()->for($organization)->create(['account_type' => UserAccountType::CompanyAdmin]);
@@ -202,7 +203,7 @@ final class ClientCrudTest extends TestCase
             ->get(route('clients.show', $client))
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Clients/Show')
-                ->where('client.logo_url', Storage::disk('public')->url($client->logo_path)));
+                ->where('client.logo_url', route('branding.client', ['client' => $client, 'v' => 'logo.png'])));
     }
 
     public function test_users_cannot_view_client_from_another_organization(): void
@@ -279,7 +280,7 @@ final class ClientCrudTest extends TestCase
 
     public function test_admin_can_upload_client_logo_when_updating(): void
     {
-        Storage::fake('public');
+        Storage::fake('branding_images');
 
         $organization = Organization::factory()->create();
         $admin = User::factory()
@@ -299,6 +300,30 @@ final class ClientCrudTest extends TestCase
         $client->refresh();
 
         $this->assertNotNull($client->logo_path);
-        Storage::disk('public')->assertExists($client->logo_path);
+        Storage::disk('branding_images')->assertExists($client->logo_path);
+    }
+
+    public function test_failed_client_logo_upload_preserves_the_previous_logo(): void
+    {
+        Storage::fake('branding_images');
+        $organization = Organization::factory()->create();
+        $admin = User::factory()->for($organization)->create(['account_type' => UserAccountType::CompanyAdmin]);
+        $client = Client::factory()->for($organization)->create();
+        $oldPath = 'organizations/'.$organization->id.'/clients/'.$client->public_id.'/old.png';
+        $client->update(['logo_path' => $oldPath]);
+        Storage::disk('branding_images')->put($oldPath, 'old-logo');
+        $disk = Mockery::mock(Storage::disk('branding_images'))->makePartial();
+        $disk->shouldReceive('putFileAs')->once()->andReturn(false);
+        Storage::shouldReceive('disk')->with('branding_images')->andReturn($disk);
+
+        $this->actingAs($admin)->put(route('clients.update', $client), [
+            'name' => 'Novo nome não confirmado',
+            'logo' => UploadedFile::fake()->image('new.png', 120, 120),
+        ])->assertInternalServerError();
+
+        $client->refresh();
+        $this->assertSame($oldPath, $client->logo_path);
+        $this->assertNotSame('Novo nome não confirmado', $client->name);
+        $disk->assertExists($oldPath);
     }
 }

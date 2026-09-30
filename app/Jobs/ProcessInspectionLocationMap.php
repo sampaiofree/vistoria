@@ -63,19 +63,32 @@ final class ProcessInspectionLocationMap implements ShouldQueue
         $image = null;
         $thumbnail = null;
         $outputPaths = [];
+        $sourceStream = null;
+        $temporarySource = null;
 
         try {
             $source = $assetGuard->source($version);
             if (! $source['disk']->exists($source['path'])) {
                 throw new RuntimeException('Origem nao encontrada.');
             }
-            if ((int) $source['disk']->size($source['path']) > (int) config('inspection_locations.limits.source_size_kilobytes') * 1024) {
+            $sourceSize = (int) $source['disk']->size($source['path']);
+            if ($sourceSize > (int) config('inspection_locations.limits.source_size_kilobytes') * 1024) {
                 throw new RuntimeException('Origem acima do limite permitido.');
             }
 
+            $sourceStream = $source['disk']->readStream($source['path']);
+            $temporarySource = tmpfile();
+            if (! is_resource($sourceStream) || ! is_resource($temporarySource)
+                || stream_copy_to_stream($sourceStream, $temporarySource) !== $sourceSize
+                || ! fflush($temporarySource)) {
+                throw new RuntimeException('Nao foi possivel preparar a origem do mapa.');
+            }
+            fclose($sourceStream);
+            $sourceStream = null;
+
             $image = new Imagick;
             $this->configureResources($image);
-            $image->readImage($source['disk']->path($source['path']));
+            $image->readImage(stream_get_meta_data($temporarySource)['uri']);
             $image->setIteratorIndex(0);
             $this->assertSafeDimensions($image);
             $image->thumbnailImage(
@@ -103,8 +116,13 @@ final class ProcessInspectionLocationMap implements ShouldQueue
             $backgroundBlob = $image->getImageBlob();
             $thumbnailBlob = $thumbnail->getImageBlob();
             $outputPaths = [$backgroundPath, $thumbnailPath];
-            Storage::disk('inspection_maps')->put($backgroundPath, $backgroundBlob);
-            Storage::disk('inspection_maps')->put($thumbnailPath, $thumbnailBlob);
+            $disk = Storage::disk('inspection_maps');
+            if (! $disk->put($backgroundPath, $backgroundBlob)
+                || ! $disk->put($thumbnailPath, $thumbnailBlob)
+                || $disk->size($backgroundPath) !== strlen($backgroundBlob)
+                || $disk->size($thumbnailPath) !== strlen($thumbnailBlob)) {
+                throw new RuntimeException('Nao foi possivel armazenar os derivados do mapa.');
+            }
 
             $published = DefectLocationMapVersion::query()
                 ->whereKey($version->id)
@@ -130,7 +148,16 @@ final class ProcessInspectionLocationMap implements ShouldQueue
                 $this->removeUploadedSource($version->refresh(), $assetGuard);
             }
         } catch (Throwable $exception) {
-            Storage::disk('inspection_maps')->delete($outputPaths);
+            try {
+                if ($outputPaths !== []) {
+                    Storage::disk('inspection_maps')->delete($outputPaths);
+                }
+            } catch (Throwable $cleanupException) {
+                Log::warning('Nao foi possivel limpar os derivados parciais do mapa.', [
+                    'map_version_public_id' => $version->public_id,
+                    'exception' => $cleanupException::class,
+                ]);
+            }
             $this->markPendingForRetry($version);
             Log::warning('Falha ao processar versao do mapa de localizacao.', [
                 'map_version_public_id' => $version->public_id,
@@ -138,6 +165,12 @@ final class ProcessInspectionLocationMap implements ShouldQueue
             ]);
             throw $exception;
         } finally {
+            if (is_resource($sourceStream)) {
+                fclose($sourceStream);
+            }
+            if (is_resource($temporarySource)) {
+                fclose($temporarySource);
+            }
             $thumbnail?->clear();
             $thumbnail?->destroy();
             $image?->clear();

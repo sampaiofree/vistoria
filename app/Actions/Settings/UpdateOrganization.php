@@ -5,7 +5,11 @@ namespace App\Actions\Settings;
 use App\Models\Organization;
 use App\Support\TextNormalizer;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use RuntimeException;
+use Throwable;
 
 final class UpdateOrganization
 {
@@ -18,31 +22,63 @@ final class UpdateOrganization
         $oldLogo = $organization->logo_path;
         $oldIcon = $organization->icon_path;
 
-        $organization->update([
-            'name' => TextNormalizer::text((string) $data['name']),
-            'legal_name' => TextNormalizer::nullableText($data['legal_name'] ?? null),
-            'document' => TextNormalizer::document($data['document'] ?? null),
-            'primary_color' => TextNormalizer::hexColor((string) $data['primary_color']),
-        ]);
+        $newPaths = [];
 
-        if ($logo instanceof UploadedFile) {
-            $logoPath = $logo->store('organizations/'.$organization->public_id.'/branding', 'public');
-            $organization->update(['logo_path' => $logoPath]);
+        try {
+            $organization = DB::transaction(function () use ($organization, $data, $logo, $icon, &$newPaths): Organization {
+                $organization->update([
+                    'name' => TextNormalizer::text((string) $data['name']),
+                    'legal_name' => TextNormalizer::nullableText($data['legal_name'] ?? null),
+                    'document' => TextNormalizer::document($data['document'] ?? null),
+                    'primary_color' => TextNormalizer::hexColor((string) $data['primary_color']),
+                ]);
 
-            if ($oldLogo !== null) {
-                Storage::disk('public')->delete($oldLogo);
+                foreach (['logo' => $logo, 'icon' => $icon] as $kind => $file) {
+                    if (! $file instanceof UploadedFile) {
+                        continue;
+                    }
+
+                    $path = $file->store('organizations/'.$organization->public_id.'/branding', 'branding_images');
+                    if (! is_string($path)) {
+                        throw new RuntimeException('Não foi possível armazenar a identidade visual da empresa.');
+                    }
+                    $newPaths[$kind] = $path;
+                    $organization->update([$kind.'_path' => $path]);
+                }
+
+                return $organization->refresh();
+            });
+        } catch (Throwable $exception) {
+            if ($newPaths !== []) {
+                try {
+                    Storage::disk('branding_images')->delete(array_values($newPaths));
+                } catch (Throwable $cleanupException) {
+                    Log::warning('Não foi possível limpar a nova identidade visual da empresa após erro.', [
+                        'organization_public_id' => $organization->public_id,
+                        'exception' => $cleanupException::class,
+                    ]);
+                }
+            }
+            throw $exception;
+        }
+
+        foreach (['logo' => $oldLogo, 'icon' => $oldIcon] as $kind => $oldPath) {
+            if (! isset($newPaths[$kind]) || $oldPath === null) {
+                continue;
+            }
+            try {
+                if (! Storage::disk('branding_images')->delete($oldPath)) {
+                    throw new RuntimeException('Exclusão não confirmada.');
+                }
+            } catch (Throwable $exception) {
+                Log::warning('Não foi possível remover a identidade visual anterior da empresa.', [
+                    'organization_public_id' => $organization->public_id,
+                    'kind' => $kind,
+                    'exception' => $exception::class,
+                ]);
             }
         }
 
-        if ($icon instanceof UploadedFile) {
-            $iconPath = $icon->store('organizations/'.$organization->public_id.'/branding', 'public');
-            $organization->update(['icon_path' => $iconPath]);
-
-            if ($oldIcon !== null) {
-                Storage::disk('public')->delete($oldIcon);
-            }
-        }
-
-        return $organization->refresh();
+        return $organization;
     }
 }
