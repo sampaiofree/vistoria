@@ -705,7 +705,7 @@ function visualClass(photo) {
 
             <template v-else-if="page.type === 'overview'">
                 <div class="report-overview-page">
-                    <h2 class="report-general-aspects-title report-overview-heading">
+                    <h2 class="report-general-aspects-title report-overview-heading report-annex-title">
                         {{ page.annexTitle || reportOverview.title || 'ANEXO A – LOCALIZAÇÃO E DOCUMENTAÇÃO FOTOGRÁFICA - TAC' }}
                     </h2>
                     <div class="report-page-title report-blue-title report-location-title report-overview-section-title">
@@ -750,7 +750,7 @@ function visualClass(photo) {
 
             <template v-else-if="page.type === 'location-map'">
                 <div class="report-map-page-layout">
-                    <h2 v-if="page.annexTitle" class="report-general-aspects-title report-map-annex-title">
+                    <h2 v-if="page.annexTitle" class="report-general-aspects-title report-map-annex-title report-annex-title">
                         {{ page.annexTitle }}
                     </h2>
                     <h2 class="report-page-title report-blue-title report-location-title">
@@ -882,7 +882,7 @@ function visualClass(photo) {
             </template>
 
             <template v-else-if="page.type === 'photographic'">
-                <h2 v-if="page.annexTitle" class="report-page-title report-blue-title report-location-title">
+                <h2 v-if="page.annexTitle" class="report-page-title report-blue-title report-location-title report-annex-title">
                     {{ page.annexTitle }}
                 </h2>
                 <h2 v-if="!page.isSolidaryStructuresAnnex" class="report-page-title report-blue-title report-location-title">
@@ -962,7 +962,9 @@ function visualClass(photo) {
 .report-location-title { font-family: Georgia, 'Times New Roman', serif; font-size: 11pt; line-height: 1.1; text-transform: uppercase; }
 .report-general-aspects-page { display: flex; width: 100%; height: 252mm; min-height: 0; flex-direction: column; overflow: hidden; }
 .report-general-aspects-title { flex: none; margin: 0 0 8mm; padding: 0; border: 0; background: transparent; color: #111827; font-family: Georgia, 'Times New Roman', serif; font-size: 10pt; font-weight: 800; line-height: 1.1; text-align: left; }
-.report-general-aspects-body { min-height: 0; flex: 1; overflow: hidden; font-family: Georgia, 'Times New Roman', serif; font-size: 10pt; }
+.report-general-aspects-page > .report-general-aspects-title { font-size: 12pt; }
+.report-annex-title { font-size: 12pt; }
+.report-general-aspects-body { min-height: 0; flex: 1; overflow: hidden; font-family: Georgia, 'Times New Roman', serif; font-size: 12pt; }
 .report-textual-finding { margin-bottom: 6mm; border: 1px solid #94a3b8; font-family: Georgia, 'Times New Roman', serif; }
 .report-textual-finding-title { display: flex; justify-content: space-between; gap: 4mm; padding: 3mm; background: #e2e8f0; font-size: 9pt; }
 .report-textual-finding-classes { padding: 2.5mm 3mm; border-top: 1px solid #94a3b8; font-size: 8pt; }
@@ -984,7 +986,7 @@ function visualClass(photo) {
 .report-cover-title-dense { gap: 1.5mm; padding: 0 8mm; }
 .report-cover-bottom { position: relative; z-index: 1; flex: none; background: #fff; }
 .report-cover-history { display: grid; grid-template-columns: 13mm minmax(0, 1fr); border-top: 1px solid #111827; border-bottom: 1px solid #111827; font-family: Arial, sans-serif; }
-.report-cover-history-label { display: flex; min-height: 8.4em; align-items: center; justify-content: center; border-right: 1px solid #111827; font-size: 10pt; line-height: 1.05; text-align: center; }
+.report-cover-history-label { display: flex; min-height: 8.4em; align-items: center; justify-content: center; padding-block: 1mm; border-right: 1px solid #111827; font-size: 10pt; line-height: 1.05; text-align: center; }
 .report-cover-history-letters { display: block; flex: none; }
 .report-cover-history-letters span { display: block; height: 1.05em; white-space: nowrap; }
 .report-cover-history table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 7.5pt; }

@@ -47,7 +47,7 @@ function colorStyle(color) {
 <style scoped>
 .report-quantity-page { width: 100%; height: 155mm; overflow: hidden; font-family: Arial, sans-serif; }
 .report-quantity-measuring { height: auto; overflow: visible; }
-.report-quantity-title { margin: 0 0 4mm; font-family: Georgia, 'Times New Roman', serif; font-size: 10pt; font-weight: 800; }
+.report-quantity-title { margin: 0 0 4mm; font-family: Georgia, 'Times New Roman', serif; font-size: 12pt; font-weight: 800; }
 .report-quantity-table { width: 100%; border-collapse: collapse; table-layout: auto; font-size: 5.5pt; line-height: 1.2; }
 .report-quantity-table th, .report-quantity-table td { border: 1px solid #062b68; padding: 1mm .8mm; text-align: center; vertical-align: middle; overflow-wrap: anywhere; }
 .report-quantity-table th { background: #062b68; color: #fff; font-size: 5.5pt; font-weight: 800; white-space: normal; overflow-wrap: normal; }
