@@ -21,7 +21,7 @@ const layoutStyle = computed(() => ({
         : 'left',
     lineHeight: [1, 1.15, 1.5, 2].includes(Number(props.node.attrs?.lineHeight))
         ? Number(props.node.attrs.lineHeight)
-        : 1.15,
+        : props.node.type === 'paragraph' ? 1.5 : 1.15,
     marginTop: `${[0, 4, 8, 12].includes(Number(props.node.attrs?.spaceBefore)) ? Number(props.node.attrs.spaceBefore) : 0}pt`,
     marginBottom: `${[0, 4, 8, 12].includes(Number(props.node.attrs?.spaceAfter)) ? Number(props.node.attrs.spaceAfter) : 0}pt`,
     marginLeft: `${[0, 10, 20, 30].includes(Number(props.node.attrs?.indent)) ? Number(props.node.attrs.indent) : 0}mm`,

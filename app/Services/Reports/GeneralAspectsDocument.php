@@ -396,12 +396,13 @@ final class GeneralAspectsDocument
             $normalized['textAlign'] = $alignment;
         }
 
-        $lineHeight = $attributes['lineHeight'] ?? 1.15;
-        $lineHeight = (float) ($lineHeight === null ? 1.15 : $lineHeight);
+        $defaultLineHeight = $heading ? 1.15 : 1.5;
+        $lineHeight = $attributes['lineHeight'] ?? $defaultLineHeight;
+        $lineHeight = (float) ($lineHeight === null ? $defaultLineHeight : $lineHeight);
         if (! in_array($lineHeight, self::LINE_HEIGHTS, true)) {
             throw new InvalidArgumentException('O espaçamento entre linhas é inválido.');
         }
-        if ($lineHeight !== 1.15) {
+        if ($lineHeight !== $defaultLineHeight) {
             $normalized['lineHeight'] = $lineHeight;
         }
 

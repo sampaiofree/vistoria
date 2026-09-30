@@ -23,6 +23,25 @@ final class InspectionGeneralAspectsTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_paragraphs_use_one_and_a_half_line_spacing_by_default(): void
+    {
+        $document = app(GeneralAspectsDocument::class)->normalize(1, [
+            'type' => 'doc',
+            'content' => [
+                ['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'Padrão']]],
+                ['type' => 'paragraph', 'attrs' => ['lineHeight' => 1.5], 'content' => [['type' => 'text', 'text' => 'Explícito']]],
+                ['type' => 'paragraph', 'attrs' => ['lineHeight' => 1.15], 'content' => [['type' => 'text', 'text' => 'Personalizado']]],
+                ['type' => 'heading', 'content' => [['type' => 'text', 'text' => 'Título']]],
+            ],
+        ]);
+
+        $blocks = $document['document']['content'];
+        $this->assertArrayNotHasKey('attrs', $blocks[0]);
+        $this->assertArrayNotHasKey('attrs', $blocks[1]);
+        $this->assertSame(1.15, $blocks[2]['attrs']['lineHeight']);
+        $this->assertSame(['level' => 1], $blocks[3]['attrs']);
+    }
+
     public function test_admin_cannot_update_structured_general_aspects_in_any_status(): void
     {
         $organization = Organization::factory()->create();

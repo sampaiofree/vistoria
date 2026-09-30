@@ -585,7 +585,12 @@ function visualClass(photo) {
                             class="report-cover-history"
                             :class="`report-cover-history-${cover.revision_density || 'normal'}`"
                         >
-                            <div class="report-cover-history-label">R<br>E<br>V<br>I<br>S<br>Õ<br>E<br>S</div>
+                            <div class="report-cover-history-label" aria-label="Revisões">
+                                <span class="report-cover-history-letters" aria-hidden="true">
+                                    <span>R</span><span>E</span><span>V</span><span>I</span>
+                                    <span>S</span><span>Õ</span><span>E</span><span>S</span>
+                                </span>
+                            </div>
                             <table>
                                 <thead>
                                     <tr>
@@ -979,7 +984,9 @@ function visualClass(photo) {
 .report-cover-title-dense { gap: 1.5mm; padding: 0 8mm; }
 .report-cover-bottom { position: relative; z-index: 1; flex: none; background: #fff; }
 .report-cover-history { display: grid; grid-template-columns: 13mm minmax(0, 1fr); border-top: 1px solid #111827; border-bottom: 1px solid #111827; font-family: Arial, sans-serif; }
-.report-cover-history-label { display: flex; align-items: center; justify-content: center; border-right: 1px solid #111827; font-size: 10pt; line-height: 1.05; text-align: center; }
+.report-cover-history-label { display: flex; min-height: 8.4em; align-items: center; justify-content: center; border-right: 1px solid #111827; font-size: 10pt; line-height: 1.05; text-align: center; }
+.report-cover-history-letters { display: block; flex: none; }
+.report-cover-history-letters span { display: block; height: 1.05em; white-space: nowrap; }
 .report-cover-history table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 7.5pt; }
 .report-cover-history th, .report-cover-history td { padding: 2mm 1.5mm; border-right: 1px solid #111827; border-bottom: 1px solid #111827; text-align: center; vertical-align: middle; }
 .report-cover-history th { font-size: 6.5pt; text-transform: uppercase; }

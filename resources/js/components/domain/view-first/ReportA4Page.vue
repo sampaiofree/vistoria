@@ -140,6 +140,7 @@ defineProps({
 
 .report-header-field strong {
     margin-top: 1.5mm;
+    padding-bottom: 1.5mm;
     overflow: hidden;
     max-width: 100%;
     font-size: 8pt;

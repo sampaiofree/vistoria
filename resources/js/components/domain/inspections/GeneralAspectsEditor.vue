@@ -49,11 +49,6 @@ const LayoutAttributes = Extension.create({
         return [{
             types: ['paragraph', 'heading'],
             attributes: {
-                lineHeight: {
-                    default: 1.15,
-                    renderHTML: ({ lineHeight }) => ({ style: `line-height: ${lineHeight}` }),
-                    parseHTML: (element) => Number(element.style.lineHeight) || 1.15,
-                },
                 spaceBefore: {
                     default: 0,
                     renderHTML: ({ spaceBefore }) => ({ style: `margin-top: ${spaceBefore}pt` }),
@@ -70,7 +65,19 @@ const LayoutAttributes = Extension.create({
                     parseHTML: (element) => Number.parseInt(element.style.marginLeft, 10) || 0,
                 },
             },
-        }];
+        }, ...[
+            { type: 'paragraph', lineHeight: 1.5 },
+            { type: 'heading', lineHeight: 1.15 },
+        ].map(({ type, lineHeight }) => ({
+            types: [type],
+            attributes: {
+                lineHeight: {
+                    default: lineHeight,
+                    renderHTML: ({ lineHeight: value }) => ({ style: `line-height: ${value}` }),
+                    parseHTML: (element) => Number(element.style.lineHeight) || lineHeight,
+                },
+            },
+        }))];
     },
 });
 
@@ -172,7 +179,7 @@ function clearFormatting() {
     editor.value?.chain().focus()
         .unsetAllMarks()
         .clearNodes()
-        .updateAttributes('paragraph', { textAlign: 'left', lineHeight: 1.15, spaceBefore: 0, spaceAfter: 0, indent: 0 })
+        .updateAttributes('paragraph', { textAlign: 'left', lineHeight: 1.5, spaceBefore: 0, spaceAfter: 0, indent: 0 })
         .run();
 }
 
@@ -234,7 +241,7 @@ function hasPendingTextColor() {
             </button>
 
             <label class="editor-select-label">Entrelinha
-                <select :value="currentLayoutAttribute('lineHeight', 1.15)" @change="setLayoutAttribute('lineHeight', $event.target.value)">
+                <select :value="currentLayoutAttribute('lineHeight', blockType === 'paragraph' ? 1.5 : 1.15)" @change="setLayoutAttribute('lineHeight', $event.target.value)">
                     <option v-for="value in [1, 1.15, 1.5, 2]" :key="value" :value="value">{{ String(value).replace('.', ',') }}</option>
                 </select>
             </label>
@@ -275,7 +282,7 @@ function hasPendingTextColor() {
 .editor-select-label { display: inline-flex; align-items: center; gap: .25rem; color: #475569; font-size: .7rem; font-weight: 600; }
 .editor-select-label select { border: 1px solid #cbd5e1; border-radius: .5rem; background: white; padding: .35rem .45rem; font-size: .75rem; }
 .general-aspects-editor-content { min-height: 22rem; padding: 1rem 1.25rem; color: #1e293b; outline: none; }
-.general-aspects-editor-content p { min-height: 1.15em; }
+.general-aspects-editor-content p { min-height: 1.5em; }
 .general-aspects-editor-content h1 { font-size: 1.45em; font-weight: 800; }
 .general-aspects-editor-content h2 { font-size: 1.25em; font-weight: 750; }
 .general-aspects-editor-content h3 { font-size: 1.1em; font-weight: 700; }
