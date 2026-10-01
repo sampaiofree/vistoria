@@ -5,6 +5,7 @@ import AppLayout from '@/components/ui/AppLayout.vue';
 import UiIcon from '@/components/ui/UiIcon.vue';
 import PriorityCard from '@/components/dashboard/PriorityCard.vue';
 import MyInspectionsTable from '@/components/dashboard/MyInspectionsTable.vue';
+import AvailableReviews from '@/components/dashboard/AvailableReviews.vue';
 import WorkflowSummary from '@/components/dashboard/WorkflowSummary.vue';
 import RecentActivities from '@/components/dashboard/RecentActivities.vue';
 import DashboardLoadError from '@/components/dashboard/DashboardLoadError.vue';
@@ -33,6 +34,10 @@ const props = defineProps({
         default: null,
     },
     my_inspections: {
+        type: Array,
+        default: null,
+    },
+    available_reviews: {
         type: Array,
         default: null,
     },
@@ -253,21 +258,42 @@ function retry(prop) {
                         />
                     </Deferred>
 
-                    <Deferred data="recent_activities">
-                        <template #fallback>
-                            <RecentActivities loading />
-                        </template>
+                    <div class="min-w-0 space-y-6">
+                        <Deferred v-if="links.available_reviews" data="available_reviews">
+                            <template #fallback>
+                                <AvailableReviews loading :index-url="links.available_reviews" />
+                            </template>
 
-                        <template #rescue="{ reloading }">
-                            <DashboardLoadError
-                                title="Não foi possível carregar as atividades recentes."
-                                :retrying="reloading"
-                                @retry="retry('recent_activities')"
+                            <template #rescue="{ reloading }">
+                                <DashboardLoadError
+                                    title="Não foi possível carregar as revisões disponíveis."
+                                    :retrying="reloading"
+                                    @retry="retry('available_reviews')"
+                                />
+                            </template>
+
+                            <AvailableReviews
+                                :rows="available_reviews"
+                                :index-url="links.available_reviews"
                             />
-                        </template>
+                        </Deferred>
 
-                        <RecentActivities :activities="recent_activities" />
-                    </Deferred>
+                        <Deferred data="recent_activities">
+                            <template #fallback>
+                                <RecentActivities loading />
+                            </template>
+
+                            <template #rescue="{ reloading }">
+                                <DashboardLoadError
+                                    title="Não foi possível carregar as atividades recentes."
+                                    :retrying="reloading"
+                                    @retry="retry('recent_activities')"
+                                />
+                            </template>
+
+                            <RecentActivities :activities="recent_activities" />
+                        </Deferred>
+                    </div>
                 </div>
             </div>
         </template>

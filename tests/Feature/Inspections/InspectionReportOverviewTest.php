@@ -270,9 +270,24 @@ final class InspectionReportOverviewTest extends TestCase
                 ->where('overview.photo_count', 6)
                 ->where('overview.pages.1.photos.1.number', 6));
 
+        $this->actingAs($admin)
+            ->put(route('inspections.report-overview.blocks.update', [$inspection, 3]), [
+                'comment' => 'Texto da segunda página',
+                'recommendation' => 'Recomendação da segunda página',
+            ])->assertRedirect();
+
         $photos = InspectionOverviewPhoto::query()->orderBy('id')->get();
+        $this->actingAs($admin)
+            ->patch(route('inspections.report-overview.photos.reorder', $inspection), [
+                'photo_ids' => $photos->pluck('public_id')->all(),
+            ])
+            ->assertSessionHasErrors('photo_ids');
+
         $photos->each(fn (InspectionOverviewPhoto $photo) => $photo->update(['processing_status' => PhotoProcessingStatus::Ready]));
         $ids = $photos->pluck('public_id')->all();
+        $this->actingAs($admin)
+            ->patch(route('inspections.report-overview.photos.reorder', $inspection), ['photo_ids' => array_slice($ids, 0, 5)])
+            ->assertSessionHasErrors('photo_ids');
         [$ids[3], $ids[4]] = [$ids[4], $ids[3]];
 
         $this->actingAs($admin)
@@ -284,6 +299,11 @@ final class InspectionReportOverviewTest extends TestCase
             'inspection_overview_block_id' => InspectionOverviewBlock::query()->where('inspection_id', $inspection->id)->where('position', 2)->value('id'),
             'slot' => 2,
         ]);
+        $this->actingAs($admin)
+            ->get(route('inspections.report-overview', $inspection))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('overview.pages.1.comment', 'Texto da segunda página')
+                ->where('overview.pages.1.photos.0.photo.id', $photos[3]->public_id));
 
         $this->actingAs($admin)
             ->delete(route('inspection-overview-photos.destroy', $photos[1]))
@@ -308,6 +328,19 @@ final class InspectionReportOverviewTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->where('overview.photo_count', 6)
                 ->where('overview.pages.1.photos.1.number', 6));
+
+        for ($number = 7; $number <= 10; $number++) {
+            $this->actingAs($admin)
+                ->post($appendUrl, ['file' => UploadedFile::fake()->image("foto-{$number}.jpg", 800, 600)])
+                ->assertRedirect();
+        }
+
+        $this->actingAs($admin)
+            ->get(route('inspections.report-overview', $inspection))
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('overview.pages', 3)
+                ->where('overview.photo_count', 10)
+                ->where('overview.pages.2.photos.1.number', 10));
     }
 
     public function test_each_report_page_has_independent_texts_and_export_requires_complete_pairs(): void

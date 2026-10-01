@@ -82,6 +82,10 @@ final class SubmitInspectionForPlanning
 
         $attributes = [];
 
+        if ($inspection->inspected_on === null) {
+            $attributes['inspected_on'] = today();
+        }
+
         if ($inspection->status === InspectionStatus::InProgress && $inspection->field_completed_at === null) {
             $attributes['field_completed_at'] = now();
         }

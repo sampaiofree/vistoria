@@ -22,6 +22,7 @@ use App\Models\InspectionResponsible;
 use App\Models\Organization;
 use App\Models\User;
 use App\Services\Tenancy\TenantContext;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -56,7 +57,7 @@ final class InspectionTransitionRoutesTest extends TestCase
         $inspection->refresh();
         $this->assertSame(InspectionStatus::InProgress, $inspection->status);
         $this->assertNotNull($inspection->started_at);
-        $this->assertNotNull($inspection->inspected_on);
+        $this->assertNull($inspection->inspected_on);
 
         $this->completeOverview($inspection);
 
@@ -66,6 +67,7 @@ final class InspectionTransitionRoutesTest extends TestCase
 
         $inspection->refresh();
         $this->assertSame(InspectionStatus::AwaitingM2, $inspection->status);
+        $this->assertSame(today()->toDateString(), $inspection->inspected_on?->toDateString());
         $planner = $inspection->responsibles()->where('responsibility', 'preparer')->firstOrFail()->user;
         $this->actingAs($planner)->post(route('inspections.submit-for-review', $inspection))->assertSessionHasNoErrors();
         $this->assertNotNull($inspection->field_completed_at);
@@ -103,6 +105,85 @@ final class InspectionTransitionRoutesTest extends TestCase
         $this->assertSame($inspection->released_at->toDateString(), $inspection->report_date?->toDateString());
         $this->assertSame(['approver' => null, 'releaser' => null], $inspection->report_responsibles_snapshot);
         $this->assertSame(6, $inspection->statusHistories()->count());
+    }
+
+    public function test_inspection_date_is_set_on_successful_handoff_and_shown_in_classification_and_report(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-05-10 09:00:00'));
+        $organization = Organization::factory()->create();
+        $inspector = User::factory()->for($organization)->create(['operational_role' => OperationalRole::Inspector]);
+        $inspection = Inspection::factory()->forEquipment(Equipment::factory()->for($organization)->create())->create();
+        $this->assignResponsibility($inspection, $inspector, InspectionResponsibility::Reviewer);
+
+        $this->actingAs($inspector)->post(route('inspections.start', $inspection))->assertSessionHasNoErrors();
+        $this->assertNull($inspection->fresh()->inspected_on);
+        $this->completeOverview($inspection);
+
+        $this->travelTo(CarbonImmutable::parse('2026-05-12 14:00:00'));
+        $this->actingAs($inspector)->post(route('inspections.submit-for-planning', $inspection))->assertSessionHasNoErrors();
+        $this->assertSame('2026-05-12', $inspection->fresh()->inspected_on?->toDateString());
+
+        $this->actingAs($inspector)->get(route('inspections.classifications', $inspection))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('content.classification_summary.header.inspection_date', '12/05/2026')
+                ->where('content.classification_summary.header.inspection_date_input', '2026-05-12'));
+        $this->actingAs($inspector)->get(route('inspections.report-preview', $inspection))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('content.classification_summary.header.inspection_date', '12/05/2026'));
+    }
+
+    public function test_failed_handoff_does_not_set_the_inspection_date(): void
+    {
+        [$inspection, $inspector] = $this->inspectionReadyForOverviewValidation();
+        $this->travelTo(CarbonImmutable::parse('2026-05-12 14:00:00'));
+
+        $this->actingAs($inspector)->post(route('inspections.submit-for-planning', $inspection))
+            ->assertSessionHasErrors('inspection');
+        $this->assertSame(InspectionStatus::InProgress, $inspection->fresh()->status);
+        $this->assertNull($inspection->fresh()->inspected_on);
+
+        $this->completeOverview($inspection);
+        $this->travelTo(CarbonImmutable::parse('2026-05-13 14:00:00'));
+        $this->actingAs($inspector)->post(route('inspections.submit-for-planning', $inspection))
+            ->assertSessionHasNoErrors();
+        $this->assertSame('2026-05-13', $inspection->fresh()->inspected_on?->toDateString());
+    }
+
+    public function test_existing_inspection_date_is_preserved_on_start_first_handoff_and_correction_handoff(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-05-10 09:00:00'));
+        $organization = Organization::factory()->create();
+        $inspector = User::factory()->for($organization)->create(['operational_role' => OperationalRole::Inspector]);
+        $inspection = Inspection::factory()->forEquipment(Equipment::factory()->for($organization)->create())
+            ->create(['inspected_on' => '2026-05-01']);
+        $this->assignResponsibility($inspection, $inspector, InspectionResponsibility::Reviewer);
+
+        $this->actingAs($inspector)->post(route('inspections.start', $inspection))->assertSessionHasNoErrors();
+        $this->assertSame('2026-05-01', $inspection->fresh()->inspected_on?->toDateString());
+        $this->completeOverview($inspection);
+
+        $this->travelTo(CarbonImmutable::parse('2026-05-12 14:00:00'));
+        $this->actingAs($inspector)->post(route('inspections.submit-for-planning', $inspection))
+            ->assertSessionHasNoErrors();
+        $this->assertSame('2026-05-01', $inspection->fresh()->inspected_on?->toDateString());
+
+        $inspection->update(['status' => InspectionStatus::InCorrection]);
+        $this->travelTo(CarbonImmutable::parse('2026-05-14 14:00:00'));
+        $this->actingAs($inspector)->post(route('inspections.submit-for-planning', $inspection))
+            ->assertSessionHasNoErrors();
+        $this->assertSame('2026-05-01', $inspection->fresh()->inspected_on?->toDateString());
+    }
+
+    public function test_correction_handoff_fills_a_missing_date_on_a_legacy_inspection(): void
+    {
+        [$inspection, $inspector] = $this->inspectionReadyForOverviewValidation();
+        $inspection->update(['status' => InspectionStatus::InCorrection]);
+        $this->completeOverview($inspection);
+        $this->travelTo(CarbonImmutable::parse('2026-05-14 14:00:00'));
+
+        $this->actingAs($inspector)->post(route('inspections.submit-for-planning', $inspection))
+            ->assertSessionHasNoErrors();
+        $this->assertSame('2026-05-14', $inspection->fresh()->inspected_on?->toDateString());
     }
 
     public function test_start_requires_an_assigned_inspector_and_an_active_equipment(): void

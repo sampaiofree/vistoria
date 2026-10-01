@@ -63,7 +63,7 @@ final class StoreInspectionOverviewPhoto
                     ->join('inspection_overview_blocks as blocks', 'blocks.id', '=', 'inspection_overview_photos.inspection_overview_block_id')
                     ->orderBy('blocks.position')
                     ->orderBy('inspection_overview_photos.slot')
-                    ->select('inspection_overview_photos.*')
+                    ->select('inspection_overview_photos.*', 'blocks.position as block_position')
                     ->lockForUpdate()
                     ->get();
 
@@ -71,7 +71,13 @@ final class StoreInspectionOverviewPhoto
                     throw ValidationException::withMessages(['file' => 'A Vista geral aceita no máximo 508 fotografias.']);
                 }
 
-                $this->positionPhotos->handle($actor, $locked, $ordered);
+                $hasGaps = $ordered->values()->contains(fn (InspectionOverviewPhoto $photo, int $index): bool =>
+                    (int) $photo->block_position !== intdiv($index, 2) + 1
+                    || $photo->slot !== ($index % 2) + 1);
+
+                if ($hasGaps) {
+                    $this->positionPhotos->handle($actor, $locked, $ordered);
+                }
                 $next = $ordered->count();
                 $position = intdiv($next, 2) + 1;
                 $slot = ($next % 2) + 1;

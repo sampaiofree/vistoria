@@ -437,6 +437,92 @@ final class DashboardPagesTest extends TestCase
             });
     }
 
+    public function test_reviewers_and_releasers_see_only_unassigned_inspections_for_their_stage_on_dashboard(): void
+    {
+        foreach ([
+            [OperationalRole::Reviewer, InspectionResponsibility::Approver, InspectionStatus::AwaitingReview, InspectionStatus::AwaitingRelease],
+            [OperationalRole::Releaser, InspectionResponsibility::Releaser, InspectionStatus::AwaitingRelease, InspectionStatus::AwaitingReview],
+        ] as [$role, $responsibility, $stage, $otherStage]) {
+            $organization = Organization::factory()->create();
+            $user = User::factory()->create([
+                'organization_id' => $organization->id,
+                'account_type' => UserAccountType::Member->value,
+                'operational_role' => $role->value,
+            ]);
+            $equipment = Equipment::factory()->create(['organization_id' => $organization->id]);
+            $available = [];
+
+            for ($index = 1; $index <= 10; $index++) {
+                $available[] = Inspection::factory()->forEquipment($equipment)->create([
+                    'organization_id' => $organization->id,
+                    'number' => sprintf('DASH-%s-%02d', $role->value, $index),
+                    'status' => $stage,
+                    'created_at' => now()->subDays(11 - $index),
+                ]);
+            }
+
+            $assignedUser = User::factory()->create([
+                'organization_id' => $organization->id,
+                'account_type' => UserAccountType::Member->value,
+                'operational_role' => $role->value,
+            ]);
+            $occupied = Inspection::factory()->forEquipment($equipment)->create([
+                'organization_id' => $organization->id,
+                'status' => $stage,
+                'created_at' => now()->subDays(30),
+            ]);
+            InspectionResponsible::factory()->forInspection($occupied, $assignedUser)->create([
+                'responsibility' => $responsibility,
+            ]);
+
+            Inspection::factory()->forEquipment($equipment)->create([
+                'organization_id' => $organization->id,
+                'status' => $otherStage,
+                'created_at' => now()->subDays(29),
+            ]);
+            $foreignEquipment = Equipment::factory()->create();
+            Inspection::factory()->forEquipment($foreignEquipment)->create([
+                'status' => $stage,
+                'created_at' => now()->subDays(28),
+            ]);
+
+            $reviewQueueUrl = route('inspections.index', [
+                'scope' => 'available',
+                'status' => $stage->value,
+            ]);
+
+            $this->actingAs($user)->get('/dashboard')
+                ->assertOk()
+                ->assertInertia(fn (Assert $page) => $page
+                    ->where('links.available_reviews', $reviewQueueUrl)
+                    ->loadDeferredProps('dashboard-available-reviews', fn (Assert $deferred) => $deferred
+                        ->has('available_reviews', 8)
+                        ->where('available_reviews.0.public_id', $available[0]->public_id)
+                        ->where('available_reviews.7.public_id', $available[7]->public_id)
+                        ->where('available_reviews.0.status', $stage->value)
+                        ->where('available_reviews.0.self_assign.action', route('inspections.self-assign', $available[0]))));
+
+            $this->actingAs($user)->post(route('inspections.self-assign', $available[0]))
+                ->assertRedirect(route('inspections.show', $available[0]))
+                ->assertSessionHasNoErrors();
+            $this->assertSame($user->id, $available[0]->responsibles()->where('responsibility', $responsibility->value)->sole()->user_id);
+        }
+    }
+
+    public function test_dashboard_does_not_offer_available_reviews_to_other_roles(): void
+    {
+        $organization = Organization::factory()->create();
+        $planner = User::factory()->create([
+            'organization_id' => $organization->id,
+            'account_type' => UserAccountType::Member->value,
+            'operational_role' => OperationalRole::Planner->value,
+        ]);
+
+        $this->actingAs($planner)->get('/dashboard')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->where('links.available_reviews', null));
+    }
+
     private function createInspectionWithResponsibility(
         Equipment $equipment,
         User $user,

@@ -48,12 +48,14 @@ final class DashboardController extends Controller
                         'awaiting_release' => null,
                     ],
                     'workflow' => [],
+                    'available_reviews' => null,
                 ],
                 'priority_counts' => null,
                 'my_inspections' => [],
                 'workflow_summary' => [],
                 'recent_activities' => [],
                 'featured_inspection' => null,
+                'available_reviews' => [],
             ]);
         }
 
@@ -81,6 +83,17 @@ final class DashboardController extends Controller
                 'inspections_index' => route('inspections.index', $personalFilters),
                 'available_inspections' => app(InspectionSelfAssignment::class)->roleFor($user) !== null
                     ? route('inspections.index', ['scope' => 'available']) : null,
+                'available_reviews' => match (app(InspectionSelfAssignment::class)->roleFor($user)) {
+                    InspectionResponsibility::Approver => route('inspections.index', [
+                        'scope' => 'available',
+                        'status' => InspectionStatus::AwaitingReview->value,
+                    ]),
+                    InspectionResponsibility::Releaser => route('inspections.index', [
+                        'scope' => 'available',
+                        'status' => InspectionStatus::AwaitingRelease->value,
+                    ]),
+                    default => null,
+                },
                 'inspections_create' => $request->user()->can('create', Inspection::class) ? route('inspections.create') : null,
                 'equipments_index' => route('equipments.index'),
                 'clients_index' => route('clients.index'),
@@ -131,6 +144,11 @@ final class DashboardController extends Controller
             'my_inspections' => Inertia::defer(
                 fn (): array => $this->myInspections($organizationId, $user, $timezone),
                 'dashboard-my-inspections',
+                true,
+            ),
+            'available_reviews' => Inertia::defer(
+                fn (): array => $this->availableReviews($organizationId, $user),
+                'dashboard-available-reviews',
                 true,
             ),
             'workflow_summary' => Inertia::defer(
@@ -397,6 +415,61 @@ final class DashboardController extends Controller
                 ],
             ];
         })->all();
+    }
+
+    /**
+     * @return array<int, array{
+     *     public_id:string,
+     *     number:string,
+     *     status:string,
+     *     status_label:string,
+     *     equipment: array{name:string, tag:string},
+     *     schedule:string,
+     *     self_assign:array{action:string,label:string}|null,
+     *     show_url:string
+     * }>
+     */
+    private function availableReviews(
+        int $organizationId,
+        User $user,
+    ): array {
+        $availability = app(InspectionSelfAssignment::class);
+        $responsibility = $availability->roleFor($user);
+        $status = match ($responsibility) {
+            InspectionResponsibility::Approver => InspectionStatus::AwaitingReview,
+            InspectionResponsibility::Releaser => InspectionStatus::AwaitingRelease,
+            default => null,
+        };
+
+        if ($status === null) {
+            return [];
+        }
+
+        return $availability->availableQuery(Inspection::query(), $user)
+            ->where('organization_id', $organizationId)
+            ->where('status', $status->value)
+            ->with('equipment:id,public_id,name,tag')
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->limit(8)
+            ->get()
+            ->map(fn (Inspection $inspection): array => [
+                'public_id' => $inspection->public_id,
+                'number' => $inspection->number ?? 'Inspeção sem número',
+                'status' => $inspection->status->value,
+                'status_label' => $inspection->status->label(),
+                'equipment' => [
+                    'name' => $inspection->equipment->name,
+                    'tag' => $inspection->equipment->tag,
+                ],
+                'schedule' => $inspection->planned_start_on?->format('d/m/Y') ?? 'Sem data',
+                'self_assign' => [
+                    'action' => route('inspections.self-assign', $inspection),
+                    'label' => 'Assumir como '.$responsibility->label(),
+                ],
+                'show_url' => route('inspections.show', $inspection),
+            ])
+            ->all();
     }
 
     private function dashboardResponsibilityLabel(InspectionResponsibility $responsibility): string

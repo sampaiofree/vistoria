@@ -51,7 +51,6 @@ final class StartInspection
             InspectionStatus::InProgress,
             [
                 'started_at' => now(),
-                'inspected_on' => $inspection->inspected_on ?? today(),
             ],
             'Inspeção iniciada.',
         );
