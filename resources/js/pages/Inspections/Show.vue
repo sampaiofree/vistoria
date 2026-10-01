@@ -482,6 +482,7 @@ async function exportReport(format) {
                         >
                             {{ exportingFormat === 'pdf' ? 'Gerando PDF…' : 'Gerar PDF' }}
                         </button>
+                        <!--
                         <button
                             v-if="content.print_enabled"
                             type="button"
@@ -492,9 +493,10 @@ async function exportReport(format) {
                         >
                             {{ exportingFormat === 'doc' ? 'Gerando DOC…' : 'Gerar DOC' }}
                         </button>
+                        -->
                         <template v-if="!content.print_enabled">
                             <button
-                                v-for="label in ['Imprimir prévia', 'Gerar PDF', 'Gerar DOC']"
+                                v-for="label in ['Imprimir prévia', 'Gerar PDF']"
                                 :key="label"
                                 type="button"
                                 disabled

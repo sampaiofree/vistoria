@@ -962,9 +962,12 @@ function visualClass(photo) {
 
 <style scoped>
 .report-preview-pages { display: flex; flex-direction: column; gap: 0; overflow-x: auto; padding: 0 4mm 12mm; }
-/* Keep visible pages and pagination probes on the same report font. */
+/* Keep visible pages and pagination probes on the same report typography. */
 .report-preview-pages,
-.report-preview-pages :deep(*) { font-family: 'Times New Roman', Times, serif !important; }
+.report-preview-pages :deep(*) { font-family: 'Times New Roman', Times, serif !important; font-weight: 400 !important; }
+.report-preview-pages :deep(.report-cover-title),
+.report-preview-pages :deep(.report-cover-title *) { font-weight: 700 !important; }
+.report-preview-pages :deep(.general-aspects-content :is(.general-aspects-heading-1, .general-aspects-heading-2, .general-aspects-heading-3)) { font-size: 12pt; }
 .report-page-title { margin: 0 0 6mm; padding-bottom: 2mm; border-bottom: 1px solid #111827; font-size: 11pt; font-weight: 800; letter-spacing: .02em; }
 .report-blue-title { color: #fff; padding: 2mm 3mm; border: 0; background: #062b68; font-size: 9pt; text-align: center; }
 .report-location-title { font-family: Georgia, 'Times New Roman', serif; font-size: 11pt; line-height: 1.1; text-transform: uppercase; }
