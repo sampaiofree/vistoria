@@ -33,8 +33,8 @@ const REPORT_IMAGE_SELECTOR = 'img, svg image';
 const XLINK_NAMESPACE = 'http://www.w3.org/1999/xlink';
 
 export class ReportImageLoadError extends Error {
-    constructor(page, label) {
-        super(`Não foi possível carregar ${label} na página ${page} do relatório. Verifique a imagem e tente novamente.`);
+    constructor(page, label, cause) {
+        super(`Não foi possível carregar ${label} na página ${page} do relatório. Verifique a imagem e tente novamente.`, { cause });
         this.name = 'ReportImageLoadError';
     }
 }
@@ -46,7 +46,7 @@ function imageLabel(element) {
     }
 
     const label = element.getAttribute('alt');
-    return label ? `a ${label}` : 'a fotografia';
+    return label ? `a imagem “${label}”` : 'a fotografia';
 }
 
 function imageUrl(element) {
@@ -75,6 +75,28 @@ function validateImageDataUrl(dataUrl) {
     });
 }
 
+async function displayedImageDataUrl(element) {
+    if (!element.complete || !element.naturalWidth || !element.naturalHeight) return null;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = element.naturalWidth;
+    canvas.height = element.naturalHeight;
+    try {
+        const context = canvas.getContext('2d');
+        if (!context) return null;
+
+        context.drawImage(element, 0, 0);
+        const blob = await new Promise((resolve, reject) => {
+            canvas.toBlob((value) => value ? resolve(value) : reject(new Error('Imagem inválida')), 'image/webp');
+        });
+
+        return blobDataUrl(blob);
+    } finally {
+        canvas.width = 1;
+        canvas.height = 1;
+    }
+}
+
 async function fetchImageDataUrl(url) {
     if (url.startsWith('data:image/')) return url;
 
@@ -83,7 +105,11 @@ async function fetchImageDataUrl(url) {
 
     try {
         const response = await fetch(url, { credentials: 'same-origin', signal: controller.signal });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (!response.ok) {
+            const error = new Error(`HTTP ${response.status}`);
+            error.status = response.status;
+            throw error;
+        }
 
         const blob = await response.blob();
         if (!blob.size || !blob.type.startsWith('image/')) throw new Error('Resposta sem imagem válida');
@@ -94,21 +120,49 @@ async function fetchImageDataUrl(url) {
     }
 }
 
-export async function prepareReportPageImages(pageElement, pageNumber) {
+async function loadImageDataUrl(url, element) {
+    if (url.startsWith('data:image/')) return url;
+
+    if (element.localName === 'img') {
+        try {
+            const dataUrl = await displayedImageDataUrl(element);
+            if (dataUrl) return dataUrl;
+        } catch {
+            // External images may taint a canvas; fetch can still load them.
+        }
+    }
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+            return await fetchImageDataUrl(url);
+        } catch (error) {
+            if (attempt === 1 || (error.status >= 400 && error.status < 500 && error.status !== 429)) {
+                throw error;
+            }
+        }
+    }
+}
+
+export async function prepareReportPageImages(pageElement, pageNumber, dataUrls = new Map()) {
     const images = [...pageElement.querySelectorAll(REPORT_IMAGE_SELECTOR)];
-    const dataUrls = new Map();
 
     return Promise.all(images.map(async (element) => {
         const url = imageUrl(element)?.trim();
         if (!url) return null;
 
         try {
-            if (!dataUrls.has(url)) dataUrls.set(url, fetchImageDataUrl(url));
+            if (!dataUrls.has(url)) {
+                const pending = loadImageDataUrl(url, element).catch((error) => {
+                    dataUrls.delete(url);
+                    throw error;
+                });
+                dataUrls.set(url, pending);
+            }
             const dataUrl = await dataUrls.get(url);
             if (element.localName === 'image') await validateImageDataUrl(dataUrl);
             return dataUrl;
-        } catch {
-            throw new ReportImageLoadError(pageNumber, imageLabel(element));
+        } catch (error) {
+            throw new ReportImageLoadError(pageNumber, imageLabel(element), error);
         }
     }));
 }
@@ -135,17 +189,29 @@ export async function embedReportPageImages(clonedPage, dataUrls, pageNumber) {
         element.setAttribute('src', dataUrl);
 
         try {
-            if (typeof element.decode === 'function') {
-                await element.decode();
-            } else if (!element.complete) {
-                await new Promise((resolve, reject) => {
-                    element.addEventListener('load', resolve, { once: true });
-                    element.addEventListener('error', reject, { once: true });
-                });
+            for (let attempt = 0; attempt < 2; attempt += 1) {
+                if (attempt > 0) {
+                    element.removeAttribute('src');
+                    element.setAttribute('src', dataUrl);
+                }
+
+                try {
+                    if (typeof element.decode === 'function') {
+                        await element.decode();
+                    } else if (!element.complete) {
+                        await new Promise((resolve, reject) => {
+                            element.addEventListener('load', resolve, { once: true });
+                            element.addEventListener('error', reject, { once: true });
+                        });
+                    }
+                    if (!element.naturalWidth) throw new Error('Imagem inválida');
+                    break;
+                } catch (error) {
+                    if (attempt === 1) throw error;
+                }
             }
-            if (!element.naturalWidth) throw new Error('Imagem inválida');
-        } catch {
-            throw new ReportImageLoadError(pageNumber, imageLabel(element));
+        } catch (error) {
+            throw new ReportImageLoadError(pageNumber, imageLabel(element), error);
         }
     }));
 }
@@ -186,32 +252,55 @@ export async function captureReportPages(elements, onProgress = () => {}) {
 
     const { default: html2canvas } = await import('html2canvas');
     const pages = [];
+    const imageDataUrls = new Map();
+    const lastImageUse = new Map();
+    elements.forEach((page, index) => {
+        page.querySelectorAll(REPORT_IMAGE_SELECTOR).forEach((image) => {
+            const url = imageUrl(image)?.trim();
+            if (url) lastImageUse.set(url, index);
+        });
+    });
 
-    for (let index = 0; index < elements.length; index += 1) {
-        onProgress({ current: index + 1, total: elements.length });
-        const imageDataUrls = await prepareReportPageImages(elements[index], index + 1);
-        const canvas = await html2canvas(elements[index], {
-            backgroundColor: '#FFFFFF',
-            scale: 2,
-            useCORS: true,
-            allowTaint: false,
-            logging: false,
-            imageTimeout: 30000,
-            removeContainer: true,
-            onclone: async (clonedDocument, clonedPage) => {
-                clonedDocument.documentElement.style.setProperty('background-color', '#FFFFFF', 'important');
-                clonedDocument.body.style.setProperty('background-color', '#FFFFFF', 'important');
-                clonedDocument.querySelector('.report-preview-pages')?.classList.add('report-exporting');
-                await embedReportPageImages(clonedPage, imageDataUrls, index + 1);
-            },
-        });
-        const blob = await pngBlob(canvas);
-        pages.push({
-            data: new Uint8Array(await blob.arrayBuffer()),
-            orientation: elements[index].dataset.reportOrientation === 'landscape' ? 'landscape' : 'portrait',
-        });
-        canvas.width = 1;
-        canvas.height = 1;
+    // html2canvas 1.4 measures fonts in the original document using a hidden
+    // 1px image. Tailwind's block images shift that baseline down; restore the
+    // inline box only for this probe, leaving report photos and logos alone.
+    const fontMetricsStyle = document.createElement('style');
+    fontMetricsStyle.dataset.reportFontMetrics = '';
+    fontMetricsStyle.textContent = 'body > div[style*="visibility: hidden"] > img[width="1"][height="1"] { display: inline-block !important; }';
+    document.head.appendChild(fontMetricsStyle);
+
+    try {
+        for (let index = 0; index < elements.length; index += 1) {
+            onProgress({ current: index + 1, total: elements.length });
+            const pageImageDataUrls = await prepareReportPageImages(elements[index], index + 1, imageDataUrls);
+            const canvas = await html2canvas(elements[index], {
+                backgroundColor: '#FFFFFF',
+                scale: 2,
+                useCORS: true,
+                allowTaint: false,
+                logging: false,
+                imageTimeout: 30000,
+                removeContainer: true,
+                onclone: async (clonedDocument, clonedPage) => {
+                    clonedDocument.documentElement.style.setProperty('background-color', '#FFFFFF', 'important');
+                    clonedDocument.body.style.setProperty('background-color', '#FFFFFF', 'important');
+                    clonedDocument.querySelector('.report-preview-pages')?.classList.add('report-exporting');
+                    await embedReportPageImages(clonedPage, pageImageDataUrls, index + 1);
+                },
+            });
+            const blob = await pngBlob(canvas);
+            pages.push({
+                data: new Uint8Array(await blob.arrayBuffer()),
+                orientation: elements[index].dataset.reportOrientation === 'landscape' ? 'landscape' : 'portrait',
+            });
+            canvas.width = 1;
+            canvas.height = 1;
+            for (const [url, lastPage] of lastImageUse) {
+                if (lastPage === index) imageDataUrls.delete(url);
+            }
+        }
+    } finally {
+        fontMetricsStyle.remove();
     }
 
     return pages;

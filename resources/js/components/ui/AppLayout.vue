@@ -18,6 +18,10 @@ const props = defineProps({
         type: Boolean,
         default: false,
     },
+    printReport: {
+        type: Boolean,
+        default: false,
+    },
 });
 
 const page = usePage();
@@ -136,7 +140,7 @@ const contentWidthClass = computed(() => (props.wide ? 'w-full' : 'mx-auto w-ful
 </script>
 
 <template>
-    <div class="app-ui min-h-screen bg-slate-100 text-slate-900" :style="shellStyle">
+    <div class="app-ui min-h-screen bg-slate-100 text-slate-900" :class="{ 'app-ui--report-print': printReport }" :style="shellStyle">
         <!--
         <a
             href="#main-content"
@@ -147,6 +151,7 @@ const contentWidthClass = computed(() => (props.wide ? 'w-full' : 'mx-auto w-ful
         -->
 
         <AppSidebar
+            class="app-layout-sidebar"
             :items="sidebarNavigation"
             :user="user"
             :organization="organization"
@@ -159,11 +164,12 @@ const contentWidthClass = computed(() => (props.wide ? 'w-full' : 'mx-auto w-ful
         />
 
         <div
-            class="min-h-screen lg:pl-[var(--sidebar-width)]"
+            class="app-layout-shell min-h-screen lg:pl-[var(--sidebar-width)]"
             :inert="mobileOpen ? '' : undefined"
             :aria-hidden="mobileOpen ? 'true' : undefined"
         >
             <AppTopbar
+                class="app-layout-topbar"
                 :user="user"
                 :organization="organization"
                 :collapsed="sidebarCollapsed"
@@ -175,15 +181,15 @@ const contentWidthClass = computed(() => (props.wide ? 'w-full' : 'mx-auto w-ful
                 @toggle-collapse="toggleCollapse"
             />
 
-            <main id="main-content" tabindex="-1" class="px-4 py-6 outline-none sm:px-6 lg:px-8">
-                <div :class="contentWidthClass">
-                    <PageHeader :title="title" :description="subtitle">
+            <main id="main-content" tabindex="-1" class="app-layout-main px-4 py-6 outline-none sm:px-6 lg:px-8">
+                <div class="app-layout-content" :class="contentWidthClass">
+                    <PageHeader class="app-layout-header" :title="title" :description="subtitle">
                         <template #actions>
                             <slot name="actions" />
                         </template>
                     </PageHeader>
 
-                    <div v-if="flashSuccess || flashError" class="mt-6 space-y-3">
+                    <div v-if="flashSuccess || flashError" class="app-layout-flash mt-6 space-y-3">
                         <div
                             v-if="flashSuccess"
                             role="status"
@@ -200,7 +206,7 @@ const contentWidthClass = computed(() => (props.wide ? 'w-full' : 'mx-auto w-ful
                         </div>
                     </div>
 
-                    <div class="mt-6">
+                    <div class="app-layout-slot mt-6">
                         <slot />
                     </div>
                 </div>

@@ -62,5 +62,5 @@ function update(assessmentPublicId, field, event) {
 .special-assessment-type { width: 24%; }.special-assessment-photos { width: 16%; }.special-assessment-service { width: 20%; }.special-assessment-priority { width: 20%; }.special-assessment-note { width: 20%; }
 .special-assessment-input { width: 100%; border: 1px solid #94a3b8; border-radius: .375rem; padding: .4rem .5rem; font-family: inherit; text-align: center; }
 .special-assessment-empty { color: #64748b; font-family: inherit; }
-.special-assessment-table-report { min-width: 0; font-size: 7.5pt; }.special-assessment-table-report th, .special-assessment-table-report td { padding: 1mm 1.25mm; }.special-assessment-table-report th { font-size: 7pt; }.special-assessment-table-report thead tr:first-child th { font-size: 8pt; }
+.special-assessment-table-report { min-width: 0; font-size: 7pt; }.special-assessment-table-report th, .special-assessment-table-report td { padding: 1mm 1.25mm; font-size: 7pt; line-height: 1.25; vertical-align: middle; }.special-assessment-table-report thead tr:first-child th { font-size: 7pt; }
 </style>

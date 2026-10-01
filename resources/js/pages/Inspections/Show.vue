@@ -203,6 +203,7 @@ async function exportReport(format) {
     <AppLayout
         :title="pageTitle"
         :subtitle="pageSubtitle"
+        :print-report="active_tab === 'report'"
         wide
     >
         <template #actions>
@@ -454,7 +455,7 @@ async function exportReport(format) {
             </aside>
         </div>
 
-        <div v-else-if="active_tab === 'report'" class="mt-6">
+        <div v-else-if="active_tab === 'report'" class="report-print-content mt-6">
             <div class="print-hidden mb-5 flex flex-wrap items-center justify-between gap-3">
                 <p class="max-w-3xl flex-1 text-sm leading-6 text-slate-500">
                     Esta prévia usa os dados persistidos da inspeção.
@@ -700,7 +701,7 @@ async function exportReport(format) {
 </template>
 
 <style>
-@page {
+@page report-portrait {
     size: A4 portrait;
     margin: 0;
 }
@@ -729,38 +730,45 @@ async function exportReport(format) {
         background: white !important;
     }
 
-    body * {
-        visibility: hidden !important;
+    .app-ui--report-print,
+    .app-ui--report-print .app-layout-shell {
+        min-height: 0 !important;
+        background: white !important;
     }
 
-    .report-document,
-    .report-document * {
-        visibility: visible !important;
+    .app-ui--report-print .app-layout-sidebar,
+    .app-ui--report-print .app-layout-topbar,
+    .app-ui--report-print .app-layout-header,
+    .app-ui--report-print .app-layout-flash,
+    .app-ui--report-print .print-hidden {
+        display: none !important;
     }
 
-    .report-preview-pages,
-    .report-preview-pages * {
-        visibility: visible !important;
+    .app-ui--report-print .app-layout-shell {
+        padding-left: 0 !important;
     }
 
-    .report-document {
-        position: absolute;
-        inset: 0 auto auto 0;
-        width: 100%;
+    .app-ui--report-print .app-layout-main,
+    .app-ui--report-print .app-layout-content,
+    .app-ui--report-print .app-layout-slot,
+    .app-ui--report-print .report-print-content {
+        width: auto !important;
         max-width: none !important;
-        border: 0 !important;
-        border-radius: 0 !important;
-        box-shadow: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
     }
 
-    .report-preview-pages {
-        position: absolute;
-        inset: 0 auto auto 0;
-        width: 210mm;
+    .app-ui--report-print .report-preview-pages {
+        position: static;
+        width: auto;
         max-width: none !important;
     }
 
-    .report-a4-page.report-a4-landscape {
+    .app-ui--report-print .report-a4-page {
+        page: report-portrait;
+    }
+
+    .app-ui--report-print .report-a4-page.report-a4-landscape {
         page: report-landscape;
     }
 

@@ -3,7 +3,7 @@ import { nextTick, onMounted, ref, watch } from 'vue';
 import ClassificationReportTables from '@/components/domain/view-first/ClassificationReportTables.vue';
 
 const props = defineProps({ summary: { type: Object, required: true } });
-const emit = defineEmits(['pages', 'ready']);
+const emit = defineEmits(['pages', 'ready', 'error']);
 const probe = ref(null);
 const probePage = ref(null);
 let runId = 0;
@@ -27,8 +27,8 @@ function append(page, atom) {
     return next;
 }
 
-async function fits(page) {
-    probePage.value = page;
+async function fits(page, precedingPages) {
+    probePage.value = finalize([...precedingPages, page]).at(-1);
     await nextTick();
 
     return probe.value ? probe.value.scrollHeight <= probe.value.clientHeight + 1 : true;
@@ -54,6 +54,7 @@ function finalize(pages) {
 async function paginate() {
     const thisRun = ++runId;
     emit('ready', false);
+    emit('error', null);
     const atoms = [
         ...(props.summary.categories || []).map((value) => ({ type: 'category', value })),
         ...((props.summary.special_assessment_rows || []).length
@@ -63,23 +64,37 @@ async function paginate() {
     const pages = [];
     let current = emptyPage(true);
 
+    if (document.fonts?.ready) await document.fonts.ready;
+    if (thisRun !== runId) return;
+
+    const headerFits = await fits(current, pages);
+    if (thisRun !== runId) return;
+    if (!headerFits) {
+        emit('pages', []);
+        emit('error', 'A tabela de identificação do equipamento não cabe na página do relatório.');
+        return;
+    }
+
     for (const atom of atoms) {
         if (thisRun !== runId) return;
 
         const candidate = append(current, atom);
-        if (await fits(candidate)) {
+        const candidateFits = await fits(candidate, pages);
+        if (thisRun !== runId) return;
+        if (candidateFits) {
             current = candidate;
             continue;
         }
 
-        if (current.includeHeader || current.categories.length || current.specialRows.length || current.showSpecial) {
-            pages.push(current);
-            current = append(emptyPage(false), atom);
-            continue;
+        pages.push(current);
+        current = append(emptyPage(false), atom);
+        const nextPageFits = await fits(current, pages);
+        if (thisRun !== runId) return;
+        if (!nextPageFits) {
+            emit('pages', []);
+            emit('error', 'Uma tabela do resumo GUT não cabe na página do relatório.');
+            return;
         }
-
-        pages.push(candidate);
-        current = emptyPage(false);
     }
 
     if (current.includeHeader || current.categories.length || current.specialRows.length || current.showSpecial) pages.push(current);
@@ -107,5 +122,6 @@ onMounted(paginate);
 
 <style scoped>
 .classification-report-measure { position: fixed; top: 0; left: -10000px; width: 177mm; visibility: hidden; pointer-events: none; }
-.classification-report-probe { width: 177mm; height: 246mm; overflow: auto; }
+.classification-report-probe { width: 177mm; height: 246mm; overflow: auto; font-family: 'Times New Roman', Times, serif !important; }
+.classification-report-probe :deep(*) { font-family: 'Times New Roman', Times, serif !important; }
 </style>

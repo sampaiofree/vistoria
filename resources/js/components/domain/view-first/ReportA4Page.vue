@@ -66,6 +66,7 @@ defineProps({
     display: flex;
     flex-direction: column;
     width: 210mm;
+    height: 297mm;
     min-height: 297mm;
     margin: 0 auto 12mm;
     padding: 10mm 8mm 10mm 25mm;
@@ -79,6 +80,7 @@ defineProps({
 
 .report-a4-landscape {
     width: 297mm;
+    height: 210mm;
     min-height: 210mm;
     padding: 8mm 10mm 25mm;
 }

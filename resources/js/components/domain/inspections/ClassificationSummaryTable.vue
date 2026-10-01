@@ -97,8 +97,16 @@ function updateM2(category, classificationCode, event) {
 .classification-summary-table th { background: #e2e8f0; font-weight: 700; }
 .classification-summary-table tr > :first-child { border-left: 0; }
 .classification-summary-table tr > :last-child { border-right: 0; }
-.classification-summary-prioritization { width: 24%; }.classification-summary-classification { width: 13%; }.classification-summary-count { width: 11%; }.classification-summary-date { width: 14%; }.classification-summary-quantity { width: 15%; }.classification-summary-m2 { width: 23%; }
+.classification-summary-prioritization { width: 42mm; }
+.classification-summary-classification { width: 23mm; }
+.classification-summary-count { width: 20mm; }
+.classification-summary-date { width: 25mm; }
+.classification-summary-quantity { width: 27mm; }
+.classification-summary-m2 { width: 40mm; }
 .classification-summary-prioritization-cell { font-size: 9pt; }.classification-summary-classification-cell { font-size: 8.5pt; font-weight: 700; }.classification-summary-total td { background: #f8fafc; font-size: 8pt; font-weight: 700; }
-.classification-summary-table-report { font-size: 7.2pt; }.classification-summary-table-report th { font-size: 7pt; }
+.classification-summary-table-report { font-size: 7pt; }.classification-summary-table-report th, .classification-summary-table-report td { font-size: 7pt; line-height: 1.25; vertical-align: middle; }
+.classification-summary-table-report .classification-summary-classification { width: 25mm; }
+.classification-summary-table-report .classification-summary-m2 { width: 38mm; }
+.classification-summary-table-report thead th:nth-child(2) { white-space: nowrap; }
 .classification-summary-table-workspace { min-width: 58rem; font-size: .875rem; }.classification-summary-table-workspace th, .classification-summary-table-workspace td { padding: .7rem .75rem; }.classification-summary-table-workspace th { font-family: inherit; font-size: .75rem; }.classification-summary-table-workspace .classification-summary-prioritization-cell { font-family: inherit; font-size: .875rem; }.classification-summary-table-workspace .classification-summary-classification-cell { font-family: inherit; font-size: .875rem; }.classification-summary-m2-input { width: 100%; min-width: 8rem; border: 1px solid #94a3b8; border-radius: .375rem; padding: .4rem .5rem; font-family: inherit; text-align: center; }
 </style>

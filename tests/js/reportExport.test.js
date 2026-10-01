@@ -16,6 +16,7 @@ function element(localName, attributes = {}, options = {}) {
         localName,
         currentSrc: options.currentSrc,
         naturalWidth: options.naturalWidth ?? 640,
+        naturalHeight: options.naturalHeight ?? 0,
         complete: true,
         decoded: false,
         getAttribute: (name) => values.get(name) ?? null,
@@ -94,7 +95,7 @@ test('embeds photos and SVG map backgrounds for any report category', async (t) 
     const prepared = await prepareReportPageImages(page(originalPhoto, originalMap, repeatedPhoto), 4);
 
     assert.equal(requests.length, 2);
-    assert.deepEqual(requests.map(({ url }) => url), ['/photos/rec', '/maps/tac']);
+    assert.deepEqual(requests.map(({ url }) => url).sort(), ['/maps/tac', '/photos/rec']);
     assert.ok(requests.every(({ options }) => options.credentials === 'same-origin' && options.signal));
     assert.deepEqual(prepared, Array(3).fill('data:image/webp;base64,aW1hZ2U='));
 
@@ -111,6 +112,43 @@ test('embeds photos and SVG map backgrounds for any report category', async (t) 
     assert.equal(clonedRepeatedPhoto.decoded, true);
 });
 
+test('uses an already displayed photo without requesting it again', async (t) => {
+    const requests = mockImageLoading(t);
+    const originalDocument = globalThis.document;
+    globalThis.document = {
+        createElement: () => ({
+            getContext: () => ({ drawImage: () => {} }),
+            toBlob: (callback) => callback(new Blob(['displayed'], { type: 'image/webp' })),
+        }),
+    };
+    t.after(() => { globalThis.document = originalDocument; });
+
+    const prepared = await prepareReportPageImages(
+        page(element('img', { src: '/photos/tac', alt: 'Registro TAC' }, { naturalHeight: 480 })),
+        7,
+    );
+
+    assert.deepEqual(prepared, ['data:image/webp;base64,ZGlzcGxheWVk']);
+    assert.equal(requests.length, 0);
+});
+
+test('retries a transient image response and reuses it on later pages', async (t) => {
+    let responses = 0;
+    const requests = mockImageLoading(t, () => {
+        responses += 1;
+        return responses === 1
+            ? { ok: false, status: 503 }
+            : { ok: true, blob: async () => new Blob(['image'], { type: 'image/webp' }) };
+    });
+    const sharedImages = new Map();
+
+    const first = await prepareReportPageImages(page(element('img', { src: '/photos/tac' })), 7, sharedImages);
+    const second = await prepareReportPageImages(page(element('img', { src: '/photos/tac' })), 8, sharedImages);
+
+    assert.deepEqual(first, second);
+    assert.equal(requests.length, 2);
+});
+
 test('allows pages without images', async (t) => {
     const requests = mockImageLoading(t);
     const prepared = await prepareReportPageImages(page(), 1);
@@ -121,12 +159,13 @@ test('allows pages without images', async (t) => {
 });
 
 test('rejects missing map files before capturing the page', async (t) => {
-    mockImageLoading(t, () => ({ ok: false, status: 404 }));
+    const requests = mockImageLoading(t, () => ({ ok: false, status: 404 }));
 
     await assert.rejects(
         prepareReportPageImages(page(element('image', { href: '/maps/rec' }, { mapLabel: 'Mapa REC' })), 7),
         (error) => error instanceof ReportImageLoadError && /Mapa REC.*página 7/.test(error.message),
     );
+    assert.equal(requests.length, 1);
 });
 
 test('rejects responses that are not images', async (t) => {
@@ -146,4 +185,18 @@ test('rejects photos that cannot be decoded in the cloned page', async () => {
         embedReportPageImages(page(element('img', { alt: 'Foto TEL' }, { decodeFails: true })), ['data:image/webp;base64,aW1hZ2U='], 9),
         (error) => error instanceof ReportImageLoadError && /Foto TEL.*página 9/.test(error.message),
     );
+});
+
+test('retries a transient decode failure in the cloned page', async () => {
+    const cloned = element('img', { alt: 'Registro TAC' });
+    let attempts = 0;
+    cloned.decode = async () => {
+        attempts += 1;
+        if (attempts === 1) throw new Error('Decodificação interrompida');
+    };
+
+    await embedReportPageImages(page(cloned), ['data:image/webp;base64,aW1hZ2U='], 7);
+
+    assert.equal(attempts, 2);
+    assert.equal(cloned.getAttribute('src'), 'data:image/webp;base64,aW1hZ2U=');
 });

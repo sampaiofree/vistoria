@@ -51,6 +51,7 @@ const summaryPageCount = ref(1);
 const summaryReady = ref(false);
 const classificationPages = ref([]);
 const classificationReady = ref(!classificationSummary.value);
+const classificationError = ref(null);
 const observationLayouts = ref({});
 const previewRoot = ref(null);
 
@@ -115,13 +116,19 @@ watch(layoutReady, (ready) => emit('layout-ready', ready), { immediate: true });
 
 function updateQuantityError(type, message) {
     quantityErrors.value = { ...quantityErrors.value, [type]: message };
-    emit('layout-error', quantityErrors.value.rec || quantityErrors.value.civil);
+    emit('layout-error', classificationError.value || quantityErrors.value.rec || quantityErrors.value.civil);
+}
+
+function updateClassificationError(message) {
+    classificationError.value = message;
+    emit('layout-error', classificationError.value || quantityErrors.value.rec || quantityErrors.value.civil);
 }
 
 watch(classificationSummary, (summary) => {
     if (summary) return;
     classificationPages.value = [];
     classificationReady.value = true;
+    updateClassificationError(null);
 }, { immediate: true });
 
 function updateClassificationPages(value) {
@@ -544,6 +551,7 @@ function visualClass(photo) {
             :summary="classificationSummary"
             @pages="updateClassificationPages"
             @ready="classificationReady = $event"
+            @error="updateClassificationError"
         />
         <ReportQuantityPaginator
             :items="recQuantityRows"
@@ -986,9 +994,9 @@ function visualClass(photo) {
 .report-cover-title-dense { gap: 1.5mm; padding: 0 8mm; }
 .report-cover-bottom { position: relative; z-index: 1; flex: none; background: #fff; }
 .report-cover-history { display: grid; grid-template-columns: 13mm minmax(0, 1fr); border-top: 1px solid #111827; border-bottom: 1px solid #111827; font-family: Arial, sans-serif; }
-.report-cover-history-label { display: flex; min-height: 8.4em; align-items: center; justify-content: center; padding-block: 1mm; border-right: 1px solid #111827; font-size: 10pt; line-height: 1.05; text-align: center; }
+.report-cover-history-label { display: flex; min-height: 8.4em; align-items: center; justify-content: center; padding-block: 3mm; border-right: 1px solid #111827; font-size: 10pt; line-height: 1.05; text-align: center; }
 .report-cover-history-letters { display: block; flex: none; }
-.report-cover-history-letters span { display: block; height: 1.05em; white-space: nowrap; }
+.report-cover-history-letters span { display: block; height: 1em; white-space: nowrap; }
 .report-cover-history table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 7.5pt; }
 .report-cover-history th, .report-cover-history td { padding: 2mm 1.5mm; border-right: 1px solid #111827; border-bottom: 1px solid #111827; text-align: center; vertical-align: middle; }
 .report-cover-history th { font-size: 6.5pt; text-transform: uppercase; }
