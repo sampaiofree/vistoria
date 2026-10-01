@@ -43,8 +43,8 @@ final class DeleteInspectionOverviewPhoto
             $current->delete();
 
             $remaining = InspectionOverviewPhoto::query()
-                ->where('organization_id', $this->tenant->id())
-                ->where('inspection_id', $inspection->getKey())
+                ->where('inspection_overview_photos.organization_id', $this->tenant->id())
+                ->where('inspection_overview_photos.inspection_id', $inspection->getKey())
                 ->join('inspection_overview_blocks as blocks', 'blocks.id', '=', 'inspection_overview_photos.inspection_overview_block_id')
                 ->orderBy('blocks.position')
                 ->orderBy('inspection_overview_photos.slot')

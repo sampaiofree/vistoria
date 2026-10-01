@@ -28,7 +28,7 @@ final class InspectionReportOverviewTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_page_always_exposes_two_fixed_blocks_and_admin_can_update_their_texts(): void
+    public function test_page_exposes_first_report_page_and_admin_updates_both_text_blocks(): void
     {
         [$organization, $admin, $inspection] = $this->scenario();
 
@@ -39,6 +39,7 @@ final class InspectionReportOverviewTest extends TestCase
                 ->component('Inspections/ReportOverview')
                 ->where('active_tab', 'report_overview')
                 ->where('capabilities.edit', true)
+                ->has('overview.pages', 1)
                 ->has('overview.blocks', 2)
                 ->has('overview.blocks.0.photos', 2)
                 ->where('overview.blocks.0.photos.0.number', 1)
@@ -58,6 +59,12 @@ final class InspectionReportOverviewTest extends TestCase
             'comment' => 'Vista frontal do equipamento.',
             'recommendation' => 'Manter acompanhamento.',
             'updated_by' => $admin->id,
+        ]);
+        $this->assertDatabaseHas('inspection_overview_blocks', [
+            'inspection_id' => $inspection->id,
+            'position' => 2,
+            'comment' => 'Vista frontal do equipamento.',
+            'recommendation' => 'Manter acompanhamento.',
         ]);
 
         $this->actingAs($admin)
@@ -192,7 +199,7 @@ final class InspectionReportOverviewTest extends TestCase
                 ->where('content.overview.blocks.0.photos.0.number', 1)
                 ->where('content.overview.blocks.1.photos.1.number', 4)
                 ->where('content.validation.issues', fn ($issues): bool => collect($issues)->contains(
-                    'Adicione as quatro fotografias da Vista geral para exportar o relatório.',
+                    'Adicione pelo menos duas fotografias da Vista geral para exportar o relatório.',
                 ) && collect($issues)->contains(
                     'Preencha os comentários e recomendações da Vista geral para exportar o relatório.',
                 )));
@@ -221,7 +228,7 @@ final class InspectionReportOverviewTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->where('content.print_enabled', false)
                 ->where('content.validation.issues', fn ($issues): bool => collect($issues)->contains(
-                    'Aguarde o processamento das quatro fotografias da Vista geral antes de exportar o relatório.',
+                    'Aguarde o processamento das fotografias da Vista geral antes de exportar o relatório.',
                 )));
 
         $pendingPhoto->update([
@@ -239,6 +246,165 @@ final class InspectionReportOverviewTest extends TestCase
                 ->where('content.overview.title', 'ANEXO A – LOCALIZAÇÃO E DOCUMENTAÇÃO FOTOGRÁFICA - TAC')
                 ->where('content.overview.section_title', 'DOCUMENTAÇÃO FOTOGRÁFICA - TAC')
                 ->where('content.overview.blocks.0.photos.0.photo.status', 'ready'));
+    }
+
+    public function test_append_reorder_and_delete_keep_photos_numbered_across_pages(): void
+    {
+        Storage::fake('inspection_photos');
+        Queue::fake();
+        [, $admin, $inspection] = $this->scenario();
+        $appendUrl = route('inspections.report-overview.photos.append', $inspection);
+
+        for ($number = 1; $number <= 6; $number++) {
+            $this->actingAs($admin)
+                ->post($appendUrl, ['file' => UploadedFile::fake()->image("foto-{$number}.jpg", 800, 600)])
+                ->assertRedirect();
+        }
+
+        $this->assertSame(6, InspectionOverviewPhoto::query()->count());
+        $this->actingAs($admin)
+            ->get(route('inspections.report-overview', $inspection))
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('overview.pages', 2)
+                ->has('overview.blocks', 4)
+                ->where('overview.photo_count', 6)
+                ->where('overview.pages.1.photos.1.number', 6));
+
+        $photos = InspectionOverviewPhoto::query()->orderBy('id')->get();
+        $photos->each(fn (InspectionOverviewPhoto $photo) => $photo->update(['processing_status' => PhotoProcessingStatus::Ready]));
+        $ids = $photos->pluck('public_id')->all();
+        [$ids[3], $ids[4]] = [$ids[4], $ids[3]];
+
+        $this->actingAs($admin)
+            ->patch(route('inspections.report-overview.photos.reorder', $inspection), ['photo_ids' => $ids])
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('inspection_overview_photos', [
+            'id' => $photos[4]->id,
+            'inspection_overview_block_id' => InspectionOverviewBlock::query()->where('inspection_id', $inspection->id)->where('position', 2)->value('id'),
+            'slot' => 2,
+        ]);
+
+        $this->actingAs($admin)
+            ->delete(route('inspection-overview-photos.destroy', $photos[1]))
+            ->assertRedirect();
+
+        $this->actingAs($admin)
+            ->get(route('inspections.report-overview', $inspection))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('overview.photo_count', 5)
+                ->where('overview.pages.1.photos.0.number', 5));
+
+        $this->actingAs($admin)
+            ->post($appendUrl, ['file' => UploadedFile::fake()->image('nova.jpg', 800, 600)])
+            ->assertRedirect();
+        $this->actingAs($admin)
+            ->post($appendUrl, ['file' => UploadedFile::fake()->create('invalida.pdf', 1, 'application/pdf')])
+            ->assertSessionHasErrors('file');
+
+        $this->assertSame(6, InspectionOverviewPhoto::query()->count());
+        $this->actingAs($admin)
+            ->get(route('inspections.report-overview', $inspection))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('overview.photo_count', 6)
+                ->where('overview.pages.1.photos.1.number', 6));
+    }
+
+    public function test_each_report_page_has_independent_texts_and_export_requires_complete_pairs(): void
+    {
+        [, $admin, $inspection] = $this->scenario();
+        $inspection->update([
+            'external_report_number' => 'U0306VT-G-6RI002',
+            'designer_i_report_number' => 'SM-IIE-1717',
+        ]);
+        $first = InspectionOverviewBlock::factory()->forInspection($inspection, 1)->create([
+            'comment' => 'Texto antigo A',
+            'recommendation' => 'Recomendação antiga A',
+        ]);
+        InspectionOverviewBlock::factory()->forInspection($inspection, 2)->create([
+            'comment' => 'Texto antigo B',
+            'recommendation' => 'Recomendação antiga B',
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('inspections.report-overview', $inspection))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('overview.pages.0.comment', 'Texto antigo A')
+                ->where('overview.pages.0.recommendation', 'Recomendação antiga A'));
+
+        $this->actingAs($admin)
+            ->put(route('inspections.report-overview.blocks.update', [$inspection, 1]), [
+                'comment' => 'Página um',
+                'recommendation' => 'Recomendação um',
+            ])->assertRedirect();
+
+        foreach ([1, 2] as $slot) {
+            InspectionOverviewPhoto::factory()->forBlock($first, $slot)->ready()->create();
+        }
+
+        $this->actingAs($admin)
+            ->get(route('inspections.report-preview', $inspection))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('content.print_enabled', true)
+                ->where('content.overview.blocks.0.comment', 'Página um')
+                ->where('content.overview.blocks.1.comment', 'Página um'));
+
+        $second = InspectionOverviewBlock::query()->where('inspection_id', $inspection->id)->where('position', 2)->firstOrFail();
+        InspectionOverviewPhoto::factory()->forBlock($second, 1)->ready()->create();
+
+        $this->actingAs($admin)
+            ->get(route('inspections.report-preview', $inspection))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('content.print_enabled', false)
+                ->where('content.validation.issues', fn ($issues): bool => collect($issues)->contains(
+                    'A Vista geral precisa ter um número par de fotografias para exportar o relatório.',
+                )));
+
+        InspectionOverviewPhoto::factory()->forBlock($second, 2)->ready()->create();
+        $this->actingAs($admin)
+            ->get(route('inspections.report-preview', $inspection))
+            ->assertInertia(fn (Assert $page) => $page->where('content.print_enabled', true));
+
+        $third = InspectionOverviewBlock::factory()->forInspection($inspection, 3)->create([
+            'comment' => null,
+            'recommendation' => null,
+        ]);
+        foreach ([1, 2] as $slot) {
+            InspectionOverviewPhoto::factory()->forBlock($third, $slot)->ready()->create();
+        }
+
+        $this->actingAs($admin)
+            ->get(route('inspections.report-preview', $inspection))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('content.print_enabled', false)
+                ->has('content.overview.pages', 2)
+                ->where('content.validation.issues', fn ($issues): bool => collect($issues)->contains(
+                    'Preencha os comentários e recomendações da Vista geral para exportar o relatório.',
+                )));
+
+        $this->actingAs($admin)
+            ->put(route('inspections.report-overview.blocks.update', [$inspection, 3]), [
+                'comment' => 'Página dois',
+                'recommendation' => 'Recomendação dois',
+            ])->assertRedirect();
+
+        $this->assertDatabaseHas('inspection_overview_blocks', [
+            'inspection_id' => $inspection->id,
+            'position' => 4,
+            'comment' => 'Página dois',
+            'recommendation' => 'Recomendação dois',
+        ]);
+        $this->assertDatabaseHas('inspection_overview_blocks', [
+            'inspection_id' => $inspection->id,
+            'position' => 1,
+            'comment' => 'Página um',
+        ]);
+        $this->actingAs($admin)
+            ->get(route('inspections.report-preview', $inspection))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('content.print_enabled', true)
+                ->where('content.overview.pages.1.comment', 'Página dois')
+                ->where('content.overview.pages.1.photos.1.number', 6));
     }
 
     /** @return array{Organization, User, Inspection} */

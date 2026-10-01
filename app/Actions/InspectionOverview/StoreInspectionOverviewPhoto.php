@@ -58,8 +58,8 @@ final class StoreInspectionOverviewPhoto
 
             if ($position === null || $slot === null) {
                 $ordered = InspectionOverviewPhoto::query()
-                    ->where('organization_id', $this->tenant->id())
-                    ->where('inspection_id', $locked->getKey())
+                    ->where('inspection_overview_photos.organization_id', $this->tenant->id())
+                    ->where('inspection_overview_photos.inspection_id', $locked->getKey())
                     ->join('inspection_overview_blocks as blocks', 'blocks.id', '=', 'inspection_overview_photos.inspection_overview_block_id')
                     ->orderBy('blocks.position')
                     ->orderBy('inspection_overview_photos.slot')

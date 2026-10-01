@@ -60,6 +60,19 @@ test('shifts every destination when the summary gains another page', () => {
     assert.notEqual(reportSummarySignature(onePage), reportSummarySignature(twoPages));
 });
 
+test('lists a multi-page overview annex once and shifts the following annex', () => {
+    const entries = buildReportSummaryEntries([
+        { type: 'overview', key: 'report-overview-0', annexTitle: 'ANEXO A – VISTA GERAL', continuation: false },
+        { type: 'overview', key: 'report-overview-1', annexTitle: 'ANEXO A – VISTA GERAL', continuation: true },
+        { type: 'location-map', key: 'rec-map', annexTitle: 'ANEXO B – REC' },
+    ], 1);
+
+    assert.deepEqual(entries.map(({ title, page }) => ({ title, page })), [
+        { title: 'ANEXO A – VISTA GERAL', page: 3 },
+        { title: 'ANEXO B – REC', page: 5 },
+    ]);
+});
+
 test('omits defect evolution and includes textual findings only on their first pages', () => {
     const entries = buildReportSummaryEntries([
         { type: 'defect-evolution', continuation: false },
