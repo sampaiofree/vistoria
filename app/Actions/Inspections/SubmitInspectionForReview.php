@@ -16,6 +16,7 @@ use App\Services\Defects\ReinspectionCoverageValidator;
 use App\Services\Inspections\GeneralAspectsCoverageValidator;
 use App\Services\Inspections\InspectionClassificationM2CoverageValidator;
 use App\Services\Inspections\InspectionOverviewCoverageValidator;
+use App\Services\Inspections\InspectionTechnicalReferencesCoverageValidator;
 use Illuminate\Validation\ValidationException;
 
 final class SubmitInspectionForReview
@@ -58,6 +59,7 @@ final class SubmitInspectionForReview
         $this->overviewCoverageValidator->validate($inspection);
         $this->generalAspectsCoverageValidator->validate($inspection);
         $this->classificationM2CoverageValidator->validate($inspection);
+        app(InspectionTechnicalReferencesCoverageValidator::class)->validate($inspection);
 
         return $this->transition->handle(
             $actor, $inspection, [InspectionStatus::AwaitingM2], InspectionStatus::AwaitingReview,

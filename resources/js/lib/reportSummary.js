@@ -83,7 +83,7 @@ export function buildReportSummaryEntries(contentPages, summaryPageCount, overvi
             });
         }
 
-        if (page.type === 'overview' || (page.annexTitle && !page.continuation && ['location-map', 'rec-quantity', 'civil-quantity', 'photographic'].includes(page.type))) {
+        if ((page.type === 'overview' && !page.continuation) || (page.annexTitle && !page.continuation && ['location-map', 'rec-quantity', 'civil-quantity', 'photographic'].includes(page.type))) {
             entries.push({
                 key: page.type === 'overview' ? 'annex-a' : `annex-${page.key}`,
                 title: page.annexTitle || overviewTitle || 'ANEXO A – LOCALIZAÇÃO E DOCUMENTAÇÃO FOTOGRÁFICA - TAC',

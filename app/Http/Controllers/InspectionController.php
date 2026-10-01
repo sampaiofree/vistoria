@@ -10,6 +10,7 @@ use App\Actions\Inspections\UpdateReportMetadata;
 use App\Actions\Inspections\UpdateInspectionReportRevision;
 use App\Actions\Inspections\UpdateInspectionClassificationM2Links;
 use App\Actions\Inspections\UpdateInspectionClassificationHeader;
+use App\Actions\Inspections\UpdateInspectionTechnicalReferences;
 use App\Enums\AtmosphericCorrosivity;
 use App\Enums\DefectCategory;
 use App\Enums\EquipmentRevisionEmissionType;
@@ -28,6 +29,7 @@ use App\Http\Requests\Inspections\UpdateReportMetadataRequest;
 use App\Http\Requests\Inspections\UpdateInspectionReportRevisionRequest;
 use App\Http\Requests\Inspections\UpdateInspectionClassificationM2LinksRequest;
 use App\Http\Requests\Inspections\UpdateInspectionClassificationHeaderRequest;
+use App\Http\Requests\Inspections\UpdateInspectionTechnicalReferencesRequest;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
 use App\Models\Equipment;
@@ -238,6 +240,7 @@ final class InspectionController extends Controller
 
         $canManageReportMetadata = $request->user()->can('manageReportMetadata', $inspection);
         $canManageGeneralAspects = $request->user()->can('manageGeneralAspects', $inspection);
+        $canManageTechnicalReferences = $request->user()->can('manageReportContent', $inspection);
 
         return Inertia::render('Inspections/Show', [
             'inspection' => [
@@ -302,6 +305,9 @@ final class InspectionController extends Controller
                 'manage_general_aspects' => $canManageGeneralAspects
                     ? ['action' => route('inspections.general-aspects.update', $inspection)]
                     : false,
+                'manage_technical_references' => $canManageTechnicalReferences
+                    ? ['action' => route('inspections.technical-references.update', $inspection)]
+                    : false,
                 'assign_responsibles' => $request->user()->can('assignResponsibles', $inspection)
                     ? ['action' => route('inspections.responsibles.store', $inspection)]
                     : false,
@@ -313,6 +319,10 @@ final class InspectionController extends Controller
                 $request->user()->operational_role !== OperationalRole::Inspector,
             ),
             'general_aspects' => $this->generalAspectsPayload($inspection, $canManageGeneralAspects),
+            'technical_references' => [
+                'general_drawing' => $inspection->general_drawing,
+                'procedure_number' => $inspection->procedure_number,
+            ],
             'emission_options' => EquipmentRevisionEmissionType::options(),
             'transitions' => $this->availableTransitions($request, $inspection),
             'index_url' => route('inspections.index'),
@@ -450,7 +460,22 @@ final class InspectionController extends Controller
         $this->authorize('manageClassificationM2', $inspection);
         $action->handle($request->user(), $inspection, $request->validated());
 
-        return back()->with('success', 'Resumo do equipamento atualizado.');
+        return back()->with('success', 'Data da inspeção atualizada.');
+    }
+
+    public function updateTechnicalReferences(
+        UpdateInspectionTechnicalReferencesRequest $request,
+        TenantContext $tenant,
+        Inspection $inspection,
+        UpdateInspectionTechnicalReferences $action,
+    ): RedirectResponse {
+        $inspection = $this->tenantInspection($tenant, $inspection);
+        $this->authorize('manageReportContent', $inspection);
+        $action->handle($request->user(), $inspection, $request->validated());
+
+        return redirect()
+            ->route('inspections.show', $inspection)
+            ->with('success', 'Referências técnicas atualizadas.');
     }
 
     private function renderHub(

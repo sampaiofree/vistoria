@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Http\Requests\Inspections;
 
 use App\Models\Inspection;
-use App\Support\TextNormalizer;
 use Illuminate\Foundation\Http\FormRequest;
 
 final class UpdateInspectionClassificationHeaderRequest extends FormRequest
@@ -21,8 +20,6 @@ final class UpdateInspectionClassificationHeaderRequest extends FormRequest
     protected function prepareForValidation(): void
     {
         $this->merge([
-            'general_drawing' => TextNormalizer::nullableText($this->input('general_drawing')),
-            'procedure_number' => TextNormalizer::nullableText($this->input('procedure_number')),
             'inspected_on' => blank($this->input('inspected_on')) ? null : $this->input('inspected_on'),
         ]);
     }
@@ -30,8 +27,8 @@ final class UpdateInspectionClassificationHeaderRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'general_drawing' => ['nullable', 'string', 'max:150'],
-            'procedure_number' => ['nullable', 'string', 'max:150'],
+            'general_drawing' => ['missing'],
+            'procedure_number' => ['missing'],
             'inspected_on' => ['nullable', 'date'],
         ];
     }

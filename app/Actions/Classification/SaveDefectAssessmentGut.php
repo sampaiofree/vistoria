@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Actions\Classification;
 
 use App\Enums\GutCriterion;
-use App\Enums\DefectAssessmentClassificationMethod;
 use App\Enums\DefectCategory;
 use App\Models\DefectAssessment;
 use App\Models\Inspection;
@@ -39,12 +38,6 @@ final class SaveDefectAssessmentGut
 
             if (! $condition->requiresGut() || ! $assessment->defect->category->requiresGut()) {
                 return $this->clear($assessment, $actor);
-            }
-
-            if ($assessment->classification_method === DefectAssessmentClassificationMethod::EngineeringNote) {
-                throw ValidationException::withMessages([
-                    'classification_method' => 'Selecione GUT antes de informar as notas desta avaliação.',
-                ]);
             }
 
             $category = $assessment->defect->category;

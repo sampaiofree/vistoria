@@ -535,6 +535,10 @@ final class InspectionCorrectionRequestTest extends TestCase
             }
         }
 
-        $inspection->update(['general_notes' => 'Aspectos gerais do equipamento preenchidos.']);
+        $inspection->update([
+            'general_notes' => 'Aspectos gerais do equipamento preenchidos.',
+            'general_drawing' => 'D-TESTE',
+            'procedure_number' => 'P-TESTE',
+        ]);
     }
 }

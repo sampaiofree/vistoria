@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Services\Defects;
 
-use App\Enums\DefectAssessmentClassificationMethod;
 use App\Enums\DefectCategory;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
@@ -87,9 +86,6 @@ final class InspectionAssessmentResolver
             return $entry->historical_due_date;
         }
 
-        if ($assessment->classification_method === DefectAssessmentClassificationMethod::EngineeringNote) {
-            return null;
-        }
         $category = data_get($assessment->defect_snapshot, 'defect.category');
 
         return AssessmentTreatmentDueDate::forClassification(

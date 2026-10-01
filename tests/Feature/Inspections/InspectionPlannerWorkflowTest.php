@@ -212,16 +212,67 @@ final class InspectionPlannerWorkflowTest extends TestCase
         $this->actingAs($replacement)->post(route('inspections.submit-for-review', $inspection))->assertSessionHasNoErrors();
     }
 
+    public function test_reviewer_and_releaser_can_claim_vacant_stages_after_handoff(): void
+    {
+        [$inspection, $team] = $this->scenario(InspectionStatus::AwaitingM2);
+        $inspection->responsibles()->whereIn('responsibility', [
+            InspectionResponsibility::Approver->value,
+            InspectionResponsibility::Releaser->value,
+        ])->delete();
+
+        $this->actingAs($team['planner'])->post(route('inspections.submit-for-review', $inspection))->assertSessionHasNoErrors();
+        $this->assertSame(InspectionStatus::AwaitingReview, $inspection->fresh()->status);
+        $this->assertFalse($inspection->hasResponsibility(InspectionResponsibility::Approver));
+
+        $this->actingAs($team['reviewer'])->post(route('inspections.start-review', $inspection))->assertForbidden();
+        $this->get(route('inspections.index', ['scope' => 'available', 'status' => InspectionStatus::AwaitingReview->value]))
+            ->assertInertia(fn (Assert $page) => $page->has('inspections.data', 1)
+                ->where('inspections.data.0.public_id', $inspection->public_id));
+        $this->post(route('inspections.self-assign', $inspection))->assertSessionHasNoErrors();
+        $this->post(route('inspections.start-review', $inspection))->assertSessionHasNoErrors();
+        $this->assertSame(InspectionStatus::InReview, $inspection->fresh()->status);
+
+        $this->actingAs($team['reviewer'])->post(route('inspections.approve', $inspection))->assertSessionHasNoErrors();
+        $this->assertSame(InspectionStatus::AwaitingRelease, $inspection->fresh()->status);
+        $this->assertFalse($inspection->hasResponsibility(InspectionResponsibility::Releaser));
+
+        $this->actingAs($team['releaser'])->post(route('inspections.release', $inspection))->assertForbidden();
+        $this->get(route('inspections.index', ['scope' => 'available', 'status' => InspectionStatus::AwaitingRelease->value]))
+            ->assertInertia(fn (Assert $page) => $page->has('inspections.data', 1)
+                ->where('inspections.data.0.public_id', $inspection->public_id));
+        $this->post(route('inspections.self-assign', $inspection))->assertSessionHasNoErrors();
+        $this->post(route('inspections.release', $inspection))->assertSessionHasNoErrors();
+        $this->assertSame(InspectionStatus::Released, $inspection->fresh()->status);
+    }
+
+    public function test_assigned_but_ineligible_reviewer_and_releaser_block_handoff(): void
+    {
+        [$inspection, $team] = $this->scenario(InspectionStatus::AwaitingM2);
+        $team['reviewer']->update(['status' => 'inactive']);
+        $this->actingAs($team['planner'])->post(route('inspections.submit-for-review', $inspection))
+            ->assertSessionHasErrors('inspection');
+        $this->assertSame(InspectionStatus::AwaitingM2, $inspection->fresh()->status);
+
+        $team['reviewer']->update(['status' => 'active']);
+        $this->post(route('inspections.submit-for-review', $inspection))->assertSessionHasNoErrors();
+        $this->actingAs($team['reviewer'])->post(route('inspections.start-review', $inspection))->assertSessionHasNoErrors();
+
+        $team['releaser']->update(['operational_role' => OperationalRole::Inspector]);
+        $this->post(route('inspections.approve', $inspection))->assertSessionHasErrors('inspection');
+        $this->assertSame(InspectionStatus::InReview, $inspection->fresh()->status);
+        $this->assertNull($inspection->fresh()->approved_at);
+    }
+
     public function test_stale_page_and_action_cannot_save_after_transition_and_changes_are_audited(): void
     {
         [$inspection, $team] = $this->scenario(InspectionStatus::AwaitingM2);
         $this->assessment($inspection);
         $stale = $inspection->fresh();
         $this->actingAs($team['planner'])->put(route('inspections.classification-m2-links.update', $inspection), $this->notes())->assertSessionHasNoErrors();
-        $this->actingAs($team['planner'])->put(route('inspections.classification-header.update', $inspection), ['general_drawing' => 'D-10', 'procedure_number' => 'P-1', 'inspected_on' => '2026-05-10'])->assertSessionHasNoErrors();
+        $this->actingAs($team['planner'])->put(route('inspections.classification-header.update', $inspection), ['inspected_on' => '2026-05-10'])->assertSessionHasNoErrors();
         $audit = $inspection->statusHistories()->where('reason', 'Classificação/M2: cabeçalho atualizado.')->sole();
         $this->assertSame($team['planner']->id, $audit->changed_by);
-        $this->assertSame('D-10', $audit->metadata['after']['general_drawing']);
+        $this->assertSame('2026-05-10', $audit->metadata['after']['inspected_on']);
         $this->assertNotSame($audit->metadata['before'], $audit->metadata['after']);
         $this->actingAs($team['planner'])->post(route('inspections.submit-for-review', $inspection))->assertSessionHasNoErrors();
         $this->actingAs($team['planner'])->put(route('inspections.classification-m2-links.update', $inspection), $this->notes('999'))->assertForbidden();
@@ -269,21 +320,21 @@ final class InspectionPlannerWorkflowTest extends TestCase
         $this->actingAs($team['planner'])->post(route('inspections.submit-for-review', $inspection))->assertSessionHasNoErrors();
         $count = $inspection->statusHistories()->count();
         $this->actingAs($team['planner'])->post(route('inspections.submit-for-review', $inspection))->assertForbidden();
-        $this->actingAs($team['planner'])->put(route('inspections.classification-header.update', $inspection), ['general_drawing' => 'Late save', 'procedure_number' => null, 'inspected_on' => null])->assertForbidden();
+        $this->actingAs($team['planner'])->put(route('inspections.classification-header.update', $inspection), ['inspected_on' => null])->assertForbidden();
         $this->assertSame($count, $inspection->statusHistories()->count());
         app(TenantContext::class)->set($inspection->organization);
         $this->expectException(ValidationException::class);
         app(SubmitInspectionForReview::class)->handle($stale, $team['planner']);
     }
 
-    public function test_wrong_role_recipient_and_missing_recipient_do_not_partially_send_corrections(): void
+    public function test_wrong_role_recipients_do_not_partially_send_corrections_or_review(): void
     {
         [$inspection, $team] = $this->scenario(InspectionStatus::AwaitingM2);
         $team['inspector']->update(['operational_role' => OperationalRole::Planner]);
         $this->actingAs($team['planner'])->post(route('inspections.return-for-correction', $inspection), ['justification' => 'Rever avarias'])->assertSessionHasErrors('inspection');
         $this->assertSame(0, InspectionCorrectionRequest::query()->count());
         $this->assertSame(InspectionStatus::AwaitingM2, $inspection->fresh()->status);
-        $inspection->responsibles()->where('responsibility', 'approver')->delete();
+        $team['reviewer']->update(['operational_role' => OperationalRole::Inspector]);
         $this->actingAs($team['planner'])->post(route('inspections.submit-for-review', $inspection))->assertSessionHasErrors('inspection');
         $this->assertSame(0, $inspection->statusHistories()->count());
     }
@@ -308,7 +359,12 @@ final class InspectionPlannerWorkflowTest extends TestCase
         $organization = Organization::factory()->create();
         app(TenantContext::class)->set($organization);
         $inspection = Inspection::factory()->forEquipment(Equipment::factory()->for($organization)->create())
-            ->create(['status' => $status, 'general_notes' => 'Aspectos gerais preenchidos.']);
+            ->create([
+                'status' => $status,
+                'general_notes' => 'Aspectos gerais preenchidos.',
+                'general_drawing' => 'D-TESTE',
+                'procedure_number' => 'P-TESTE',
+            ]);
         $team = [];
         foreach (['planner' => InspectionResponsibility::Preparer, 'inspector' => InspectionResponsibility::Reviewer, 'reviewer' => InspectionResponsibility::Approver, 'releaser' => InspectionResponsibility::Releaser] as $role => $responsibility) {
             $team[$role] = User::factory()->for($organization)->create(['operational_role' => $role]);

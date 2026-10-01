@@ -77,7 +77,7 @@ final class CreateInspection
                 'report_revision' => $this->nextReportRevision($equipment),
                 'emission_type' => EquipmentRevisionEmissionType::ForKnowledge,
                 'first_page_text_template' => implode("\n", [
-                    'UBÚ - '.($equipment->area_name ?? ''),
+                    'UBU - '.($equipment->area_name ?? ''),
                     $equipment->subarea_name ?? '',
                     $equipment->description ?? '',
                     'INSPEÇÃO DE INTEGRIDADE ESTRUTURAL',

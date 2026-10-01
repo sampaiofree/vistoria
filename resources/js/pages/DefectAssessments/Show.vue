@@ -218,8 +218,8 @@ const usesEngineeringNote = computed(() => supportsEngineeringNote.value
 const requiresClassification = computed(() => ['new', 'reinspected', 'reclassified'].includes(form.condition)
     && !isSolidaryStructures.value);
 const narrativeStep = computed(() => 2
-    + Number(requiresEvidence.value && hasQuantities.value && !usesEngineeringNote.value)
-    + Number(requiresClassification.value && !usesEngineeringNote.value));
+    + Number(requiresEvidence.value && hasQuantities.value)
+    + Number(requiresClassification.value));
 const mapStep = computed(() => narrativeStep.value + 1);
 const photosStep = computed(() => mapStep.value + Number(requiresEvidence.value && hasLocationMap.value));
 const civilFields = [
@@ -725,8 +725,8 @@ onUnmounted(() => {
                     <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-black" :class="usesEngineeringNote ? 'bg-teal-700 text-white' : 'bg-slate-100 text-slate-500'">NE</span>
                     <div>
                         <p class="text-xs font-bold uppercase tracking-[0.16em]" :class="usesEngineeringNote ? 'text-teal-800' : 'text-slate-500'">Nota de Engenharia</p>
-                        <h2 class="mt-1 text-lg font-semibold text-slate-950">{{ usesEngineeringNote ? 'Nota de Engenharia selecionada' : 'Classificação GUT selecionada' }}</h2>
-                        <p class="mt-1 text-sm" :class="usesEngineeringNote ? 'text-teal-800' : 'text-slate-500'">{{ usesEngineeringNote ? 'Esta avaliação não possui quantitativo nem classificação GUT.' : 'Ao marcar Nota de Engenharia, os quantitativos cadastrados serão apagados.' }}</p>
+                        <h2 class="mt-1 text-lg font-semibold text-slate-950">{{ usesEngineeringNote ? 'Nota de Engenharia marcada' : 'Nota de Engenharia não marcada' }}</h2>
+                        <p class="mt-1 text-sm" :class="usesEngineeringNote ? 'text-teal-800' : 'text-slate-500'">A Nota de Engenharia acompanha a avaliação. As notas GUT e o quantitativo continuam obrigatórios para publicar.</p>
                         <p v-if="form.errors.classification_method" class="mt-2 text-sm font-medium text-rose-700">{{ form.errors.classification_method }}</p>
                     </div>
                 </div>
@@ -802,7 +802,7 @@ onUnmounted(() => {
                         </h2>
                         <p class="mt-1 text-sm text-slate-600">
                             {{ previous_assessment_summary.condition_label }} ·
-                            {{ previous_assessment_summary.classification_method === 'engineering_note' ? 'Nota de Engenharia' : (previous_assessment_summary.classification?.code || 'Sem classificação') }} ·
+                            <span v-if="previous_assessment_summary.classification_method === 'engineering_note'">Nota de Engenharia · </span>{{ previous_assessment_summary.classification?.code || 'Sem classificação' }} ·
                             {{ previous_assessment_summary.assessed_at || 'Data não informada' }}
                             <span v-if="previous_assessment_summary.quantity">
                                 · {{ previous_assessment_summary.quantity.value }} {{ previous_assessment_summary.quantity.unit_symbol }}
@@ -861,7 +861,7 @@ onUnmounted(() => {
                 </div>
             </section>
 
-            <section v-if="requiresEvidence && hasQuantities && !usesEngineeringNote" class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+            <section v-if="requiresEvidence && hasQuantities" class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
                 <div class="flex flex-wrap items-start justify-between gap-3">
                     <div>
                         <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">02 · Quantitativo</p>
@@ -1007,7 +1007,7 @@ onUnmounted(() => {
                 </div>
             </section>
 
-            <section v-if="requiresClassification && !isTel && !usesEngineeringNote" class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+            <section v-if="requiresClassification && !isTel" class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
                 <div class="flex flex-wrap items-start justify-between gap-3">
                     <div>
                         <p class="text-xs font-bold uppercase tracking-[0.16em] text-slate-600">03 · Classificação</p>
@@ -1342,7 +1342,7 @@ onUnmounted(() => {
                 <div class="flex flex-wrap items-start justify-between gap-3">
                     <div>
                         <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">{{ String(narrativeStep).padStart(2, '0') }} · Comentário e recomendação</p>
-                        <h2 class="mt-2 text-xl font-semibold text-slate-950">Registro técnico</h2>
+                        <h2 class="mt-2 text-xl font-semibold text-slate-950">Comentários  técnicos</h2>
                     </div>
                     <button v-if="capabilities.update_url && !editing.narrative" type="button" class="rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 hover:border-slate-400" @click="startEditing('narrative')">Editar</button>
                 </div>

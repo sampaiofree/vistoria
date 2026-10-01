@@ -27,7 +27,6 @@ final class BuildInspectionClassificationSummary
             ->with('defect:id,category')
             ->where('status', DefectAssessmentStatus::Complete->value)
             ->whereNotNull('classification_code')
-            ->where('classification_method', '!=', DefectAssessmentClassificationMethod::EngineeringNote->value)
             ->get();
         $links = $inspection->classificationM2Links->keyBy(
             fn ($link): string => $link->category.'|'.$link->classification_code,
@@ -202,7 +201,6 @@ final class BuildInspectionClassificationSummary
 
             if (in_array($category, [DefectCategory::StructuralRecovery, DefectCategory::Civil], true)
                 && $completed->contains(fn (DefectAssessment $assessment): bool => $assessment->defect->category === $category
-                    && $assessment->classification_method !== DefectAssessmentClassificationMethod::EngineeringNote
                     && $assessment->quantities->isNotEmpty())) {
                 $quantityLetters[$category->value] = $this->annexLetter($nextLetter++);
             }

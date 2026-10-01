@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Services\InspectionLocations;
 
 use App\Enums\DefectAssessmentCondition;
-use App\Enums\DefectAssessmentClassificationMethod;
 use App\Models\DefectAssessment;
 
 final class DefectLocationColor
@@ -14,8 +13,7 @@ final class DefectLocationColor
 
     public function forAssessment(DefectAssessment $assessment): string
     {
-        if ($assessment->condition === DefectAssessmentCondition::Treated
-            || $assessment->classification_method === DefectAssessmentClassificationMethod::EngineeringNote) {
+        if ($assessment->condition === DefectAssessmentCondition::Treated) {
             return self::NEUTRAL;
         }
 

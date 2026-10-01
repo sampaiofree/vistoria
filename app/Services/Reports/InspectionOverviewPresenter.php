@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Reports;
 
+use App\Actions\InspectionOverview\PositionInspectionOverviewPhotos;
 use App\Enums\PhotoProcessingStatus;
 use App\Models\Inspection;
 use App\Models\InspectionOverviewBlock;
@@ -11,53 +12,110 @@ use App\Models\InspectionOverviewPhoto;
 
 final class InspectionOverviewPresenter
 {
-    /** @return array{blocks: array<int, array<string, mixed>>, complete: bool} */
+    /** @return array<string, mixed> */
     public function present(Inspection $inspection, bool $editable = false): array
     {
         $inspection->loadMissing(['overviewBlocks.photos']);
         $blocks = $inspection->overviewBlocks->keyBy('position');
-
-        $payload = collect([1, 2])
-            ->map(fn (int $position): array => $this->blockPayload(
-                $inspection,
-                $blocks->get($position),
-                $position,
-                $editable,
-            ))
+        $orderedPhotos = $inspection->overviewBlocks
+            ->sortBy('position')
+            ->flatMap(fn (InspectionOverviewBlock $block) => $block->photos
+                ->sortBy('slot')
+                ->map(fn (InspectionOverviewPhoto $photo): array => [
+                    'photo' => $photo,
+                    'position' => $block->position,
+                    'slot' => $photo->slot,
+                ]))
             ->values()
-            ->all();
+            ->take(PositionInspectionOverviewPhotos::MAX_PHOTOS);
+        $pageCount = max(1, (int) ceil($orderedPhotos->count() / 4));
+        $pages = collect(range(1, $pageCount))->map(function (int $pageNumber) use ($inspection, $blocks, $orderedPhotos, $editable): array {
+            $firstPosition = (($pageNumber - 1) * 2) + 1;
+            $first = $blocks->get($firstPosition);
+            $second = $blocks->get($firstPosition + 1);
+            $comment = collect([$first?->comment, $second?->comment])->first(fn ($value): bool => filled($value));
+            $recommendation = collect([$first?->recommendation, $second?->recommendation])->first(fn ($value): bool => filled($value));
+            $pageBlocks = collect([0, 1])->map(function (int $pairIndex) use (
+                $inspection,
+                $orderedPhotos,
+                $firstPosition,
+                $pageNumber,
+                $comment,
+                $recommendation,
+                $editable,
+            ): array {
+                $position = $firstPosition + $pairIndex;
+
+                return $this->blockPayload(
+                    $inspection,
+                    $position,
+                    $orderedPhotos->slice((($pageNumber - 1) * 4) + ($pairIndex * 2), 2)->values()->all(),
+                    $comment,
+                    $recommendation,
+                    $editable,
+                );
+            })->all();
+
+            return [
+                'number' => $pageNumber,
+                'comment' => $comment,
+                'recommendation' => $recommendation,
+                'update_url' => $editable
+                    ? route('inspections.report-overview.blocks.update', ['inspection' => $inspection, 'position' => $firstPosition])
+                    : null,
+                'blocks' => $pageBlocks,
+                'photos' => collect($pageBlocks)
+                    ->flatMap(fn (array $block): array => $block['photos'])
+                    ->filter(fn (array $slot): bool => $slot['photo'] !== null)
+                    ->values()
+                    ->all(),
+            ];
+        })->all();
+        $photoCount = $orderedPhotos->count();
+        $readyCount = $orderedPhotos->filter(fn (array $entry): bool => $entry['photo']->processing_status === PhotoProcessingStatus::Ready)->count();
 
         return [
-            'blocks' => $payload,
-            'complete' => collect($payload)->every(function (array $block): bool {
-                return filled($block['comment'])
-                    && filled($block['recommendation'])
-                    && collect($block['photos'])->every(
-                        fn (array $slot): bool => ($slot['photo']['status'] ?? null) === PhotoProcessingStatus::Ready->value,
-                    );
-            }),
+            'pages' => $pages,
+            'blocks' => collect($pages)->flatMap(fn (array $page): array => $page['blocks'])->values()->all(),
+            'photo_count' => $photoCount,
+            'ready_count' => $readyCount,
+            'complete' => $photoCount >= 2
+                && $photoCount % 2 === 0
+                && $readyCount === $photoCount
+                && collect($pages)->every(fn (array $page): bool => filled($page['comment']) && filled($page['recommendation'])),
+            'append_url' => $editable && $photoCount < PositionInspectionOverviewPhotos::MAX_PHOTOS
+                ? route('inspections.report-overview.photos.append', $inspection)
+                : null,
+            'reorder_url' => $editable && $photoCount > 1
+                ? route('inspections.report-overview.photos.reorder', $inspection)
+                : null,
+            'max_photos' => PositionInspectionOverviewPhotos::MAX_PHOTOS,
         ];
     }
 
-    /** @return array<string, mixed> */
+    /**
+     * @param array<int, array{photo: InspectionOverviewPhoto, position: int, slot: int}> $entries
+     * @return array<string, mixed>
+     */
     private function blockPayload(
         Inspection $inspection,
-        ?InspectionOverviewBlock $block,
         int $position,
+        array $entries,
+        ?string $comment,
+        ?string $recommendation,
         bool $editable,
     ): array {
-        $photos = $block?->photos->keyBy('slot') ?? collect();
-
         return [
             'position' => $position,
-            'title' => $position === 1 ? 'Fotos 1 e 2' : 'Fotos 3 e 4',
-            'comment' => $block?->comment,
-            'recommendation' => $block?->recommendation,
+            'title' => sprintf('Fotos %d e %d', (($position - 1) * 2) + 1, $position * 2),
+            'comment' => $comment,
+            'recommendation' => $recommendation,
             'update_url' => $editable
                 ? route('inspections.report-overview.blocks.update', ['inspection' => $inspection, 'position' => $position])
                 : null,
-            'photos' => collect([1, 2])->map(function (int $slot) use ($inspection, $photos, $position, $editable): array {
-                $photo = $photos->get($slot);
+            'photos' => collect([1, 2])->map(function (int $slot) use ($inspection, $entries, $position, $editable): array {
+                $entry = $entries[$slot - 1] ?? null;
+                $photo = $entry['photo'] ?? null;
 
                 return [
                     'slot' => $slot,
@@ -65,8 +123,8 @@ final class InspectionOverviewPresenter
                     'upload_url' => $editable
                         ? route('inspections.report-overview.photos.store', [
                             'inspection' => $inspection,
-                            'position' => $position,
-                            'slot' => $slot,
+                            'position' => $entry['position'] ?? $position,
+                            'slot' => $entry['slot'] ?? $slot,
                         ])
                         : null,
                     'photo' => $photo instanceof InspectionOverviewPhoto

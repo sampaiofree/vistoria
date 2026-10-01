@@ -103,10 +103,11 @@ final class ReinspectionScopePlanner
                 $score = $defect->category === DefectCategory::RoofCladding ? $source?->tel_score : $source?->gut_score;
                 $scoreLabel = match (true) {
                     $source === null => 'Sem avaliação publicada',
-                    $method === DefectAssessmentClassificationMethod::EngineeringNote => 'Nota de engenharia',
                     $defect->category === DefectCategory::SolidaryStructures => 'Não se aplica',
                     $defect->category === DefectCategory::RoofCladding => $score === null ? 'TEL não informado' : 'TEL '.$score,
-                    default => $score === null ? 'GUT não informado' : 'GUT '.$score,
+                    $method === DefectAssessmentClassificationMethod::EngineeringNote && $score === null => 'Nota de engenharia',
+                    default => ($score === null ? 'GUT não informado' : 'GUT '.$score)
+                        .($method === DefectAssessmentClassificationMethod::EngineeringNote ? ' · Nota de engenharia' : ''),
                 };
 
                 return [

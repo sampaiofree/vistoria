@@ -8,16 +8,17 @@ use App\Models\Inspection;
 use App\Models\User;
 use App\Services\Inspections\RecordClassificationChange;
 use App\Services\Tenancy\TenantContext;
+use App\Support\TextNormalizer;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 
-final class UpdateInspectionClassificationHeader
+final class UpdateInspectionTechnicalReferences
 {
     public function __construct(
         private readonly TenantContext $tenant,
     ) {}
 
-    /** @param array{inspected_on:?string} $data */
+    /** @param array{general_drawing:?string,procedure_number:?string} $data */
     public function handle(User $actor, Inspection $inspection, array $data): Inspection
     {
         return DB::transaction(function () use ($actor, $inspection, $data): Inspection {
@@ -26,12 +27,13 @@ final class UpdateInspectionClassificationHeader
                 ->lockForUpdate()
                 ->findOrFail($inspection->id);
 
-            Gate::forUser($actor->fresh())->authorize('manageClassificationM2', $inspection);
-            $fields = ['inspected_on'];
+            Gate::forUser($actor->fresh())->authorize('manageReportContent', $inspection);
+            $fields = ['general_drawing', 'procedure_number'];
             $before = $inspection->only($fields);
 
             $inspection->update([
-                'inspected_on' => $data['inspected_on'] ?? null,
+                'general_drawing' => TextNormalizer::nullableText($data['general_drawing'] ?? null),
+                'procedure_number' => TextNormalizer::nullableText($data['procedure_number'] ?? null),
                 'updated_by' => $actor->id,
             ]);
 

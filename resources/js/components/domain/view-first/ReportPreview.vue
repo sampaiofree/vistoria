@@ -33,6 +33,7 @@ const textualFindings = computed(() => reportFindings.value.filter((finding) =>
 ));
 const generalAspects = computed(() => props.content.general_aspects?.document ?? null);
 const reportOverview = computed(() => props.content.overview ?? { blocks: [] });
+const overviewPages = computed(() => reportOverview.value.pages ?? []);
 const classificationSummary = computed(() => props.content.classification_summary ?? null);
 const reportAnnexPlan = computed(() => classificationSummary.value?.report_annex_plan ?? null);
 const locationSequence = computed(() => props.content.location_sequence ?? []);
@@ -326,6 +327,7 @@ function insertQuantityPages(locationPages, category, quantities) {
 
 function assignAnnexTitles(contentPages) {
     let nextAnnex = 1;
+    let overviewAnnexTitle = null;
     const quantityAnnexTitles = {};
     const quantityAnnexSuffixes = {
         'rec-quantity': 'QUANTITATIVO GERAL – REC',
@@ -339,9 +341,13 @@ function assignAnnexTitles(contentPages) {
             const suffix = String(reportOverview.value.title || 'ANEXO A – LOCALIZAÇÃO E DOCUMENTAÇÃO FOTOGRÁFICA - TAC')
                 .replace(/^ANEXO\s+[A-Z]+\s+–\s+/u, '');
 
-            if (plan?.overview) return { ...page, annexTitle: annexTitle(plan.overview, suffix) };
+            if (page.continuation) return { ...page, annexTitle: overviewAnnexTitle };
 
-            return { ...page, annexTitle: annexTitle(annexLetter(nextAnnex++), suffix) };
+            overviewAnnexTitle = plan?.overview
+                ? annexTitle(plan.overview, suffix)
+                : annexTitle(annexLetter(nextAnnex++), suffix);
+
+            return { ...page, annexTitle: overviewAnnexTitle };
         }
 
         if (page.type === 'location-map' && page.annexTitle) {
@@ -414,7 +420,12 @@ const reportContentPages = computed(() => {
             document,
             continuation: index > 0,
         })),
-        { type: 'overview', key: 'report-overview' },
+        ...overviewPages.value.map((overviewPage, index) => ({
+            type: 'overview',
+            key: `report-overview-${index}`,
+            overviewPage,
+            continuation: index > 0,
+        })),
         ...locationPagesWithQuantities,
         ...chunks(textualFindings.value, 2).map((items, index) => ({
             type: 'textual-findings',
@@ -720,9 +731,9 @@ function visualClass(photo) {
                         {{ reportOverview.section_title || 'DOCUMENTAÇÃO FOTOGRÁFICA - TAC' }}
                     </div>
 
-                    <article v-for="block in (reportOverview.blocks || [])" :key="block.position" class="report-photo-block report-overview-block">
-                        <div class="report-photo-pair">
-                            <article v-for="photoSlot in block.photos" :key="photoSlot.slot" class="report-photo-card">
+                    <article v-for="block in page.overviewPage.blocks.filter((item) => item.photos.some((slot) => slot.photo))" :key="block.position" class="report-photo-block report-overview-block">
+                        <div class="report-photo-pair" :class="{ 'report-photo-pair-single': block.photos.filter((slot) => slot.photo).length === 1 }">
+                            <article v-for="photoSlot in block.photos.filter((slot) => slot.photo)" :key="photoSlot.slot" class="report-photo-card">
                                 <div class="report-photo-equipment">{{ reportOverview.equipment_label || 'FOTO EQUIPAMENTO' }}</div>
                                 <div class="report-photo-title">
                                     <span>{{ photoSlot.number }}</span>

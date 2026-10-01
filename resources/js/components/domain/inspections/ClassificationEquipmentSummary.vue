@@ -10,16 +10,12 @@ const props = defineProps({
 });
 
 const form = useForm({
-    general_drawing: props.header.general_drawing ?? '',
-    procedure_number: props.header.procedure_number ?? '',
     inspected_on: props.header.inspection_date_input ?? '',
 });
 
 const canEdit = computed(() => props.editable && Boolean(props.updateUrl));
 watch(() => props.header, (header) => {
     form.defaults({
-        general_drawing: header.general_drawing ?? '',
-        procedure_number: header.procedure_number ?? '',
         inspected_on: header.inspection_date_input ?? '',
     });
     form.reset();
@@ -45,7 +41,7 @@ function updateValue({ field, value }) {
                 <p class="mt-1 text-sm text-slate-500">Tabela 1 — Resumo do equipamento.</p>
             </div>
             <button v-if="canEdit" type="button" class="rounded-xl bg-teal-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" :disabled="form.processing" @click="save">
-                Salvar resumo
+                Salvar data da inspeção
             </button>
         </div>
 

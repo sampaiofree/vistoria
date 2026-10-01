@@ -17,6 +17,7 @@ use App\Services\Defects\AssessmentPhotoCoverageValidator;
 use App\Services\Defects\ReinspectionCoverageValidator;
 use App\Services\Inspections\GeneralAspectsCoverageValidator;
 use App\Services\Inspections\InspectionOverviewCoverageValidator;
+use App\Services\Inspections\InspectionTechnicalReferencesCoverageValidator;
 use Illuminate\Validation\ValidationException;
 
 final class SubmitInspectionForPlanning
@@ -77,6 +78,7 @@ final class SubmitInspectionForPlanning
         $this->photoCoverageValidator->validate($inspection);
         $this->overviewCoverageValidator->validate($inspection);
         $this->generalAspectsCoverageValidator->validate($inspection);
+        app(InspectionTechnicalReferencesCoverageValidator::class)->validate($inspection);
 
         $attributes = [];
 

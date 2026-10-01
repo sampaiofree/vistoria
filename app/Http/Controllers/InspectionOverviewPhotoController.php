@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Actions\InspectionOverview\DeleteInspectionOverviewPhoto;
+use App\Actions\InspectionOverview\ReorderInspectionOverviewPhotos;
 use App\Actions\InspectionOverview\StoreInspectionOverviewPhoto;
 use App\Http\Requests\InspectionOverview\StoreInspectionOverviewPhotoRequest;
 use App\Models\Inspection;
@@ -30,6 +31,36 @@ final class InspectionOverviewPhotoController extends Controller
         $action->handle($request->user(), $inspection, $position, $slot, $request->file('file'));
 
         return back()->with('success', 'Fotografia recebida para processamento.');
+    }
+
+    public function append(
+        StoreInspectionOverviewPhotoRequest $request,
+        TenantContext $tenant,
+        Inspection $inspection,
+        StoreInspectionOverviewPhoto $action,
+    ): RedirectResponse {
+        $inspection = Inspection::query()->forOrganization($tenant->id())->whereKey($inspection->getKey())->firstOrFail();
+        $this->authorize('manageReportOverview', $inspection);
+        $action->append($request->user(), $inspection, $request->file('file'));
+
+        return back()->with('success', 'Fotografia adicionada para processamento.');
+    }
+
+    public function reorder(
+        Request $request,
+        TenantContext $tenant,
+        Inspection $inspection,
+        ReorderInspectionOverviewPhotos $action,
+    ): RedirectResponse {
+        $inspection = Inspection::query()->forOrganization($tenant->id())->whereKey($inspection->getKey())->firstOrFail();
+        $this->authorize('manageReportOverview', $inspection);
+        $data = $request->validate([
+            'photo_ids' => ['required', 'array'],
+            'photo_ids.*' => ['required', 'string'],
+        ]);
+        $action->handle($request->user(), $inspection, $data['photo_ids']);
+
+        return back()->with('success', 'Ordem das fotografias atualizada.');
     }
 
     public function show(

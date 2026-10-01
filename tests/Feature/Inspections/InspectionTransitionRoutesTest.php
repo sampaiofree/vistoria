@@ -600,5 +600,7 @@ final class InspectionTransitionRoutesTest extends TestCase
         if ($includeGeneralAspects) {
             $inspection->update(['general_notes' => 'Aspectos gerais do equipamento preenchidos.']);
         }
+
+        $inspection->update(['general_drawing' => 'D-TESTE', 'procedure_number' => 'P-TESTE']);
     }
 }

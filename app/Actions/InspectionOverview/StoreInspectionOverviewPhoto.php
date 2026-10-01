@@ -18,11 +18,30 @@ use Illuminate\Validation\ValidationException;
 
 final class StoreInspectionOverviewPhoto
 {
-    public function __construct(private readonly TenantContext $tenant) {}
+    public function __construct(
+        private readonly TenantContext $tenant,
+        private readonly PositionInspectionOverviewPhotos $positionPhotos,
+    ) {}
 
     public function handle(User $actor, Inspection $inspection, int $position, int $slot, UploadedFile $file): InspectionOverviewPhoto
     {
         $this->validateSlot($position, $slot);
+
+        return $this->store($actor, $inspection, $file, $position, $slot);
+    }
+
+    public function append(User $actor, Inspection $inspection, UploadedFile $file): InspectionOverviewPhoto
+    {
+        return $this->store($actor, $inspection, $file);
+    }
+
+    private function store(
+        User $actor,
+        Inspection $inspection,
+        UploadedFile $file,
+        ?int $position = null,
+        ?int $slot = null,
+    ): InspectionOverviewPhoto {
         $obsoletePaths = [];
 
         $photoId = DB::transaction(function () use ($actor, $inspection, $position, $slot, $file, &$obsoletePaths): int {
@@ -35,6 +54,27 @@ final class StoreInspectionOverviewPhoto
                 throw ValidationException::withMessages([
                     'file' => 'As fotografias da Vista geral não podem ser alteradas após o encerramento da inspeção.',
                 ]);
+            }
+
+            if ($position === null || $slot === null) {
+                $ordered = InspectionOverviewPhoto::query()
+                    ->where('organization_id', $this->tenant->id())
+                    ->where('inspection_id', $locked->getKey())
+                    ->join('inspection_overview_blocks as blocks', 'blocks.id', '=', 'inspection_overview_photos.inspection_overview_block_id')
+                    ->orderBy('blocks.position')
+                    ->orderBy('inspection_overview_photos.slot')
+                    ->select('inspection_overview_photos.*')
+                    ->lockForUpdate()
+                    ->get();
+
+                if ($ordered->count() >= PositionInspectionOverviewPhotos::MAX_PHOTOS) {
+                    throw ValidationException::withMessages(['file' => 'A Vista geral aceita no máximo 508 fotografias.']);
+                }
+
+                $this->positionPhotos->handle($actor, $locked, $ordered);
+                $next = $ordered->count();
+                $position = intdiv($next, 2) + 1;
+                $slot = ($next % 2) + 1;
             }
 
             $block = InspectionOverviewBlock::query()->firstOrCreate(
@@ -105,7 +145,7 @@ final class StoreInspectionOverviewPhoto
 
     private function validateSlot(int $position, int $slot): void
     {
-        if (! in_array($position, [1, 2], true) || ! in_array($slot, [1, 2], true)) {
+        if ($position < 1 || $position > 254 || ! in_array($slot, [1, 2], true)) {
             throw ValidationException::withMessages(['file' => 'Posição de fotografia inválida.']);
         }
     }

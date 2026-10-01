@@ -121,7 +121,7 @@ final class InspectionFoundationTest extends TestCase
         $this->assertSame(EquipmentRevisionEmissionType::ForKnowledge, $inspection->emission_type);
         $this->assertSame($equipment->numero_cliente, $inspection->external_report_number);
         $this->assertSame(implode("\n", [
-            'UBÚ - Área Norte',
+            'UBU - Área Norte',
             'Casa de bombas',
             'Bomba de alimentação',
             'INSPEÇÃO DE INTEGRIDADE ESTRUTURAL',
@@ -146,7 +146,7 @@ final class InspectionFoundationTest extends TestCase
             $inspection->refresh()->context_snapshot['equipment']['tag'],
         );
         $this->assertSame(implode("\n", [
-            'UBÚ - Área Norte',
+            'UBU - Área Norte',
             'Casa de bombas',
             'Bomba de alimentação',
             'INSPEÇÃO DE INTEGRIDADE ESTRUTURAL',
@@ -168,7 +168,7 @@ final class InspectionFoundationTest extends TestCase
         ]);
 
         $this->assertSame(implode("\n", [
-            'UBÚ - ',
+            'UBU - ',
             '',
             '',
             'INSPEÇÃO DE INTEGRIDADE ESTRUTURAL',

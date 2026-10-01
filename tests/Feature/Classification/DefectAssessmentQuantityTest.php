@@ -202,7 +202,7 @@ final class DefectAssessmentQuantityTest extends TestCase
         $this->assertSame(0, $assessment->quantities()->count());
     }
 
-    public function test_engineering_note_blocks_quantity_routes_even_with_a_legacy_item(): void
+    public function test_engineering_note_preserves_and_allows_editing_quantity_items(): void
     {
         [$actor, $assessment] = $this->scenario(DefectCategory::Civil);
         $this->store($actor, $assessment, [
@@ -214,22 +214,22 @@ final class DefectAssessmentQuantityTest extends TestCase
             'condition' => 'new', 'classification_method' => 'engineering_note',
         ])->assertRedirect()->assertSessionHasNoErrors();
 
-        $this->assertDatabaseMissing('defect_assessment_quantities', ['id' => $oldItem->id]);
+        $this->assertDatabaseHas('defect_assessment_quantities', ['id' => $oldItem->id]);
         $this->assertSame(DefectAssessmentClassificationMethod::EngineeringNote, $assessment->refresh()->classification_method);
-        $legacyItem = DefectAssessmentQuantity::factory()->forAssessment($assessment)->create();
 
         $this->store($actor, $assessment, [
             'quantity' => ['length' => 1, 'height' => 1, 'width' => 1, 'quantity' => 1],
-        ])->assertSessionHasErrors('quantity');
-        $this->actingAs($actor)->put(route('defect-assessment-quantities.update', $legacyItem), [
+        ])->assertSessionHasNoErrors();
+        $this->assertSame(2, $assessment->quantities()->count());
+        $this->actingAs($actor)->put(route('defect-assessment-quantities.update', $oldItem), [
             'quantity' => ['length' => 1, 'height' => 1, 'width' => 1, 'quantity' => 1],
-        ])->assertRedirect()->assertSessionHasErrors('quantity');
-        $this->actingAs($actor)->delete(route('defect-assessment-quantities.destroy', $legacyItem))
-            ->assertRedirect()->assertSessionHasErrors('quantity');
+        ])->assertRedirect()->assertSessionHasNoErrors();
+        $this->actingAs($actor)->delete(route('defect-assessment-quantities.destroy', $oldItem))
+            ->assertRedirect()->assertSessionHasNoErrors();
         $this->assertSame(1, $assessment->quantities()->count());
     }
 
-    public function test_legacy_engineering_note_quantities_are_absent_from_the_page_and_reports(): void
+    public function test_existing_engineering_note_data_appears_on_the_page_and_reports(): void
     {
         [$actor, $assessment] = $this->scenario(DefectCategory::Civil);
         $this->locateAssessment($assessment);
@@ -246,22 +246,31 @@ final class DefectAssessmentQuantityTest extends TestCase
 
         $this->actingAs($actor)->get(route('defect-assessments.show', $assessment))
             ->assertOk()->assertInertia(fn (Assert $page) => $page
-                ->has('quantities', 0)
-                ->where('quantity_snapshot', null)
+                ->has('quantities', 1)
+                ->where('quantity_snapshot.total', '9')
                 ->where('gut_snapshot', null)
-                ->where('assessment.gut_score', null)
+                ->where('assessment.gut_score', 125)
                 ->where('capabilities.quantity_store_url', null));
 
         $map = app(InspectionLocationReportComposer::class)->compose($assessment->inspection);
-        $this->assertNull($map['sheets'][0]['maps'][0]['damage_rows'][0]['quantity']);
-        $this->assertNull($map['sheets'][0]['maps'][0]['damage_rows'][0]['gut']);
-        $this->assertSame('#64748B', $map['sheets'][0]['maps'][0]['damage_rows'][0]['classification']['color']);
+        $this->assertNotNull($map['sheets'][0]['maps'][0]['damage_rows'][0]['quantity']);
+        $this->assertNotNull($map['sheets'][0]['maps'][0]['damage_rows'][0]['gut']);
+        $this->assertSame('#FF0000', $map['sheets'][0]['maps'][0]['damage_rows'][0]['classification']['color']);
         $worksheet = app(BuildInspectionQuantitativeWorksheet::class)->build($assessment->inspection);
-        $this->assertNull($worksheet['rows'][0]['cells']['quantity']['value']);
-        $this->assertSame('', $worksheet['rows'][0]['cells']['quantity']['display']);
+        $this->assertSame('9', $worksheet['rows'][0]['cells']['quantity']['value']);
+        $this->assertSame('9,00 m³', $worksheet['rows'][0]['cells']['quantity']['display']);
+        $this->assertSame(125, $worksheet['rows'][0]['cells']['gut_score']['value']);
         $summary = app(BuildInspectionClassificationSummary::class)->build($assessment->inspection);
         $civil = collect($summary['categories'])->firstWhere('code', 'CV');
-        $this->assertNull($civil['total']['value']);
+        $this->assertNotNull($civil['total']['value']);
+        $this->assertSame(1, collect($civil['rows'])->firstWhere('classification_code', 'CV-1')['defect_count']);
+        $this->assertCount(1, $summary['special_assessment_rows']);
+        $this->assertSame($assessment->public_id, $summary['special_assessment_rows'][0]['assessment_public_id']);
+
+        $technical = app(ViewFirstDemoPresenter::class)->defectTechnicalData($assessment->defect, $assessment->fresh());
+        $this->assertSame('CV-1', $technical['classification']['code']);
+        $this->assertSame(5, $technical['gut']['severity']);
+        $this->assertSame('9', $technical['quantity_summary']['total_raw']);
     }
 
     public function test_server_rejects_calculated_values_units_empty_payload_and_long_description(): void

@@ -17,6 +17,7 @@ use App\Services\Defects\ReinspectionCoverageValidator;
 use App\Services\Inspections\GeneralAspectsCoverageValidator;
 use App\Services\Inspections\InspectionClassificationM2CoverageValidator;
 use App\Services\Inspections\InspectionOverviewCoverageValidator;
+use App\Services\Inspections\InspectionTechnicalReferencesCoverageValidator;
 use Illuminate\Validation\ValidationException;
 
 final class ReleaseInspection
@@ -67,6 +68,7 @@ final class ReleaseInspection
         app(InspectionOverviewCoverageValidator::class)->validate($inspection);
         app(GeneralAspectsCoverageValidator::class)->validate($inspection);
         app(InspectionClassificationM2CoverageValidator::class)->validate($inspection);
+        app(InspectionTechnicalReferencesCoverageValidator::class)->validate($inspection);
 
         $releasedAt = now();
 

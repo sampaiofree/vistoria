@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Services\InspectionLocations;
 
 use App\Enums\DefectAssessmentStatus;
-use App\Enums\DefectAssessmentClassificationMethod;
 use App\Enums\DefectCategory;
 use App\Models\AssessmentPhoto;
 use App\Models\DefectAssessment;
@@ -81,10 +80,9 @@ final class InspectionLocationReportComposer
         $map = $version->map;
         $location = $assessment->location;
         $numbers = $this->photoNumbering->numbersForAssessment($assessment, $numbering);
-        $engineering = $assessment->classification_method === DefectAssessmentClassificationMethod::EngineeringNote;
-        $quantitySnapshot = $engineering ? null : (is_array($assessment->quantity_snapshot)
+        $quantitySnapshot = is_array($assessment->quantity_snapshot)
             ? $this->quantitySnapshots->normalize($assessment->quantity_snapshot)
-            : $this->quantitySnapshots->build($assessment->defect->category, $assessment->quantities));
+            : $this->quantitySnapshots->build($assessment->defect->category, $assessment->quantities);
         $style = $this->colors->styleForAssessment($assessment);
 
         return [
@@ -131,7 +129,7 @@ final class InspectionLocationReportComposer
                 'photo_numbers' => $numbers,
                 'photo_interval' => $this->photoNumbering->format($numbers),
                 'quantity' => $this->quantityPayload($quantitySnapshot),
-                'gut' => $engineering || $assessment->defect->category === DefectCategory::RoofCladding ? null : [
+                'gut' => $assessment->defect->category === DefectCategory::RoofCladding ? null : [
                     'gravity' => $this->gutCriterionPayload($assessment, 'gravity'),
                     'urgency' => $this->gutCriterionPayload($assessment, 'urgency'),
                     'trend' => $this->gutCriterionPayload($assessment, 'trend'),
@@ -140,7 +138,7 @@ final class InspectionLocationReportComposer
                     ? $assessment->tel_snapshot
                     : null,
                 'classification' => [
-                    'code' => $engineering ? null : (data_get($assessment->classification_snapshot, 'code') ?? $assessment->classification_code),
+                    'code' => data_get($assessment->classification_snapshot, 'code') ?? $assessment->classification_code,
                     'color' => $this->colors->forAssessment($assessment),
                 ],
             ]],

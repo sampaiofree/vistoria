@@ -349,7 +349,11 @@ final class SelectiveReinspectionTest extends TestCase
     {
         $c = $this->context();
         $inspection = $this->plan($c, [$c['first']->defect_id]);
-        $inspection->update(['general_notes' => 'Aspectos gerais preenchidos.']);
+        $inspection->update([
+            'general_notes' => 'Aspectos gerais preenchidos.',
+            'general_drawing' => 'D-TESTE',
+            'procedure_number' => 'P-TESTE',
+        ]);
         $reviewer = User::factory()->for($c['organization'])->create(['operational_role' => OperationalRole::Reviewer]);
         $releaser = User::factory()->for($c['organization'])->create(['operational_role' => OperationalRole::Releaser]);
         InspectionResponsible::factory()->forInspection($inspection, $reviewer)->create(['responsibility' => InspectionResponsibility::Approver]);

@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Actions\Defects;
 
 use App\Enums\DefectAssessmentStatus;
-use App\Enums\DefectAssessmentClassificationMethod;
 use App\Enums\DefectCategory;
 use App\Enums\GutCriterion;
 use App\Enums\InspectionStatus;
@@ -76,7 +75,6 @@ final class CompleteDefectAssessment
                 'defect_snapshot' => $this->snapshotBuilder->build($assessment->defect),
                 'quantity_snapshot' => $assessment->condition->requiresEvidence()
                     && $assessment->defect->category->requiresQuantities()
-                    && $assessment->classification_method !== DefectAssessmentClassificationMethod::EngineeringNote
                     ? $this->quantitySnapshot->build($assessment->defect->category, $assessment->quantities)
                     : null,
                 'snapshot_version' => DefectSnapshotBuilder::VERSION,
@@ -84,8 +82,7 @@ final class CompleteDefectAssessment
             ]);
 
             if (! $assessment->condition->requiresGut()
-                || ! $assessment->defect->category->requiresGut()
-                || $assessment->classification_method === DefectAssessmentClassificationMethod::EngineeringNote) {
+                || ! $assessment->defect->category->requiresGut()) {
                 $assessment->fill([
                     'gravity' => null,
                     'urgency' => null,
@@ -117,8 +114,7 @@ final class CompleteDefectAssessment
             $this->validator->ensureCanComplete($assessment);
 
             if ($assessment->condition->requiresGut()
-                && $assessment->defect->category->requiresGut()
-                && $assessment->classification_method === DefectAssessmentClassificationMethod::Gut) {
+                && $assessment->defect->category->requiresGut()) {
                 if ($assessment->defect->category === DefectCategory::RoofCladding) {
                     $this->ensureConfiguredTelSelected($assessment);
                 } else {

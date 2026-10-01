@@ -68,7 +68,7 @@ final class InspectionBatchCreationTest extends TestCase
         $this->assertSame(InspectionStatus::Planned, $inspection->status);
         $this->assertSame(0, $inspection->report_revision);
         $this->assertSame(implode("\n", [
-            'UBÚ - Área 1',
+            'UBU - Área 1',
             'Subárea 1',
             'Equipamento 1',
             'INSPEÇÃO DE INTEGRIDADE ESTRUTURAL',
@@ -86,7 +86,7 @@ final class InspectionBatchCreationTest extends TestCase
         ]);
         $secondInspection = Inspection::query()->where('equipment_id', $secondEquipment->id)->firstOrFail();
         $this->assertSame(implode("\n", [
-            'UBÚ - Área 2',
+            'UBU - Área 2',
             'Subárea 2',
             'Equipamento 2',
             'INSPEÇÃO DE INTEGRIDADE ESTRUTURAL',

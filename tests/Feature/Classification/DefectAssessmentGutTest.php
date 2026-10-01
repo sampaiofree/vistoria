@@ -517,7 +517,7 @@ final class DefectAssessmentGutTest extends TestCase
                 ->where('capabilities.location_map_upload_url', null));
     }
 
-    public function test_engineering_note_clears_gut_and_allows_publication_without_a_new_gut_result(): void
+    public function test_engineering_note_preserves_gut_and_quantity_through_publication(): void
     {
         [$actor, $assessment] = $this->scenario(DefectCategory::Civil);
         $saved = app(SaveDefectAssessmentGut::class)->handle(
@@ -535,52 +535,73 @@ final class DefectAssessmentGutTest extends TestCase
 
         $this->assertSame('engineering_note', $updated->classification_method->value);
         foreach (['gravity', 'urgency', 'trend', 'gut_score', 'gut_snapshot', 'classification_code', 'classification_snapshot'] as $field) {
-            $this->assertNull($updated->$field);
+            $this->assertEquals($saved->$field, $updated->$field);
         }
-        $this->assertSame(0, $updated->quantities()->count());
+        $this->assertSame(1, $updated->quantities()->count());
         $this->assertNull($updated->quantity_snapshot);
 
+        $this->actingAs($actor)->get(route('defect-assessments.show', $updated))
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+                ->where('capabilities.gut_url', route('defect-assessments.gut.update', $updated))
+                ->where('capabilities.quantity_store_url', route('defect-assessments.quantities.store', $updated)));
+        $this->actingAs($actor)->put(route('defect-assessments.gut.update', $updated), [
+            'condition' => 'new', ...$this->technicalGutPayload(DefectCategory::Civil),
+        ])->assertRedirect()->assertSessionHasNoErrors();
+        app(TenantContext::class)->set($assessment->defect->organization);
+        $updated->refresh();
+
+        $removed = app(UpdateDefectAssessment::class)->handle($actor, $updated, [
+            'classification_method' => 'gut',
+        ]);
+        $this->assertSame('gut', $removed->classification_method->value);
+        $this->assertSame($saved->gut_score, $removed->gut_score);
+        $this->assertSame(1, $removed->quantities()->count());
+        $updated = app(UpdateDefectAssessment::class)->handle($actor, $removed, [
+            'classification_method' => 'engineering_note',
+        ]);
+
         $this->satisfyAssessmentPublicationRequirements($updated);
-        $this->assertSame(0, $updated->quantities()->count());
+        $this->assertSame(1, $updated->quantities()->count());
         $published = app(CompleteDefectAssessment::class)->handle($actor, $updated);
         $this->assertTrue($published->isComplete());
-        $this->assertNull($published->quantity_snapshot);
+        $this->assertSame(1, $published->quantity_snapshot['item_count']);
+        $this->assertSame($saved->gut_score, $published->gut_score);
 
         $this->actingAs($actor)
             ->get(route('defect-assessments.show', $published))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->where('assessment.classification_method', 'engineering_note')
-                ->where('capabilities.gut_url', null)
-                ->where('capabilities.quantity_store_url', null)
-                ->has('quantities', 0)
+                ->where('assessment.gut_score', $saved->gut_score)
+                ->where('classification.code', $saved->classification_code)
+                ->has('quantities', 1)
+                ->where('quantity_snapshot.item_count', 1)
                 ->has('classification_method_options', 2));
     }
 
-    public function test_returning_to_gut_requires_a_new_gut_result_before_publication(): void
+    public function test_engineering_note_requires_gut_and_quantity_to_publish(): void
     {
         [$actor, $assessment] = $this->scenario(DefectCategory::StructuralRecovery);
         $engineering = app(UpdateDefectAssessment::class)->handle($actor, $assessment, [
             'condition' => DefectAssessmentCondition::New,
             'classification_method' => 'engineering_note',
         ]);
-        $gut = app(UpdateDefectAssessment::class)->handle($actor, $engineering, [
-            'condition' => DefectAssessmentCondition::New,
-            'classification_method' => 'gut',
-        ]);
-        $this->assertSame(0, $gut->quantities()->count());
         try {
-            app(CompleteDefectAssessment::class)->handle($actor, $gut);
-            $this->fail('Publicação sem novo quantitativo deveria ser rejeitada.');
+            app(CompleteDefectAssessment::class)->handle($actor, $engineering);
+            $this->fail('Publicação sem quantitativo deveria ser rejeitada.');
         } catch (ValidationException $exception) {
             $this->assertArrayHasKey('quantity', $exception->errors());
         }
-        $gut->refresh();
-        $this->satisfyAssessmentPublicationRequirements($gut);
-        $this->assertSame(1, $gut->quantities()->count());
+        $engineering->refresh();
+        $this->satisfyAssessmentPublicationRequirements($engineering);
+        $this->assertSame(1, $engineering->quantities()->count());
 
-        $this->expectException(ValidationException::class);
-        app(CompleteDefectAssessment::class)->handle($actor, $gut);
+        try {
+            app(CompleteDefectAssessment::class)->handle($actor, $engineering);
+            $this->fail('Publicação sem GUT deveria ser rejeitada.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('gravity', $exception->errors());
+        }
     }
 
     public function test_unsafe_condition_is_saved_per_assessment_without_changing_publication_requirements(): void
@@ -754,7 +775,11 @@ final class DefectAssessmentGutTest extends TestCase
             }
         }
 
-        $inspection->update(['general_notes' => 'Aspectos gerais do equipamento preenchidos.']);
+        $inspection->update([
+            'general_notes' => 'Aspectos gerais do equipamento preenchidos.',
+            'general_drawing' => 'D-TESTE',
+            'procedure_number' => 'P-TESTE',
+        ]);
     }
 
     /** @return array<string, mixed> */

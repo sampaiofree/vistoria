@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Services\Reports;
 
-use App\Enums\DefectAssessmentClassificationMethod;
 use App\Enums\DefectAssessmentCondition;
 use App\Enums\DefectAssessmentStatus;
 use App\Enums\DefectCategory;
@@ -96,11 +95,10 @@ final class BuildInspectionQuantitativeWorksheet
     private function row(Inspection $inspection, DefectAssessment $assessment, int $line): array
     {
         $category = $this->category($assessment);
-        $engineering = $assessment->classification_method === DefectAssessmentClassificationMethod::EngineeringNote;
-        $usesGut = $category->requiresGut() && ! $engineering;
+        $usesGut = $category->requiresGut();
         $criteria = $usesGut ? (array) data_get($assessment->gut_snapshot, 'criteria', []) : [];
         $gravity = $usesGut ? (data_get($criteria, 'gravity.score') ?? $assessment->gravity) : null;
-        $classification = $engineering || $category === DefectCategory::SolidaryStructures
+        $classification = $category === DefectCategory::SolidaryStructures
             ? null
             : (data_get($assessment->classification_snapshot, 'code') ?? $assessment->classification_code);
         $score = $usesGut ? (data_get($assessment->gut_snapshot, 'score') ?? $assessment->gut_score) : null;
@@ -118,7 +116,7 @@ final class BuildInspectionQuantitativeWorksheet
                 'discipline' => $this->cell($category === DefectCategory::Civil ? 'CIVIL' : $category->value),
                 'note' => $this->cell(null),
                 'code' => $this->cell(data_get($assessment->defect_snapshot, 'defect.code') ?? $assessment->defect->code),
-                'quantity' => $engineering ? [...$this->cell(null), 'unit' => null] : $this->quantityCell($assessment, $category),
+                'quantity' => $this->quantityCell($assessment, $category),
                 'impact' => $this->cell($impact),
                 'gravity' => $this->cell($gravity),
                 'urgency' => $this->cell($usesGut ? (data_get($criteria, 'urgency.score') ?? $assessment->urgency) : null),

@@ -33,29 +33,36 @@ final class UpdateInspectionOverviewBlock
                 ]);
             }
 
-            $block = InspectionOverviewBlock::query()->firstOrNew([
-                'organization_id' => $this->tenant->id(),
-                'inspection_id' => $locked->getKey(),
-                'position' => $position,
-            ]);
+            $firstPosition = intdiv($position - 1, 2) * 2 + 1;
+            $firstBlock = null;
 
-            if (! $block->exists) {
-                $block->created_by = $actor->getKey();
+            foreach ([$firstPosition, $firstPosition + 1] as $blockPosition) {
+                $block = InspectionOverviewBlock::query()->firstOrNew([
+                    'organization_id' => $this->tenant->id(),
+                    'inspection_id' => $locked->getKey(),
+                    'position' => $blockPosition,
+                ]);
+
+                if (! $block->exists) {
+                    $block->created_by = $actor->getKey();
+                }
+
+                $block->fill([
+                    'comment' => TextNormalizer::nullableText($data['comment'] ?? null),
+                    'recommendation' => TextNormalizer::nullableText($data['recommendation'] ?? null),
+                    'updated_by' => $actor->getKey(),
+                ])->save();
+
+                $firstBlock ??= $block;
             }
 
-            $block->fill([
-                'comment' => TextNormalizer::nullableText($data['comment'] ?? null),
-                'recommendation' => TextNormalizer::nullableText($data['recommendation'] ?? null),
-                'updated_by' => $actor->getKey(),
-            ])->save();
-
-            return $block->refresh();
+            return $firstBlock->refresh();
         });
     }
 
     private function validatePosition(int $position): void
     {
-        if (! in_array($position, [1, 2], true)) {
+        if ($position < 1 || $position > 254) {
             throw ValidationException::withMessages(['position' => 'Bloco de Vista geral inválido.']);
         }
     }

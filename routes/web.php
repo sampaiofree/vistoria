@@ -154,12 +154,22 @@ Route::middleware([
         Route::put(
             'inspections/{inspection}/report-overview/blocks/{position}',
             [InspectionOverviewController::class, 'update'],
-        )->whereIn('position', ['1', '2'])->name('inspections.report-overview.blocks.update');
+        )->whereNumber('position')->name('inspections.report-overview.blocks.update');
+
+        Route::post(
+            'inspections/{inspection}/report-overview/photos',
+            [InspectionOverviewPhotoController::class, 'append'],
+        )->name('inspections.report-overview.photos.append');
+
+        Route::patch(
+            'inspections/{inspection}/report-overview/photos/order',
+            [InspectionOverviewPhotoController::class, 'reorder'],
+        )->name('inspections.report-overview.photos.reorder');
 
         Route::post(
             'inspections/{inspection}/report-overview/blocks/{position}/photos/{slot}',
             [InspectionOverviewPhotoController::class, 'store'],
-        )->whereIn('position', ['1', '2'])->whereIn('slot', ['1', '2'])->name('inspections.report-overview.photos.store');
+        )->whereNumber('position')->whereIn('slot', ['1', '2'])->name('inspections.report-overview.photos.store');
 
         Route::get(
             'inspection-overview-photos/{overviewPhoto}/{variant?}',
@@ -207,6 +217,9 @@ Route::middleware([
 
         Route::put('inspections/{inspection}/classification-header', [InspectionController::class, 'updateClassificationHeader'])
             ->name('inspections.classification-header.update');
+
+        Route::put('inspections/{inspection}/technical-references', [InspectionController::class, 'updateTechnicalReferences'])
+            ->name('inspections.technical-references.update');
 
         Route::post(
             'inspections/{inspection}/defects',

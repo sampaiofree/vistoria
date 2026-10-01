@@ -73,18 +73,19 @@ onBeforeUnmount(() => {
                             </div>
                             <div class="flex flex-wrap items-center gap-2">
                                 <DefectConditionBadge :condition="item.condition" />
-                                <span class="rounded border border-slate-200 bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">{{ item.classification_method === 'engineering_note' ? 'Nota de Engenharia' : (item.classification?.code || 'Sem classificação') }}</span>
+                                <span v-if="item.classification_method === 'engineering_note'" class="rounded border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-800">Nota de Engenharia</span>
+                                <span class="rounded border border-slate-200 bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">{{ item.classification?.code || 'Sem classificação' }}</span>
                             </div>
                         </div>
 
                         <dl class="mt-4 grid gap-3 text-sm sm:grid-cols-3">
                             <div v-if="item.tel" class="rounded-xl bg-slate-50 p-3"><dt class="text-xs font-semibold uppercase text-slate-500">TEL</dt><dd class="mt-1 font-medium text-slate-900">Impacto {{ item.tel.impact?.score ?? '—' }} · Risco {{ item.tel.fall_risk?.score ?? '—' }} · Pontuação {{ item.tel.score ?? '—' }}</dd></div>
-                            <div v-else-if="item.classification_method !== 'engineering_note'" class="rounded-xl bg-slate-50 p-3"><dt class="text-xs font-semibold uppercase text-slate-500">GUT</dt><dd class="mt-1 font-medium text-slate-900">G {{ item.gut?.gravity ?? '—' }} · U {{ item.gut?.urgency ?? '—' }} · T {{ item.gut?.trend ?? '—' }}</dd></div>
-                            <div v-if="!item.tel && item.classification_method !== 'engineering_note'" class="rounded-xl bg-slate-50 p-3"><dt class="text-xs font-semibold uppercase text-slate-500">Quantidade</dt><dd class="mt-1 font-medium text-slate-900">{{ item.quantity ? `${formatQuantity(item.quantity.value)} ${item.quantity.unit_symbol}` : '—' }}</dd></div>
+                            <div v-else class="rounded-xl bg-slate-50 p-3"><dt class="text-xs font-semibold uppercase text-slate-500">GUT</dt><dd class="mt-1 font-medium text-slate-900">G {{ item.gut?.gravity ?? '—' }} · U {{ item.gut?.urgency ?? '—' }} · T {{ item.gut?.trend ?? '—' }}</dd></div>
+                            <div v-if="!item.tel" class="rounded-xl bg-slate-50 p-3"><dt class="text-xs font-semibold uppercase text-slate-500">Quantidade</dt><dd class="mt-1 font-medium text-slate-900">{{ item.quantity ? `${formatQuantity(item.quantity.value)} ${item.quantity.unit_symbol}` : '—' }}</dd></div>
                             <div class="rounded-xl bg-slate-50 p-3"><dt class="text-xs font-semibold uppercase text-slate-500">Localização</dt><dd class="mt-1 font-medium text-slate-900">{{ item.location_description || '—' }}</dd></div>
                         </dl>
 
-                        <div v-if="item.classification_method !== 'engineering_note' && item.quantity?.snapshot?.items?.length" class="mt-4 rounded-xl border border-slate-200 p-3">
+                        <div v-if="item.quantity?.snapshot?.items?.length" class="mt-4 rounded-xl border border-slate-200 p-3">
                             <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Itens do quantitativo publicado</p>
                             <ol class="mt-2 divide-y divide-slate-100">
                                 <li v-for="quantityItem in item.quantity.snapshot.items" :key="quantityItem.position" class="flex items-center justify-between gap-3 py-2 text-sm">

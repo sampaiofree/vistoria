@@ -52,17 +52,9 @@ const criticalityStyle = computed(() => {
             <tr class="classification-equipment-labels"><th>EQUIPAMENTO</th><th>TAG</th><th>DESENHO GERAL</th><th>ORDEM</th><th colspan="2">PROC. INSPEÇÃO</th></tr>
             <tr>
                 <td></td><td>{{ header.tag || '—' }}</td>
-                <td class="classification-equipment-editable">
-                    <input v-if="editable" :value="valueFor('general_drawing')" type="text" maxlength="150" @input="update('general_drawing', $event)">
-                    <span v-else>{{ header.general_drawing || '—' }}</span>
-                    <p v-if="errors.general_drawing" class="classification-equipment-error">{{ errors.general_drawing }}</p>
-                </td>
+                <td>{{ header.general_drawing || '—' }}</td>
                 <td>{{ header.work_order || '—' }}</td>
-                <td colspan="2" class="classification-equipment-editable">
-                    <input v-if="editable" :value="valueFor('procedure_number')" type="text" maxlength="150" @input="update('procedure_number', $event)">
-                    <span v-else>{{ header.procedure_number || '—' }}</span>
-                    <p v-if="errors.procedure_number" class="classification-equipment-error">{{ errors.procedure_number }}</p>
-                </td>
+                <td colspan="2">{{ header.procedure_number || '—' }}</td>
             </tr>
         </tbody>
     </table>

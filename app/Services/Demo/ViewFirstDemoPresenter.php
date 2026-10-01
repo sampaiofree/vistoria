@@ -290,8 +290,7 @@ class ViewFirstDemoPresenter
             'tel' => $technical['tel'],
             'gut_options' => NativeDefectCatalog::gutOptions(),
             'gut_definition' => $gutDefinition,
-            'gut_snapshot' => $assessment->classification_method === DefectAssessmentClassificationMethod::EngineeringNote
-                ? null : $assessment->gut_snapshot,
+            'gut_snapshot' => $assessment->gut_snapshot,
             'tel_definition' => $category === \App\Enums\DefectCategory::RoofCladding
                 ? NativeDefectCatalog::telTechnicalDefinition()
                 : null,
@@ -299,8 +298,7 @@ class ViewFirstDemoPresenter
             'tel_classification_ranges' => $category === \App\Enums\DefectCategory::RoofCladding
                 ? NativeDefectCatalog::classifications($category)->map(fn ($classification): array => $classification->toArray())->all()
                 : [],
-            'quantity_snapshot' => $assessment->classification_method === DefectAssessmentClassificationMethod::EngineeringNote
-                ? null : $assessment->quantity_snapshot,
+            'quantity_snapshot' => $assessment->quantity_snapshot,
             'gut_classification_ranges' => $category->requiresGut()
                 ? NativeDefectCatalog::classifications($category)
                     ->map(fn ($classification): array => $classification->toArray())->all()
@@ -376,7 +374,6 @@ class ViewFirstDemoPresenter
                     : null,
                 'gut_url' => $canEdit
                     && $category->requiresGut()
-                    && $assessment->classification_method === DefectAssessmentClassificationMethod::Gut
                     ? route('defect-assessments.gut.update', $assessment)
                     : null,
                 'tel_url' => $canEdit && $category === \App\Enums\DefectCategory::RoofCladding
@@ -384,7 +381,6 @@ class ViewFirstDemoPresenter
                     : null,
                 'quantity_store_url' => $canEdit
                     && $category->requiresQuantities()
-                    && $assessment->classification_method !== DefectAssessmentClassificationMethod::EngineeringNote
                     ? route('defect-assessments.quantities.store', $assessment)
                     : null,
                 'location_map_upload_url' => $canEdit && $category->requiresLocationMap()
@@ -842,7 +838,6 @@ class ViewFirstDemoPresenter
      */
     private function assessmentPayload(DefectAssessment $assessment, bool $withDefect = false): array
     {
-        $engineering = $assessment->classification_method === DefectAssessmentClassificationMethod::EngineeringNote;
         $payload = [
             'id' => $assessment->id,
             'public_id' => $assessment->public_id,
@@ -862,18 +857,18 @@ class ViewFirstDemoPresenter
             'project_reference' => $assessment->project_reference,
             'location_map_project_number' => $assessment->locationMapVersion?->project_number,
             'impacts_activity' => $assessment->impacts_activity,
-            'gravity' => $engineering ? null : $assessment->gravity,
-            'urgency' => $engineering ? null : $assessment->urgency,
-            'trend' => $engineering ? null : $assessment->trend,
-            'gut_score' => $engineering ? null : $assessment->gut_score,
-            'gut_snapshot' => $engineering ? null : $assessment->gut_snapshot,
-            'gut_classified_at' => $engineering ? null : $assessment->gut_classified_at?->format('d/m/Y H:i'),
+            'gravity' => $assessment->gravity,
+            'urgency' => $assessment->urgency,
+            'trend' => $assessment->trend,
+            'gut_score' => $assessment->gut_score,
+            'gut_snapshot' => $assessment->gut_snapshot,
+            'gut_classified_at' => $assessment->gut_classified_at?->format('d/m/Y H:i'),
             'tel_score' => $assessment->tel_score,
             'tel_snapshot' => $assessment->tel_snapshot,
             'tel_classified_at' => $assessment->tel_classified_at?->format('d/m/Y H:i'),
-            'classification_code' => $engineering ? null : $assessment->classification_code,
-            'classification_snapshot' => $engineering ? null : $assessment->classification_snapshot,
-            'classification_priority' => $engineering ? null : $assessment->classification_priority,
+            'classification_code' => $assessment->classification_code,
+            'classification_snapshot' => $assessment->classification_snapshot,
+            'classification_priority' => $assessment->classification_priority,
             'deadline_months' => $assessment->deadline_months,
             'recommended_due_date' => $assessment->recommended_due_date?->format('d/m/Y'),
             'assessed_at' => $assessment->assessed_at?->format('d/m/Y H:i'),
@@ -1185,7 +1180,6 @@ class ViewFirstDemoPresenter
             $totalsByUnit = collect([$singleTotal]);
         }
         $gut = $assessment !== null
-            && $assessment->classification_method !== DefectAssessmentClassificationMethod::EngineeringNote
             && $assessment->gravity !== null
             && $assessment->urgency !== null
             && $assessment->trend !== null
@@ -1289,7 +1283,7 @@ class ViewFirstDemoPresenter
     /** @return array<string, mixed>|null */
     private function quantitySnapshot(?DefectAssessment $assessment): ?array
     {
-        if ($assessment === null || $assessment->classification_method === DefectAssessmentClassificationMethod::EngineeringNote) {
+        if ($assessment === null) {
             return null;
         }
 
@@ -1343,8 +1337,7 @@ class ViewFirstDemoPresenter
     /** @return array<string, mixed> */
     private function persistedClassification(?DefectAssessment $assessment): array
     {
-        if ($assessment?->classification_method === DefectAssessmentClassificationMethod::EngineeringNote
-            || $assessment?->classification_code === null) {
+        if ($assessment?->classification_code === null) {
             return [
                 'code' => '—',
                 'label' => 'Não classificada',
@@ -1709,8 +1702,9 @@ class ViewFirstDemoPresenter
         $exportBlockingIssues = [];
         $externalReportNumberIssue = 'Informe o Número do relatório externo para exportar o relatório.';
         $designerIReportNumberIssue = 'Informe o Nº Projetista I para exportar o relatório.';
-        $overviewPhotoIssue = 'Adicione as quatro fotografias da Vista geral para exportar o relatório.';
-        $overviewProcessingIssue = 'Aguarde o processamento das quatro fotografias da Vista geral antes de exportar o relatório.';
+        $overviewPhotoIssue = 'Adicione pelo menos duas fotografias da Vista geral para exportar o relatório.';
+        $overviewPairIssue = 'A Vista geral precisa ter um número par de fotografias para exportar o relatório.';
+        $overviewProcessingIssue = 'Aguarde o processamento das fotografias da Vista geral antes de exportar o relatório.';
         $overviewTextIssue = 'Preencha os comentários e recomendações da Vista geral para exportar o relatório.';
         $unindexedPhotoIssue = 'Existem fotografias publicadas sem numeração na categoria; revise os mapas antes de exportar o relatório.';
 
@@ -1724,22 +1718,26 @@ class ViewFirstDemoPresenter
             $exportBlockingIssues[] = $designerIReportNumberIssue;
         }
 
-        $overviewSlots = collect($overview['blocks'])
-            ->flatMap(fn (array $block): array => $block['photos'])
+        $overviewSlots = collect($overview['pages'])
+            ->flatMap(fn (array $page): array => $page['photos'])
             ->values();
 
-        if ($overviewSlots->contains(fn (array $slot): bool => $slot['photo'] === null)) {
+        if ($overviewSlots->count() < 2) {
             $blockedIssues[] = $overviewPhotoIssue;
             $exportBlockingIssues[] = $overviewPhotoIssue;
         }
 
-        if ($overviewSlots->contains(fn (array $slot): bool => $slot['photo'] !== null
-            && ($slot['photo']['status'] ?? null) !== 'ready')) {
+        if ($overviewSlots->count() % 2 !== 0) {
+            $blockedIssues[] = $overviewPairIssue;
+            $exportBlockingIssues[] = $overviewPairIssue;
+        }
+
+        if ($overviewSlots->contains(fn (array $slot): bool => ($slot['photo']['status'] ?? null) !== 'ready')) {
             $blockedIssues[] = $overviewProcessingIssue;
             $exportBlockingIssues[] = $overviewProcessingIssue;
         }
 
-        if (collect($overview['blocks'])->contains(fn (array $block): bool => blank($block['comment']) || blank($block['recommendation']))) {
+        if (collect($overview['pages'])->contains(fn (array $page): bool => blank($page['comment']) || blank($page['recommendation']))) {
             $blockedIssues[] = $overviewTextIssue;
             $exportBlockingIssues[] = $overviewTextIssue;
         }
@@ -2420,8 +2418,6 @@ class ViewFirstDemoPresenter
     {
         $classification = $this->snapshotClassification($assessment);
         $quantity = $this->quantitySnapshot($assessment);
-        $engineering = $assessment->classification_method === DefectAssessmentClassificationMethod::EngineeringNote;
-
         return [
             'id' => $assessment->id,
             'public_id' => $assessment->public_id,
@@ -2437,7 +2433,7 @@ class ViewFirstDemoPresenter
             'classification_method' => $assessment->classification_method->value,
             'assessed_at' => $assessment->assessed_at?->format('d/m/Y H:i'),
             'classification' => $classification,
-            'gut' => $engineering || $assessment->defect->category === \App\Enums\DefectCategory::RoofCladding ? null : [
+            'gut' => $assessment->defect->category === \App\Enums\DefectCategory::RoofCladding ? null : [
                 'gravity' => $assessment->gravity,
                 'urgency' => $assessment->urgency,
                 'trend' => $assessment->trend,
@@ -2479,7 +2475,7 @@ class ViewFirstDemoPresenter
     /** @return array{code:?string,label:string,color:?string} */
     private function snapshotClassification(?DefectAssessment $assessment): array
     {
-        if ($assessment === null || $assessment->classification_method === DefectAssessmentClassificationMethod::EngineeringNote) {
+        if ($assessment === null) {
             return ['code' => null, 'label' => 'Não classificada', 'color' => null];
         }
 

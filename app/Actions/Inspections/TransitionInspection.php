@@ -75,12 +75,16 @@ final class TransitionInspection
                 InspectionStatus::AwaitingRelease => [InspectionResponsibility::Releaser, OperationalRole::Releaser],
                 default => null,
             };
-            if ($recipient !== null && ! $inspection->responsibles()
-                ->where('responsibility', $recipient[0]->value)
-                ->whereHas('user', fn ($query) => $query->where('organization_id', $inspection->organization_id)
-                    ->where('status', 'active')->where('operational_role', $recipient[1]->value)
-                    ->where('account_type', UserAccountType::Member->value))->exists()) {
-                throw ValidationException::withMessages(['inspection' => 'Vincule um '.$recipient[1]->label().' ativo e habilitado antes de encaminhar a inspeção.']);
+            if ($recipient !== null) {
+                $assignments = $inspection->responsibles()->where('responsibility', $recipient[0]->value);
+                $canWaitForAssignment = in_array($toStatus, [InspectionStatus::AwaitingReview, InspectionStatus::AwaitingRelease], true);
+
+                if ((! $canWaitForAssignment || (clone $assignments)->exists())
+                    && ! $assignments->whereHas('user', fn ($query) => $query->where('organization_id', $inspection->organization_id)
+                        ->where('status', 'active')->where('operational_role', $recipient[1]->value)
+                        ->where('account_type', UserAccountType::Member->value))->exists()) {
+                    throw ValidationException::withMessages(['inspection' => 'Vincule um '.$recipient[1]->label().' ativo e habilitado antes de encaminhar a inspeção.']);
+                }
             }
 
             if ($inspection->report_date !== null) {

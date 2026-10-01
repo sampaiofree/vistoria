@@ -378,7 +378,7 @@ final class InspectionClassificationSummaryTest extends TestCase
         }
     }
 
-    public function test_the_classification_header_uses_maintenance_snapshots_and_persists_its_manual_fields(): void
+    public function test_the_classification_header_uses_maintenance_snapshots_and_persists_its_inspection_date(): void
     {
         [$actor, $inspection, $equipment] = $this->scenario();
         $equipment->update([
@@ -391,15 +391,13 @@ final class InspectionClassificationSummaryTest extends TestCase
 
         $this->actingAs($actor)
             ->put(route('inspections.classification-header.update', $inspection), [
-                'general_drawing' => 'U030600-S-551729',
-                'procedure_number' => 'T000000-S-2PO006_R-04',
                 'inspected_on' => '2026-05-15',
             ])
             ->assertRedirect();
 
         $inspection->refresh();
-        $this->assertSame('U030600-S-551729', $inspection->general_drawing);
-        $this->assertSame('T000000-S-2PO006_R-04', $inspection->procedure_number);
+        $this->assertNull($inspection->general_drawing);
+        $this->assertNull($inspection->procedure_number);
         $this->assertSame('2026-05-15', $inspection->inspected_on?->toDateString());
 
         $header = app(BuildInspectionClassificationSummary::class)->build($inspection)['header'];
@@ -410,8 +408,8 @@ final class InspectionClassificationSummaryTest extends TestCase
         $this->assertSame('TAG-01', $header['tag']);
         $this->assertSame('3500762191', $header['work_order']);
         $this->assertSame('15/05/2026', $header['inspection_date']);
-        $this->assertSame('U030600-S-551729', $header['general_drawing']);
-        $this->assertSame('T000000-S-2PO006_R-04', $header['procedure_number']);
+        $this->assertNull($header['general_drawing']);
+        $this->assertNull($header['procedure_number']);
         $this->assertNull($header['equipment']);
         $this->assertNull($header['criticality']);
         $this->assertNull($header['criticality_color']);
@@ -420,11 +418,7 @@ final class InspectionClassificationSummaryTest extends TestCase
     public function test_only_users_who_can_manage_m2_can_update_the_classification_header(): void
     {
         [$actor, $inspection] = $this->scenario();
-        $payload = [
-            'general_drawing' => 'U030600-S-551729',
-            'procedure_number' => 'T000000-S-2PO006_R-04',
-            'inspected_on' => '2026-05-15',
-        ];
+        $payload = ['inspected_on' => '2026-05-15'];
 
         $this->actingAs($actor)
             ->put(route('inspections.classification-header.update', $inspection), $payload)
@@ -436,19 +430,21 @@ final class InspectionClassificationSummaryTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_the_classification_header_validates_its_manual_fields(): void
+    public function test_the_classification_header_validates_the_date_and_rejects_technical_references(): void
     {
         [$actor, $inspection] = $this->scenario();
 
         $this->actingAs($actor)
             ->from(route('inspections.classifications', $inspection))
             ->put(route('inspections.classification-header.update', $inspection), [
-                'general_drawing' => str_repeat('A', 151),
-                'procedure_number' => str_repeat('B', 151),
+                'general_drawing' => 'D-10',
+                'procedure_number' => 'P-10',
                 'inspected_on' => 'invalid-date',
             ])
             ->assertRedirect(route('inspections.classifications', $inspection))
-            ->assertSessionHasErrors(['general_drawing', 'procedure_number', 'inspected_on']);
+        ->assertSessionHasErrors(['general_drawing', 'procedure_number', 'inspected_on']);
+        $this->assertNull($inspection->fresh()->general_drawing);
+        $this->assertNull($inspection->fresh()->procedure_number);
     }
 
     public function test_classifications_tab_exposes_the_editable_summary_after_defects(): void

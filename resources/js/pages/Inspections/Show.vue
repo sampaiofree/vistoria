@@ -4,6 +4,7 @@ import { Link, router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/components/ui/AppLayout.vue';
 import ReportMetadataPanel from '@/components/domain/inspections/ReportMetadataPanel.vue';
 import InspectionRevisionPanel from '@/components/domain/inspections/InspectionRevisionPanel.vue';
+import InspectionTechnicalReferencesPanel from '@/components/domain/inspections/InspectionTechnicalReferencesPanel.vue';
 import GeneralAspectsPanel from '@/components/domain/inspections/GeneralAspectsPanel.vue';
 import InspectionStatusBadge from '@/components/domain/inspections/InspectionStatusBadge.vue';
 import SelfAssignmentButton from '@/components/domain/inspections/SelfAssignmentButton.vue';
@@ -38,6 +39,7 @@ const props = defineProps({
     capabilities: { type: Object, default: () => ({}) },
     report_metadata: { type: Object, default: () => ({}) },
     general_aspects: { type: Object, default: () => ({}) },
+    technical_references: { type: Object, default: () => ({}) },
     emission_options: { type: Array, default: () => [] },
     assignment_options: { type: Object, default: () => ({ users: [], roles: [] }) },
     transitions: { type: Array, default: () => [] },
@@ -262,6 +264,7 @@ async function exportReport(format) {
                 :capability="capabilities.manage_report_metadata"
             />
             <InspectionRevisionPanel :inspection="inspection" :capability="capabilities.update_report_revision" />
+            <InspectionTechnicalReferencesPanel :references="technical_references" :capability="capabilities.manage_technical_references" />
 
             <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
                 <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Planejamento</p>
