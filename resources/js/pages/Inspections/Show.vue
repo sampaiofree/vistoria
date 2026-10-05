@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue';
-import { Link, router, useForm } from '@inertiajs/vue3';
+import { Link, router, useForm, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/components/ui/AppLayout.vue';
 import ReportMetadataPanel from '@/components/domain/inspections/ReportMetadataPanel.vue';
 import InspectionRevisionPanel from '@/components/domain/inspections/InspectionRevisionPanel.vue';
@@ -45,6 +45,8 @@ const props = defineProps({
     transitions: { type: Array, default: () => [] },
     index_url: { type: String, required: true },
 });
+
+const clientView = computed(() => usePage().props.auth?.user?.account_type === 'client');
 
 const activeSituation = ref('active');
 const criticalOnly = ref(false);
@@ -209,9 +211,13 @@ async function exportReport(format) {
         wide
     >
         <template #actions>
-            <SelfAssignmentButton :capability="capabilities.self_assign" />
+            <SelfAssignmentButton v-if="!clientView" :capability="capabilities.self_assign" />
             <InspectionStatusBadge :status="inspection.status" />
-            <div v-if="active_tab !== 'overview'" class="hidden min-w-44 sm:block">
+            <template v-if="clientView">
+                <Link :href="index_url" class="rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 hover:border-slate-400">Voltar às inspeções</Link>
+                <Link :href="inspection.quantitative_url" class="rounded-xl border border-teal-700 bg-white px-3.5 py-2 text-sm font-semibold text-teal-700 hover:bg-teal-50">Quantitativo</Link>
+            </template>
+            <div v-if="!clientView && active_tab !== 'overview'" class="hidden min-w-44 sm:block">
                 <AssessmentProgress
                     :progress="{ completed: summary.completed, total: summary.required_total ?? summary.total, percentage: summary.progress_percent }"
                     label="Avaliações"
@@ -239,12 +245,12 @@ async function exportReport(format) {
             </details>
         </template>
 
-        <div class="print-hidden mt-5 lg:hidden">
+        <div v-if="!clientView" class="print-hidden mt-5 lg:hidden">
             <InspectionTabs :tabs="tabs" :active="active_tab" />
         </div>
 
         <div v-if="active_tab === 'overview'" class="print-hidden mt-6 space-y-6">
-            <section class="space-y-4">
+            <section v-if="!clientView" class="space-y-4">
                 <div class="flex flex-wrap items-center justify-between gap-3">
                     <div>
                         <h2 class="text-sm font-semibold text-slate-950">Ações disponíveis</h2>
@@ -263,10 +269,10 @@ async function exportReport(format) {
                 :emission-options="emission_options"
                 :capability="capabilities.manage_report_metadata"
             />
-            <InspectionRevisionPanel :inspection="inspection" :capability="capabilities.update_report_revision" />
+            <InspectionRevisionPanel v-if="!clientView" :inspection="inspection" :capability="capabilities.update_report_revision" />
             <InspectionTechnicalReferencesPanel :references="technical_references" :capability="capabilities.manage_technical_references" />
 
-            <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+            <section v-if="!clientView" class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
                 <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Planejamento</p>
                 <div class="mt-4 grid gap-4 sm:grid-cols-2">
                     <div>
@@ -521,6 +527,7 @@ async function exportReport(format) {
             <ReportPreview
                 ref="reportPreview"
                 :content="content"
+                :inspection-number="inspection.number"
                 @layout-ready="reportLayoutReady = $event"
                 @layout-error="exportError = $event || ''"
             />
@@ -714,20 +721,6 @@ async function exportReport(format) {
 @page report-landscape {
     size: A4 landscape;
     margin: 0;
-}
-
-.report-preview-pages.report-exporting .report-a4-page {
-    width: 210mm !important;
-    height: 297mm !important;
-    min-height: 297mm !important;
-    margin: 0 !important;
-    box-shadow: none !important;
-}
-
-.report-preview-pages.report-exporting .report-a4-page.report-a4-landscape {
-    width: 297mm !important;
-    height: 210mm !important;
-    min-height: 210mm !important;
 }
 
 @media print {

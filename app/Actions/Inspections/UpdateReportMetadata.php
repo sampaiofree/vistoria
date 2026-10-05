@@ -36,12 +36,14 @@ final class UpdateReportMetadata
             $reportDate = isset($data['report_date']) && $data['report_date'] !== null
                 ? CarbonImmutable::parse((string) $data['report_date'])->toDateString()
                 : null;
+            $serviceOrder = TextNormalizer::nullableText($data['service_order'] ?? null);
+            $serviceOrderUnchanged = $serviceOrder === TextNormalizer::nullableText($inspection->service_order);
 
             if ($actor->operational_role === OperationalRole::Inspector) {
                 $restrictedChanges = [
                     'emission_type' => $inspection->emission_type?->value !== ($data['emission_type'] ?? null),
                     'report_date' => $inspection->report_date?->toDateString() !== $reportDate,
-                    'service_order' => $inspection->service_order !== TextNormalizer::nullableText($data['service_order'] ?? null),
+                    'service_order' => ! $serviceOrderUnchanged,
                     'external_report_number' => array_key_exists('external_report_number', $data)
                         && $inspection->external_report_number !== TextNormalizer::nullableText($data['external_report_number']),
                 ];
@@ -61,7 +63,7 @@ final class UpdateReportMetadata
             $attributes = [
                 'emission_type' => $data['emission_type'] ?? null,
                 'report_date' => $reportDate,
-                'service_order' => TextNormalizer::nullableText($data['service_order'] ?? null),
+                'service_order' => $serviceOrderUnchanged ? $inspection->service_order : $serviceOrder,
                 'first_page_text_template' => blank($data['first_page_text_template'] ?? null)
                     ? null
                     : trim((string) $data['first_page_text_template']),

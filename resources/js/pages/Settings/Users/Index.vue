@@ -34,9 +34,9 @@ function changeStatus(user) {
 </script>
 
 <template>
-    <AppLayout title="Usuários" subtitle="Pessoas autorizadas a acessar a organização e participar das inspeções.">
+    <AppLayout :title="filters.account_type === 'client' ? 'Usuários do cliente' : 'Usuários'" :subtitle="filters.account_type === 'client' ? 'Contas do cliente para o futuro portal.' : 'Pessoas autorizadas a acessar a organização e participar das inspeções.'">
         <template #actions>
-            <Link :href="create_url" class="rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white">Novo usuário</Link>
+            <Link :href="create_url" class="rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white">{{ filters.account_type === 'client' ? 'Novo usuário do cliente' : 'Novo usuário' }}</Link>
         </template>
 
         <section v-if="temporaryCredentials" class="mb-5 rounded-2xl border border-amber-300 bg-amber-50 p-5 text-amber-950">

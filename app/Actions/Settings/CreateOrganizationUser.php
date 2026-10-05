@@ -2,16 +2,24 @@
 
 namespace App\Actions\Settings;
 
+use App\Enums\UserAccountType;
+use App\Models\Client;
 use App\Models\Organization;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 final class CreateOrganizationUser
 {
     /** @return array{user: User, temporary_password: string} */
     public function handle(Organization $organization, array $data): array
     {
+        if ($data['account_type'] === UserAccountType::Client->value
+            && ! Client::query()->forOrganization($organization->getKey())->exists()) {
+            throw ValidationException::withMessages(['account_type' => 'Cadastre o cliente antes de criar seus usuários.']);
+        }
+
         $temporaryPassword = Str::random(16);
 
         $user = DB::transaction(fn (): User => User::query()->create([
@@ -21,7 +29,7 @@ final class CreateOrganizationUser
             'password' => $temporaryPassword,
             'must_change_password' => true,
             'account_type' => $data['account_type'],
-            'operational_role' => $data['operational_role'],
+            'operational_role' => $data['operational_role'] ?? null,
             'status' => 'active',
         ]));
 

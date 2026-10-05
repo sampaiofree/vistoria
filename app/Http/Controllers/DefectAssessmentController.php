@@ -16,6 +16,7 @@ use App\Actions\Photos\DeleteAssessmentPhoto;
 use App\Actions\Photos\ReorderAssessmentPhotos;
 use App\Actions\Photos\StoreAssessmentPhoto;
 use App\Enums\DefectAssessmentStatus;
+use App\Enums\DefectCategory;
 use App\Http\Controllers\Concerns\ResolvesTenantStructure;
 use App\Http\Requests\AssessmentPhotos\StoreAssessmentPhotoRequest;
 use App\Http\Requests\Defects\ChangeDefectAssessmentStatusRequest;
@@ -23,13 +24,15 @@ use App\Http\Requests\Defects\CompleteDefectAssessmentRequest;
 use App\Http\Requests\Defects\StoreExistingDefectAssessmentRequest;
 use App\Http\Requests\Defects\UpdateDefectAssessmentGutRequest;
 use App\Http\Requests\Defects\UpdateDefectAssessmentQuantityRequest;
-use App\Http\Requests\Defects\UpdateDefectAssessmentTelRequest;
 use App\Http\Requests\Defects\UpdateDefectAssessmentRequest;
+use App\Http\Requests\Defects\UpdateDefectAssessmentTelRequest;
 use App\Models\AssessmentPhoto;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
 use App\Models\DefectAssessmentQuantity;
 use App\Models\Inspection;
+use App\Services\Defects\InspectionAssessmentResolver;
+use App\Services\Inspections\ClientInspectionView;
 use App\Services\Inspections\InspectionReadModelPresenter;
 use App\Services\Tenancy\TenantContext;
 use Illuminate\Http\RedirectResponse;
@@ -53,7 +56,7 @@ final class DefectAssessmentController extends Controller
 
         return Inertia::render(
             'DefectAssessments/Show',
-            $presenter->assessment($defectAssessment, $request->user()),
+            app(ClientInspectionView::class)->sanitize($presenter->assessment($defectAssessment, $request->user()), $request->user()),
         );
     }
 
@@ -87,15 +90,18 @@ final class DefectAssessmentController extends Controller
         Inspection $inspection,
         Defect $defect,
         InspectionReadModelPresenter $presenter,
-        \App\Services\Defects\InspectionAssessmentResolver $resolver,
+        InspectionAssessmentResolver $resolver,
     ): InertiaResponse {
         $inspection = $this->tenantInspection($tenant, $inspection);
         $defect = $this->tenantDefect($tenant, $defect);
         $this->authorize('view', $inspection);
         $entry = $resolver->entry($inspection, $defect->id);
         abort_unless($entry?->requires_reinspection === false && $entry->sourceAssessment !== null, 404);
+        $this->authorize('view', $entry->sourceAssessment);
 
-        return Inertia::render('DefectAssessments/Show', $presenter->assessment($entry->sourceAssessment, $request->user(), $inspection));
+        return Inertia::render('DefectAssessments/Show', app(ClientInspectionView::class)->sanitize(
+            $presenter->assessment($entry->sourceAssessment, $request->user(), $inspection), $request->user(),
+        ));
     }
 
     public function update(
@@ -181,10 +187,10 @@ final class DefectAssessmentController extends Controller
 
         if ($defectAssessment->defect->category->requiresGut()
             && collect(UpdateDefectAssessmentGutRequest::technicalFieldNames())
-            ->contains(fn (string $field): bool => $request->exists($field))) {
+                ->contains(fn (string $field): bool => $request->exists($field))) {
             $gut->handle($request->user(), $defectAssessment, $request->validated());
         }
-        if ($defectAssessment->defect->category === \App\Enums\DefectCategory::RoofCladding
+        if ($defectAssessment->defect->category === DefectCategory::RoofCladding
             && collect(UpdateDefectAssessmentTelRequest::technicalFieldNames())
                 ->contains(fn (string $field): bool => $request->exists($field))) {
             $tel->handle($request->user(), $defectAssessment, $request->validated());
@@ -225,7 +231,7 @@ final class DefectAssessmentController extends Controller
         $defectAssessment = $this->tenantDefectAssessment($tenant, $defectAssessment);
         $defectAssessment->loadMissing('defect');
         $this->authorize('update', $defectAssessment);
-        abort_unless($defectAssessment->defect->category === \App\Enums\DefectCategory::RoofCladding, 404);
+        abort_unless($defectAssessment->defect->category === DefectCategory::RoofCladding, 404);
         $action->handle($request->user(), $defectAssessment, $request->validated());
 
         return back()->with('success', 'Classificação TEL atualizada.');

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services\Reports;
 
+use App\Enums\DefectAssessmentCondition;
+use App\Enums\DefectAssessmentClassificationMethod;
 use Illuminate\Support\Collection;
 
 final class InspectionPhotographicDocumentationComposer
@@ -19,7 +21,11 @@ final class InspectionPhotographicDocumentationComposer
         $unindexedPhotoIds = [];
 
         foreach (collect($items) as $item) {
-            if (($item['assessment']['status'] ?? null) === 'draft') {
+            if (($item['assessment']['status'] ?? null) === 'draft'
+                || in_array(data_get($item, 'assessment.condition'), [
+                    DefectAssessmentCondition::Canceled->value,
+                    DefectAssessmentCondition::CanceledWithoutRepair->value,
+                ], true)) {
                 continue;
             }
 
@@ -59,6 +65,8 @@ final class InspectionPhotographicDocumentationComposer
                     'classification_code' => data_get($item, 'classification.code') ?? data_get($item, 'assessment.classification_code'),
                     'condition' => data_get($item, 'assessment.condition'),
                     'condition_label' => data_get($item, 'assessment.condition_label'),
+                    'is_unsafe_condition' => (bool) data_get($item, 'assessment.is_unsafe_condition', false),
+                    'has_engineering_note' => data_get($item, 'assessment.classification_method') === DefectAssessmentClassificationMethod::EngineeringNote->value,
                     'historical_label' => $item['historical_label'] ?? null,
                     'previous_classification' => data_get($item, 'previous_assessment_summary.classification'),
                     'current_classification' => $item['classification'] ?? null,

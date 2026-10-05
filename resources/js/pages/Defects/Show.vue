@@ -1,5 +1,6 @@
 <script setup>
-import { Link } from '@inertiajs/vue3';
+import { ref } from 'vue';
+import { Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/components/ui/AppLayout.vue';
 import DefectAssessmentForm from '@/components/domain/defects/DefectAssessmentForm.vue';
 import DefectHistoryTimeline from '@/components/domain/defects/DefectHistoryTimeline.vue';
@@ -7,7 +8,7 @@ import DefectStatusBadge from '@/components/domain/defects/DefectStatusBadge.vue
 import PreviousAssessmentCard from '@/components/domain/defects/PreviousAssessmentCard.vue';
 import RelatedDefectForm from '@/components/domain/defects/RelatedDefectForm.vue';
 
-defineProps({
+const props = defineProps({
     defect: {
         type: Object,
         required: true,
@@ -28,7 +29,25 @@ defineProps({
         type: String,
         required: true,
     },
+    pending_assessment: {
+        type: Object,
+        default: null,
+    },
 });
+
+const startingAssessment = ref(false);
+
+function startAssessment() {
+    if (!props.pending_assessment?.store_url || startingAssessment.value) return;
+
+    startingAssessment.value = true;
+    router.post(props.pending_assessment.store_url, {
+        condition: props.pending_assessment.condition,
+        assessment_action: 'draft',
+    }, {
+        onFinish: () => { startingAssessment.value = false; },
+    });
+}
 </script>
 
 <template>
@@ -107,8 +126,26 @@ defineProps({
 
         <section class="mt-6 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
             <div class="space-y-6">
+                <div v-if="pending_assessment" class="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+                    <div class="flex flex-wrap items-center justify-between gap-4">
+                        <div>
+                            <h3 class="text-lg font-semibold text-slate-900">Avaliação pendente nesta inspeção</h3>
+                            <p class="mt-1 text-sm text-slate-600">Consulte o histórico da avaria antes de registrar a avaliação.</p>
+                        </div>
+                        <button
+                            v-if="pending_assessment.store_url"
+                            type="button"
+                            :disabled="startingAssessment"
+                            class="rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-teal-800 disabled:cursor-wait disabled:opacity-60"
+                            @click="startAssessment"
+                        >
+                            {{ startingAssessment ? 'Abrindo…' : 'Avaliar' }}
+                        </button>
+                    </div>
+                    <PreviousAssessmentCard :assessment="defect.previous_assessment" title="Avaliação anterior" class="mt-4" />
+                </div>
                 <DefectAssessmentForm
-                    v-if="defect.assessment_actions.update_url || defect.assessment_actions.complete_url"
+                    v-else-if="defect.assessment_actions.update_url || defect.assessment_actions.complete_url"
                     :assessment="defect.current_assessment || defect.latest_assessment"
                     :previous-assessment="defect.previous_assessment"
                     :update-action="defect.assessment_actions.update_url"

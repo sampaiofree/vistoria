@@ -45,7 +45,8 @@ final class AssignInspectionResponsible
                 InspectionResponsibility::Releaser => OperationalRole::Releaser,
                 default => null,
             };
-            if ($requiredRole !== null && ($user->operational_role !== $requiredRole || $user->account_type !== UserAccountType::Member)) {
+            if ($requiredRole !== null && ($user->operational_role !== $requiredRole
+                || ! in_array($user->account_type, [UserAccountType::Member, UserAccountType::CompanyAdmin], true))) {
                 throw ValidationException::withMessages(['user_id' => 'Selecione um usuário operacional com papel de '.$requiredRole->label().'.']);
             }
             $assignments = InspectionResponsible::query()

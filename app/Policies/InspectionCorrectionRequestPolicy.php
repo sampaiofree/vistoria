@@ -63,7 +63,7 @@ final class InspectionCorrectionRequestPolicy
     {
         [$role, $status] = match ($request->flow) {
             InspectionCorrectionRequestFlow::PlannerToInspector => [OperationalRole::Planner, InspectionStatus::AwaitingM2],
-            InspectionCorrectionRequestFlow::ReviewerToInspector => [OperationalRole::Reviewer, InspectionStatus::InReview],
+            InspectionCorrectionRequestFlow::ReviewerToInspector, InspectionCorrectionRequestFlow::ReviewerToPlanner => [OperationalRole::Reviewer, InspectionStatus::InReview],
             InspectionCorrectionRequestFlow::ReleaserToReviewer => [OperationalRole::Releaser, InspectionStatus::AwaitingRelease],
         };
 
@@ -75,6 +75,7 @@ final class InspectionCorrectionRequestPolicy
         [$role, $status] = match ($request->flow) {
             InspectionCorrectionRequestFlow::PlannerToInspector => [OperationalRole::Inspector, InspectionStatus::InCorrection],
             InspectionCorrectionRequestFlow::ReviewerToInspector => [OperationalRole::Inspector, InspectionStatus::InCorrection],
+            InspectionCorrectionRequestFlow::ReviewerToPlanner => [OperationalRole::Planner, InspectionStatus::AwaitingM2],
             InspectionCorrectionRequestFlow::ReleaserToReviewer => [OperationalRole::Reviewer, InspectionStatus::InReview],
         };
 
@@ -90,7 +91,9 @@ final class InspectionCorrectionRequestPolicy
             && $inspection->organization_id === $user->organization_id
             && $inspection->status === $status
             && $user->operational_role === $role
-            && $user->account_type === UserAccountType::Member
+            && ($user->account_type === UserAccountType::Member
+                || (in_array($role, [OperationalRole::Reviewer, OperationalRole::Releaser], true)
+                    && $user->account_type === UserAccountType::CompanyAdmin))
             && $inspection->hasAnyResponsibilityForUser($user, match ($role) {
                 OperationalRole::Planner => InspectionResponsibility::Preparer,
                 OperationalRole::Inspector => InspectionResponsibility::Reviewer,

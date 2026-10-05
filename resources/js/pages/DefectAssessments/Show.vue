@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
-import { Link, router, useForm } from '@inertiajs/vue3';
+import { Link, router, useForm, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/components/ui/AppLayout.vue';
 import DefectAssessmentStatusBadge from '@/components/domain/defects/DefectAssessmentStatusBadge.vue';
 import GutScoreSelect from '@/components/domain/defects/GutScoreSelect.vue';
@@ -57,6 +57,8 @@ const props = defineProps({
     location_map: { type: Object, default: null },
     correction_requests: { type: Object, default: () => ({ history: [] }) },
 });
+
+const clientView = computed(() => usePage().props.auth?.user?.account_type === 'client');
 
 const form = useForm({
     status: props.assessment.status,
@@ -693,7 +695,7 @@ onUnmounted(() => {
                 <p class="font-semibold">Histórico mantido — edição bloqueada</p>
                 <p class="mt-1">Avaliação de {{ historical_source.inspection.number }} · {{ historical_source.assessed_at || 'Data não informada' }}. Esta avaria não foi selecionada para reinspeção.</p>
             </div>
-            <div v-else-if="isPublished" class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900" role="status">
+            <div v-else-if="isPublished && !clientView" class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900" role="status">
                 Este documento só pode ser editado no modo rascunho.
             </div>
 
@@ -717,7 +719,7 @@ onUnmounted(() => {
                 >
                     {{ form.is_unsafe_condition ? 'Remover marcação CI' : 'Marcar condição insegura' }}
                 </button>
-                <p v-else-if="isPublished && !historical_source" class="shrink-0 text-sm font-medium text-slate-500">Mova para rascunho para alterar.</p>
+                <p v-else-if="isPublished && !historical_source && !clientView" class="shrink-0 text-sm font-medium text-slate-500">Mova para rascunho para alterar.</p>
             </section>
 
             <section v-if="supportsEngineeringNote" class="flex flex-col gap-4 rounded-3xl border p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-6" :class="usesEngineeringNote ? 'border-teal-300 bg-teal-50' : 'border-slate-200 bg-white'">
@@ -739,7 +741,7 @@ onUnmounted(() => {
                     :aria-pressed="usesEngineeringNote"
                     @click="selectClassificationMethod(usesEngineeringNote ? 'gut' : 'engineering_note')"
                 >{{ usesEngineeringNote ? 'Remover Nota de Engenharia' : 'Marcar Nota de Engenharia' }}</button>
-                <p v-else-if="isPublished && !historical_source" class="shrink-0 text-sm font-medium text-slate-500">Mova para rascunho para alterar.</p>
+                <p v-else-if="isPublished && !historical_source && !clientView" class="shrink-0 text-sm font-medium text-slate-500">Mova para rascunho para alterar.</p>
             </section>
 
             <div v-if="workflowErrors.length" class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800" role="alert">
@@ -852,7 +854,7 @@ onUnmounted(() => {
                         <span class="rounded-xl bg-slate-950 px-3.5 py-2 text-sm font-bold text-white">{{ assessment.condition_label }}</span>
                         <span v-if="requiresReason && assessment.reason" class="text-sm text-slate-600">{{ assessment.reason }}</span>
                     </div>
-                    <p v-if="isPublished && !historical_source" class="mt-3 text-xs text-slate-500">Mova a avaliação para rascunho antes de alterar a situação.</p>
+                    <p v-if="isPublished && !historical_source && !clientView" class="mt-3 text-xs text-slate-500">Mova a avaliação para rascunho antes de alterar a situação.</p>
                 </div>
                 <div v-if="isInherited && previous_assessment_summary" class="mt-4 rounded-2xl border border-teal-200 bg-teal-50 p-4 text-sm text-slate-700">
                     <p class="text-xs font-bold uppercase tracking-wide text-teal-800">Última revisão · {{ previous_assessment_summary.inspection.number || '—' }} · {{ previous_assessment_summary.assessed_at || 'Data não informada' }}</p>
@@ -1024,7 +1026,7 @@ onUnmounted(() => {
                     <p class="mt-2"><strong class="text-slate-900">Classificação:</strong> {{ previous_assessment_summary.classification?.code || '—' }} · {{ previous_assessment_summary.classification?.label || 'Sem classificação' }}</p>
                     <p class="mt-1"><strong class="text-slate-900">GUT:</strong> G {{ previous_assessment_summary.gut.gravity ?? '—' }} · U {{ previous_assessment_summary.gut.urgency ?? '—' }} · T {{ previous_assessment_summary.gut.trend ?? '—' }} · {{ previous_assessment_summary.gut.score ?? '—' }}</p>
                 </div>
-                <div v-if="isTac" class="mt-5 grid gap-4 border-t border-slate-100 pt-5 md:grid-cols-2">
+                <div v-if="isTac" class="mt-5 grid grid-cols-1 gap-4 border-t border-slate-100 pt-5 md:grid-cols-2">
                     <div class="rounded-2xl border p-4" :class="gut_definition.sources?.gravity?.valid ? 'border-slate-200 bg-slate-50' : 'border-amber-300 bg-amber-50'">
                         <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Gravidade (G) · Código ABC</p>
                         <p v-if="gut_definition.sources?.gravity?.valid" class="mt-2 font-semibold text-slate-900">
@@ -1064,7 +1066,7 @@ onUnmounted(() => {
                 </div>
                 <p v-if="!gutConfigured" class="mt-5 border-t border-slate-100 pt-5 text-sm text-amber-700">As notas GUT não estão disponíveis. Atualize a página para tentar novamente.</p>
                 <div v-else-if="editing.gut && hasTechnicalGut" class="mt-5 space-y-5 border-t border-slate-100 pt-5">
-                    <div v-if="isCivil || isRec" class="grid gap-4 md:grid-cols-2">
+                    <div v-if="isCivil || isRec" class="grid grid-cols-1 gap-4 md:grid-cols-2">
                         <div class="rounded-2xl border border-slate-200 p-4">
                             <span :class="labelClass">Impacto na Segurança</span>
                             <GutScoreSelect
@@ -1091,7 +1093,7 @@ onUnmounted(() => {
                     </div>
 
                     <div v-if="isCivil" class="rounded-2xl border border-slate-200 p-4">
-                        <div class="grid gap-4 md:grid-cols-2">
+                        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
                             <label>
                                 <span :class="labelClass">Contexto de Urgência</span>
                                 <select v-model="gutForm.urgency_context_code" :class="inputClass" @change="changeCivilUrgencyContext">
@@ -1122,7 +1124,7 @@ onUnmounted(() => {
                     </div>
 
                     <div v-else-if="isRec" class="rounded-2xl border border-slate-200 p-4">
-                        <div class="grid gap-4 md:grid-cols-2">
+                        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
                             <label>
                                 <span :class="labelClass">Critério de Urgência</span>
                                 <select v-model="gutForm.urgency_matrix_code" :class="inputClass" @change="changeRecUrgencyMatrix">
@@ -1163,7 +1165,7 @@ onUnmounted(() => {
                     <div class="rounded-2xl border border-slate-200 p-4">
                         <template v-if="isCivil">
                             <p v-if="!civilUrgencyPreview" class="mb-3 text-sm text-slate-600">Selecione a urgência para informar a tendência.</p>
-                            <div class="grid gap-4 md:grid-cols-2">
+                            <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
                                 <div>
                                     <span :class="labelClass">Tipo de degradação</span>
                                     <GutScoreSelect
@@ -1196,7 +1198,7 @@ onUnmounted(() => {
                             </div>
                         </template>
                         <template v-else-if="isRec">
-                            <div class="grid gap-4 md:grid-cols-2">
+                            <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
                                 <label>
                                     <span :class="labelClass">Dano</span>
                                     <select v-model="gutForm.trend_group_code" :class="inputClass" @change="changeTrendGroup">
@@ -1290,7 +1292,7 @@ onUnmounted(() => {
                     <p class="mt-2"><strong class="text-slate-900">Classificação:</strong> {{ previous_assessment_summary.classification?.code || '—' }} · {{ previous_assessment_summary.classification?.label || 'Sem classificação' }}</p>
                     <p class="mt-1"><strong class="text-slate-900">TEL:</strong> Impacto {{ previous_assessment_summary.tel.impact?.score ?? '—' }} · Risco {{ previous_assessment_summary.tel.fall_risk?.score ?? '—' }} · Pontuação {{ previous_assessment_summary.tel.score ?? '—' }}</p>
                 </div>
-                <div v-if="editing.tel" class="mt-5 grid gap-4 border-t border-slate-100 pt-5 md:grid-cols-2">
+                <div v-if="editing.tel" class="mt-5 grid grid-cols-1 gap-4 border-t border-slate-100 pt-5 md:grid-cols-2">
                     <label>
                         <span :class="labelClass">Altura do elemento (m)</span>
                         <input v-model="telForm.height_m" type="number" inputmode="decimal" min="0" step="any" :class="inputClass" @keydown="blockInvalidNumberKey">
@@ -1465,8 +1467,9 @@ onUnmounted(() => {
                 </div>
                 <p class="mt-2 text-sm text-slate-500">
                     Todas as fotografias prontas serão incluídas no documento conforme a ordem definida abaixo.
-                    <span v-if="requiresEvidence">Para publicar, anexe pelo menos duas e aguarde o processamento de todas.</span>
+                    <span v-if="requiresEvidence">Para publicar, anexe pelo menos duas fotografias em quantidade par e aguarde o processamento de todas.</span>
                 </p>
+                <p v-if="!isPublished && evidence.length % 2 !== 0" class="mt-2 text-sm font-medium text-amber-700">Adicione mais uma fotografia para completar o último par.</p>
                 <AssessmentPhotoUpload v-if="capabilities.photo_upload_url" class="mt-5" :action="capabilities.photo_upload_url" />
                 <div class="mt-5">
                     <PhotoGallery :photos="evidence" :editable="capabilities.update" empty-message="Nenhuma fotografia anexada." />

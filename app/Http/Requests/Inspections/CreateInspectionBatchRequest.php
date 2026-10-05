@@ -8,6 +8,7 @@ use App\Enums\AtmosphericCorrosivity;
 use App\Enums\OperationalRole;
 use App\Enums\UserStatus;
 use App\Models\Inspection;
+use App\Rules\ValidServiceOrder;
 use App\Support\TextNormalizer;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Http\FormRequest;
@@ -63,7 +64,7 @@ final class CreateInspectionBatchRequest extends FormRequest
                     fn ($query) => $query->where('organization_id', $organizationId),
                 ),
             ],
-            'inspections.*.service_order' => ['nullable', 'string', 'max:100'],
+            'inspections.*.service_order' => ['required', 'string', new ValidServiceOrder],
             'inspections.*.atmospheric_classification' => ['nullable', Rule::enum(AtmosphericCorrosivity::class)],
             'inspections.*.planned_start_on' => ['required', 'date'],
             'inspections.*.planned_end_on' => ['required', 'date', 'after_or_equal:inspections.*.planned_start_on'],

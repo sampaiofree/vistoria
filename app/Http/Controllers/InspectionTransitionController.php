@@ -81,6 +81,7 @@ final class InspectionTransitionController extends Controller
             $inspection,
             $request->user(),
             $request->validated('justification'),
+            $request->validated('correction_target', 'inspector'),
         );
 
         return back()->with('success', 'Inspeção devolvida para correção.');

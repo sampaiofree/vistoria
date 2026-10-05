@@ -14,6 +14,7 @@ defineProps({
         type: Object,
         required: true,
     },
+    users_url: { type: String, required: true },
 });
 </script>
 
@@ -43,6 +44,12 @@ defineProps({
                 </div>
 
                 <div class="flex flex-wrap gap-2">
+                    <Link
+                        :href="users_url"
+                        class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:text-slate-900"
+                    >
+                        Gerenciar usuários do cliente
+                    </Link>
                     <Link
                         :href="client.show_url"
                         class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:text-slate-900"

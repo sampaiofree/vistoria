@@ -293,7 +293,8 @@ function createBatch() {
 
                     <label class="space-y-1.5 text-sm font-medium text-slate-700">
                         <span>Ordem de serviço</span>
-                        <input v-model="inspection.service_order" type="text" maxlength="100" placeholder="OS" class="w-full rounded-lg border px-3 py-2" :class="fieldError(index, 'service_order') ? 'border-rose-500' : 'border-slate-300'">
+                        <input v-model="inspection.service_order" type="text" inputmode="numeric" autocomplete="off" maxlength="10" pattern="[0-9]{10}" required placeholder="10 dígitos" title="Informe exatamente 10 dígitos numéricos" class="w-full rounded-lg border px-3 py-2" :class="fieldError(index, 'service_order') ? 'border-rose-500' : 'border-slate-300'">
+                        <span class="block text-xs font-normal text-slate-500">Informe exatamente 10 dígitos numéricos.</span>
                         <span v-if="fieldError(index, 'service_order')" class="block text-xs font-normal text-rose-600">{{ fieldError(index, 'service_order') }}</span>
                     </label>
 

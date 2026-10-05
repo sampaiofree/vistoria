@@ -11,6 +11,10 @@ final class InspectionOverviewPhotoPolicy
 {
     public function view(User $user, InspectionOverviewPhoto $photo): bool
     {
+        if ($user->isClient()) {
+            return $photo->inspection !== null && $user->can('view', $photo->inspection);
+        }
+
         return $user->isActive()
             && ! $user->isSuperAdmin()
             && $user->organization_id !== null

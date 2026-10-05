@@ -11,6 +11,10 @@ final class AssessmentPhotoPolicy
 {
     public function view(User $user, AssessmentPhoto $photo): bool
     {
+        if ($user->isClient()) {
+            return $photo->assessment !== null && $user->can('view', $photo->assessment);
+        }
+
         return $user->isActive() && ! $user->isSuperAdmin() && $photo->belongsToOrganization((int) $user->organization_id);
     }
 

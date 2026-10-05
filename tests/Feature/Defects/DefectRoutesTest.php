@@ -1166,11 +1166,18 @@ final class DefectRoutesTest extends TestCase
         $this->assertSoftDeleted('assessment_photos', ['id' => $failed->id]);
     }
 
-    public function test_publication_requires_quantity_and_two_ready_photos_before_submission(): void
+    public function test_publication_requires_quantity_and_an_even_number_of_ready_photos(): void
     {
-        [, $admin, , $inspection] = $this->createInspectionReadyForDefects();
-        $reviewer = User::factory()->for($admin->organization)->create();
-        InspectionResponsible::factory()->forInspection($inspection, $reviewer)->create([
+        $organization = Organization::factory()->create();
+        $admin = User::factory()->for($organization)->create([
+            'operational_role' => OperationalRole::Inspector,
+        ]);
+        $equipment = Equipment::factory()->for($organization)->create(['defect_code_prefix' => 'VT009']);
+        $inspection = Inspection::factory()->forEquipment($equipment)->create([
+            'status' => InspectionStatus::InProgress,
+            'number' => 'INS-2026-000001',
+        ]);
+        InspectionResponsible::factory()->forInspection($inspection, $admin)->create([
             'responsibility' => InspectionResponsibility::Reviewer,
             'is_primary' => true,
         ]);
@@ -1261,6 +1268,24 @@ final class DefectRoutesTest extends TestCase
                 'comment' => 'Registro inicial.',
                 'recommendation' => 'Acompanhar conforme programação técnica.',
             ])
+            ->assertSessionHasErrors(['photos' => 'Adicione mais uma fotografia para publicar a avaliação com um número par de fotografias.']);
+
+        $this->actingAs($admin)->post(route('defect-assessments.photos.store', $assessment), [
+            'file' => UploadedFile::fake()->image('evidencia-4.jpg', 800, 600),
+        ])->assertRedirect();
+        $fourthPhoto = $assessment->photos()->where('position', 4)->firstOrFail();
+        $fourthPhoto->update([
+            'processing_status' => PhotoProcessingStatus::Ready,
+            'optimized_path' => $fourthPhoto->original_path,
+            'thumbnail_path' => $fourthPhoto->original_path,
+        ]);
+
+        $this->actingAs($admin)
+            ->post(route('defect-assessments.complete', $assessment), [
+                'condition' => DefectAssessmentCondition::New->value,
+                'comment' => 'Registro inicial.',
+                'recommendation' => 'Acompanhar conforme programação técnica.',
+            ])
             ->assertRedirect(route('defect-assessments.show', $assessment))
             ->assertSessionHasNoErrors();
 
@@ -1270,12 +1295,7 @@ final class DefectRoutesTest extends TestCase
         $this->assertSame('1.5000000000000000', $quantitySnapshot['total']);
         $this->assertCount(1, $quantitySnapshot['items']);
 
-        $this->completeOverview($inspection);
-
-        $this->actingAs($admin)
-            ->post(route('inspections.submit-for-review', $inspection))
-            ->assertRedirect();
-        $this->assertSame(InspectionStatus::AwaitingReview, $inspection->refresh()->status);
+        $this->assertSame(DefectAssessmentStatus::Complete, $assessment->status);
     }
 
     public function test_condition_without_observation_can_be_published_without_quantity_or_photos(): void

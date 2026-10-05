@@ -5,16 +5,18 @@ namespace App\Http\Controllers;
 use App\Actions\InspectionLocations\BuildInspectionLocationSnapshot;
 use App\Actions\Inspections\CreateInspectionBatch;
 use App\Actions\Inspections\UpdateGeneralAspects;
+use App\Actions\Inspections\UpdateInspectionClassificationHeader;
+use App\Actions\Inspections\UpdateInspectionClassificationM2Links;
+use App\Actions\Inspections\UpdateInspectionReportRevision;
+use App\Actions\Inspections\UpdateInspectionTechnicalReferences;
 use App\Actions\Inspections\UpdatePlannedInspection;
 use App\Actions\Inspections\UpdateReportMetadata;
-use App\Actions\Inspections\UpdateInspectionReportRevision;
-use App\Actions\Inspections\UpdateInspectionClassificationM2Links;
-use App\Actions\Inspections\UpdateInspectionClassificationHeader;
-use App\Actions\Inspections\UpdateInspectionTechnicalReferences;
 use App\Enums\AtmosphericCorrosivity;
 use App\Enums\DefectCategory;
 use App\Enums\EquipmentRevisionEmissionType;
 use App\Enums\EquipmentStatus;
+use App\Enums\InspectionCorrectionRequestFlow;
+use App\Enums\InspectionCorrectionRequestStatus;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
 use App\Enums\InspectionType;
@@ -24,26 +26,33 @@ use App\Enums\UserStatus;
 use App\Http\Controllers\Concerns\ResolvesTenantStructure;
 use App\Http\Requests\Inspections\CreateInspectionBatchRequest;
 use App\Http\Requests\Inspections\UpdateGeneralAspectsRequest;
+use App\Http\Requests\Inspections\UpdateInspectionClassificationHeaderRequest;
+use App\Http\Requests\Inspections\UpdateInspectionClassificationM2LinksRequest;
+use App\Http\Requests\Inspections\UpdateInspectionReportRevisionRequest;
+use App\Http\Requests\Inspections\UpdateInspectionTechnicalReferencesRequest;
 use App\Http\Requests\Inspections\UpdatePlannedInspectionRequest;
 use App\Http\Requests\Inspections\UpdateReportMetadataRequest;
-use App\Http\Requests\Inspections\UpdateInspectionReportRevisionRequest;
-use App\Http\Requests\Inspections\UpdateInspectionClassificationM2LinksRequest;
-use App\Http\Requests\Inspections\UpdateInspectionClassificationHeaderRequest;
-use App\Http\Requests\Inspections\UpdateInspectionTechnicalReferencesRequest;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
 use App\Models\Equipment;
 use App\Models\GeneralAspectsTemplate;
 use App\Models\Inspection;
+use App\Models\InspectionCorrectionRequest;
 use App\Models\InspectionResponsible;
 use App\Models\InspectionStatusHistory;
 use App\Models\User;
+use App\Services\Accounts\ProfilePhotoUrls;
+use App\Services\Defects\InspectionAssessmentResolver;
 use App\Services\InspectionLocations\InspectionLocationReportComposer;
 use App\Services\InspectionLocations\InspectionLocationReportSequenceComposer;
-use App\Services\Reports\BuildInspectionClassificationSummary;
+use App\Services\Inspections\ClientInspectionAccess;
+use App\Services\Inspections\ClientInspectionView;
 use App\Services\Inspections\InspectionReadModelPresenter;
 use App\Services\Inspections\InspectionSelfAssignment;
+use App\Services\Inspections\ReinspectionScopePlanner;
+use App\Services\Reports\BuildInspectionClassificationSummary;
 use App\Services\Reports\GeneralAspectsDocument;
+use App\Services\Reports\ResolveGeneralAspectsTemplate;
 use App\Services\Tenancy\TenantContext;
 use App\Support\TextNormalizer;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -61,6 +70,51 @@ final class InspectionController extends Controller
     public function index(Request $request, TenantContext $tenant): InertiaResponse
     {
         $this->authorize('viewAny', Inspection::class);
+
+        if ($request->user()->isClient()) {
+            $clientId = app(ClientInspectionAccess::class)->clientId($request->user());
+            $search = $this->filterValue($request, 'search', 'number');
+            $inspections = Inspection::query()
+                ->forOrganization($tenant->id())
+                ->when($clientId === null, fn ($query) => $query->whereRaw('1 = 0'))
+                ->where('status', InspectionStatus::Released->value)
+                ->whereHas('equipment', fn ($equipment) => $equipment->where('client_id', $clientId))
+                ->with('equipment')
+                ->when($search !== '', function ($query) use ($search): void {
+                    $tag = TextNormalizer::equipmentTag($search);
+                    $query->where(fn ($query) => $query->where('number', 'like', '%'.$search.'%')
+                        ->orWhere('service_order', 'like', '%'.$search.'%')
+                        ->orWhere('external_report_number', 'like', '%'.$search.'%')
+                        ->orWhere('procedure_number', 'like', '%'.$search.'%')
+                        ->orWhere('atmospheric_classification', 'like', '%'.$search.'%')
+                        ->orWhereHas('equipment', fn ($equipment) => $equipment
+                            ->where('tag', 'like', '%'.$search.'%')
+                            ->orWhere('normalized_tag', 'like', '%'.$tag.'%')
+                            ->orWhere('maintenance_item_code', 'like', '%'.$tag.'%')
+                            ->orWhere('name', 'like', '%'.$search.'%')));
+                })
+                ->orderByDesc('inspected_on')->orderByDesc('id')
+                ->paginate(20)
+                ->withQueryString()
+                ->through(fn (Inspection $inspection): array => [
+                    'public_id' => $inspection->public_id,
+                    'number' => $inspection->number,
+                    'inspection_type_label' => $inspection->inspection_type->label(),
+                    'status' => $inspection->status->value,
+                    'inspected_on' => $inspection->inspected_on?->format('d/m/Y'),
+                    'equipment' => ['tag' => $inspection->equipment->tag, 'name' => $inspection->equipment->name],
+                    'show_url' => route('inspections.report-preview', $inspection),
+                ]);
+
+            return Inertia::render('Inspections/Index', [
+                'inspections' => $inspections,
+                'filters' => ['search' => $search],
+                'options' => [],
+                'capabilities' => ['create' => false, 'available_queue' => false, 'company_wide_index' => true],
+                'create_url' => '',
+                'client_view' => true,
+            ]);
+        }
 
         $availability = app(InspectionSelfAssignment::class);
         $hasAvailableQueue = $availability->roleFor($request->user()) !== null;
@@ -156,6 +210,7 @@ final class InspectionController extends Controller
             'capabilities' => [
                 'create' => $request->user()->can('create', Inspection::class),
                 'available_queue' => $hasAvailableQueue,
+                'company_wide_index' => $request->user()->isCompanyAdmin(),
             ],
             'create_url' => route('inspections.create'),
         ]);
@@ -190,7 +245,7 @@ final class InspectionController extends Controller
         ]);
     }
 
-    public function reinspectionOptions(Request $request, TenantContext $tenant, \App\Services\Inspections\ReinspectionScopePlanner $planner): JsonResponse
+    public function reinspectionOptions(Request $request, TenantContext $tenant, ReinspectionScopePlanner $planner): JsonResponse
     {
         $this->authorizePlanningCreation($request->user());
         $request->validate(['equipment_id' => ['required', 'integer'], 'inspection_id' => ['nullable', 'integer']]);
@@ -227,9 +282,13 @@ final class InspectionController extends Controller
         Request $request,
         Inspection $inspection,
         InspectionReadModelPresenter $presenter,
-    ): InertiaResponse {
+    ): InertiaResponse|RedirectResponse {
         $inspection = $this->tenantInspection($tenant, $inspection);
         $this->authorize('view', $inspection);
+        if ($request->user()->isClient()) {
+            return redirect()->route('inspections.report-preview', $inspection);
+        }
+
         $inspection->loadMissing([
             'equipment.client',
             'previousInspection',
@@ -242,7 +301,7 @@ final class InspectionController extends Controller
         $canManageGeneralAspects = $request->user()->can('manageGeneralAspects', $inspection);
         $canManageTechnicalReferences = $request->user()->can('manageReportContent', $inspection);
 
-        return Inertia::render('Inspections/Show', [
+        return Inertia::render('Inspections/Show', app(ClientInspectionView::class)->sanitize([
             'inspection' => [
                 'id' => $inspection->id,
                 'public_id' => $inspection->public_id,
@@ -326,7 +385,7 @@ final class InspectionController extends Controller
             'emission_options' => EquipmentRevisionEmissionType::options(),
             'transitions' => $this->availableTransitions($request, $inspection),
             'index_url' => route('inspections.index'),
-        ]);
+        ], $request->user()));
     }
 
     public function team(
@@ -549,7 +608,7 @@ final class InspectionController extends Controller
             ];
         }
 
-        return Inertia::render('Inspections/Show', array_merge($viewFirstPayload, [
+        return Inertia::render('Inspections/Show', app(ClientInspectionView::class)->sanitize(array_merge($viewFirstPayload, [
             'capabilities' => [
                 'self_assign' => app(InspectionSelfAssignment::class)->capability($request->user(), $inspection),
                 'update_planned' => $canUpdatePlanned
@@ -594,7 +653,7 @@ final class InspectionController extends Controller
             'general_aspects' => $this->generalAspectsPayload($inspection, $canManageGeneralAspects),
             'emission_options' => EquipmentRevisionEmissionType::options(),
             'index_url' => route('inspections.index'),
-        ]));
+        ]), $request->user()));
     }
 
     public function edit(
@@ -619,7 +678,7 @@ final class InspectionController extends Controller
 
         return Inertia::render('Inspections/Edit', [
             'reinspection_options_url' => route('inspections.reinspection-options'),
-            'reinspection_options' => app(\App\Services\Inspections\ReinspectionScopePlanner::class)->options($inspection->equipment, $inspection),
+            'reinspection_options' => app(ReinspectionScopePlanner::class)->options($inspection->equipment, $inspection),
             'inspection' => $this->inspectionDetailPayload($request, $inspection),
             'equipment_options' => $this->planningEquipmentOptions($tenant),
             'inspectors' => $this->inspectorOptions($tenant),
@@ -898,6 +957,9 @@ final class InspectionController extends Controller
             'inspected_on_input' => $inspection->inspected_on?->toDateString(),
             'equipment' => $this->inspectionEquipmentPayload($inspection->equipment),
             'defects' => $inspection->equipment->defects
+                ->filter(fn (Defect $defect): bool => ! $request->user()->isClient()
+                    || (($assessment = app(InspectionAssessmentResolver::class)->assessment($inspection, $defect)) !== null
+                        && $request->user()->can('view', $assessment)))
                 ->map(fn (Defect $defect): array => $this->defectPayload($request, $inspection, $defect))
                 ->values()
                 ->all(),
@@ -975,6 +1037,7 @@ final class InspectionController extends Controller
     private function generalAspectsPayload(Inspection $inspection, bool $canEdit): array
     {
         $documents = app(GeneralAspectsDocument::class);
+        $resolver = app(ResolveGeneralAspectsTemplate::class);
         $stored = $documents->fromStored($inspection->general_notes);
 
         return [
@@ -988,11 +1051,22 @@ final class InspectionController extends Controller
                     ->forOrganization((int) $inspection->organization_id)
                     ->orderBy('name')
                     ->get(['public_id', 'name', 'document'])
-                    ->map(fn (GeneralAspectsTemplate $template): array => [
-                        'public_id' => $template->public_id,
-                        'name' => $template->name,
-                        'document' => $template->document,
-                    ])
+                    ->map(function (GeneralAspectsTemplate $template) use ($inspection, $resolver): array {
+                        try {
+                            $document = $resolver->resolve($template->document, (array) data_get($inspection->context_snapshot, 'equipment', []));
+                            $error = null;
+                        } catch (\InvalidArgumentException|\TypeError) {
+                            $document = null;
+                            $error = 'Este modelo não pôde ser aplicado: o texto preenchido excede os limites ou contém um campo inválido.';
+                        }
+
+                        return [
+                            'public_id' => $template->public_id,
+                            'name' => $template->name,
+                            'document' => $document,
+                            'application_error' => $error,
+                        ];
+                    })
                     ->values()
                     ->all()
                 : [],
@@ -1210,7 +1284,7 @@ final class InspectionController extends Controller
     }
 
     /**
-     * @return array{id:int, name:string, responsibility:string, responsibility_label:string, is_primary:bool, assigned_at:?string, completed_at:?string, user:array{id:int, public_id:string, name:string}, set_primary_url:string, destroy_url:string}
+     * @return array{id:int, name:string, responsibility:string, responsibility_label:string, is_primary:bool, assigned_at:?string, completed_at:?string, user:array{id:int, public_id:string, name:string, profile_photo_url:?string}, set_primary_url:string, destroy_url:string}
      */
     private function inspectionResponsiblePayload(Inspection $inspection, InspectionResponsible $responsible): array
     {
@@ -1226,6 +1300,7 @@ final class InspectionController extends Controller
                 'id' => $responsible->user->id,
                 'public_id' => $responsible->user->public_id,
                 'name' => $responsible->user->name,
+                'profile_photo_url' => app(ProfilePhotoUrls::class)->forUser($responsible->user),
             ],
             'set_primary_url' => route('inspections.responsibles.update', [$inspection, $responsible]),
             'destroy_url' => route('inspections.responsibles.destroy', [$inspection, $responsible]),
@@ -1273,10 +1348,26 @@ final class InspectionController extends Controller
             $transitions[] = [
                 'key' => 'return_for_correction',
                 'label' => 'Enviar para correção',
-                'description' => 'Retorna a inspeção ao Inspetor. Marque avarias ou informe uma mensagem geral.',
+                'description' => $inspection->status === InspectionStatus::InReview
+                    ? 'Escolha quem receberá a mensagem geral. Apontamentos de avarias devem ser enviados ao Inspetor.'
+                    : 'Retorna a inspeção ao Inspetor. Marque avarias ou informe uma mensagem geral.',
                 'action' => route('inspections.return-for-correction', $inspection),
                 'requires_justification' => false,
                 'correction_message' => true,
+                ...($inspection->status === InspectionStatus::InReview ? [
+                    'correction_targets' => [
+                        ['value' => 'inspector', 'label' => 'Inspetor'],
+                        ['value' => 'planner', 'label' => 'Planejador'],
+                    ],
+                    'marked_planner_general_request' => InspectionCorrectionRequest::query()
+                        ->forOrganization($inspection->organization_id)
+                        ->where('inspection_id', $inspection->id)
+                        ->where('flow', InspectionCorrectionRequestFlow::ReviewerToPlanner->value)
+                        ->where('status', InspectionCorrectionRequestStatus::Marked->value)
+                        ->whereNull('defect_assessment_id')
+                        ->whereNull('parent_request_id')
+                        ->exists(),
+                ] : []),
             ];
         }
 

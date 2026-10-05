@@ -49,7 +49,7 @@ function move(photoId, direction) {
     >
         <template #actions>
             <InspectionStatusBadge :status="inspection.status" />
-            <Link :href="inspection.equipment.show_url" class="rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Equipamento</Link>
+            <Link v-if="inspection.equipment.show_url" :href="inspection.equipment.show_url" class="rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Equipamento</Link>
         </template>
 
         <div class="lg:hidden">

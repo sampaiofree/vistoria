@@ -53,7 +53,11 @@ final class ApproveInspection
         $openReviewerRequests = InspectionCorrectionRequest::query()
             ->forOrganization($inspection->organization_id)
             ->where('inspection_id', $inspection->id)
-            ->whereIn('flow', [InspectionCorrectionRequestFlow::ReviewerToInspector->value, InspectionCorrectionRequestFlow::PlannerToInspector->value])
+            ->whereIn('flow', [
+                InspectionCorrectionRequestFlow::ReviewerToInspector->value,
+                InspectionCorrectionRequestFlow::ReviewerToPlanner->value,
+                InspectionCorrectionRequestFlow::PlannerToInspector->value,
+            ])
             ->whereIn('status', [
                 InspectionCorrectionRequestStatus::Marked,
                 InspectionCorrectionRequestStatus::Requested,
@@ -63,7 +67,7 @@ final class ApproveInspection
 
         if ($openReviewerRequests > 0) {
             throw ValidationException::withMessages([
-                'inspection' => sprintf('Existem %d solicitação(ões) ao Inspetor que precisam ser encerradas antes da liberação.', $openReviewerRequests),
+                'inspection' => sprintf('Existem %d solicitação(ões) de correção que precisam ser encerradas antes da liberação.', $openReviewerRequests),
             ]);
         }
 

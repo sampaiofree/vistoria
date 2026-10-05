@@ -28,8 +28,11 @@ final class InspectionOverviewPresenter
                 ]))
             ->values()
             ->take(PositionInspectionOverviewPhotos::MAX_PHOTOS);
-        $pageCount = max(1, (int) ceil($orderedPhotos->count() / 4));
-        $pages = collect(range(1, $pageCount))->map(function (int $pageNumber) use ($inspection, $blocks, $orderedPhotos, $editable): array {
+        $photosByNumber = $orderedPhotos->keyBy(fn (array $entry): int => (($entry['position'] - 1) * 2) + $entry['slot']);
+        $hasGaps = $orderedPhotos->isNotEmpty()
+            && $photosByNumber->keys()->sort()->values()->all() !== range(1, $orderedPhotos->count());
+        $pageCount = max(1, (int) ceil(($photosByNumber->keys()->max() ?? 0) / 4));
+        $pages = collect(range(1, $pageCount))->map(function (int $pageNumber) use ($inspection, $blocks, $photosByNumber, $editable): array {
             $firstPosition = (($pageNumber - 1) * 2) + 1;
             $first = $blocks->get($firstPosition);
             $second = $blocks->get($firstPosition + 1);
@@ -37,9 +40,8 @@ final class InspectionOverviewPresenter
             $recommendation = collect([$first?->recommendation, $second?->recommendation])->first(fn ($value): bool => filled($value));
             $pageBlocks = collect([0, 1])->map(function (int $pairIndex) use (
                 $inspection,
-                $orderedPhotos,
+                $photosByNumber,
                 $firstPosition,
-                $pageNumber,
                 $comment,
                 $recommendation,
                 $editable,
@@ -49,7 +51,10 @@ final class InspectionOverviewPresenter
                 return $this->blockPayload(
                     $inspection,
                     $position,
-                    $orderedPhotos->slice((($pageNumber - 1) * 4) + ($pairIndex * 2), 2)->values()->all(),
+                    [
+                        $photosByNumber->get((($position - 1) * 2) + 1),
+                        $photosByNumber->get((($position - 1) * 2) + 2),
+                    ],
                     $comment,
                     $recommendation,
                     $editable,
@@ -79,14 +84,16 @@ final class InspectionOverviewPresenter
             'blocks' => collect($pages)->flatMap(fn (array $page): array => $page['blocks'])->values()->all(),
             'photo_count' => $photoCount,
             'ready_count' => $readyCount,
+            'has_gaps' => $hasGaps,
             'complete' => $photoCount >= 2
                 && $photoCount % 2 === 0
                 && $readyCount === $photoCount
+                && ! $hasGaps
                 && collect($pages)->every(fn (array $page): bool => filled($page['comment']) && filled($page['recommendation'])),
             'append_url' => $editable && $photoCount < PositionInspectionOverviewPhotos::MAX_PHOTOS
                 ? route('inspections.report-overview.photos.append', $inspection)
                 : null,
-            'reorder_url' => $editable && $photoCount > 1
+            'reorder_url' => $editable && $photoCount > 1 && ! $hasGaps
                 ? route('inspections.report-overview.photos.reorder', $inspection)
                 : null,
             'max_photos' => PositionInspectionOverviewPhotos::MAX_PHOTOS,
@@ -94,7 +101,7 @@ final class InspectionOverviewPresenter
     }
 
     /**
-     * @param array<int, array{photo: InspectionOverviewPhoto, position: int, slot: int}> $entries
+     * @param  array<int, array{photo: InspectionOverviewPhoto, position: int, slot: int}|null>  $entries
      * @return array<string, mixed>
      */
     private function blockPayload(

@@ -18,7 +18,9 @@ use App\Models\DefectAssessmentQuantity;
 use App\Models\Inspection;
 use App\Models\User;
 use App\Services\Defects\DefectAssessmentCompletionValidator;
+use App\Services\Defects\InspectionAssessmentResolver;
 use App\Services\Defects\ResolvePreviousDefectAssessment;
+use App\Services\Inspections\PreviousInspectionContentCopier;
 use App\Services\Tenancy\TenantContext;
 use App\Support\TextNormalizer;
 use Illuminate\Support\Facades\DB;
@@ -51,7 +53,7 @@ final class AssessExistingDefect
 
             $this->validateActor($actor, $inspection);
 
-            if (! app(\App\Services\Defects\InspectionAssessmentResolver::class)->requiresAssessment($inspection, $defect)) {
+            if (! app(InspectionAssessmentResolver::class)->requiresAssessment($inspection, $defect)) {
                 throw ValidationException::withMessages(['defect' => 'Esta avaria mantém o histórico e não faz parte do escopo de reinspeção.']);
             }
 
@@ -110,6 +112,8 @@ final class AssessExistingDefect
                 'created_by' => $actor->getKey(),
                 'updated_by' => $actor->getKey(),
             ]);
+
+            app(PreviousInspectionContentCopier::class)->copySpecialNoteForAssessment($assessment, $actor);
 
             if ($defect->category->requiresQuantities()) {
                 $this->copyQuantities($previousAssessment, $assessment);

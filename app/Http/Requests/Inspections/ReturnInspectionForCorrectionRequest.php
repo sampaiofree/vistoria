@@ -30,6 +30,7 @@ final class ReturnInspectionForCorrectionRequest extends FormRequest
     {
         return [
             'justification' => ['nullable', 'string', 'min:10', 'max:5000'],
+            'correction_target' => ['sometimes', 'required', 'in:inspector,planner'],
         ];
     }
 }

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AccountPasswordController;
+use App\Http\Controllers\AccountProfileController;
 use App\Http\Controllers\AssessmentPhotoController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\ClientController;
@@ -26,6 +27,7 @@ use App\Http\Controllers\OrganizationOverviewController;
 use App\Http\Controllers\OrganizationSettingsController;
 use App\Http\Controllers\PwaController;
 use App\Http\Controllers\ReinspectionChecklistController;
+use App\Http\Controllers\ReportDefectHistoryController;
 use App\Http\Controllers\ReportResponsiblesController;
 use App\Http\Controllers\UserSettingsController;
 use Illuminate\Support\Facades\Route;
@@ -52,7 +54,7 @@ Route::middleware([
 ])->group(function () {
     // Rotas globais não dependem de um tenant. No MVP, o superadministrador
     // não seleciona nem impersona uma organização.
-    Route::middleware(['organization.active', 'password.changed'])->get('/dashboard', [DashboardController::class, 'index'])
+    Route::middleware(['organization.active', 'internal.user', 'password.changed'])->get('/dashboard', [DashboardController::class, 'index'])
         ->name('dashboard');
 
     Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
@@ -69,12 +71,20 @@ Route::middleware([
     Route::middleware('organization.active')->group(function (): void {
         Route::get('/account/password', [AccountPasswordController::class, 'edit'])->name('account.password.edit');
         Route::put('/account/password', [AccountPasswordController::class, 'update'])->name('account.password.update');
+        Route::get('/users/{user}/profile-photo', [AccountProfileController::class, 'showPhoto'])->name('account.profile.photo.show');
+
+        Route::middleware('password.changed')->group(function (): void {
+            Route::get('/account/profile', [AccountProfileController::class, 'edit'])->name('account.profile.edit');
+            Route::put('/account/profile', [AccountProfileController::class, 'update'])->name('account.profile.update');
+            Route::delete('/account/profile/photo', [AccountProfileController::class, 'destroyPhoto'])->name('account.profile.photo.destroy');
+        });
     });
 
     // Módulos operacionais exigem uma organização resolvida. ResolveTenant
     // rejeita explicitamente superadministradores, que não possuem tenant.
     Route::middleware([
         'organization.active',
+        'internal.user',
         'tenant',
         'password.changed',
     ])->group(function (): void {
@@ -122,6 +132,10 @@ Route::middleware([
             ->name('equipments.import.preview');
         Route::post('equipments/import/confirm', [EquipmentImportController::class, 'confirm'])
             ->name('equipments.import.confirm');
+        Route::post('equipments/import/update/plan', [EquipmentImportController::class, 'planUpdate'])
+            ->name('equipments.import.update.plan');
+        Route::post('equipments/import/update/confirm', [EquipmentImportController::class, 'confirmUpdate'])
+            ->name('equipments.import.update.confirm');
 
         Route::resource('equipments', EquipmentController::class);
 
@@ -193,6 +207,9 @@ Route::middleware([
         Route::get('inspections/{inspection}/defects/create', [DefectController::class, 'create'])
             ->name('inspections.defects.create');
 
+        Route::get('inspections/{inspection}/defects/{defect}', [DefectController::class, 'showInInspection'])
+            ->name('inspections.defects.show');
+
         Route::get('defect-location-map-versions/{mapVersion}/background/{variant?}', [InspectionLocationMapAssetController::class, 'background'])
             ->where('variant', 'thumbnail')
             ->name('defect-location-map-versions.background');
@@ -205,6 +222,9 @@ Route::middleware([
 
         Route::get('inspections/{inspection}/report-preview', [InspectionController::class, 'reportPreview'])
             ->name('inspections.report-preview');
+
+        Route::get('inspections/{inspection}/report-defects/{defect}/history', ReportDefectHistoryController::class)
+            ->name('inspections.report-defects.history');
 
         Route::get('inspections/{inspection}/quantitative', [InspectionQuantitativeController::class, 'show'])
             ->name('inspections.quantitative');

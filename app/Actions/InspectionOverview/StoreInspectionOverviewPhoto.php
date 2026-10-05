@@ -20,7 +20,6 @@ final class StoreInspectionOverviewPhoto
 {
     public function __construct(
         private readonly TenantContext $tenant,
-        private readonly PositionInspectionOverviewPhotos $positionPhotos,
     ) {}
 
     public function handle(User $actor, Inspection $inspection, int $position, int $slot, UploadedFile $file): InspectionOverviewPhoto
@@ -71,16 +70,15 @@ final class StoreInspectionOverviewPhoto
                     throw ValidationException::withMessages(['file' => 'A Vista geral aceita no máximo 508 fotografias.']);
                 }
 
-                $hasGaps = $ordered->values()->contains(fn (InspectionOverviewPhoto $photo, int $index): bool =>
-                    (int) $photo->block_position !== intdiv($index, 2) + 1
-                    || $photo->slot !== ($index % 2) + 1);
-
-                if ($hasGaps) {
-                    $this->positionPhotos->handle($actor, $locked, $ordered);
+                $occupied = $ordered->mapWithKeys(fn (InspectionOverviewPhoto $photo): array => [
+                    (((int) $photo->block_position - 1) * 2) + (int) $photo->slot => true,
+                ])->all();
+                $number = 1;
+                while (isset($occupied[$number])) {
+                    $number++;
                 }
-                $next = $ordered->count();
-                $position = intdiv($next, 2) + 1;
-                $slot = ($next % 2) + 1;
+                $position = intdiv($number - 1, 2) + 1;
+                $slot = (($number - 1) % 2) + 1;
             }
 
             $block = InspectionOverviewBlock::query()->firstOrCreate(

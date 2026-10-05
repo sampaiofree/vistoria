@@ -25,7 +25,7 @@ final class InspectionQuantitativeController extends Controller
             'inspection' => [
                 'number' => $inspection->number,
                 'status' => $inspection->status->value,
-                'overview_url' => route('inspections.show', $inspection),
+                'overview_url' => route($request->user()->isClient() ? 'inspections.report-preview' : 'inspections.show', $inspection),
             ],
             'worksheet' => $builder->build($inspection),
             'export_url' => route('inspections.quantitative.export', $inspection),

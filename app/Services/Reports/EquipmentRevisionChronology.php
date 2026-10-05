@@ -71,6 +71,11 @@ final class EquipmentRevisionChronology
     {
         $date = $inspection->report_date ?? $inspection->inspected_on ?? $inspection->planned_start_on ?? $inspection->created_at;
         $revision = $inspection->report_revision;
+        $responsibles = $this->inspectionResponsibleNames($inspection);
+        if ($forReport) {
+            $responsibles['preparer'] = $responsibles['reviewer'];
+            $responsibles = array_replace($responsibles, app(ReportResponsibleNames::class)->forInspection($inspection));
+        }
 
         return [
             'key' => 'system:'.$inspection->public_id,
@@ -89,8 +94,7 @@ final class EquipmentRevisionChronology
             'date_is_provisional' => $inspection->report_date === null,
             'emission_type' => $inspection->emission_type?->value,
             'emission_type_label' => $inspection->emission_type?->label(),
-            'responsibles' => array_replace($this->inspectionResponsibleNames($inspection),
-                $forReport ? app(ReportResponsibleNames::class)->forInspection($inspection) : []),
+            'responsibles' => $responsibles,
             'is_current' => false,
             'show_url' => route('inspections.show', $inspection),
         ];

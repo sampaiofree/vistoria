@@ -27,6 +27,7 @@ const props = defineProps({
         type: String,
         required: true,
     },
+    client_view: { type: Boolean, default: false },
 });
 
 const filterForm = reactive({
@@ -37,6 +38,10 @@ const filterForm = reactive({
 });
 
 const hasFilters = computed(() => Object.values(filterForm).some((value) => value !== ''));
+const scopeTabs = computed(() => [
+    { value: 'mine', label: props.capabilities.company_wide_index ? 'Todas as inspeções' : 'Minhas inspeções' },
+    { value: 'available', label: 'Disponíveis para mim' },
+]);
 
 watch(() => props.filters, (filters) => {
     Object.assign(filterForm, {
@@ -48,6 +53,10 @@ watch(() => props.filters, (filters) => {
 }, { deep: true });
 
 function applyFilters() {
+    if (props.client_view) {
+        router.get('/inspections', filterForm.search ? { search: filterForm.search } : {}, { preserveScroll: true, preserveState: true, replace: true });
+        return;
+    }
     const filters = Object.fromEntries(Object.entries(filterForm).filter(([, value]) => value !== ''));
 
     if (props.capabilities.available_queue) filters.scope = props.filters.scope;
@@ -60,6 +69,11 @@ function applyFilters() {
 }
 
 function clearFilters() {
+    if (props.client_view) {
+        filterForm.search = '';
+        router.get('/inspections', {}, { preserveScroll: true, preserveState: true, replace: true });
+        return;
+    }
     Object.assign(filterForm, {
         search: '',
         status: '',
@@ -83,38 +97,38 @@ function changeScope(scope) {
 <template>
     <AppLayout
         title="Inspeções"
-        subtitle="Planejamento, execução e liberação de inspeções."
+        :subtitle="client_view ? 'Consulte as inspeções liberadas para sua organização.' : 'Planejamento, execução e liberação de inspeções.'"
     >
         <nav v-if="capabilities.available_queue" class="mb-4 flex gap-2" aria-label="Fila de inspeções">
-            <button v-for="tab in [{ value: 'mine', label: 'Minhas inspeções' }, { value: 'available', label: 'Disponíveis para mim' }]" :key="tab.value" type="button" :aria-current="filters.scope === tab.value ? 'page' : undefined" class="rounded-lg px-4 py-2 text-sm font-semibold" :class="filters.scope === tab.value ? 'bg-teal-700 text-white' : 'border border-slate-300 bg-white text-slate-700'" @click="changeScope(tab.value)">
+            <button v-for="tab in scopeTabs" :key="tab.value" type="button" :aria-current="filters.scope === tab.value ? 'page' : undefined" class="rounded-lg px-4 py-2 text-sm font-semibold" :class="filters.scope === tab.value ? 'bg-teal-700 text-white' : 'border border-slate-300 bg-white text-slate-700'" @click="changeScope(tab.value)">
                 {{ tab.label }}
             </button>
         </nav>
         <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                <form class="grid flex-1 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(15rem,1fr)_13rem_10rem_10rem_auto]" @submit.prevent="applyFilters">
+                <form class="grid flex-1 gap-3 sm:grid-cols-2" :class="client_view ? 'max-w-2xl' : 'xl:grid-cols-[minmax(15rem,1fr)_13rem_10rem_10rem_auto]'" @submit.prevent="applyFilters">
                     <label class="space-y-1.5">
                         <span class="text-xs font-semibold uppercase tracking-wide text-slate-500">Buscar</span>
                         <input v-model="filterForm.search" type="search" placeholder="Número, OS, item, TAG ou equipamento" class="min-h-10 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-100">
                     </label>
-                    <label class="space-y-1.5">
+                    <label v-if="!client_view" class="space-y-1.5">
                         <span class="text-xs font-semibold uppercase tracking-wide text-slate-500">Status</span>
                         <select v-model="filterForm.status" class="min-h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 focus:border-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-100">
                             <option value="">Todos</option>
                             <option v-for="status in options.statuses" :key="status.value" :value="status.value">{{ status.label }}</option>
                         </select>
                     </label>
-                    <label class="space-y-1.5">
+                    <label v-if="!client_view" class="space-y-1.5">
                         <span class="text-xs font-semibold uppercase tracking-wide text-slate-500">Planejada de</span>
                         <input v-model="filterForm.scheduled_from" type="date" class="min-h-10 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900 focus:border-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-100">
                     </label>
-                    <label class="space-y-1.5">
+                    <label v-if="!client_view" class="space-y-1.5">
                         <span class="text-xs font-semibold uppercase tracking-wide text-slate-500">Planejada até</span>
                         <input v-model="filterForm.scheduled_to" type="date" class="min-h-10 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900 focus:border-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-100">
                     </label>
                     <div class="flex items-end gap-2">
                         <button type="submit" class="min-h-10 rounded-lg bg-teal-700 px-4 text-sm font-semibold text-white transition hover:bg-teal-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500">Filtrar</button>
-                        <button v-if="hasFilters" type="button" class="min-h-10 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50" @click="clearFilters">Limpar</button>
+                        <button v-if="client_view ? filterForm.search : hasFilters" type="button" class="min-h-10 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50" @click="clearFilters">Limpar</button>
                     </div>
                 </form>
                 <Link v-if="capabilities.create" :href="create_url" class="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white">
@@ -122,7 +136,7 @@ function changeScope(scope) {
                 </Link>
             </div>
 
-            <p v-if="!capabilities.create" class="mt-4 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+            <p v-if="!client_view && !capabilities.create" class="mt-4 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
                 Somente usuários com papel Planejador podem criar inspeções. Solicite a definição do papel ao administrador.
             </p>
         </section>
@@ -134,11 +148,12 @@ function changeScope(scope) {
                         <tr>
                             <th class="px-5 py-3">Número</th>
                             <th class="px-5 py-3">Equipamento</th>
-                            <th class="px-5 py-3">Planejador</th>
-                            <th class="px-5 py-3">Inspetor</th>
-                            <th class="px-5 py-3">Revisor</th>
-                            <th class="px-5 py-3">Liberador</th>
-                            <th class="px-5 py-3">Status</th>
+                            <th v-if="client_view" class="px-5 py-3">Data da inspeção</th>
+                            <th v-if="!client_view" class="px-5 py-3">Planejador</th>
+                            <th v-if="!client_view" class="px-5 py-3">Inspetor</th>
+                            <th v-if="!client_view" class="px-5 py-3">Revisor</th>
+                            <th v-if="!client_view" class="px-5 py-3">Liberador</th>
+                            <th v-if="!client_view" class="px-5 py-3">Status</th>
                             <th class="px-5 py-3 text-right">Ações</th>
                         </tr>
                     </thead>
@@ -149,11 +164,12 @@ function changeScope(scope) {
                                 <strong>{{ inspection.equipment.tag }}</strong>
                                 <div class="text-slate-500">{{ inspection.equipment.name }}</div>
                             </td>
-                            <td class="px-5 py-4 text-slate-700">{{ inspection.stage_responsibles.planner || '—' }}</td>
-                            <td class="px-5 py-4 text-slate-700">{{ inspection.stage_responsibles.inspector || '—' }}</td>
-                            <td class="px-5 py-4 text-slate-700">{{ inspection.stage_responsibles.reviewer || '—' }}</td>
-                            <td class="px-5 py-4 text-slate-700">{{ inspection.stage_responsibles.releaser || '—' }}</td>
-                            <td class="px-5 py-4">
+                            <td v-if="client_view" class="px-5 py-4 text-slate-700">{{ inspection.inspected_on || '—' }}</td>
+                            <td v-if="!client_view" class="px-5 py-4 text-slate-700">{{ inspection.stage_responsibles.planner || '—' }}</td>
+                            <td v-if="!client_view" class="px-5 py-4 text-slate-700">{{ inspection.stage_responsibles.inspector || '—' }}</td>
+                            <td v-if="!client_view" class="px-5 py-4 text-slate-700">{{ inspection.stage_responsibles.reviewer || '—' }}</td>
+                            <td v-if="!client_view" class="px-5 py-4 text-slate-700">{{ inspection.stage_responsibles.releaser || '—' }}</td>
+                            <td v-if="!client_view" class="px-5 py-4">
                                 <InspectionStatusBadge :status="inspection.status" />
                                 <p class="mt-2 text-xs text-slate-500">
                                     {{ inspection.status_milestone.label }}: <span class="font-medium text-slate-700">{{ inspection.status_milestone.value || '—' }}</span>
@@ -161,9 +177,9 @@ function changeScope(scope) {
                             </td>
                             <td class="px-5 py-4 text-right">
                                 <div class="flex justify-end gap-2">
-                                    <SelfAssignmentButton :capability="inspection.self_assign" />
+                                    <SelfAssignmentButton v-if="!client_view" :capability="inspection.self_assign" />
                                     <Link :href="inspection.show_url" class="inline-flex min-h-9 items-center justify-center rounded-lg border border-teal-700 px-3 text-sm font-semibold text-teal-700 transition hover:bg-teal-50">
-                                        Ver
+                                        {{ client_view ? 'Ver relatório' : 'Ver' }}
                                     </Link>
                                     <Link
                                         v-if="inspection.edit_url"
@@ -176,7 +192,7 @@ function changeScope(scope) {
                             </td>
                         </tr>
                         <tr v-if="inspections.data.length === 0">
-                            <td colspan="8" class="px-5 py-10 text-center text-slate-500">
+                            <td :colspan="client_view ? 4 : 8" class="px-5 py-10 text-center text-slate-500">
                                 Nenhuma inspeção encontrada.
                             </td>
                         </tr>

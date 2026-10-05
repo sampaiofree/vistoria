@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\EnsureGlobalSuperAdmin;
 use App\Http\Middleware\EnsureOrganizationIsActive;
+use App\Http\Middleware\EnsureInternalUser;
 use App\Http\Middleware\EnsurePasswordChanged;
 use App\Http\Middleware\EnsureUserIsActive;
 use App\Http\Middleware\HandleInertiaRequests;
@@ -27,6 +28,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'organization.active' => EnsureOrganizationIsActive::class,
             'password.changed' => EnsurePasswordChanged::class,
             'global.super-admin' => EnsureGlobalSuperAdmin::class,
+            'internal.user' => EnsureInternalUser::class,
             'tenant' => ResolveTenant::class,
         ]);
 

@@ -119,6 +119,7 @@ final class ClientController extends Controller
             'can' => [
                 'update' => $request->user()->can('update', $client),
             ],
+            'users_url' => route('settings.users.index', ['account_type' => 'client']),
         ]);
     }
 

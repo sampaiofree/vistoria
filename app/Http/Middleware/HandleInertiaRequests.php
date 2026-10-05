@@ -5,6 +5,7 @@ namespace App\Http\Middleware;
 use App\Enums\UserAccountType;
 use App\Models\User;
 use App\Services\Branding\BrandingImageUrls;
+use App\Services\Accounts\ProfilePhotoUrls;
 use App\Services\Navigation\InspectionContextNavigation;
 use Illuminate\Http\Request;
 use Illuminate\Notifications\DatabaseNotification;
@@ -31,6 +32,7 @@ final class HandleInertiaRequests extends Middleware
                 'logout_url' => $user ? route('logout') : null,
                 'user' => $user ? [
                     'name' => $user->name,
+                    'profile_photo_url' => app(ProfilePhotoUrls::class)->forUser($user),
                     'email' => $user->email,
                     'account_type' => $user->account_type->value,
                     'organization' => $user->organization ? [
@@ -54,7 +56,7 @@ final class HandleInertiaRequests extends Middleware
     /** @return array<string, mixed>|null */
     private function notificationSummary(?User $user): ?array
     {
-        if ($user === null || $user->isSuperAdmin()) {
+        if ($user === null || $user->isSuperAdmin() || $user->isClient()) {
             return null;
         }
 
@@ -88,6 +90,15 @@ final class HandleInertiaRequests extends Middleware
 
         if ($user === null) {
             return [];
+        }
+
+        if ($user->isClient()) {
+            return [[
+                'label' => 'Inspeções',
+                'href' => route('inspections.index'),
+                'icon' => 'inspections',
+                'active' => $request->routeIs('inspections.*', 'defect-assessments.show'),
+            ]];
         }
 
         $items = [

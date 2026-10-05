@@ -85,6 +85,15 @@ defineProps({
             <path d="M7.5 16h9l-1.05-1.8A4.5 4.5 0 0 1 15 11.95V10a3 3 0 1 0-6 0v1.95c0 .8-.2 1.59-.45 2.25L7.5 16Z" />
         </template>
 
+        <template v-else-if="name === 'sun'">
+            <circle cx="12" cy="12" r="4" />
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+        </template>
+
+        <template v-else-if="name === 'moon'">
+            <path d="M20.2 15.2A8.5 8.5 0 0 1 8.8 3.8 8.5 8.5 0 1 0 20.2 15.2Z" />
+        </template>
+
         <template v-else-if="name === 'user'">
             <circle cx="12" cy="8.5" r="3.25" />
             <path d="M5.75 20a6.25 6.25 0 0 1 12.5 0" />

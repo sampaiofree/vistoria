@@ -27,6 +27,7 @@ final class InspectionTransitionGuard
         ],
         'in_review' => [
             'in_correction',
+            'awaiting_m2',
             'awaiting_release',
             'canceled',
         ],

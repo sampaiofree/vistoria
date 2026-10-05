@@ -10,6 +10,7 @@ use App\Enums\InspectionCorrectionRequestStatus;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
 use App\Enums\OperationalRole;
+use App\Enums\UserAccountType;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
 use App\Models\Equipment;
@@ -114,6 +115,7 @@ final class InspectionCorrectionRequestTest extends TestCase
 
         $request = InspectionCorrectionRequest::query()->sole();
         $this->assertNull($request->defect_assessment_id);
+        $this->assertSame(InspectionCorrectionRequestFlow::ReviewerToInspector, $request->flow);
         $this->assertSame(InspectionCorrectionRequestStatus::Requested, $request->status);
         $this->assertSame('Revisar a consistência geral das conclusões técnicas.', $request->request_message);
 
@@ -121,6 +123,177 @@ final class InspectionCorrectionRequestTest extends TestCase
             'inspection_id' => $inspection->id,
             'status' => InspectionCorrectionRequestStatus::Requested->value,
         ]);
+    }
+
+    public function test_reviewer_sends_a_general_correction_to_planner_and_closes_it_after_the_reply(): void
+    {
+        [$inspection, $reviewer, $inspector] = $this->inspectionWithReviewerAndInspector(InspectionStatus::InReview);
+        $planner = $inspection->responsibles()->where('responsibility', InspectionResponsibility::Preparer->value)->firstOrFail()->user;
+
+        $this->actingAs($reviewer)
+            ->get(route('inspections.show', $inspection))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('transitions.0.correction_targets.0.value', 'inspector')
+                ->where('transitions.0.correction_targets.1.value', 'planner'));
+
+        $this->actingAs($reviewer)
+            ->post(route('inspections.return-for-correction', $inspection), [
+                'correction_target' => 'planner',
+                'justification' => 'Confira as notas e a tratativa especial do relatório.',
+            ])
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame(InspectionStatus::AwaitingM2, $inspection->fresh()->status);
+        $request = InspectionCorrectionRequest::query()->sole();
+        $this->assertSame(InspectionCorrectionRequestFlow::ReviewerToPlanner, $request->flow);
+        $this->assertSame(InspectionCorrectionRequestStatus::Requested, $request->status);
+        $this->assertSame('Planejador', $request->flow->responderLabel());
+
+        $this->actingAs($inspector)
+            ->patch(route('inspection-correction-requests.address', $request))
+            ->assertForbidden();
+        $this->actingAs($planner)
+            ->post(route('inspections.submit-for-review', $inspection))
+            ->assertSessionHasErrors('inspection');
+        $this->actingAs($planner)
+            ->patch(route('inspection-correction-requests.address', $request), [
+                'response_message' => 'Notas e tratativa especial conferidas.',
+            ])
+            ->assertSessionHasNoErrors();
+        $this->actingAs($planner)
+            ->patch(route('inspection-correction-requests.close', $request))
+            ->assertForbidden();
+        $this->actingAs($planner)
+            ->post(route('inspections.submit-for-review', $inspection))
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame(InspectionStatus::AwaitingReview, $inspection->fresh()->status);
+        $this->actingAs($reviewer)
+            ->post(route('inspections.start-review', $inspection))
+            ->assertSessionHasNoErrors();
+        $this->actingAs($reviewer)
+            ->post(route('inspections.approve', $inspection))
+            ->assertSessionHasErrors('inspection');
+        $this->actingAs($reviewer)
+            ->patch(route('inspection-correction-requests.close', $request))
+            ->assertSessionHasNoErrors();
+        $this->actingAs($reviewer)
+            ->post(route('inspections.approve', $inspection))
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame(InspectionCorrectionRequestStatus::Closed, $request->fresh()->status);
+        $this->assertSame(InspectionStatus::AwaitingRelease, $inspection->fresh()->status);
+    }
+
+    public function test_planner_target_requires_a_general_message_and_rejects_marked_inspector_requests(): void
+    {
+        [$inspection, $reviewer] = $this->inspectionWithReviewerAndInspector(InspectionStatus::InReview);
+
+        $this->actingAs($reviewer)
+            ->post(route('inspections.return-for-correction', $inspection), ['correction_target' => 'planner'])
+            ->assertSessionHasErrors('justification');
+        $this->actingAs($reviewer)
+            ->post(route('inspections.return-for-correction', $inspection), [
+                'correction_target' => 'releaser',
+                'justification' => 'Confira as notas do relatório.',
+            ])
+            ->assertSessionHasErrors('correction_target');
+
+        $defect = Defect::factory()->forEquipment($inspection->equipment, $inspection)->create();
+        $assessment = DefectAssessment::factory()->forDefect($defect, $inspection)->complete()->create();
+        $this->actingAs($reviewer)
+            ->post(route('defect-assessment-correction-requests.store', $assessment), [
+                'request_message' => 'Corrija a avaliação desta avaria.',
+            ])
+            ->assertSessionHasNoErrors();
+
+        $this->actingAs($reviewer)
+            ->post(route('inspections.return-for-correction', $inspection), [
+                'correction_target' => 'planner',
+                'justification' => 'Confira também as notas do relatório.',
+            ])
+            ->assertSessionHasErrors('correction_target');
+
+        $this->assertSame(InspectionStatus::InReview, $inspection->fresh()->status);
+        $this->assertSame(InspectionCorrectionRequestStatus::Marked, InspectionCorrectionRequest::query()->sole()->status);
+
+        $this->actingAs($reviewer)
+            ->post(route('inspections.return-for-correction', $inspection))
+            ->assertSessionHasNoErrors();
+        $this->assertSame(InspectionStatus::InCorrection, $inspection->fresh()->status);
+        $this->assertSame(InspectionCorrectionRequestFlow::ReviewerToInspector, InspectionCorrectionRequest::query()->sole()->flow);
+    }
+
+    public function test_planner_target_requires_an_active_assigned_planner_and_is_only_available_to_reviewer(): void
+    {
+        [$inspection, $reviewer] = $this->inspectionWithReviewerAndInspector(InspectionStatus::InReview);
+        $planner = $inspection->responsibles()->where('responsibility', InspectionResponsibility::Preparer->value)->firstOrFail()->user;
+        $planner->update(['status' => 'inactive']);
+
+        $this->actingAs($reviewer)
+            ->post(route('inspections.return-for-correction', $inspection), [
+                'correction_target' => 'planner',
+                'justification' => 'Confira as notas do relatório.',
+            ])
+            ->assertSessionHasErrors('inspection');
+        $this->assertSame(InspectionStatus::InReview, $inspection->fresh()->status);
+        $this->assertDatabaseCount('inspection_correction_requests', 0);
+
+        $planner->update(['status' => 'active']);
+        $inspection->update(['status' => InspectionStatus::AwaitingM2]);
+        $this->actingAs($planner)
+            ->post(route('inspections.return-for-correction', $inspection), [
+                'correction_target' => 'planner',
+                'justification' => 'Confira as notas do relatório.',
+            ])
+            ->assertSessionHasErrors('correction_target');
+        $this->assertDatabaseCount('inspection_correction_requests', 0);
+    }
+
+    public function test_reviewer_can_replace_and_resend_a_general_request_to_planner(): void
+    {
+        [$inspection, $reviewer] = $this->inspectionWithReviewerAndInspector(InspectionStatus::InReview);
+        $planner = $inspection->responsibles()->where('responsibility', InspectionResponsibility::Preparer->value)->firstOrFail()->user;
+
+        $this->actingAs($reviewer)
+            ->post(route('inspections.return-for-correction', $inspection), [
+                'correction_target' => 'planner',
+                'justification' => 'Confira as notas do relatório.',
+            ])
+            ->assertSessionHasNoErrors();
+        $first = InspectionCorrectionRequest::query()->sole();
+        $this->actingAs($planner)
+            ->patch(route('inspection-correction-requests.address', $first), ['response_message' => 'Notas conferidas.'])
+            ->assertSessionHasNoErrors();
+        $this->actingAs($planner)
+            ->post(route('inspections.submit-for-review', $inspection))
+            ->assertSessionHasNoErrors();
+        $this->actingAs($reviewer)
+            ->post(route('inspections.start-review', $inspection))
+            ->assertSessionHasNoErrors();
+        $this->actingAs($reviewer)
+            ->post(route('inspection-correction-requests.replace', $first), [
+                'request_message' => 'Confira também o texto da tratativa especial.',
+            ])
+            ->assertSessionHasNoErrors();
+
+        $replacement = InspectionCorrectionRequest::query()->where('previous_request_id', $first->id)->sole();
+        $this->assertSame(InspectionCorrectionRequestFlow::ReviewerToPlanner, $replacement->flow);
+        $this->actingAs($reviewer)
+            ->get(route('inspections.show', $inspection))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('transitions.0.marked_planner_general_request', true));
+        $this->actingAs($reviewer)
+            ->post(route('inspections.return-for-correction', $inspection))
+            ->assertSessionHasErrors('correction_target');
+        $this->actingAs($reviewer)
+            ->post(route('inspections.return-for-correction', $inspection), ['correction_target' => 'planner'])
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame(InspectionCorrectionRequestStatus::Superseded, $first->fresh()->status);
+        $this->assertSame(InspectionCorrectionRequestStatus::Requested, $replacement->fresh()->status);
+        $this->assertSame(InspectionStatus::AwaitingM2, $inspection->fresh()->status);
+        $this->assertSame('Confira também o texto da tratativa especial.', $inspection->statusHistories()->latest('id')->firstOrFail()->reason);
     }
 
     public function test_correction_request_payload_separates_open_requests_from_history_for_defects_and_general_requests(): void
@@ -304,9 +477,12 @@ final class InspectionCorrectionRequestTest extends TestCase
         $this->assertSame(InspectionStatus::AwaitingRelease, $inspection->fresh()->status);
     }
 
-    public function test_releaser_can_request_a_review_and_must_close_each_addressed_request_before_release(): void
+    #[DataProvider('reviewerAndReleaserAccountTypes')]
+    public function test_releaser_can_request_a_review_and_must_close_each_addressed_request_before_release(UserAccountType $accountType): void
     {
         [$inspection, $reviewer, $inspector, $releaser] = $this->inspectionWithReleaseTeam(InspectionStatus::AwaitingRelease);
+        $reviewer->update(['account_type' => $accountType]);
+        $releaser->update(['account_type' => $accountType]);
         $inspection->update(['approved_at' => now()]);
 
         $this->actingAs($releaser)
@@ -338,6 +514,14 @@ final class InspectionCorrectionRequestTest extends TestCase
         $this->actingAs($releaser)->patch(route('inspection-correction-requests.close', $parent))->assertRedirect();
         $this->actingAs($releaser)->post(route('inspections.release', $inspection))->assertRedirect();
         $this->assertSame(InspectionStatus::Released, $inspection->fresh()->status);
+    }
+
+    public static function reviewerAndReleaserAccountTypes(): array
+    {
+        return [
+            'member' => [UserAccountType::Member],
+            'company admin' => [UserAccountType::CompanyAdmin],
+        ];
     }
 
     public function test_releaser_can_mark_an_assessment_without_a_general_message_before_returning_for_review(): void

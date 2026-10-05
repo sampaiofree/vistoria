@@ -43,6 +43,7 @@ final class InspectionSnapshotBuilder
                 'area_name' => $equipment->area_name,
                 'subarea_name' => $equipment->subarea_name,
                 'tag' => $equipment->tag,
+                'defect_code_prefix' => $equipment->defect_code_prefix,
                 'normalized_tag' => $equipment->normalized_tag,
                 'name' => $equipment->name,
                 'description' => $equipment->description,

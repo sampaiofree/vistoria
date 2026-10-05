@@ -45,8 +45,8 @@ final class InspectionBatchCreationTest extends TestCase
 
         $response = $this->actingAs($planner)->post(route('inspections.store'), [
             'inspections' => [
-                $this->record($firstEquipment, $inspector, 'OS-001'),
-                $this->record($secondEquipment, $inspector, 'OS-002'),
+                $this->record($firstEquipment, $inspector, '0000000001'),
+                $this->record($secondEquipment, $inspector, '0000000002'),
             ],
         ]);
 
@@ -74,7 +74,7 @@ final class InspectionBatchCreationTest extends TestCase
             'INSPEÇÃO DE INTEGRIDADE ESTRUTURAL',
             'RELATÓRIO DE INSPEÇÃO',
         ]), $inspection->first_page_text_template);
-        $this->assertSame('OS-001', $inspection->service_order);
+        $this->assertSame('0000000001', $inspection->service_order);
         $this->assertNull($inspection->atmospheric_classification);
         $this->assertSame('2026-10-10', $inspection->planned_start_on?->toDateString());
         $this->assertSame('2026-10-12', $inspection->planned_end_on?->toDateString());
@@ -133,14 +133,14 @@ final class InspectionBatchCreationTest extends TestCase
             ->post(route('inspections.store'), [
                 'inspections' => [
                     $this->record($equipment, $inspector),
-                    $this->record($equipment, $inspector, 'OS-002'),
+                    $this->record($equipment, $inspector, '0000000002'),
                 ],
             ])
             ->assertRedirect(route('inspections.create'))
             ->assertSessionHasErrors([
                 'inspections.1.equipment_id',
             ])
-            ->assertSessionHasInput('inspections.1.service_order', 'OS-002');
+            ->assertSessionHasInput('inspections.1.service_order', '0000000002');
 
         $this->assertDatabaseCount('inspections', 0);
     }
@@ -223,7 +223,7 @@ final class InspectionBatchCreationTest extends TestCase
     }
 
     /** @return array<string, int|string> */
-    private function record(Equipment $equipment, User $inspector, string $serviceOrder = 'OS-001'): array
+    private function record(Equipment $equipment, User $inspector, string $serviceOrder = '0000000001'): array
     {
         return [
             'equipment_id' => $equipment->id,

@@ -7,6 +7,7 @@ namespace App\Http\Requests\Inspections;
 use App\Enums\EquipmentRevisionEmissionType;
 use App\Enums\OperationalRole;
 use App\Models\Inspection;
+use App\Rules\ValidServiceOrder;
 use App\Support\TextNormalizer;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -42,6 +43,9 @@ final class UpdateReportMetadataRequest extends FormRequest
 
     public function rules(): array
     {
+        $inspection = $this->route('inspection');
+        $serviceOrderChanged = $this->input('service_order') !== TextNormalizer::nullableText($inspection?->service_order);
+
         return [
             'emission_type' => [
                 'required',
@@ -49,7 +53,9 @@ final class UpdateReportMetadataRequest extends FormRequest
                 Rule::enum(EquipmentRevisionEmissionType::class),
             ],
             'report_date' => ['nullable', 'date'],
-            'service_order' => ['required', 'nullable', 'string', 'max:100'],
+            'service_order' => $serviceOrderChanged
+                ? ['required', 'string', new ValidServiceOrder]
+                : ['nullable', 'string', 'max:100'],
             'external_report_number' => ['nullable', 'string', 'max:150'],
             'report_designer' => ['prohibited'],
             'designer_i_report_number' => $this->user()?->operational_role === OperationalRole::Reviewer

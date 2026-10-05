@@ -9,21 +9,26 @@ use App\Models\Organization;
 
 final class ReportResponsibleNames
 {
-    /** @return array{approver:?string,releaser:?string} */
+    /** @return array{reviewer:?string,approver:?string,releaser:?string} */
     public function forOrganization(int $organizationId): array
     {
-        // Read both names together, independently of any cached model relation.
-        $organization = Organization::query()->findOrFail($organizationId, ['report_reviewer_name', 'report_releaser_name']);
+        // Read all names together, independently of any cached model relation.
+        $organization = Organization::query()->findOrFail($organizationId, ['report_verifier_name', 'report_reviewer_name', 'report_releaser_name']);
 
-        return ['approver' => $organization->report_reviewer_name, 'releaser' => $organization->report_releaser_name];
+        return [
+            'reviewer' => $organization->report_verifier_name,
+            'approver' => $organization->report_reviewer_name,
+            'releaser' => $organization->report_releaser_name,
+        ];
     }
 
-    /** @return array{approver:?string,releaser:?string} */
+    /** @return array{reviewer:?string,approver:?string,releaser:?string} */
     public function forInspection(Inspection $inspection): array
     {
         if ($inspection->status->isFinal()) {
             // A finalized report never falls back to current company or user names.
             return [
+                'reviewer' => $inspection->report_responsibles_snapshot['reviewer'] ?? null,
                 'approver' => $inspection->report_responsibles_snapshot['approver'] ?? null,
                 'releaser' => $inspection->report_responsibles_snapshot['releaser'] ?? null,
             ];

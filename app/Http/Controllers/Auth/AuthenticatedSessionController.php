@@ -57,9 +57,9 @@ class AuthenticatedSessionController extends Controller
         }
 
         RateLimiter::clear($failuresKey);
-        $request->session()->regenerate();
-
         $user = $request->user();
+
+        $request->session()->regenerate();
 
         if ($user !== null) {
             $user->forceFill([
@@ -71,7 +71,9 @@ class AuthenticatedSessionController extends Controller
             }
         }
 
-        return redirect()->intended(route('dashboard'));
+        return $user?->isClient()
+            ? redirect()->route('inspections.index')
+            : redirect()->intended(route('dashboard'));
     }
 
     public function destroy(Request $request): Response

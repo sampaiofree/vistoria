@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
 use App\Actions\InspectionOverview\UpdateInspectionOverviewBlock;
 use App\Http\Requests\InspectionOverview\UpdateInspectionOverviewBlockRequest;
 use App\Models\Inspection;
+use App\Services\Inspections\ClientInspectionView;
 use App\Services\Reports\InspectionOverviewPresenter;
 use App\Services\Tenancy\TenantContext;
 use Illuminate\Http\RedirectResponse;
@@ -30,7 +31,7 @@ final class InspectionOverviewController extends Controller
         $this->authorize('view', $inspection);
         $editable = $request->user()->can('manageReportOverview', $inspection);
 
-        return Inertia::render('Inspections/ReportOverview', [
+        return Inertia::render('Inspections/ReportOverview', app(ClientInspectionView::class)->sanitize([
             'inspection' => [
                 'id' => $inspection->id,
                 'public_id' => $inspection->public_id,
@@ -42,14 +43,16 @@ final class InspectionOverviewController extends Controller
                     'public_id' => $inspection->equipment->public_id,
                     'tag' => $inspection->equipment->tag,
                     'name' => $inspection->equipment->name,
-                    'show_url' => route('equipments.show', $inspection->equipment),
+                    'show_url' => $request->user()->isClient() ? null : route('equipments.show', $inspection->equipment),
                 ],
             ],
             'overview' => $presenter->present($inspection, $editable),
-            'tabs' => $this->tabs($inspection),
+            'tabs' => $request->user()->isClient()
+                ? array_values(array_filter($this->tabs($inspection), fn (array $tab): bool => $tab['key'] !== 'history'))
+                : $this->tabs($inspection),
             'active_tab' => 'report_overview',
             'capabilities' => ['edit' => $editable],
-        ]);
+        ], $request->user()));
     }
 
     public function update(

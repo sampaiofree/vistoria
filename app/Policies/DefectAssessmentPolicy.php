@@ -10,11 +10,17 @@ use App\Models\Defect;
 use App\Models\DefectAssessment;
 use App\Models\Inspection;
 use App\Models\User;
+use App\Services\Defects\InspectionAssessmentResolver;
+use App\Services\Inspections\ClientInspectionAccess;
 
 final class DefectAssessmentPolicy
 {
     public function view(User $user, DefectAssessment $assessment): bool
     {
+        if ($user->isClient()) {
+            return app(ClientInspectionAccess::class)->canViewAssessment($user, $assessment);
+        }
+
         return $this->activeInOrganization($user)
             && $this->sameOrganizationAssessment($user, $assessment);
     }
@@ -29,7 +35,7 @@ final class DefectAssessmentPolicy
             return $user->can('manageFieldContent', $inspection)
                 && $this->sameOrganizationDefect($user, $defect)
                 && $inspection->equipment_id === $defect->equipment_id
-                && app(\App\Services\Defects\InspectionAssessmentResolver::class)->requiresAssessment($inspection, $defect)
+                && app(InspectionAssessmentResolver::class)->requiresAssessment($inspection, $defect)
                 && $defect->status === DefectStatus::Active;
         }
 
@@ -39,7 +45,7 @@ final class DefectAssessmentPolicy
     public function update(User $user, DefectAssessment $assessment): bool
     {
         return $assessment->isDraft()
-            && app(\App\Services\Defects\InspectionAssessmentResolver::class)->requiresAssessment($assessment->inspection, $assessment->defect)
+            && app(InspectionAssessmentResolver::class)->requiresAssessment($assessment->inspection, $assessment->defect)
             && $user->can('manageFieldContent', $assessment->inspection);
     }
 
@@ -49,7 +55,7 @@ final class DefectAssessmentPolicy
      */
     public function changeStatus(User $user, DefectAssessment $assessment): bool
     {
-        return app(\App\Services\Defects\InspectionAssessmentResolver::class)->requiresAssessment($assessment->inspection, $assessment->defect)
+        return app(InspectionAssessmentResolver::class)->requiresAssessment($assessment->inspection, $assessment->defect)
             && $user->can('manageFieldContent', $assessment->inspection);
     }
 

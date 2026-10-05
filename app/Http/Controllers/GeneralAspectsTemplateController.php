@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Http\Requests\Settings\GeneralAspectsTemplateRequest;
+use App\Models\Client;
 use App\Models\GeneralAspectsTemplate;
+use App\Services\Reports\EquipmentTemplateFields;
 use App\Services\Reports\GeneralAspectsDocument;
 use App\Services\Tenancy\TenantContext;
 use App\Support\TextNormalizer;
@@ -44,6 +46,7 @@ final class GeneralAspectsTemplateController extends Controller
             'action' => route('settings.inspection-report.general-aspects.store'),
             'method' => 'post',
             'cancel_url' => route('settings.inspection-report.general-aspects.index'),
+            'equipment_fields' => $this->equipmentFields($tenant),
         ]);
     }
 
@@ -74,6 +77,7 @@ final class GeneralAspectsTemplateController extends Controller
             'action' => route('settings.inspection-report.general-aspects.update', $template),
             'method' => 'put',
             'cancel_url' => route('settings.inspection-report.general-aspects.index'),
+            'equipment_fields' => $this->equipmentFields($tenant),
         ]);
     }
 
@@ -103,6 +107,14 @@ final class GeneralAspectsTemplateController extends Controller
         $this->authorize('update', $tenant->organization());
     }
 
+    /** @return array<int, array{key:string,label:string}> */
+    private function equipmentFields(TenantContext $tenant): array
+    {
+        $clientName = Client::query()->forOrganization($tenant->id())->value('name');
+
+        return app(EquipmentTemplateFields::class)->options($clientName, $tenant->organization()->name);
+    }
+
     private function tenantTemplate(TenantContext $tenant, GeneralAspectsTemplate $template): GeneralAspectsTemplate
     {
         abort_unless($template->belongsToOrganization($tenant->id()), 404);
@@ -118,6 +130,7 @@ final class GeneralAspectsTemplateController extends Controller
             (int) $data['schema_version'],
             $documents->withFlatHeadings($data['document']),
             allowPendingTextColor: true,
+            allowEquipmentFields: true,
         );
 
         if ($normalized === null) {

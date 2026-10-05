@@ -1,6 +1,6 @@
 <script setup>
 import { Link, useForm } from '@inertiajs/vue3';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import ReinspectionDefectSelect from './ReinspectionDefectSelect.vue';
 
 const props = defineProps({
@@ -27,6 +27,8 @@ const form = useForm({
     reinspection_base_id: props.reinspectionOptions?.previous_inspection_id ?? null,
 });
 const scopeStatus = ref('ready');
+const normalizeServiceOrder = (value) => String(value ?? '').trim().replace(/\s+/gu, ' ');
+const serviceOrderChanged = computed(() => normalizeServiceOrder(form.service_order) !== normalizeServiceOrder(props.inspection.service_order));
 
 function submit() {
     if (scopeStatus.value !== 'ready') return;
@@ -63,7 +65,8 @@ function submit() {
                 </label>
                 <label class="space-y-1.5 text-sm font-medium text-slate-700 md:col-span-2">
                     <span>Ordem de serviço</span>
-                    <input v-model="form.service_order" type="text" maxlength="100" class="w-full rounded-lg border border-slate-300 px-3 py-2">
+                    <input v-model="form.service_order" type="text" inputmode="numeric" autocomplete="off" maxlength="10" :pattern="serviceOrderChanged ? '[0-9]{10}' : undefined" :required="serviceOrderChanged" title="Informe exatamente 10 dígitos numéricos" class="w-full rounded-lg border border-slate-300 px-3 py-2">
+                    <span class="block text-xs font-normal text-slate-500">Ao alterar, informe exatamente 10 dígitos numéricos.</span>
                     <span v-if="form.errors.service_order" class="block text-xs text-rose-600">{{ form.errors.service_order }}</span>
                 </label>
                 <label class="space-y-1.5 text-sm font-medium text-slate-700 md:col-span-2">

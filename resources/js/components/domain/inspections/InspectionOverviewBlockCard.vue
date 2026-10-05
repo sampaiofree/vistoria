@@ -73,8 +73,8 @@ function submit() {
         </header>
 
         <div class="p-5">
-            <div v-if="page.photos.length" class="grid gap-4 md:grid-cols-2">
-                <div v-for="photoSlot in page.photos" :key="photoSlot.photo.id">
+            <div v-if="page.photos.length" class="overview-photo-grid grid gap-4 md:grid-cols-2">
+                <div v-for="photoSlot in page.photos" :key="photoSlot.photo.id" class="overview-photo-item">
                     <InspectionOverviewPhotoSlot :slot="photoSlot" :equipment-label="equipmentLabel" />
                     <div v-if="canReorder" class="mt-2 flex gap-2">
                         <button type="button" class="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:opacity-40" :disabled="ordering || photoSlot.number === 1" @click="emit('move', photoSlot.photo.id, -1)">↑ Subir</button>
@@ -134,3 +134,16 @@ function submit() {
         </div>
     </section>
 </template>
+
+<style scoped>
+@media screen and (max-width: 639.98px) {
+    .overview-photo-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .overview-photo-item {
+        min-width: 0;
+        max-width: 100%;
+    }
+}
+</style>

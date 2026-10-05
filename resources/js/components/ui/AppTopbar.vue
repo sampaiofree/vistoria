@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { Link, router, usePage } from '@inertiajs/vue3';
 import UiIcon from './UiIcon.vue';
+import UserAvatar from './UserAvatar.vue';
 
 const props = defineProps({
     user: {
@@ -43,21 +44,23 @@ const userRegion = ref(null);
 const userButton = ref(null);
 const notificationRegion = ref(null);
 const notificationButton = ref(null);
+const darkMode = ref(typeof document !== 'undefined' && document.documentElement.classList.contains('dark'));
 let notificationPoll = null;
-
-const initials = computed(() => {
-    const name = props.user?.name ?? '';
-    return name
-        .split(' ')
-        .filter(Boolean)
-        .slice(0, 2)
-        .map((part) => part[0]?.toUpperCase() ?? '')
-        .join('') || 'V';
-});
 
 function closeMenus() {
     userMenuOpen.value = false;
     notificationMenuOpen.value = false;
+}
+
+function toggleTheme() {
+    darkMode.value = !darkMode.value;
+    document.documentElement.classList.toggle('dark', darkMode.value);
+
+    try {
+        window.localStorage.setItem('vistoria.theme', darkMode.value ? 'dark' : 'light');
+    } catch (_) {
+        // Switching themes still works for this page when storage is unavailable.
+    }
 }
 
 function handleKeydown(event) {
@@ -137,6 +140,17 @@ watch(
                 </div>
             </div>
 
+            <button
+                type="button"
+                class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500"
+                aria-label="Modo escuro"
+                :aria-pressed="darkMode"
+                :title="darkMode ? 'Ativar modo claro' : 'Ativar modo escuro'"
+                @click="toggleTheme"
+            >
+                <UiIcon :name="darkMode ? 'sun' : 'moon'" class="h-5 w-5" />
+            </button>
+
             <div v-if="notifications" ref="notificationRegion" class="relative">
                 <button
                     ref="notificationButton"
@@ -197,9 +211,7 @@ watch(
                     aria-haspopup="menu"
                     @click="userMenuOpen = !userMenuOpen; notificationMenuOpen = false"
                 >
-                    <span class="inline-flex h-8 w-8 items-center justify-center rounded bg-slate-800 text-xs font-semibold text-white">
-                        {{ initials }}
-                    </span>
+                    <UserAvatar :name="user?.name ?? ''" :photo-url="user?.profile_photo_url" class="h-8 w-8 rounded-full bg-slate-800 text-white" />
                     <span class="hidden text-left sm:block">
                         <span class="block text-sm font-medium text-slate-900">
                             {{ user?.name ?? 'Usuário' }}
@@ -225,6 +237,10 @@ watch(
                             {{ user?.email ?? '' }}
                         </div>
                     </div>
+                    <Link href="/account/profile" class="flex w-full items-center gap-3 rounded-md px-3 py-3 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-100 hover:text-slate-950">
+                        <UiIcon name="user" class="h-4 w-4" />
+                        Meu perfil
+                    </Link>
                     <Link href="/account/password" class="flex w-full items-center gap-3 rounded-md px-3 py-3 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-100 hover:text-slate-950">
                         <UiIcon name="user" class="h-4 w-4" />
                         Alterar senha

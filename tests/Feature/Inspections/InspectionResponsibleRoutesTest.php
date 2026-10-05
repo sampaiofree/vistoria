@@ -6,6 +6,7 @@ namespace Tests\Feature\Inspections;
 
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
+use App\Enums\OperationalRole;
 use App\Enums\UserAccountType;
 use App\Models\Inspection;
 use App\Models\InspectionResponsible;
@@ -57,6 +58,40 @@ final class InspectionResponsibleRoutesTest extends TestCase
         $this->assertTrue($secondResponsible->refresh()->is_primary);
         $this->assertDatabaseMissing('inspection_responsibles', ['id' => $firstResponsible->id]);
         $this->assertDatabaseHas('inspection_responsibles', ['id' => $secondResponsible->id]);
+    }
+
+    public function test_company_admin_can_manually_assign_administrators_with_matching_operational_roles(): void
+    {
+        $organization = Organization::factory()->create();
+        $actor = User::factory()->for($organization)->create([
+            'account_type' => UserAccountType::CompanyAdmin,
+            'operational_role' => OperationalRole::Planner,
+        ]);
+        $inspection = Inspection::factory()->create(['organization_id' => $organization->id]);
+
+        foreach ([
+            [OperationalRole::Reviewer, InspectionResponsibility::Approver],
+            [OperationalRole::Releaser, InspectionResponsibility::Releaser],
+        ] as [$role, $responsibility]) {
+            $member = User::factory()->for($organization)->create(['operational_role' => $role]);
+            $candidate = User::factory()->for($organization)->create([
+                'account_type' => UserAccountType::CompanyAdmin,
+                'operational_role' => $role,
+            ]);
+
+            $this->actingAs($actor)->post(route('inspections.responsibles.store', $inspection), [
+                'user_id' => $member->id, 'responsibility' => $responsibility->value,
+            ])->assertSessionHasNoErrors();
+            $this->post(route('inspections.responsibles.store', $inspection), [
+                'user_id' => $candidate->id, 'responsibility' => $responsibility->value,
+            ])->assertSessionHasNoErrors();
+            $this->assertSame($candidate->id, $inspection->responsibles()->where('responsibility', $responsibility->value)->sole()->user_id);
+
+            $this->post(route('inspections.responsibles.store', $inspection), [
+                'user_id' => $actor->id, 'responsibility' => $responsibility->value,
+            ])->assertSessionHasErrors('user_id');
+            $this->assertSame($candidate->id, $inspection->responsibles()->where('responsibility', $responsibility->value)->sole()->user_id);
+        }
     }
 
     public function test_member_cannot_manage_responsibles(): void

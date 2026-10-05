@@ -13,6 +13,9 @@ use App\Http\Requests\Defects\StoreRelatedDefectRequest;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
 use App\Models\Inspection;
+use App\Services\Defects\InspectionAssessmentResolver;
+use App\Services\Defects\InspectionDefectScope;
+use App\Services\Defects\ResolvePreviousDefectAssessment;
 use App\Services\Tenancy\TenantContext;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -60,6 +63,44 @@ final class DefectController extends Controller
 
         $this->authorize('view', $defect);
 
+        return $this->renderShow($request, $defect);
+    }
+
+    public function showInInspection(
+        TenantContext $tenant,
+        Request $request,
+        Inspection $inspection,
+        Defect $defect,
+        InspectionDefectScope $scope,
+        InspectionAssessmentResolver $resolver,
+    ): InertiaResponse|RedirectResponse {
+        $inspection = $this->tenantInspection($tenant, $inspection);
+        $defect = $this->tenantDefect($tenant, $defect);
+
+        $this->authorize('view', $inspection);
+        $this->authorize('view', $defect);
+        abort_unless($scope->handle($inspection)->contains('id', $defect->id), 404);
+
+        if ($resolver->isHistorical($inspection, $defect->id)) {
+            return redirect()->route('inspections.defects.historical', [$inspection, $defect]);
+        }
+
+        $assessment = $resolver->assessment($inspection, $defect);
+        if ($assessment !== null) {
+            if ($request->user()->isClient()) {
+                $this->authorize('view', $assessment);
+            }
+
+            return redirect()->route('defect-assessments.show', $assessment);
+        }
+
+        abort_if($request->user()->isClient(), 404);
+
+        return $this->renderShow($request, $defect, $inspection);
+    }
+
+    private function renderShow(Request $request, Defect $defect, ?Inspection $pendingInspection = null): InertiaResponse
+    {
         $defect->loadMissing([
             'equipment.client',
             'firstInspection.equipment',
@@ -79,14 +120,24 @@ final class DefectController extends Controller
             'incomingRelations.sourceDefect',
         ]);
 
-        $currentAssessment = $this->currentDefectAssessment($defect);
-        $latestCompleteAssessment = $defect->latestAssessment;
-        $previousAssessment = $currentAssessment?->previousAssessment
-            ?? $latestCompleteAssessment?->previousAssessment;
-        $contextInspection = $currentAssessment?->inspection
+        $currentAssessment = $pendingInspection === null ? $this->currentDefectAssessment($defect) : null;
+        $latestCompleteAssessment = $pendingInspection === null
+            ? $defect->latestAssessment
+            : app(ResolvePreviousDefectAssessment::class)->handle($defect, $pendingInspection);
+        $previousAssessment = $pendingInspection === null
+            ? ($currentAssessment?->previousAssessment ?? $latestCompleteAssessment?->previousAssessment)
+            : $latestCompleteAssessment;
+        $contextInspection = $pendingInspection
+            ?? $currentAssessment?->inspection
             ?? $latestCompleteAssessment?->inspection
             ?? $defect->firstInspection;
         $completedAssessments = $this->completedDefectAssessments($defect);
+        if ($pendingInspection !== null) {
+            $ancestorIds = app(InspectionDefectScope::class)->ancestorInspectionIds($pendingInspection);
+            $completedAssessments = $completedAssessments
+                ->filter(fn (DefectAssessment $assessment): bool => in_array($assessment->inspection_id, $ancestorIds, true))
+                ->values();
+        }
         $user = $request->user();
         $canUpdateAssessment = $currentAssessment !== null && $user?->can('update', $currentAssessment) === true;
         $canCompleteAssessment = $currentAssessment !== null && $user?->can('complete', $currentAssessment) === true;
@@ -112,6 +163,12 @@ final class DefectController extends Controller
             'back_url' => route('inspections.show', $contextInspection),
             'equipment_url' => route('equipments.show', $defect->equipment),
             'inspection_url' => route('inspections.show', $contextInspection),
+            'pending_assessment' => $pendingInspection === null ? null : [
+                'store_url' => $user?->can('create', [DefectAssessment::class, $pendingInspection, $defect])
+                    ? route('inspections.defects.assessments.store', [$pendingInspection, $defect])
+                    : null,
+                'condition' => $defect->first_inspection_id === $pendingInspection->id ? 'new' : 'reinspected',
+            ],
         ]);
     }
 

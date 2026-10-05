@@ -23,6 +23,7 @@ class User extends Authenticatable
     protected $fillable = [
         'organization_id',
         'name',
+        'profile_photo_path',
         'email',
         'password',
         'must_change_password',
@@ -69,6 +70,11 @@ class User extends Authenticatable
         return $this->account_type === UserAccountType::CompanyAdmin;
     }
 
+    public function isClient(): bool
+    {
+        return $this->account_type === UserAccountType::Client;
+    }
+
     public function operationalRoleLabel(): string
     {
         return $this->operational_role?->label() ?? 'Papel não definido';
@@ -94,6 +100,10 @@ class User extends Authenticatable
 
             if ($user->isSuperAdmin() && $user->operational_role !== null) {
                 throw new LogicException('Super-admin users must not have an operational role.');
+            }
+
+            if ($user->isClient() && $user->operational_role !== null) {
+                throw new LogicException('Client users must not have an operational role.');
             }
 
             if (! $user->isSuperAdmin() && blank($user->organization_id)) {

@@ -17,7 +17,7 @@ final class ReportResponsiblesController extends Controller
         $this->authorize('update', $tenant->organization());
 
         return Inertia::render('Settings/InspectionReports/Responsibles', [
-            'names' => $tenant->organization()->only(['report_reviewer_name', 'report_releaser_name']),
+            'names' => $tenant->organization()->only(['report_verifier_name', 'report_reviewer_name', 'report_releaser_name']),
             'action' => route('settings.inspection-report.responsibles.update'),
         ]);
     }

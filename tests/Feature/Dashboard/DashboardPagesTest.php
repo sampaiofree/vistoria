@@ -509,6 +509,36 @@ final class DashboardPagesTest extends TestCase
         }
     }
 
+    public function test_company_admin_reviewer_and_releaser_see_the_available_queue_alongside_company_summary(): void
+    {
+        foreach ([
+            [OperationalRole::Reviewer, InspectionStatus::AwaitingReview],
+            [OperationalRole::Releaser, InspectionStatus::AwaitingRelease],
+        ] as [$role, $status]) {
+            $organization = Organization::factory()->create();
+            $admin = User::factory()->for($organization)->create([
+                'account_type' => UserAccountType::CompanyAdmin,
+                'operational_role' => $role,
+            ]);
+            $inspection = Inspection::factory()->create([
+                'organization_id' => $organization->id,
+                'status' => $status,
+            ]);
+
+            $this->actingAs($admin)->get(route('dashboard'))
+                ->assertInertia(fn (Assert $page) => $page
+                    ->where('can.view_company_summary', true)
+                    ->where('links.available_inspections', route('inspections.index', ['scope' => 'available']))
+                    ->where('links.available_reviews', route('inspections.index', [
+                        'scope' => 'available', 'status' => $status->value,
+                    ]))
+                    ->loadDeferredProps('dashboard-available-reviews', fn (Assert $deferred) => $deferred
+                        ->has('available_reviews', 1)
+                        ->where('available_reviews.0.public_id', $inspection->public_id)
+                        ->where('available_reviews.0.self_assign.action', route('inspections.self-assign', $inspection))));
+        }
+    }
+
     public function test_dashboard_does_not_offer_available_reviews_to_other_roles(): void
     {
         $organization = Organization::factory()->create();

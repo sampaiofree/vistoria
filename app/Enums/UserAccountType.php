@@ -9,4 +9,6 @@ enum UserAccountType: string
     case CompanyAdmin = 'company_admin';
 
     case Member = 'member';
+
+    case Client = 'client';
 }

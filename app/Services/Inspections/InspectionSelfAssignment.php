@@ -16,7 +16,9 @@ final class InspectionSelfAssignment
 {
     public function roleFor(User $user): ?InspectionResponsibility
     {
-        if (! $user->isActive() || $user->account_type !== UserAccountType::Member || $user->organization_id === null) {
+        if (! $user->isActive()
+            || ! in_array($user->account_type, [UserAccountType::Member, UserAccountType::CompanyAdmin], true)
+            || $user->organization_id === null) {
             return null;
         }
 

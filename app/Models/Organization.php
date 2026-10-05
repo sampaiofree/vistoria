@@ -19,6 +19,7 @@ class Organization extends Model
         'name',
         'legal_name',
         'document', 'logo_path', 'primary_color', 'icon_path', 'pwa_icon_path',
+        'report_verifier_name',
         'report_reviewer_name',
         'report_releaser_name',
         'timezone',

@@ -32,8 +32,11 @@ final class StoreUserRequest extends FormRequest
             'account_type' => ['required', Rule::in([
                 UserAccountType::Member->value,
                 UserAccountType::CompanyAdmin->value,
+                UserAccountType::Client->value,
             ])],
-            'operational_role' => ['required', Rule::enum(OperationalRole::class)],
+            'operational_role' => $this->input('account_type') === UserAccountType::Client->value
+                ? ['prohibited']
+                : ['required', Rule::enum(OperationalRole::class)],
         ];
     }
 }

@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
+import { useReportPreviewZoom } from '@/composables/useReportPreviewZoom.js';
 import ReportA4Page from '@/components/domain/view-first/ReportA4Page.vue';
 import InspectionLocationReportMap from '@/components/domain/inspection-locations/InspectionLocationReportMap.vue';
 import ReportMapObservationText from '@/components/domain/view-first/ReportMapObservationText.vue';
@@ -11,6 +12,7 @@ import ClassificationReportPaginator from '@/components/domain/view-first/Classi
 import ClassificationReportTables from '@/components/domain/view-first/ClassificationReportTables.vue';
 import ReportQuantityPage from '@/components/domain/view-first/ReportQuantityPage.vue';
 import ReportQuantityPaginator from '@/components/domain/view-first/ReportQuantityPaginator.vue';
+import ReportDefectPhotoModal from '@/components/domain/view-first/ReportDefectPhotoModal.vue';
 import {
     buildReportSummaryEntries,
     numberGeneralAspectsDocument,
@@ -19,6 +21,7 @@ import {
 
 const props = defineProps({
     content: { type: Object, default: () => ({}) },
+    inspectionNumber: { type: String, default: '' },
 });
 
 const cover = computed(() => props.content.cover ?? {});
@@ -28,6 +31,25 @@ const solidaryStructuresPhotographicBlocks = computed(() => photographicBlocks.v
     categoryKey(block.category || block.category_label) === 'ES',
 ));
 const reportFindings = computed(() => props.content.findings ?? []);
+const activePhotoContext = ref(null);
+
+function openDefectPhoto(block, photo) {
+    if (!photo?.url || photo.status !== 'ready') return;
+    const finding = reportFindings.value.find((item) => item.assessment?.public_id === block.assessment_public_id);
+    if (!finding?.report_history_url) return;
+
+    const seen = new Set();
+    const photos = photographicBlocks.value
+        .filter((item) => item.assessment_public_id === block.assessment_public_id)
+        .flatMap((item) => item.photos)
+        .filter((item) => {
+            if (!item.url || item.status !== 'ready' || seen.has(item.id)) return false;
+            seen.add(item.id);
+            return true;
+        });
+
+    activePhotoContext.value = { block, photo, photos, finding };
+}
 const textualFindings = computed(() => reportFindings.value.filter((finding) =>
     ['canceled', 'canceled_sr'].includes(finding.condition),
 ));
@@ -55,14 +77,26 @@ const classificationReady = ref(!classificationSummary.value);
 const classificationError = ref(null);
 const observationLayouts = ref({});
 const previewRoot = ref(null);
+const zoomToolbar = ref(null);
+const {
+    getPageElements, pagePreviewStyle, fitting, zoomLabel,
+    canDecrease, canIncrease, changeZoom, fitWidth,
+} = useReportPreviewZoom(previewRoot, zoomToolbar);
 
 const emit = defineEmits(['layout-ready', 'layout-error']);
 
-defineExpose({
-    getPageElements: () => previewRoot.value
-        ? [...previewRoot.value.querySelectorAll('.report-a4-page')]
-        : [],
-});
+defineExpose({ getPageElements });
+
+function navigateToPage(pageNumber) {
+    const target = getPageElements()[pageNumber - 1];
+    if (!layoutReady.value || !target || !zoomToolbar.value) return;
+
+    const toolbarTop = parseFloat(getComputedStyle(zoomToolbar.value).top) || 0;
+    const toolbarHeight = zoomToolbar.value.getBoundingClientRect().height;
+    const top = window.scrollY + target.getBoundingClientRect().top - toolbarTop - toolbarHeight - 12;
+    target.focus({ preventScroll: true });
+    window.scrollTo({ top, behavior: 'instant' });
+}
 
 watch(generalAspects, (document) => {
     if (document) return;
@@ -544,212 +578,411 @@ function visualClass(photo) {
 </script>
 
 <template>
-    <div ref="previewRoot" class="report-preview-pages">
-        <ReportGeneralAspectsPaginator
-            v-if="generalAspects"
-            :document="numberedGeneralAspects"
-            @pages="updateGeneralAspectsPages"
-            @ready="generalAspectsReady = $event"
-        />
-        <ReportSummaryPaginator
-            :entries="summaryEntries"
-            :signature="summarySignature"
-            @pages="updateSummaryPages"
-            @ready="updateSummaryReady"
-        />
-        <ClassificationReportPaginator
-            v-if="classificationSummary"
-            :summary="classificationSummary"
-            @pages="updateClassificationPages"
-            @ready="classificationReady = $event"
-            @error="updateClassificationError"
-        />
-        <ReportQuantityPaginator
-            :items="recQuantityRows"
-            type="rec-quantity"
-            @pages="recQuantityPages = $event"
-            @ready="recQuantityReady = $event"
-            @error="updateQuantityError('rec', $event)"
-        />
-        <ReportQuantityPaginator
-            :items="civilQuantityRows"
-            type="civil-quantity"
-            @pages="civilQuantityPages = $event"
-            @ready="civilQuantityReady = $event"
-            @error="updateQuantityError('civil', $event)"
-        />
-        <ReportA4Page
-            v-for="(page, index) in pages"
-            :key="page.key || `${page.type}-${index}`"
-            :page="index + 1"
-            :total="pages.length"
-            :report="cover"
-            :cover="page.type === 'cover'"
-            :orientation="page.orientation ?? 'portrait'"
-        >
-            <template v-if="page.type === 'cover'">
-                <div class="report-cover-layout">
-                    <div class="report-cover-rule"></div>
-                    <div class="report-cover-title-stage">
-                        <div
-                            v-if="(cover.title_lines || []).length"
-                            class="report-cover-title"
-                            :class="`report-cover-title-${cover.revision_density || 'normal'}`"
-                        >
-                            <p v-for="(line, lineIndex) in cover.title_lines" :key="`title-${lineIndex}`">{{ line }}</p>
-                        </div>
-                    </div>
-                    <div class="report-cover-bottom">
-                        <div
-                            class="report-cover-history"
-                            :class="`report-cover-history-${cover.revision_density || 'normal'}`"
-                        >
-                            <div class="report-cover-history-label" aria-label="Revisões">
-                                <span class="report-cover-history-letters" aria-hidden="true">
-                                    <span>R</span><span>E</span><span>V</span><span>I</span>
-                                    <span>S</span><span>Õ</span><span>E</span><span>S</span>
-                                </span>
-                            </div>
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th>Nº</th>
-                                        <th>Descrição</th>
-                                        <th>T.E.</th>
-                                        <th>Data</th>
-                                        <th>Prep.</th>
-                                        <th>Verif.</th>
-                                        <th>Aprov.</th>
-                                        <th>Liber.</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr v-for="row in (cover.revision_history || [])" :key="row.key">
-                                        <td>{{ row.revision_number ?? '—' }}</td>
-                                        <td>{{ row.description || '—' }}</td>
-                                        <td>{{ row.emission_type || '—' }}</td>
-                                        <td>{{ row.date || '—' }}</td>
-                                        <td>{{ row.compact_responsibles?.preparer || '—' }}</td>
-                                        <td>{{ row.compact_responsibles?.reviewer || '—' }}</td>
-                                        <td>{{ row.compact_responsibles?.approver || '—' }}</td>
-                                        <td>{{ row.compact_responsibles?.releaser || '—' }}</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                        <div class="report-cover-emission-legend">
-                            <strong>T.E. — TIPOS DE EMISSÃO</strong>
-                            <div>
-                                <span>A — Preliminar</span>
-                                <span>B — P/ Aprovação</span>
-                                <span>C — P/ Conhecimento</span>
-                                <span>D — P/ Cotação</span>
-                                <span>E — P/ Construção</span>
-                                <span>F — Conforme comprado</span>
-                                <span>G — Conforme construído</span>
-                                <span>H — Cancelado</span>
-                                <span>L — Aprovado</span>
+    <div class="report-preview">
+        <div ref="zoomToolbar" class="report-zoom-toolbar print-hidden" role="group" aria-label="Zoom do relatório" data-html2canvas-ignore>
+            <span class="report-zoom-label">Zoom</span>
+            <button type="button" class="report-zoom-step" aria-label="Diminuir zoom do relatório" :disabled="!canDecrease" @click="changeZoom(-1)">−</button>
+            <output class="report-zoom-value" aria-live="polite" aria-atomic="true" :aria-label="`Zoom do relatório: ${zoomLabel}${fitting ? ', ajustado à largura' : ''}`">{{ zoomLabel }}</output>
+            <button type="button" class="report-zoom-step" aria-label="Aumentar zoom do relatório" :disabled="!canIncrease" @click="changeZoom(1)">+</button>
+            <button type="button" class="report-zoom-fit" :aria-pressed="fitting" @click="fitWidth">Ajustar à largura</button>
+        </div>
+        <div ref="previewRoot" class="report-preview-pages">
+            <ReportGeneralAspectsPaginator
+                v-if="generalAspects"
+                :document="numberedGeneralAspects"
+                @pages="updateGeneralAspectsPages"
+                @ready="generalAspectsReady = $event"
+            />
+            <ReportSummaryPaginator
+                :entries="summaryEntries"
+                :signature="summarySignature"
+                @pages="updateSummaryPages"
+                @ready="updateSummaryReady"
+            />
+            <ClassificationReportPaginator
+                v-if="classificationSummary"
+                :summary="classificationSummary"
+                @pages="updateClassificationPages"
+                @ready="classificationReady = $event"
+                @error="updateClassificationError"
+            />
+            <ReportQuantityPaginator
+                :items="recQuantityRows"
+                type="rec-quantity"
+                @pages="recQuantityPages = $event"
+                @ready="recQuantityReady = $event"
+                @error="updateQuantityError('rec', $event)"
+            />
+            <ReportQuantityPaginator
+                :items="civilQuantityRows"
+                type="civil-quantity"
+                @pages="civilQuantityPages = $event"
+                @ready="civilQuantityReady = $event"
+                @error="updateQuantityError('civil', $event)"
+            />
+            <ReportA4Page
+                v-for="(page, index) in pages"
+                :key="page.key || `${page.type}-${index}`"
+                :page="index + 1"
+                :id="`report-page-${index + 1}`"
+                :aria-label="`Página ${index + 1} do relatório`"
+                tabindex="-1"
+                :total="pages.length"
+                :report="cover"
+                :cover="page.type === 'cover'"
+                :orientation="page.orientation ?? 'portrait'"
+                :style="pagePreviewStyle(page)"
+            >
+                <template v-if="page.type === 'cover'">
+                    <div class="report-cover-layout">
+                        <div class="report-cover-rule"></div>
+                        <div class="report-cover-title-stage">
+                            <div
+                                v-if="(cover.title_lines || []).length"
+                                class="report-cover-title"
+                                :class="`report-cover-title-${cover.revision_density || 'normal'}`"
+                            >
+                                <p v-for="(line, lineIndex) in cover.title_lines" :key="`title-${lineIndex}`">{{ line }}</p>
                             </div>
                         </div>
-                        <div class="report-cover-approval">
-                            <div v-for="item in (cover.approval_flow || [])" :key="item.key">
-                                <span>{{ item.label }}</span>
-                                <strong>{{ item.name || (['approved', 'released'].includes(item.key) ? 'Não definido' : '—') }}</strong>
-                            </div>
-                            <div>
-                                <span>Data</span>
-                                <strong>{{ cover.approval_date || '—' }}</strong>
-                            </div>
-                            <div>
-                                <span>O.S.</span>
-                                <strong>{{ cover.service_order || '—' }}</strong>
-                            </div>
-                        </div>
-                        <div class="report-cover-institutional">
-                            <div class="report-cover-provider-logo report-cover-institutional-logo">
-                                <img v-if="cover.provider_logo_url" :src="cover.provider_logo_url" :alt="cover.provider || 'Empresa responsável'">
-                                <strong v-else>{{ cover.provider || '—' }}</strong>
-                            </div>
-                            <div class="report-cover-designer-i report-cover-institutional-field">
-                                <span>Nº PROJETISTA I:</span>
-                                <strong>{{ cover.designer_i_report_number || '—' }}</strong>
-                            </div>
-                            <div class="report-cover-revision report-cover-institutional-field report-cover-institutional-compact">
-                                <span>Rev.:</span>
-                                <strong>{{ cover.current_revision ?? '—' }}</strong>
-                            </div>
-                            <div class="report-cover-page report-cover-institutional-field report-cover-institutional-compact">
-                                <span>PÁGINA:</span>
-                                <strong>1</strong>
-                            </div>
-                            <div class="report-cover-provider-role">
-                                {{ cover.report_designer || 'PROJETISTA II' }}
-                            </div>
-                            <div class="report-cover-designer-ii report-cover-institutional-field">
-                                <span>Nº PROJETISTA II:</span>
-                            </div>
-                            <div class="report-cover-client-logo report-cover-institutional-logo">
-                                <img v-if="cover.client_logo_url" :src="cover.client_logo_url" :alt="cover.client || 'Cliente'">
-                            </div>
-                            <div class="report-cover-client-name">
-                                {{ cover.client || '—' }}
-                            </div>
-                            <div class="report-cover-samarco report-cover-institutional-field">
-                                <span>Nº SAMARCO:</span>
-                                <strong>{{ cover.external_report_number || '—' }}</strong>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </template>
-
-            <template v-else-if="page.type === 'summary'">
-                <ReportSummaryPage :entries="page.entries" :continuation="page.continuation" />
-            </template>
-
-            <template v-else-if="page.type === 'general-aspects'">
-                <div class="report-general-aspects-page">
-                    <h2 class="report-general-aspects-title">
-                        2. DESCRIÇÃO DOS ASPECTOS GERAIS DO EQUIPAMENTO<span v-if="page.continuation"> — CONTINUAÇÃO</span>
-                    </h2>
-                    <div class="report-general-aspects-body">
-                        <GeneralAspectsDocument :document="page.document" />
-                    </div>
-                </div>
-            </template>
-
-            <template v-else-if="page.type === 'classification-summary'">
-                <ClassificationReportTables :summary="classificationSummary" v-bind="page" />
-            </template>
-
-            <template v-else-if="page.type === 'overview'">
-                <div class="report-overview-page">
-                    <h2 class="report-general-aspects-title report-overview-heading report-annex-title">
-                        {{ page.annexTitle || reportOverview.title || 'ANEXO A – LOCALIZAÇÃO E DOCUMENTAÇÃO FOTOGRÁFICA - TAC' }}
-                    </h2>
-                    <div class="report-page-title report-blue-title report-location-title report-overview-section-title">
-                        {{ reportOverview.section_title || 'DOCUMENTAÇÃO FOTOGRÁFICA - TAC' }}
-                    </div>
-
-                    <article v-for="block in page.overviewPage.blocks.filter((item) => item.photos.some((slot) => slot.photo))" :key="block.position" class="report-photo-block report-overview-block">
-                        <div class="report-photo-pair" :class="{ 'report-photo-pair-single': block.photos.filter((slot) => slot.photo).length === 1 }">
-                            <article v-for="photoSlot in block.photos.filter((slot) => slot.photo)" :key="photoSlot.slot" class="report-photo-card">
-                                <div class="report-photo-equipment">{{ reportOverview.equipment_label || 'FOTO EQUIPAMENTO' }}</div>
-                                <div class="report-photo-title">
-                                    <span>{{ photoSlot.number }}</span>
-                                    <strong>Vista geral</strong>
-                                </div>
-                                <div class="report-photo-image">
-                                    <img
-                                        v-if="photoSlot.photo?.optimized_url"
-                                        :src="photoSlot.photo.optimized_url"
-                                        :alt="`Fotografia ${photoSlot.number} — Vista geral`"
-                                    >
-                                    <span v-else class="report-photo-unavailable">
-                                        {{ photoSlot.photo?.status_label || 'Fotografia não informada' }}
+                        <div class="report-cover-bottom">
+                            <div
+                                class="report-cover-history"
+                                :class="`report-cover-history-${cover.revision_density || 'normal'}`"
+                            >
+                                <div class="report-cover-history-label" aria-label="Revisões">
+                                    <span class="report-cover-history-letters" aria-hidden="true">
+                                        <span>R</span><span>E</span><span>V</span><span>I</span>
+                                        <span>S</span><span>Õ</span><span>E</span><span>S</span>
                                     </span>
                                 </div>
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Nº</th>
+                                            <th>Descrição</th>
+                                            <th>T.E.</th>
+                                            <th>Data</th>
+                                            <th>Prep.</th>
+                                            <th>Verif.</th>
+                                            <th>Aprov.</th>
+                                            <th>Liber.</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="row in (cover.revision_history || [])" :key="row.key">
+                                            <td>{{ row.revision_number ?? '—' }}</td>
+                                            <td>{{ row.description || '—' }}</td>
+                                            <td>{{ row.emission_type || '—' }}</td>
+                                            <td>{{ row.date || '—' }}</td>
+                                            <td>{{ row.compact_responsibles?.preparer || '—' }}</td>
+                                            <td>{{ row.compact_responsibles?.reviewer || '—' }}</td>
+                                            <td>{{ row.compact_responsibles?.approver || '—' }}</td>
+                                            <td>{{ row.compact_responsibles?.releaser || '—' }}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="report-cover-emission-legend">
+                                <strong>T.E. — TIPOS DE EMISSÃO</strong>
+                                <div>
+                                    <span>A — Preliminar</span>
+                                    <span>B — P/ Aprovação</span>
+                                    <span>C — P/ Conhecimento</span>
+                                    <span>D — P/ Cotação</span>
+                                    <span>E — P/ Construção</span>
+                                    <span>F — Conforme comprado</span>
+                                    <span>G — Conforme construído</span>
+                                    <span>H — Cancelado</span>
+                                    <span>L — Aprovado</span>
+                                </div>
+                            </div>
+                            <div class="report-cover-approval">
+                                <div v-for="item in (cover.approval_flow || [])" :key="item.key">
+                                    <span>{{ item.label }}</span>
+                                    <strong>{{ item.name || (['verified', 'approved', 'released'].includes(item.key) ? 'Não definido' : '—') }}</strong>
+                                </div>
+                                <div>
+                                    <span>Data</span>
+                                    <strong>{{ cover.approval_date || '—' }}</strong>
+                                </div>
+                                <div>
+                                    <span>O.S.</span>
+                                    <strong>{{ cover.service_order || '—' }}</strong>
+                                </div>
+                            </div>
+                            <div class="report-cover-institutional">
+                                <div class="report-cover-provider-logo report-cover-institutional-logo">
+                                    <img v-if="cover.provider_logo_url" :src="cover.provider_logo_url" :alt="cover.provider || 'Empresa responsável'">
+                                    <strong v-else>{{ cover.provider || '—' }}</strong>
+                                </div>
+                                <div class="report-cover-designer-i report-cover-institutional-field">
+                                    <span>Nº PROJETISTA I:</span>
+                                    <strong>{{ cover.designer_i_report_number || '—' }}</strong>
+                                </div>
+                                <div class="report-cover-revision report-cover-institutional-field report-cover-institutional-compact">
+                                    <span>Rev.:</span>
+                                    <strong>{{ cover.current_revision ?? '—' }}</strong>
+                                </div>
+                                <div class="report-cover-page report-cover-institutional-field report-cover-institutional-compact">
+                                    <span>PÁGINA:</span>
+                                    <strong>1</strong>
+                                </div>
+                                <div class="report-cover-provider-role">
+                                    {{ cover.report_designer || 'PROJETISTA II' }}
+                                </div>
+                                <div class="report-cover-designer-ii report-cover-institutional-field">
+                                    <span>Nº PROJETISTA II:</span>
+                                </div>
+                                <div class="report-cover-client-logo report-cover-institutional-logo">
+                                    <img v-if="cover.client_logo_url" :src="cover.client_logo_url" :alt="cover.client || 'Cliente'">
+                                </div>
+                                <div class="report-cover-client-name">
+                                    {{ cover.client || '—' }}
+                                </div>
+                                <div class="report-cover-samarco report-cover-institutional-field">
+                                    <span>Nº SAMARCO:</span>
+                                    <strong>{{ cover.external_report_number || '—' }}</strong>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+
+                <template v-else-if="page.type === 'summary'">
+                    <ReportSummaryPage :entries="page.entries" :continuation="page.continuation" :interactive="layoutReady" @navigate="navigateToPage" />
+                </template>
+
+                <template v-else-if="page.type === 'general-aspects'">
+                    <div class="report-general-aspects-page">
+                        <h2 class="report-general-aspects-title">
+                            2. DESCRIÇÃO DOS ASPECTOS GERAIS DO EQUIPAMENTO<span v-if="page.continuation"> — CONTINUAÇÃO</span>
+                        </h2>
+                        <div class="report-general-aspects-body">
+                            <GeneralAspectsDocument :document="page.document" />
+                        </div>
+                    </div>
+                </template>
+
+                <template v-else-if="page.type === 'classification-summary'">
+                    <ClassificationReportTables :summary="classificationSummary" v-bind="page" />
+                </template>
+
+                <template v-else-if="page.type === 'overview'">
+                    <div class="report-overview-page">
+                        <h2 class="report-general-aspects-title report-overview-heading report-annex-title">
+                            {{ page.annexTitle || reportOverview.title || 'ANEXO A – LOCALIZAÇÃO E DOCUMENTAÇÃO FOTOGRÁFICA - TAC' }}
+                        </h2>
+                        <div class="report-page-title report-blue-title report-location-title report-overview-section-title">
+                            {{ reportOverview.section_title || 'DOCUMENTAÇÃO FOTOGRÁFICA - TAC' }}
+                        </div>
+
+                        <article v-for="block in page.overviewPage.blocks.filter((item) => item.photos.some((slot) => slot.photo))" :key="block.position" class="report-photo-block report-overview-block">
+                            <div class="report-photo-pair" :class="{ 'report-photo-pair-single': block.photos.filter((slot) => slot.photo).length === 1 }">
+                                <article v-for="photoSlot in block.photos.filter((slot) => slot.photo)" :key="photoSlot.slot" class="report-photo-card">
+                                    <div class="report-photo-equipment">{{ reportOverview.equipment_label || 'FOTO EQUIPAMENTO' }}</div>
+                                    <div class="report-photo-title">
+                                        <span>{{ photoSlot.number }}</span>
+                                        <strong>Vista geral</strong>
+                                    </div>
+                                    <div class="report-photo-image">
+                                        <img
+                                            v-if="photoSlot.photo?.optimized_url"
+                                            :src="photoSlot.photo.optimized_url"
+                                            :alt="`Fotografia ${photoSlot.number} — Vista geral`"
+                                        >
+                                        <span v-else class="report-photo-unavailable">
+                                            {{ photoSlot.photo?.status_label || 'Fotografia não informada' }}
+                                        </span>
+                                    </div>
+                                </article>
+                            </div>
+                            <div class="report-photo-text-section">
+                                <div class="report-photo-blue-bar">Comentário:</div>
+                                <p>{{ block.comment || '—' }}</p>
+                            </div>
+                            <div class="report-photo-text-section">
+                                <div class="report-photo-blue-bar">Recomendações:</div>
+                                <p>{{ block.recommendation || '—' }}</p>
+                            </div>
+                        </article>
+                    </div>
+                </template>
+
+                <template v-else-if="page.type === 'rec-quantity' || page.type === 'civil-quantity'">
+                    <ReportQuantityPage :page="page" />
+                </template>
+
+                <template v-else-if="page.type === 'location-map'">
+                    <div class="report-map-page-layout">
+                        <h2 v-if="page.annexTitle" class="report-general-aspects-title report-map-annex-title report-annex-title">
+                            {{ page.annexTitle }}
+                        </h2>
+                        <h2 class="report-page-title report-blue-title report-location-title">
+                            LOCALIZAÇÃO FOTOGRÁFICA - {{ page.category?.name || page.category?.code || 'SEM CATEGORIA' }}
+                        </h2>
+                        <article class="report-map-card">
+                            <div class="report-map-title-box">{{ page.map.report_title || page.map.title }}<span v-if="page.map.historical_label" class="mt-1 block text-[8pt] font-normal">{{ page.map.historical_label }}</span></div>
+                            <InspectionLocationReportMap class="report-map-visual" :map="page.map" />
+
+                            <div class="report-map-footer">
+                                <div class="report-map-classification-layout">
+                                    <table v-if="mapUsesTel(page.map)" class="report-map-damage-table">
+                                        <colgroup>
+                                            <col class="report-map-damage-photos">
+                                            <col class="report-map-damage-gut">
+                                            <col class="report-map-damage-gut">
+                                            <col class="report-map-damage-gut">
+                                            <col class="report-map-damage-classification">
+                                        </colgroup>
+                                        <thead>
+                                            <tr><th colspan="5" class="report-map-table-title">CLASSIFICAÇÃO TEL</th></tr>
+                                            <tr><th>FOTOS</th><th>IMPACTO</th><th>RISCO</th><th>PONT. TEL</th><th>CLASSE</th></tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr
+                                                v-for="(row, rowIndex) in (page.map.damage_rows || [])"
+                                                :key="row.assessment?.public_id || row.defect?.public_id || rowIndex"
+                                            >
+                                                <td>{{ row.photo_interval || '—' }}</td>
+                                                <td>{{ row.tel?.impact?.score ?? '—' }}</td>
+                                                <td :style="damageColorStyle(row.tel?.fall_risk?.color)">{{ row.tel?.fall_risk?.score ?? '—' }}</td>
+                                                <td>{{ row.tel?.score ?? '—' }}</td>
+                                                <td :style="damageColorStyle(row.classification?.color)">{{ row.classification?.code || '—' }}</td>
+                                            </tr>
+                                            <tr v-if="!(page.map.damage_rows || []).length"><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+                                        </tbody>
+                                    </table>
+
+                                    <table v-else class="report-map-damage-table">
+                                        <colgroup>
+                                            <col v-if="mapShowsDefectCode(page.category)" class="report-map-damage-code">
+                                            <col v-if="mapShowsDefectCode(page.category)" class="report-map-damage-project">
+                                            <col class="report-map-damage-photos">
+                                            <col class="report-map-damage-quantity">
+                                            <col class="report-map-damage-gut">
+                                            <col class="report-map-damage-gut">
+                                            <col v-if="mapShowsTrendDetail(page.category)" class="report-map-damage-trend-label">
+                                            <col v-if="mapShowsTrendDetail(page.category)" class="report-map-damage-trend-score">
+                                            <col v-else class="report-map-damage-gut">
+                                            <col class="report-map-damage-classification">
+                                        </colgroup>
+                                        <thead>
+                                            <tr><th :colspan="mapShowsTrendDetail(page.category) ? 9 : 6" class="report-map-table-title">CLASSIFICAÇÃO GUT</th></tr>
+                                            <tr>
+                                                <th v-if="mapShowsDefectCode(page.category)">CÓD.</th><th v-if="mapShowsDefectCode(page.category)">PROJETO</th><th>FOTOS</th><th>{{ mapQuantityHeader(page.map) }}</th><th>GRAV.</th><th>URG.</th><th v-if="mapShowsTrendDetail(page.category)" colspan="2">T</th><th v-else>TEND.</th><th>GRAV. DANO</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr
+                                                v-for="(row, rowIndex) in (page.map.damage_rows || [])"
+                                                :key="row.assessment?.public_id || row.defect?.public_id || rowIndex"
+                                            >
+                                                <td v-if="mapShowsDefectCode(page.category)">{{ row.defect?.code || '—' }}</td>
+                                                <td v-if="mapShowsDefectCode(page.category)">{{ row.defect?.project_number || '—' }}</td>
+                                                <td>{{ row.photo_interval || '—' }}</td>
+                                                <td>{{ damageQuantity(row, page.map) }}</td>
+                                                <td :style="damageColorStyle(row.gut?.gravity?.color)">{{ row.gut?.gravity?.score ?? '—' }}</td>
+                                                <td :style="damageColorStyle(row.gut?.urgency?.color)">{{ row.gut?.urgency?.score ?? '—' }}</td>
+                                                <td v-if="mapShowsTrendDetail(page.category)">{{ row.gut?.trend?.group?.label || '—' }}</td>
+                                                <td :style="damageColorStyle(row.gut?.trend?.color)">{{ row.gut?.trend?.score ?? '—' }}</td>
+                                                <td :style="damageColorStyle(row.classification?.color)">{{ row.classification?.code || '—' }}</td>
+                                            </tr>
+                                            <tr v-if="!(page.map.damage_rows || []).length">
+                                                <td v-if="mapShowsDefectCode(page.category)">—</td><td v-if="mapShowsDefectCode(page.category)">—</td><td>—</td><td>—</td><td>—</td><td>—</td><td v-if="mapShowsTrendDetail(page.category)">—</td><td>—</td><td>—</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+
+                                    <div class="report-map-legend">
+                                        <strong>LEGENDA:</strong>
+                                        <div
+                                            v-for="item in (page.map.classification_legend || [])"
+                                            :key="item.public_id || item.code"
+                                            class="report-map-legend-row"
+                                        >
+                                            <span class="report-map-color-swatch" :style="legendColorStyle(item.color)"></span>
+                                            <span>{{ item.code }}</span>
+                                        </div>
+                                        <div v-if="!(page.map.classification_legend || []).length" class="report-map-legend-empty">—</div>
+                                    </div>
+                                </div>
+
+                                <div class="report-map-observations">
+                                    <div class="report-map-observations-title">Observações:</div>
+                                    <ReportMapObservationText
+                                        :map-id="page.map.public_id"
+                                        :chunk-index="page.observationIndex"
+                                        :text="page.observation.text"
+                                        :font-size="page.observation.fontSize"
+                                        :fitted="page.observation.fitted"
+                                        :max-height-mm="32"
+                                        @layout="updateObservationLayout"
+                                    />
+                                </div>
+                            </div>
+                        </article>
+                    </div>
+                </template>
+
+                <template v-else-if="page.type === 'map-observations'">
+                    <div class="report-map-continuation-layout">
+                        <h2 class="report-page-title report-blue-title report-location-title">
+                            LOCALIZAÇÃO FOTOGRÁFICA - {{ page.category?.name || page.category?.code || 'SEM CATEGORIA' }}
+                        </h2>
+                        <div class="report-map-title-box">{{ page.map.report_title || page.map.title }}<span v-if="page.map.historical_label" class="mt-1 block text-[8pt] font-normal">{{ page.map.historical_label }}</span></div>
+                        <div class="report-map-observations report-map-observations-continuation">
+                            <div class="report-map-observations-title">OBSERVAÇÕES — CONTINUAÇÃO</div>
+                            <ReportMapObservationText
+                                :map-id="page.map.public_id"
+                                :chunk-index="page.observationIndex"
+                                :text="page.observation.text"
+                                :font-size="page.observation.fontSize"
+                                :fitted="page.observation.fitted"
+                                :max-height-mm="210"
+                                @layout="updateObservationLayout"
+                            />
+                        </div>
+                    </div>
+                </template>
+
+                <template v-else-if="page.type === 'photographic'">
+                    <h2 v-if="page.annexTitle" class="report-page-title report-blue-title report-location-title report-annex-title">
+                        {{ page.annexTitle }}
+                    </h2>
+                    <h2 v-if="!page.isSolidaryStructuresAnnex" class="report-page-title report-blue-title report-location-title">
+                        DOCUMENTAÇÃO FOTOGRÁFICA - {{ page.category }}
+                    </h2>
+                    <article v-for="block in page.items" :key="block.id" class="report-photo-block">
+                        <div class="report-photo-pair" :class="{ 'report-photo-pair-single': block.photos.length === 1 }">
+                            <article v-for="photo in block.photos" :key="photo.id" class="report-photo-card">
+                                <div class="report-photo-equipment">{{ block.equipment_label || 'FOTO EQUIPAMENTO' }}</div>
+                                <div class="report-photo-title">
+                                    <span>{{ photo.sequence ?? '—' }}</span>
+                                    <strong>{{ block.defect_title }}</strong>
+                                </div>
+                                <button
+                                    type="button"
+                                    class="report-photo-image report-photo-trigger"
+                                    :class="visualClass(photo)"
+                                    :disabled="!photo.url || photo.status !== 'ready'"
+                                    :aria-label="`Ampliar foto ${photo.sequence || ''} da avaria ${block.defect_code}`"
+                                    @click="openDefectPhoto(block, photo)"
+                                >
+                                    <img v-if="photo.url" :src="photo.url" :alt="block.defect_title">
+                                    <span v-else class="report-photo-unavailable">{{ photo.status === 'ready' ? 'Imagem indisponível' : (photo.status_label || 'Processamento pendente') }}</span>
+                                </button>
                             </article>
+                        </div>
+                        <div class="report-photo-classification">
+                            <span v-if="block.historical_label" class="block">{{ block.historical_label }}</span>
+                            <div class="report-photo-classification-content">
+                                <span>{{ block.defect_code || '—' }} | {{ block.condition_label || '—' }} |
+                                    Anterior: {{ block.previous_classification?.code || '—' }} |
+                                    Atual: {{ block.current_classification?.code || block.classification_code || '—' }}</span>
+                                <span v-if="block.is_unsafe_condition" class="report-photo-tag report-photo-tag-unsafe">Condição insegura</span>
+                                <span v-if="block.has_engineering_note" class="report-photo-tag report-photo-tag-engineering">Nota de Engenharia</span>
+                            </div>
                         </div>
                         <div class="report-photo-text-section">
                             <div class="report-photo-blue-bar">Comentário:</div>
@@ -760,219 +993,74 @@ function visualClass(photo) {
                             <p>{{ block.recommendation || '—' }}</p>
                         </div>
                     </article>
-                </div>
-            </template>
+                </template>
 
-            <template v-else-if="page.type === 'rec-quantity' || page.type === 'civil-quantity'">
-                <ReportQuantityPage :page="page" />
-            </template>
-
-            <template v-else-if="page.type === 'location-map'">
-                <div class="report-map-page-layout">
-                    <h2 v-if="page.annexTitle" class="report-general-aspects-title report-map-annex-title report-annex-title">
-                        {{ page.annexTitle }}
-                    </h2>
+                <template v-else-if="page.type === 'textual-findings'">
                     <h2 class="report-page-title report-blue-title report-location-title">
-                        LOCALIZAÇÃO FOTOGRÁFICA - {{ page.category?.name || page.category?.code || 'SEM CATEGORIA' }}
+                        REGISTROS SEM EVIDÊNCIA FOTOGRÁFICA<span v-if="page.continuation"> — CONTINUAÇÃO</span>
                     </h2>
-                    <article class="report-map-card">
-                        <div class="report-map-title-box">{{ page.map.report_title || page.map.title }}<span v-if="page.map.historical_label" class="mt-1 block text-[8pt] font-normal">{{ page.map.historical_label }}</span></div>
-                        <InspectionLocationReportMap class="report-map-visual" :map="page.map" />
-
-                        <div class="report-map-footer">
-                            <div class="report-map-classification-layout">
-                                <table v-if="mapUsesTel(page.map)" class="report-map-damage-table">
-                                    <colgroup>
-                                        <col class="report-map-damage-photos">
-                                        <col class="report-map-damage-gut">
-                                        <col class="report-map-damage-gut">
-                                        <col class="report-map-damage-gut">
-                                        <col class="report-map-damage-classification">
-                                    </colgroup>
-                                    <thead>
-                                        <tr><th colspan="5" class="report-map-table-title">CLASSIFICAÇÃO TEL</th></tr>
-                                        <tr><th>FOTOS</th><th>IMPACTO</th><th>RISCO</th><th>PONT. TEL</th><th>CLASSE</th></tr>
-                                    </thead>
-                                    <tbody>
-                                        <tr
-                                            v-for="(row, rowIndex) in (page.map.damage_rows || [])"
-                                            :key="row.assessment?.public_id || row.defect?.public_id || rowIndex"
-                                        >
-                                            <td>{{ row.photo_interval || '—' }}</td>
-                                            <td>{{ row.tel?.impact?.score ?? '—' }}</td>
-                                            <td :style="damageColorStyle(row.tel?.fall_risk?.color)">{{ row.tel?.fall_risk?.score ?? '—' }}</td>
-                                            <td>{{ row.tel?.score ?? '—' }}</td>
-                                            <td :style="damageColorStyle(row.classification?.color)">{{ row.classification?.code || '—' }}</td>
-                                        </tr>
-                                        <tr v-if="!(page.map.damage_rows || []).length"><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
-                                    </tbody>
-                                </table>
-
-                                <table v-else class="report-map-damage-table">
-                                    <colgroup>
-                                        <col v-if="mapShowsDefectCode(page.category)" class="report-map-damage-code">
-                                        <col v-if="mapShowsDefectCode(page.category)" class="report-map-damage-project">
-                                        <col class="report-map-damage-photos">
-                                        <col class="report-map-damage-quantity">
-                                        <col class="report-map-damage-gut">
-                                        <col class="report-map-damage-gut">
-                                        <col v-if="mapShowsTrendDetail(page.category)" class="report-map-damage-trend-label">
-                                        <col v-if="mapShowsTrendDetail(page.category)" class="report-map-damage-trend-score">
-                                        <col v-else class="report-map-damage-gut">
-                                        <col class="report-map-damage-classification">
-                                    </colgroup>
-                                    <thead>
-                                        <tr><th :colspan="mapShowsTrendDetail(page.category) ? 9 : 6" class="report-map-table-title">CLASSIFICAÇÃO GUT</th></tr>
-                                        <tr>
-                                            <th v-if="mapShowsDefectCode(page.category)">CÓD.</th><th v-if="mapShowsDefectCode(page.category)">PROJETO</th><th>FOTOS</th><th>{{ mapQuantityHeader(page.map) }}</th><th>GRAV.</th><th>URG.</th><th v-if="mapShowsTrendDetail(page.category)" colspan="2">T</th><th v-else>TEND.</th><th>GRAV. DANO</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <tr
-                                            v-for="(row, rowIndex) in (page.map.damage_rows || [])"
-                                            :key="row.assessment?.public_id || row.defect?.public_id || rowIndex"
-                                        >
-                                            <td v-if="mapShowsDefectCode(page.category)">{{ row.defect?.code || '—' }}</td>
-                                            <td v-if="mapShowsDefectCode(page.category)">{{ row.defect?.project_number || '—' }}</td>
-                                            <td>{{ row.photo_interval || '—' }}</td>
-                                            <td>{{ damageQuantity(row, page.map) }}</td>
-                                            <td :style="damageColorStyle(row.gut?.gravity?.color)">{{ row.gut?.gravity?.score ?? '—' }}</td>
-                                            <td :style="damageColorStyle(row.gut?.urgency?.color)">{{ row.gut?.urgency?.score ?? '—' }}</td>
-                                            <td v-if="mapShowsTrendDetail(page.category)">{{ row.gut?.trend?.group?.label || '—' }}</td>
-                                            <td :style="damageColorStyle(row.gut?.trend?.color)">{{ row.gut?.trend?.score ?? '—' }}</td>
-                                            <td :style="damageColorStyle(row.classification?.color)">{{ row.classification?.code || '—' }}</td>
-                                        </tr>
-                                        <tr v-if="!(page.map.damage_rows || []).length">
-                                            <td v-if="mapShowsDefectCode(page.category)">—</td><td v-if="mapShowsDefectCode(page.category)">—</td><td>—</td><td>—</td><td>—</td><td>—</td><td v-if="mapShowsTrendDetail(page.category)">—</td><td>—</td><td>—</td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-
-                                <div class="report-map-legend">
-                                    <strong>LEGENDA:</strong>
-                                    <div
-                                        v-for="item in (page.map.classification_legend || [])"
-                                        :key="item.public_id || item.code"
-                                        class="report-map-legend-row"
-                                    >
-                                        <span class="report-map-color-swatch" :style="legendColorStyle(item.color)"></span>
-                                        <span>{{ item.code }}</span>
-                                    </div>
-                                    <div v-if="!(page.map.classification_legend || []).length" class="report-map-legend-empty">—</div>
-                                </div>
-                            </div>
-
-                            <div class="report-map-observations">
-                                <div class="report-map-observations-title">Observações:</div>
-                                <ReportMapObservationText
-                                    :map-id="page.map.public_id"
-                                    :chunk-index="page.observationIndex"
-                                    :text="page.observation.text"
-                                    :font-size="page.observation.fontSize"
-                                    :fitted="page.observation.fitted"
-                                    :max-height-mm="32"
-                                    @layout="updateObservationLayout"
-                                />
-                            </div>
+                    <article v-for="finding in page.items" :key="finding.id" class="report-textual-finding">
+                        <div class="report-textual-finding-title">
+                            <strong>{{ finding.code }} — {{ finding.title }}</strong>
+                            <span>{{ finding.condition_label }}</span>
+                            <span v-if="finding.historical_label">{{ finding.historical_label }}</span>
+                        </div>
+                        <div class="report-textual-finding-classes">
+                            Classe anterior: <strong>{{ finding.previous_classification?.code || '—' }}</strong>
+                            · Classe atual: <strong>{{ finding.current_classification?.code || '—' }}</strong>
+                        </div>
+                        <div class="report-photo-text-section">
+                            <div class="report-photo-blue-bar">Justificativa:</div>
+                            <p>{{ finding.reason || '—' }}</p>
+                        </div>
+                        <div class="report-photo-text-section">
+                            <div class="report-photo-blue-bar">Comentário:</div>
+                            <p>{{ finding.comment || '—' }}</p>
+                        </div>
+                        <div class="report-photo-text-section">
+                            <div class="report-photo-blue-bar">Recomendações:</div>
+                            <p>{{ finding.recommendation || '—' }}</p>
                         </div>
                     </article>
-                </div>
-            </template>
+                </template>
 
-            <template v-else-if="page.type === 'map-observations'">
-                <div class="report-map-continuation-layout">
-                    <h2 class="report-page-title report-blue-title report-location-title">
-                        LOCALIZAÇÃO FOTOGRÁFICA - {{ page.category?.name || page.category?.code || 'SEM CATEGORIA' }}
-                    </h2>
-                    <div class="report-map-title-box">{{ page.map.report_title || page.map.title }}<span v-if="page.map.historical_label" class="mt-1 block text-[8pt] font-normal">{{ page.map.historical_label }}</span></div>
-                    <div class="report-map-observations report-map-observations-continuation">
-                        <div class="report-map-observations-title">OBSERVAÇÕES — CONTINUAÇÃO</div>
-                        <ReportMapObservationText
-                            :map-id="page.map.public_id"
-                            :chunk-index="page.observationIndex"
-                            :text="page.observation.text"
-                            :font-size="page.observation.fontSize"
-                            :fitted="page.observation.fitted"
-                            :max-height-mm="210"
-                            @layout="updateObservationLayout"
-                        />
-                    </div>
-                </div>
-            </template>
-
-            <template v-else-if="page.type === 'photographic'">
-                <h2 v-if="page.annexTitle" class="report-page-title report-blue-title report-location-title report-annex-title">
-                    {{ page.annexTitle }}
-                </h2>
-                <h2 v-if="!page.isSolidaryStructuresAnnex" class="report-page-title report-blue-title report-location-title">
-                    DOCUMENTAÇÃO FOTOGRÁFICA - {{ page.category }}
-                </h2>
-                <article v-for="block in page.items" :key="block.id" class="report-photo-block">
-                    <div class="report-photo-pair" :class="{ 'report-photo-pair-single': block.photos.length === 1 }">
-                        <article v-for="photo in block.photos" :key="photo.id" class="report-photo-card">
-                            <div class="report-photo-equipment">{{ block.equipment_label || 'FOTO EQUIPAMENTO' }}</div>
-                            <div class="report-photo-title">
-                                <span>{{ photo.sequence ?? '—' }}</span>
-                                <strong>{{ block.defect_title }}</strong>
-                            </div>
-                            <div class="report-photo-image" :class="visualClass(photo)">
-                                <img v-if="photo.url" :src="photo.url" :alt="block.defect_title">
-                                <span v-else class="report-photo-unavailable">{{ photo.status === 'ready' ? 'Imagem indisponível' : (photo.status_label || 'Processamento pendente') }}</span>
-                            </div>
-                        </article>
-                    </div>
-                    <div class="report-photo-classification">
-                        <span v-if="block.historical_label" class="block">{{ block.historical_label }}</span>
-                        {{ block.defect_code || '—' }} | {{ block.condition_label || '—' }} |
-                        Anterior: {{ block.previous_classification?.code || '—' }} |
-                        Atual: {{ block.current_classification?.code || block.classification_code || '—' }}
-                    </div>
-                    <div class="report-photo-text-section">
-                        <div class="report-photo-blue-bar">Comentário:</div>
-                        <p>{{ block.comment || '—' }}</p>
-                    </div>
-                    <div class="report-photo-text-section">
-                        <div class="report-photo-blue-bar">Recomendações:</div>
-                        <p>{{ block.recommendation || '—' }}</p>
-                    </div>
-                </article>
-            </template>
-
-            <template v-else-if="page.type === 'textual-findings'">
-                <h2 class="report-page-title report-blue-title report-location-title">
-                    REGISTROS SEM EVIDÊNCIA FOTOGRÁFICA<span v-if="page.continuation"> — CONTINUAÇÃO</span>
-                </h2>
-                <article v-for="finding in page.items" :key="finding.id" class="report-textual-finding">
-                    <div class="report-textual-finding-title">
-                        <strong>{{ finding.code }} — {{ finding.title }}</strong>
-                        <span>{{ finding.condition_label }}</span>
-                        <span v-if="finding.historical_label">{{ finding.historical_label }}</span>
-                    </div>
-                    <div class="report-textual-finding-classes">
-                        Classe anterior: <strong>{{ finding.previous_classification?.code || '—' }}</strong>
-                        · Classe atual: <strong>{{ finding.current_classification?.code || '—' }}</strong>
-                    </div>
-                    <div class="report-photo-text-section">
-                        <div class="report-photo-blue-bar">Justificativa:</div>
-                        <p>{{ finding.reason || '—' }}</p>
-                    </div>
-                    <div class="report-photo-text-section">
-                        <div class="report-photo-blue-bar">Comentário:</div>
-                        <p>{{ finding.comment || '—' }}</p>
-                    </div>
-                    <div class="report-photo-text-section">
-                        <div class="report-photo-blue-bar">Recomendações:</div>
-                        <p>{{ finding.recommendation || '—' }}</p>
-                    </div>
-                </article>
-            </template>
-
-        </ReportA4Page>
+            </ReportA4Page>
+        </div>
+        <ReportDefectPhotoModal
+            v-if="activePhotoContext"
+            :photos="activePhotoContext.photos"
+            :selected-photo-id="activePhotoContext.photo.id"
+            :finding="activePhotoContext.finding"
+            :block="activePhotoContext.block"
+            :inspection-number="inspectionNumber"
+            @close="activePhotoContext = null"
+        />
     </div>
 </template>
 
 <style scoped>
-.report-preview-pages { display: flex; flex-direction: column; gap: 0; overflow-x: auto; padding: 0 4mm 12mm; }
+.report-preview { min-width: 0; max-width: 100%; overflow-anchor: none; }
+.report-zoom-toolbar { position: sticky; top: calc(4rem + 1px); z-index: 10; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; padding: 8px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; color: #334155; box-shadow: 0 2px 6px rgb(15 23 42 / 6%); font-size: 14px; }
+.report-zoom-label { margin-right: 4px; }
+.report-zoom-toolbar button { min-height: 44px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; font-weight: 600; cursor: pointer; }
+.report-zoom-toolbar button:hover:not(:disabled), .report-zoom-fit[aria-pressed="true"] { border-color: #0d9488; background: #f0fdfa; color: #0f766e; }
+.report-zoom-toolbar button:focus-visible { outline: 2px solid #0d9488; outline-offset: 2px; }
+.report-zoom-toolbar button:disabled { opacity: .4; cursor: default; }
+.report-zoom-step { min-width: 44px; font-size: 20px; }
+.report-zoom-fit { padding: 0 12px; }
+.report-zoom-value { min-width: 4ch; text-align: center; font-variant-numeric: tabular-nums; }
+.report-preview-pages { display: flex; flex-direction: column; gap: 0; max-width: 100%; overflow-x: auto; padding: 0 4mm 12mm; }
+@media (max-width: 480px) { .report-zoom-label { display: none; } .report-zoom-toolbar { gap: 6px; } }
+@media screen {
+    .report-preview-pages :deep(.report-a4-page) { zoom: var(--report-preview-scale, 1); flex-shrink: 0; }
+}
+.report-preview-pages.report-exporting { overflow: visible; }
+.report-preview-pages.report-exporting :deep(.report-a4-page) { zoom: 1 !important; width: 210mm !important; height: 297mm !important; min-height: 297mm !important; margin: 0 !important; box-shadow: none !important; }
+.report-preview-pages.report-exporting :deep(.report-a4-landscape) { width: 297mm !important; height: 210mm !important; min-height: 210mm !important; }
+.report-photo-trigger { display: block; width: 100%; margin: 0; padding: 0; border: 0; border-radius: 0; appearance: none; text-align: inherit; cursor: zoom-in; }
+.report-photo-trigger:disabled { cursor: default; }
+.report-photo-trigger:focus-visible { outline: 2px solid #0d9488; outline-offset: 2px; }
+@media print { .report-photo-trigger:focus-visible { outline: none; } }
 /* Keep visible pages and pagination probes on the same report typography. */
 .report-preview-pages,
 .report-preview-pages :deep(*) { font-family: 'Times New Roman', Times, serif !important; font-weight: 400 !important; }
@@ -1107,5 +1195,14 @@ function visualClass(photo) {
 .report-map-observations-continuation { display: flex; min-height: 0; flex: 1; flex-direction: column; margin-top: 0; }
 .report-map-observations-continuation :deep(.report-map-observation-copy) { flex: none; text-align: left; }
 .report-photo-block { margin-bottom: 5mm; break-inside: avoid; }.report-photo-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1mm; }.report-photo-pair-single .report-photo-card { grid-column: 1 / -1; width: 50%; justify-self: center; }.report-photo-card { min-width: 0; overflow: hidden; break-inside: avoid; }.report-photo-equipment { min-height: 6mm; padding: 1.2mm 2mm; background: #d1d1d1; color: #111827; font-family: Georgia, serif; font-size: 8pt; line-height: 1.1; }.report-photo-title { display: flex; align-items: baseline; gap: 3mm; min-height: 7mm; padding: 1.2mm 2mm; background: #fff; font-family: Georgia, serif; font-size: 9pt; line-height: 1.1; }.report-photo-title span { min-width: 5mm; font-size: 10pt; }.report-photo-title strong { font-weight: 700; }.report-photo-image { position: relative; height: 48mm; background: #e5e7eb; background-image: linear-gradient(145deg, #cbd5e1, #475569); }.report-photo-image img { display: block; width: 100%; height: 100%; object-fit: contain; background: #f3f4f6; }.report-photo-unavailable { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 4mm; background: rgba(15, 23, 42, .72); color: #fff; font-size: 8pt; font-weight: 700; text-align: center; }.report-photo-structure { background-image: linear-gradient(115deg, transparent 35%, rgba(15,23,42,.45) 36% 41%, transparent 42%), linear-gradient(30deg, #94a3b8, #475569); }.report-photo-surface { background-image: repeating-linear-gradient(105deg, rgba(255,255,255,.12) 0 2px, transparent 2px 18px), linear-gradient(145deg, #64748b, #334155); }.report-photo-repair { background-image: linear-gradient(90deg, transparent 47%, rgba(13,148,136,.78) 48% 52%, transparent 53%), linear-gradient(145deg, #cbd5e1, #64748b); }.report-photo-classification { min-height: 6mm; margin-top: 1mm; padding: 1.5mm 2mm; background: #fff; border: 1px solid #d1d5db; font-family: Georgia, serif; font-size: 8.5pt; font-weight: 700; line-height: 1.1; text-align: center; }.report-photo-text-section { margin-top: 1mm; break-inside: avoid; }.report-photo-blue-bar { padding: 1.2mm 2mm; background: #062b68; color: #fff; font-family: Georgia, serif; font-size: 9pt; line-height: 1.1; text-align: center; }.report-photo-text-section p { min-height: 10mm; margin: 0; padding: 3mm 5mm; font-family: Georgia, serif; font-size: 8.5pt; line-height: 1.35; text-align: center; white-space: pre-line; }
-@media print { .report-preview-pages { display: block; padding: 0; overflow: visible; } }
+.report-photo-classification-content { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 1mm 2mm; }
+.report-photo-tag { display: inline-flex; align-items: center; flex: none; padding: .5mm 1.5mm; border: 1px solid; border-radius: 2mm; font-size: 7pt; line-height: 1.1; white-space: nowrap; }
+.report-photo-tag-unsafe { border-color: #fda4af; background: #fff1f2; color: #9f1239; }
+.report-photo-tag-engineering { border-color: #5eead4; background: #f0fdfa; color: #115e59; }
+@media print {
+    .report-zoom-toolbar { display: none; }
+    .report-preview { max-width: none; }
+    .report-preview-pages { display: block; max-width: none; padding: 0; overflow: visible; }
+    .report-preview-pages :deep(.report-a4-page) { zoom: 1 !important; }
+}
 </style>

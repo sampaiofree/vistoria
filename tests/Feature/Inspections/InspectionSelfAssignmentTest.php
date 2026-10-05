@@ -71,6 +71,55 @@ final class InspectionSelfAssignmentTest extends TestCase
     }
 
     #[DataProvider('roles')]
+    public function test_company_admin_can_claim_a_vacant_matching_role_without_losing_the_company_index(OperationalRole $role, InspectionResponsibility $responsibility): void
+    {
+        $admin = $this->user($role);
+        $admin->update(['account_type' => UserAccountType::CompanyAdmin]);
+        $vacant = $this->inspection($admin, $role === OperationalRole::Reviewer
+            ? InspectionStatus::AwaitingReview : InspectionStatus::AwaitingRelease);
+        $occupied = $this->inspection($admin);
+        $other = $this->user($role, $admin);
+        $this->assign($occupied, $other, $responsibility);
+        $closed = $this->inspection($admin, InspectionStatus::Released);
+        $foreign = Inspection::factory()->create();
+        $ability = $role === OperationalRole::Reviewer ? 'startReview' : 'release';
+        $this->assertFalse($admin->can($ability, $vacant));
+
+        $this->actingAs($admin)->get(route('inspections.index'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('capabilities.available_queue', true)
+                ->where('capabilities.company_wide_index', true)
+                ->has('inspections.data', 3));
+        $this->get(route('inspections.index', ['scope' => 'available']))
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('inspections.data', 1)
+                ->where('inspections.data.0.public_id', $vacant->public_id)
+                ->where('inspections.data.0.self_assign.label', 'Assumir como '.$responsibility->label()));
+        $this->get(route('inspections.show', $vacant))
+            ->assertInertia(fn (Assert $page) => $page->where('capabilities.self_assign.action', route('inspections.self-assign', $vacant)));
+
+        $this->post(route('inspections.self-assign', $vacant))
+            ->assertRedirect(route('inspections.show', $vacant))->assertSessionHasNoErrors();
+        $this->assertSame($admin->id, $vacant->responsibles()->where('responsibility', $responsibility->value)->sole()->user_id);
+        $this->assertTrue($admin->can($ability, $vacant));
+        $this->post(route('inspections.self-assign', $occupied))
+            ->assertRedirect(route('inspections.index', ['scope' => 'available']))->assertSessionHas('error');
+        $this->post(route('inspections.self-assign', $closed))->assertForbidden();
+        $this->post(route('inspections.self-assign', $foreign))->assertForbidden();
+
+        if ($role === OperationalRole::Releaser) {
+            $this->post(route('inspections.cancel', $vacant), ['justification' => 'Cancelamento pelo Liberador responsável.'])
+                ->assertSessionHasNoErrors();
+            $this->assertSame(InspectionStatus::Canceled, $vacant->fresh()->status);
+        }
+
+        $anotherVacancy = $this->inspection($admin);
+        $admin->update(['status' => UserStatus::Inactive]);
+        $this->post(route('inspections.self-assign', $anotherVacancy))->assertRedirect(route('login'));
+        $this->assertFalse($anotherVacancy->hasResponsibility($responsibility));
+    }
+
+    #[DataProvider('roles')]
     public function test_claim_is_idempotent_and_a_competing_user_cannot_replace_the_winner(OperationalRole $role, InspectionResponsibility $responsibility): void
     {
         $this->freezeSecond();
@@ -134,7 +183,7 @@ final class InspectionSelfAssignmentTest extends TestCase
         $this->post($cancel, ['justification' => '  Cancelamento solicitado pelo cliente.  '])->assertSessionHasNoErrors();
         $this->assertSame(InspectionStatus::Canceled, $inspection->fresh()->status);
         $this->assertNotNull($inspection->fresh()->canceled_at);
-        $history = $inspection->statusHistories()->orderByDesc('id')->firstOrFail();
+        $history = $inspection->statusHistories()->where('to_status', InspectionStatus::Canceled->value)->sole();
         $this->assertSame($releaser->id, $history->changed_by);
         $this->assertSame('Cancelamento solicitado pelo cliente.', $history->reason);
         $this->assertSame(3, $inspection->statusHistories()->count());
@@ -161,7 +210,7 @@ final class InspectionSelfAssignmentTest extends TestCase
             $this->post($url)->assertForbidden();
         }
         $inspection->update(['status' => InspectionStatus::Planned]);
-        $reviewer->update(['account_type' => UserAccountType::CompanyAdmin, 'operational_role' => OperationalRole::Releaser]);
+        $reviewer->update(['account_type' => UserAccountType::CompanyAdmin, 'operational_role' => OperationalRole::Planner]);
         $this->actingAs($reviewer)->post($url)->assertForbidden();
         $this->assign($inspection, $reviewer, InspectionResponsibility::Releaser);
         $this->post(route('inspections.cancel', $inspection), ['justification' => 'Cancelamento pelo administrador.'])->assertForbidden();
@@ -267,7 +316,7 @@ final class InspectionSelfAssignmentTest extends TestCase
         return [
             'role changed' => [['operational_role' => OperationalRole::Inspector]],
             'deactivated' => [['status' => UserStatus::Inactive]],
-            'admin' => [['account_type' => UserAccountType::CompanyAdmin]],
+            'role removed' => [['operational_role' => null]],
             'organization removed' => [['organization_id' => null]],
         ];
     }

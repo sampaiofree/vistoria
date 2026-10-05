@@ -56,6 +56,23 @@ final class InspectionPlannerWorkflowTest extends TestCase
         $this->assertSame(InspectionStatus::Released, $inspection->fresh()->status);
     }
 
+    public function test_company_admin_reviewer_and_releaser_can_complete_their_assigned_stages(): void
+    {
+        [$inspection, $team] = $this->scenario(InspectionStatus::Planned);
+        $team['reviewer']->update(['account_type' => UserAccountType::CompanyAdmin]);
+        $team['releaser']->update(['account_type' => UserAccountType::CompanyAdmin]);
+
+        $this->actingAs($team['inspector'])->post(route('inspections.start', $inspection))->assertSessionHasNoErrors();
+        $this->post(route('inspections.submit-for-planning', $inspection))->assertSessionHasNoErrors();
+        $this->actingAs($team['planner'])->post(route('inspections.submit-for-review', $inspection))->assertSessionHasNoErrors();
+        $this->actingAs($team['reviewer'])->post(route('inspections.start-review', $inspection))->assertSessionHasNoErrors();
+        $this->put(route('inspections.classification-m2-links.update', $inspection), ['links' => []])->assertSessionHasNoErrors();
+        $this->post(route('inspections.approve', $inspection))->assertSessionHasNoErrors();
+        $this->actingAs($team['releaser'])->post(route('inspections.release', $inspection))->assertSessionHasNoErrors();
+
+        $this->assertSame(InspectionStatus::Released, $inspection->fresh()->status);
+    }
+
     public function test_m2_is_only_required_when_planner_submits_and_partial_saves_are_allowed(): void
     {
         [$inspection, $team] = $this->scenario();

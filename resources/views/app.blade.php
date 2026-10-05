@@ -11,6 +11,15 @@
         <meta name="theme-color" content="{{ $appOrganization->primary_color ?? '#0F172A' }}">
     @endif
     <title inertia>{{ config('app.name', 'Vistoria') }}</title>
+    <script>
+        try {
+            if (localStorage.getItem('vistoria.theme') === 'dark') {
+                document.documentElement.classList.add('dark');
+            }
+        } catch (_) {
+            // The application stays in its default light theme when storage is unavailable.
+        }
+    </script>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     @inertiaHead
 </head>

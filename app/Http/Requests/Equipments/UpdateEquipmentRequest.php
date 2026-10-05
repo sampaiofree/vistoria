@@ -2,11 +2,10 @@
 
 namespace App\Http\Requests\Equipments;
 
-use App\Enums\AssetAbcClass;
 use App\Models\Equipment;
+use App\Services\Equipments\EquipmentUpdateRules;
 use App\Support\TextNormalizer;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
 
 final class UpdateEquipmentRequest extends FormRequest
 {
@@ -47,47 +46,6 @@ final class UpdateEquipmentRequest extends FormRequest
         $equipment = $this->route('equipment');
         $organizationId = $this->user()?->organization_id;
 
-        return [
-            'numero_cliente' => [
-                'required', 'string', 'max:50',
-                Rule::unique('equipments', 'numero_cliente')
-                    ->where(fn ($query) => $query->where('organization_id', $organizationId))
-                    ->ignore($equipment?->getKey()),
-            ],
-            'numero_interno' => [
-                'required', 'string', 'max:50',
-                Rule::unique('equipments', 'numero_interno')
-                    ->where(fn ($query) => $query->where('organization_id', $organizationId))
-                    ->ignore($equipment?->getKey()),
-            ],
-            'tag' => ['required', 'string', 'max:120'],
-            'maintenance_item_code' => [
-                'required', 'string', 'max:80',
-                Rule::unique('equipments', 'maintenance_item_code')
-                    ->where(fn ($query) => $query->where('organization_id', $organizationId))
-                    ->ignore($equipment?->getKey()),
-            ],
-            'defect_code_prefix' => [
-                'required',
-                'string',
-                'max:80',
-                Rule::unique('equipments', 'defect_code_prefix')
-                    ->where(fn ($query) => $query
-                        ->where('organization_id', $organizationId))
-                    ->ignore($equipment?->getKey()),
-            ],
-            'maintenance_plan_code' => ['nullable', 'string', 'max:80'],
-            'area_code' => ['nullable', 'string', 'max:80'],
-            'subarea_code' => ['nullable', 'string', 'max:80'],
-            'task_list_group' => ['nullable', 'string', 'max:80'],
-            'task_list_group_counter' => ['nullable', 'string', 'max:80'],
-            'area_name' => ['nullable', 'string', 'max:180'],
-            'subarea_name' => ['nullable', 'string', 'max:180'],
-            'name' => ['required', 'string', 'max:180'],
-            'description' => ['nullable', 'string', 'max:10000'],
-            'abc_code' => ['nullable', Rule::enum(AssetAbcClass::class)],
-            'installation_location' => ['nullable', 'string', 'max:255'],
-            'confirm_related_records_edit' => ['nullable', 'boolean'],
-        ];
+        return EquipmentUpdateRules::for((int) $organizationId, (int) $equipment?->getKey());
     }
 }

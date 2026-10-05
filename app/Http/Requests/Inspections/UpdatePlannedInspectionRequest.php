@@ -8,6 +8,7 @@ use App\Enums\AtmosphericCorrosivity;
 use App\Enums\OperationalRole;
 use App\Enums\UserStatus;
 use App\Models\Inspection;
+use App\Rules\ValidServiceOrder;
 use App\Support\TextNormalizer;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -40,6 +41,8 @@ final class UpdatePlannedInspectionRequest extends FormRequest
     public function rules(): array
     {
         $organizationId = $this->user()?->organization_id;
+        $inspection = $this->route('inspection');
+        $serviceOrderChanged = $this->input('service_order') !== TextNormalizer::nullableText($inspection?->service_order);
 
         return [
             'reinspection_defect_ids' => ['sometimes', 'array'],
@@ -60,7 +63,9 @@ final class UpdatePlannedInspectionRequest extends FormRequest
                     ->where('status', UserStatus::Active->value)
                     ->where('operational_role', OperationalRole::Inspector->value)),
             ],
-            'service_order' => ['nullable', 'string', 'max:100'],
+            'service_order' => $serviceOrderChanged
+                ? ['required', 'string', new ValidServiceOrder]
+                : ['nullable', 'string', 'max:100'],
             'planned_start_on' => ['required', 'date'],
             'planned_end_on' => ['required', 'date', 'after_or_equal:planned_start_on'],
             'external_report_number' => ['prohibited'],

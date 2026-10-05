@@ -13,6 +13,8 @@ use App\Models\DefectAssessment;
 use App\Models\Inspection;
 use App\Models\InspectionOverviewPhoto;
 use App\Models\User;
+use App\Services\Defects\InspectionAssessmentResolver;
+use App\Services\Defects\InspectionDefectScope;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 
@@ -24,6 +26,10 @@ final class InspectionContextNavigation
     public function forRequest(Request $request): ?array
     {
         $user = $request->user();
+        if ($user?->isClient()) {
+            return null;
+        }
+
         $inspection = $this->inspectionFromRequest($request);
 
         if (! $user instanceof User || ! $inspection instanceof Inspection) {
@@ -94,11 +100,20 @@ final class InspectionContextNavigation
         ]);
 
         $defects = $this->defectsForInspection($inspection);
+        if ($user->isClient()) {
+            $resolver = app(InspectionAssessmentResolver::class);
+            $defects = $defects->filter(function (Defect $defect) use ($inspection, $user, $resolver): bool {
+                $assessment = $resolver->assessment($inspection, $defect);
+
+                return $assessment !== null && $user->can('view', $assessment);
+            })->values();
+        }
         $canCreateDefect = $user->can('create', [Defect::class, $inspection]);
         $currentDefectId = $this->currentDefectId($request);
         $defectsActive = $request->routeIs(
             'inspections.defects',
             'inspections.defects.create',
+            'inspections.defects.show',
             'inspections.defects.historical',
             'inspections.reinspection-checklist',
             'defects.*',
@@ -120,7 +135,7 @@ final class InspectionContextNavigation
                 'equipment_name' => $inspection->equipment->name,
                 'overview_url' => route('inspections.show', $inspection),
             ],
-            'items' => [
+            'items' => array_values(array_filter([
                 [
                     'key' => 'overview',
                     'label' => 'Visão geral',
@@ -193,7 +208,7 @@ final class InspectionContextNavigation
                     'icon' => 'classification',
                     'active' => $request->routeIs('inspections.quantitative', 'inspections.quantitative.*'),
                 ],
-            ],
+            ], fn (array $item): bool => ! $user->isClient() || ! in_array($item['key'], ['team', 'history'], true))),
         ];
     }
 
@@ -208,7 +223,7 @@ final class InspectionContextNavigation
         if ($inspection->reinspection_scope_version !== null) {
             $inspection->loadMissing(['defectScopes.sourceAssessment' => fn ($query) => $query->withCount('photos')]);
 
-            return app(\App\Services\Defects\InspectionDefectScope::class)->handle($inspection);
+            return app(InspectionDefectScope::class)->handle($inspection);
         }
 
         $defects = Defect::query()
@@ -260,7 +275,7 @@ final class InspectionContextNavigation
         $children = $groups
             ->map(function (Collection $group, string $categoryCode) use ($inspection, $currentDefectId, $sectionActive, $groups): array {
                 $children = $group->map(function (Defect $defect) use ($inspection, $currentDefectId): array {
-                    $resolver = app(\App\Services\Defects\InspectionAssessmentResolver::class);
+                    $resolver = app(InspectionAssessmentResolver::class);
                     $assessment = $resolver->assessment($inspection, $defect);
                     $active = $defect->getKey() === $currentDefectId;
 
@@ -268,7 +283,7 @@ final class InspectionContextNavigation
                         'key' => 'defect-'.$defect->public_id,
                         'label' => $defect->code,
                         'href' => $resolver->url($inspection, $defect, $assessment)
-                            ?? route('inspections.defects', $inspection).'#defect-'.$defect->public_id,
+                            ?? route('inspections.defects.show', [$inspection, $defect]),
                         'meta' => $resolver->isHistorical($inspection, $defect->id) ? 'Histórico mantido' : ($assessment instanceof DefectAssessment
                             ? ($assessment->status === DefectAssessmentStatus::Draft
                                 ? $assessment->status->label()

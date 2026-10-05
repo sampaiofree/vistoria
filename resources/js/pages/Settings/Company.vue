@@ -116,12 +116,12 @@ function selectPrimaryColor(event) {
                 <div class="border-t border-slate-100 pt-6">
                     <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Identidade visual</p>
                     <h2 class="mt-2 text-lg font-semibold text-slate-950">Logotipo</h2>
-                    <div class="mt-4 flex flex-wrap items-center gap-5">
+                    <div class="company-image-upload mt-4 flex flex-wrap items-center gap-5">
                         <div class="flex h-28 w-28 items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3">
                             <img v-if="organization.logo_url" :src="organization.logo_url" alt="Logotipo atual" class="max-h-full max-w-full object-contain">
                             <span v-else class="text-center text-xs text-slate-400">Nenhum logo</span>
                         </div>
-                        <div>
+                        <div class="company-image-upload-controls">
                             <input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" class="block text-sm text-slate-600" @change="selectLogo">
                             <p class="mt-2 text-xs text-slate-500">JPG, PNG ou WebP, até 2 MB.</p>
                             <p v-if="form.errors.logo" class="mt-1 text-xs text-rose-600">{{ form.errors.logo }}</p>
@@ -134,7 +134,7 @@ function selectPrimaryColor(event) {
                     <h2 class="text-lg font-semibold text-slate-950">Menu lateral</h2>
                     <p class="mt-1 text-sm text-slate-500">Personalize a cor e o ícone exibidos na navegação da empresa.</p>
 
-                    <div class="mt-5 grid gap-6 md:grid-cols-2">
+                    <div class="company-branding-grid mt-5 grid gap-6 md:grid-cols-2">
                         <div>
                             <span class="text-sm font-semibold text-slate-700">Cor primária *</span>
                             <div class="mt-1.5 flex items-center gap-3">
@@ -160,12 +160,12 @@ function selectPrimaryColor(event) {
 
                         <div>
                             <span class="text-sm font-semibold text-slate-700">Ícone da empresa</span>
-                            <div class="mt-2 flex flex-wrap items-center gap-4">
+                            <div class="company-image-upload mt-2 flex flex-wrap items-center gap-4">
                                 <div class="flex h-20 w-20 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 p-2">
                                     <img v-if="organization.icon_url" :src="organization.icon_url" alt="Ícone atual da empresa" class="max-h-full max-w-full object-contain">
                                     <span v-else class="text-center text-xs text-slate-400">Sem ícone</span>
                                 </div>
-                                <div class="min-w-0 flex-1">
+                                <div class="company-image-upload-controls min-w-0 flex-1">
                                     <input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" class="block max-w-full text-sm text-slate-600" @change="selectIcon">
                                     <p class="mt-2 text-xs text-slate-500">JPG, PNG ou WebP, até 2 MB.</p>
                                     <p v-if="form.errors.icon" class="mt-1 text-xs text-rose-600">{{ form.errors.icon }}</p>
@@ -179,11 +179,11 @@ function selectPrimaryColor(event) {
                 <div class="border-t border-slate-100 pt-6">
                     <h2 class="text-lg font-semibold text-slate-950">Ícone do aplicativo (PWA)</h2>
                     <p class="mt-1 text-sm text-slate-500">Imagem exibida ao instalar o aplicativo no Android. Sem uma imagem própria, será usado o ícone padrão.</p>
-                    <div class="mt-4 flex flex-wrap items-center gap-5">
+                    <div class="company-image-upload mt-4 flex flex-wrap items-center gap-5">
                         <div class="flex h-28 w-28 items-center justify-center overflow-hidden rounded-2xl border border-dashed border-slate-300 bg-white">
                             <img :src="pwaIconPreview ?? organization.pwa_icon_url" alt="Prévia do ícone do aplicativo" class="h-full w-full object-contain">
                         </div>
-                        <div>
+                        <div class="company-image-upload-controls">
                             <input ref="pwaIconInput" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" class="block max-w-full text-sm text-slate-600" @change="selectPwaIcon">
                             <p class="mt-2 text-xs text-slate-500">JPG, PNG ou WebP, até 2 MB. A imagem deve ser quadrada (1:1).</p>
                             <p v-if="form.errors.pwa_icon" class="mt-1 text-xs text-rose-600">{{ form.errors.pwa_icon }}</p>
@@ -199,3 +199,29 @@ function selectPrimaryColor(event) {
         </section>
     </AppLayout>
 </template>
+
+<style scoped>
+@media screen and (max-width: 639.98px) {
+    .company-branding-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .company-image-upload {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .company-image-upload-controls {
+        flex: none;
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .company-image-upload-controls input[type='file'] {
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+    }
+}
+</style>

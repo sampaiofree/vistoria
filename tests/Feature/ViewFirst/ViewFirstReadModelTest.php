@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace Tests\Feature\ViewFirst;
 
 use App\Enums\DefectAssessmentCondition;
+use App\Enums\DefectAssessmentClassificationMethod;
 use App\Enums\DefectAssessmentStatus;
 use App\Enums\DefectCategory;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
 use App\Enums\InspectionType;
 use App\Enums\OperationalRole;
+use App\Enums\PhotoProcessingStatus;
 use App\Enums\UserAccountType;
 use App\Models\AssessmentPhoto;
 use App\Models\Defect;
@@ -156,7 +158,7 @@ final class ViewFirstReadModelTest extends TestCase
                 ->where('content.cover.designer_i_report_number', 'SM-IIE-1717')
                 ->has('content.cover.approval_flow', 4)
                 ->where('content.cover.approval_flow.0.label', 'Preparado')
-                ->where('content.cover.approval_flow.0.name', $admin->name)
+                ->where('content.cover.approval_flow.0.name', null)
                 ->where('content.cover.approval_flow.1.label', 'Verificado')
                 ->where('content.cover.approval_flow.1.name', null)
                 ->where('content.cover.approval_date', '—')
@@ -303,6 +305,125 @@ final class ViewFirstReadModelTest extends TestCase
                     'Informe o Número do relatório externo para exportar o relatório.',
                 ) && collect($issues)->contains(
                     'Informe o Nº Projetista I para exportar o relatório.',
+                )));
+    }
+
+    public function test_report_keeps_canceled_defects_in_text_without_exporting_remaining_photos(): void
+    {
+        [$organization, $admin, $equipment, $inspection, $assessment] = $this->viewFirstScenario();
+        $assessment->update([
+            'status' => DefectAssessmentStatus::Complete,
+            'condition' => DefectAssessmentCondition::Canceled,
+            'reason' => 'Registro cancelado.',
+        ]);
+        $this->locateAssessment($assessment);
+        $canceledPhoto = AssessmentPhoto::factory()->for($inspection)->for($assessment, 'assessment')->failed()->create([
+            'organization_id' => $organization->id,
+        ]);
+
+        $secondDefect = Defect::factory()->forEquipment($equipment, $inspection)->create([
+            'category' => DefectCategory::SolidaryStructures,
+            'code' => 'VT002-ES-003',
+        ]);
+        $secondCanceled = DefectAssessment::factory()->forDefect($secondDefect, $inspection)->complete()->create([
+            'condition' => DefectAssessmentCondition::CanceledWithoutRepair,
+            'reason' => 'Registro cancelado sem reparo.',
+        ]);
+        $secondPhoto = AssessmentPhoto::factory()->for($inspection)->for($secondCanceled, 'assessment')->ready()->create([
+            'organization_id' => $organization->id,
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('inspections.report-preview', $inspection))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('content.print_enabled', true)
+                ->where('content.photographic_documentation.photo_count', 0)
+                ->has('content.photographic_documentation.blocks', 0)
+                ->where('content.photographic_documentation.unindexed_photo_ids', [])
+                ->where('content.findings', fn ($findings): bool => collect($findings)
+                    ->contains('condition', DefectAssessmentCondition::Canceled->value)
+                    && collect($findings)->contains('condition', DefectAssessmentCondition::CanceledWithoutRepair->value)));
+
+        $this->assertDatabaseHas('assessment_photos', ['id' => $canceledPhoto->id]);
+        $this->assertDatabaseHas('assessment_photos', ['id' => $secondPhoto->id]);
+    }
+
+    public function test_report_numbers_treated_photos_with_confirmed_location(): void
+    {
+        [$organization, $admin, $equipment, $inspection, $assessment] = $this->viewFirstScenario();
+        $assessment->update([
+            'status' => DefectAssessmentStatus::Complete,
+            'condition' => DefectAssessmentCondition::Canceled,
+            'reason' => 'Registro cancelado.',
+        ]);
+        $defect = Defect::factory()->forEquipment($equipment, $inspection)->create([
+            'category' => DefectCategory::Civil,
+            'code' => 'VT002-CV-003',
+            'sequence_number' => 3,
+        ]);
+        $treated = DefectAssessment::factory()->forDefect($defect, $inspection)->complete()->create([
+            'condition' => DefectAssessmentCondition::Treated,
+            'is_unsafe_condition' => true,
+            'classification_method' => DefectAssessmentClassificationMethod::EngineeringNote,
+        ]);
+        $this->locateAssessment($treated);
+        foreach ([1, 2] as $position) {
+            AssessmentPhoto::factory()->for($inspection)->for($treated, 'assessment')->ready()->create([
+                'organization_id' => $organization->id,
+                'position' => $position,
+            ]);
+        }
+
+        $this->actingAs($admin)
+            ->get(route('inspections.report-preview', $inspection))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('content.print_enabled', true)
+                ->where('content.photographic_documentation.photo_count', 2)
+                ->where('content.photographic_documentation.blocks.0.defect_code', $defect->code)
+                ->where('content.photographic_documentation.blocks.0.is_unsafe_condition', true)
+                ->where('content.photographic_documentation.blocks.0.has_engineering_note', true)
+                ->where('content.photographic_documentation.blocks.0.photos.0.sequence', 1)
+                ->where('content.photographic_documentation.blocks.0.photos.1.sequence', 2));
+    }
+
+    public function test_report_export_names_each_defect_with_unindexed_photos_once(): void
+    {
+        [$organization, $admin, $equipment, $inspection, $assessment] = $this->viewFirstScenario();
+        $assessment->update([
+            'status' => DefectAssessmentStatus::Complete,
+            'condition' => DefectAssessmentCondition::Canceled,
+            'reason' => 'Registro cancelado.',
+        ]);
+
+        foreach (['VT002-ES-003', 'VT002-ES-004'] as $index => $code) {
+            $defect = Defect::factory()->forEquipment($equipment, $inspection)->create([
+                'category' => DefectCategory::SolidaryStructures,
+                'code' => $code,
+                'sequence_number' => $index + 3,
+            ]);
+            $active = DefectAssessment::factory()->forDefect($defect, $inspection)->complete()->create();
+            foreach ([1, 2] as $position) {
+                AssessmentPhoto::factory()->for($inspection)->for($active, 'assessment')->create([
+                    'organization_id' => $organization->id,
+                    'position' => $position,
+                    'processing_status' => PhotoProcessingStatus::Pending,
+                ]);
+            }
+        }
+
+        $this->actingAs($admin)
+            ->get(route('inspections.report-preview', $inspection))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('content.print_enabled', false)
+                ->where('content.export_disabled_reason', fn ($reason): bool => is_string($reason)
+                    && str_contains($reason, 'As avarias VT002-ES-003, VT002-ES-004 possuem fotografias publicadas sem numeração')
+                    && substr_count($reason, 'VT002-ES-003') === 1
+                    && substr_count($reason, 'VT002-ES-004') === 1)
+                ->where('content.validation.issues', fn ($issues): bool => collect($issues)->contains(
+                    fn (string $issue): bool => str_contains($issue, 'VT002-ES-003, VT002-ES-004'),
                 )));
     }
 
@@ -690,6 +811,60 @@ final class ViewFirstReadModelTest extends TestCase
                 ->where('content.civil_quantity_rows.0.gravity.label', 'IMP. SEG.')
                 ->where('content.civil_quantity_rows.0.gut_score', 24)
                 ->where('content.civil_quantity_rows.0.classification.code', 'CV-3'));
+    }
+
+    public function test_report_quantity_items_use_defect_title_when_description_is_blank(): void
+    {
+        [, $admin, $equipment, $inspection] = $this->viewFirstScenario();
+        $recTitle = 'Corrosão no guarda-corpo da plataforma';
+        $recDefect = Defect::factory()->forEquipment($equipment, $inspection)->create([
+            'category' => DefectCategory::StructuralRecovery,
+            'code' => 'VT002-REC-003',
+            'title' => $recTitle,
+        ]);
+        DefectAssessment::factory()->forDefect($recDefect, $inspection)->complete()->create([
+            'quantity_snapshot' => [
+                'category' => 'REC',
+                'measurement_unit' => 'kg',
+                'total' => '4',
+                'items' => [
+                    ['position' => 1, 'description' => null, 'quantity' => '1', 'total' => '1', 'measurement_unit' => 'kg'],
+                    ['position' => 2, 'description' => '', 'quantity' => '1', 'total' => '1', 'measurement_unit' => 'kg'],
+                    ['position' => 3, 'description' => '   ', 'quantity' => '1', 'total' => '1', 'measurement_unit' => 'kg'],
+                    ['position' => 4, 'description' => 'Guarda-corpo', 'quantity' => '1', 'total' => '1', 'measurement_unit' => 'kg'],
+                ],
+            ],
+        ]);
+
+        $civilTitle = trim(str_repeat('Avaria extensa na estrutura de apoio ', 5));
+        $civilDefect = Defect::factory()->forEquipment($equipment, $inspection)->create([
+            'category' => DefectCategory::Civil,
+            'code' => 'VT002-CV-011',
+            'title' => $civilTitle,
+        ]);
+        DefectAssessment::factory()->forDefect($civilDefect, $inspection)->complete()->create([
+            'item_description' => '   ',
+            'quantity_snapshot' => [
+                'category' => 'CV',
+                'measurement_unit' => 'm3',
+                'total' => '1',
+                'items' => [
+                    ['position' => 1, 'description' => 'Trecho norte', 'quantity' => '1', 'total' => '1', 'measurement_unit' => 'm3'],
+                ],
+            ],
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('inspections.report-preview', $inspection))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('content.rec_quantity_rows', 4)
+                ->where('content.rec_quantity_rows.0.item', $recTitle)
+                ->where('content.rec_quantity_rows.1.item', $recTitle)
+                ->where('content.rec_quantity_rows.2.item', $recTitle)
+                ->where('content.rec_quantity_rows.3.item', 'Guarda-corpo')
+                ->has('content.civil_quantity_rows', 1)
+                ->where('content.civil_quantity_rows.0.item', $civilTitle));
     }
 
     public function test_empty_inspection_keeps_the_hub_renderable_without_inventing_criticality(): void

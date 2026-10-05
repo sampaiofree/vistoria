@@ -108,4 +108,74 @@ final class InspectionPhotographicDocumentationComposerTest extends TestCase
         $this->assertNull($photos[1]['sequence']);
         $this->assertSame(['missing'], $result['unindexed_photo_ids']);
     }
+
+    public function test_keeps_assessment_markers_on_every_photo_pair_including_historical_blocks(): void
+    {
+        $cases = [
+            ['code' => 'CV-001', 'unsafe' => false, 'method' => 'gut', 'photos' => 1],
+            ['code' => 'CV-002', 'unsafe' => true, 'method' => 'gut', 'photos' => 1],
+            ['code' => 'CV-003', 'unsafe' => false, 'method' => 'engineering_note', 'photos' => 1],
+            ['code' => 'CV-004', 'unsafe' => true, 'method' => 'engineering_note', 'photos' => 3],
+        ];
+
+        $items = collect($cases)->map(fn (array $case, int $index): array => [
+            'id' => $index + 1,
+            'code' => $case['code'],
+            'historical_label' => $case['code'] === 'CV-004' ? 'Histórico mantido' : null,
+            'assessment' => [
+                'status' => 'complete',
+                'is_unsafe_condition' => $case['unsafe'],
+                'classification_method' => $case['method'],
+            ],
+            'photos' => array_map(
+                fn (int $position): array => ['id' => "{$case['code']}-{$position}", 'position' => $position],
+                range(1, $case['photos']),
+            ),
+        ])->all();
+
+        $blocks = app(InspectionPhotographicDocumentationComposer::class)->compose($items)['blocks'];
+
+        $this->assertSame([
+            ['CV-001', false, false],
+            ['CV-002', true, false],
+            ['CV-003', false, true],
+            ['CV-004', true, true],
+            ['CV-004', true, true],
+        ], collect($blocks)->map(fn (array $block): array => [
+            $block['defect_code'],
+            $block['is_unsafe_condition'],
+            $block['has_engineering_note'],
+        ])->all());
+        $this->assertSame('Histórico mantido', $blocks[3]['historical_label']);
+        $this->assertSame('Histórico mantido', $blocks[4]['historical_label']);
+    }
+
+    public function test_omits_photos_of_both_canceled_conditions_but_keeps_treated_photos(): void
+    {
+        $result = app(InspectionPhotographicDocumentationComposer::class)->compose([
+            [
+                'id' => 1,
+                'code' => 'CV-001',
+                'assessment' => ['status' => 'complete', 'condition' => 'canceled'],
+                'photos' => [['id' => 'canceled-photo', 'position' => 1]],
+            ],
+            [
+                'id' => 2,
+                'code' => 'CV-002',
+                'assessment' => ['status' => 'complete', 'condition' => 'canceled_sr'],
+                'photos' => [['id' => 'canceled-sr-photo', 'position' => 1]],
+            ],
+            [
+                'id' => 3,
+                'code' => 'CV-003',
+                'assessment' => ['status' => 'complete', 'condition' => 'treated'],
+                'photos' => [['id' => 'treated-photo', 'position' => 1]],
+            ],
+        ], ['treated-photo' => 1]);
+
+        $this->assertSame(1, $result['photo_count']);
+        $this->assertSame(['CV-003'], collect($result['blocks'])->pluck('defect_code')->all());
+        $this->assertSame(1, $result['blocks'][0]['photos'][0]['sequence']);
+        $this->assertSame([], $result['unindexed_photo_ids']);
+    }
 }

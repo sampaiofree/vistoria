@@ -75,6 +75,24 @@ final class InspectionReportOverviewTest extends TestCase
             ->assertSessionHasErrors('comment');
     }
 
+    public function test_report_preview_blocks_export_when_an_overview_photo_slot_is_empty_between_photos(): void
+    {
+        [, $admin, $inspection] = $this->scenario();
+        $block = InspectionOverviewBlock::factory()->forInspection($inspection, 1)->create([
+            'comment' => 'Vista geral',
+            'recommendation' => 'Acompanhar',
+        ]);
+        InspectionOverviewPhoto::factory()->forBlock($block, 2)->ready()->create();
+
+        $this->actingAs($admin)
+            ->get(route('inspections.report-preview', $inspection))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('content.overview.has_gaps', true)
+                ->where('content.validation.issues', fn ($issues): bool => collect($issues)->contains(
+                    'Preencha os espaços vazios da Vista geral antes de exportar o relatório.',
+                )));
+    }
+
     public function test_assigned_member_can_edit_but_unassigned_member_and_final_inspection_cannot(): void
     {
         [$organization, , $inspection] = $this->scenario();

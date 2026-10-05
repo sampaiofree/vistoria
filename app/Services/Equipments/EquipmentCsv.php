@@ -149,7 +149,7 @@ final class EquipmentCsv
      * @param  array<string, mixed>  $mapping
      * @return array<string, ?string>
      */
-    public function validateMapping(array $columns, array $mapping): array
+    public function validateMapping(array $columns, array $mapping, string $mode = 'create'): array
     {
         $keys = collect($columns)->pluck('key')->all();
         $validated = [];
@@ -159,7 +159,8 @@ final class EquipmentCsv
             $validated[$field] = is_string($selected) && in_array($selected, $keys, true) ? $selected : null;
         }
 
-        $missing = collect(self::REQUIRED_FIELDS)
+        $requiredFields = $mode === 'update' ? ['maintenance_item_code'] : self::REQUIRED_FIELDS;
+        $missing = collect($requiredFields)
             ->filter(fn (string $field): bool => $validated[$field] === null)
             ->mapWithKeys(fn (string $field): array => ["mapping.{$field}" => 'Selecione uma coluna para '.self::FIELDS[$field].'.'])
             ->all();
@@ -175,6 +176,10 @@ final class EquipmentCsv
 
         if ($duplicates->isNotEmpty()) {
             throw ValidationException::withMessages(['mapping' => 'Uma mesma coluna do CSV não pode preencher mais de um campo.']);
+        }
+
+        if ($mode === 'update' && collect($validated)->except('maintenance_item_code')->filter()->isEmpty()) {
+            throw ValidationException::withMessages(['mapping' => 'Selecione pelo menos uma coluna para atualizar.']);
         }
 
         return $validated;

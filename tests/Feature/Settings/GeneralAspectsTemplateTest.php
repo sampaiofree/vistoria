@@ -68,6 +68,46 @@ final class GeneralAspectsTemplateTest extends TestCase
         $this->assertDatabaseMissing('general_aspects_templates', ['id' => $template->id]);
     }
 
+    public function test_template_fields_are_validated_and_available_with_form_labels(): void
+    {
+        $organization = Organization::factory()->create(['name' => 'Organização Exemplo']);
+        $admin = User::factory()->for($organization)->create(['account_type' => UserAccountType::CompanyAdmin->value]);
+
+        $this->actingAs($admin)
+            ->get(route('settings.inspection-report.general-aspects.create'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('equipment_fields.0.key', 'numero_cliente')
+                ->where('equipment_fields.1.label', 'Número interno (Organização Exemplo)')
+                ->where('equipment_fields.11.key', 'defect_code_prefix')
+                ->has('equipment_fields', 16));
+
+        $fieldDocument = ['type' => 'doc', 'content' => [[
+            'type' => 'paragraph',
+            'content' => [['type' => 'equipmentField', 'attrs' => ['key' => 'tag']]],
+        ]]];
+        $this->actingAs($admin)->post(route('settings.inspection-report.general-aspects.store'), [
+            'name' => 'Somente campo', 'schema_version' => 1, 'document' => $fieldDocument,
+        ])->assertRedirect();
+
+        $template = GeneralAspectsTemplate::query()->firstOrFail();
+        $this->assertSame($fieldDocument, $template->document);
+        $this->actingAs($admin)
+            ->get(route('settings.inspection-report.general-aspects.edit', $template))
+            ->assertInertia(fn (Assert $page) => $page->where('template.document', $fieldDocument));
+
+        foreach ([
+            ['type' => 'equipmentField', 'attrs' => ['key' => 'manufacturer']],
+            ['type' => 'equipmentField', 'attrs' => ['key' => 'tag', 'extra' => 'invalid']],
+        ] as $invalidField) {
+            $this->actingAs($admin)->post(route('settings.inspection-report.general-aspects.store'), [
+                'name' => 'Inválido', 'schema_version' => 1,
+                'document' => ['type' => 'doc', 'content' => [[
+                    'type' => 'paragraph', 'content' => [$invalidField],
+                ]]],
+            ])->assertSessionHasErrors('document');
+        }
+    }
+
     public function test_templates_require_an_admin_and_are_isolated_by_organization(): void
     {
         $organization = Organization::factory()->create();
@@ -186,6 +226,90 @@ final class GeneralAspectsTemplateTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->where('general_aspects.can_edit', false)
                 ->where('general_aspects.templates', []));
+    }
+
+    public function test_inspection_receives_resolved_template_from_its_snapshot_and_keeps_saved_text(): void
+    {
+        $organization = Organization::factory()->create();
+        $equipment = Equipment::factory()->for($organization)->create([
+            'tag' => 'TAG-ANTIGA',
+            'defect_code_prefix' => 'AV-ANTIGA',
+        ]);
+        $inspector = User::factory()->for($organization)->create([
+            'operational_role' => OperationalRole::Inspector->value,
+        ]);
+        $inspection = Inspection::factory()->forEquipment($equipment)
+            ->create(['status' => InspectionStatus::InProgress]);
+        InspectionResponsible::factory()->forInspection($inspection, $inspector)->create([
+            'responsibility' => InspectionResponsibility::Reviewer,
+        ]);
+        $template = GeneralAspectsTemplate::factory()->for($organization)->create([
+            'document' => ['type' => 'doc', 'content' => [[
+                'type' => 'paragraph', 'content' => [
+                    ['type' => 'equipmentField', 'attrs' => ['key' => 'tag']],
+                    ['type' => 'equipmentField', 'attrs' => ['key' => 'defect_code_prefix']],
+                ],
+            ]]],
+        ]);
+        $equipment->update(['tag' => 'TAG-NOVA', 'defect_code_prefix' => 'AV-NOVA']);
+
+        $this->actingAs($inspector)
+            ->get(route('inspections.show', $inspection))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('general_aspects.templates.0.document.content.0.content.0.text', 'TAG-ANTIGA')
+                ->where('general_aspects.templates.0.document.content.0.content.1.text', 'AV-ANTIGA')
+                ->where('general_aspects.templates.0.application_error', null));
+
+        $saved = ['type' => 'doc', 'content' => [[
+            'type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'TAG-ANTIGA AV-ANTIGA']],
+        ]]];
+        $this->actingAs($inspector)
+            ->put(route('inspections.general-aspects.update', $inspection), [
+                'schema_version' => 1, 'document' => $saved,
+            ])->assertRedirect();
+
+        $template->update(['document' => $this->document('Novo texto')]);
+        $this->actingAs($inspector)
+            ->get(route('inspections.show', $inspection))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('general_aspects.document.content.0.content.0.text', 'TAG-ANTIGA AV-ANTIGA'));
+
+        $this->actingAs($inspector)
+            ->put(route('inspections.general-aspects.update', $inspection), [
+                'schema_version' => 1,
+                'document' => ['type' => 'doc', 'content' => [[
+                    'type' => 'paragraph', 'content' => [[
+                        'type' => 'equipmentField', 'attrs' => ['key' => 'tag'],
+                    ]],
+                ]]],
+            ])->assertSessionHasErrors('document');
+    }
+
+    public function test_legacy_snapshot_missing_prefix_creates_pending_text(): void
+    {
+        $organization = Organization::factory()->create();
+        $equipment = Equipment::factory()->for($organization)->create();
+        $inspector = User::factory()->for($organization)->create(['operational_role' => OperationalRole::Inspector->value]);
+        $inspection = Inspection::factory()->forEquipment($equipment)->create(['status' => InspectionStatus::InProgress]);
+        InspectionResponsible::factory()->forInspection($inspection, $inspector)->create([
+            'responsibility' => InspectionResponsibility::Reviewer,
+        ]);
+        $snapshot = $inspection->context_snapshot;
+        unset($snapshot['equipment']['defect_code_prefix']);
+        $inspection->update(['context_snapshot' => $snapshot]);
+        GeneralAspectsTemplate::factory()->for($organization)->create([
+            'document' => ['type' => 'doc', 'content' => [[
+                'type' => 'paragraph', 'content' => [[
+                    'type' => 'equipmentField', 'attrs' => ['key' => 'defect_code_prefix'],
+                ]],
+            ]]],
+        ]);
+
+        $this->actingAs($inspector)
+            ->get(route('inspections.show', $inspection))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('general_aspects.templates.0.document.content.0.content.0.text', '[Preencher: Prefixo de avaria]')
+                ->where('general_aspects.templates.0.document.content.0.content.0.marks.0.attrs.color', '#DC2626'));
     }
 
     /** @return array<string, mixed> */

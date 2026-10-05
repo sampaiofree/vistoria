@@ -10,10 +10,12 @@ use App\Enums\OperationalRole;
 use App\Models\Equipment;
 use App\Models\Inspection;
 use App\Models\User;
+use App\Services\Inspections\PreviousInspectionContentCopier;
 use App\Services\Tenancy\TenantContext;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Throwable;
 
 final class CreateInspectionBatch
 {
@@ -21,6 +23,7 @@ final class CreateInspectionBatch
         private readonly AssignInspectionResponsible $assignResponsible,
         private readonly CreateInspection $createInspection,
         private readonly TenantContext $tenant,
+        private readonly PreviousInspectionContentCopier $contentCopier,
     ) {}
 
     /**
@@ -31,44 +34,52 @@ final class CreateInspectionBatch
     {
         $this->validateActor($actor);
 
-        return DB::transaction(function () use ($actor, $records): Collection {
-            $this->validateRecords($records, true);
+        $copiedFiles = [];
 
-            return collect($records)->map(function (array $record, int $index) use ($actor): Inspection {
-                $equipment = Equipment::query()
-                    ->forOrganization($this->tenant->id())
-                    ->whereKey($record['equipment_id'])
-                    ->lockForUpdate()
-                    ->firstOrFail();
-                $inspector = User::query()
-                    ->where('organization_id', $this->tenant->id())
-                    ->whereKey($record['inspector_id'])
-                    ->firstOrFail();
+        try {
+            return DB::transaction(function () use ($actor, $records, &$copiedFiles): Collection {
+                $this->validateRecords($records, true);
 
-                try {
-                    $inspection = $this->createInspection->handle($actor, $equipment, $record);
-                } catch (ValidationException $exception) {
-                    throw ValidationException::withMessages(collect($exception->errors())
-                        ->mapWithKeys(fn ($messages, $field): array => ["inspections.$index.$field" => $messages])->all());
-                }
-                $this->assignResponsible->handle(
-                    $inspection,
-                    $actor,
-                    InspectionResponsibility::Preparer,
-                    $actor,
-                    true,
-                );
-                $this->assignResponsible->handle(
-                    $inspection,
-                    $inspector,
-                    InspectionResponsibility::Reviewer,
-                    $actor,
-                    true,
-                );
+                return collect($records)->map(function (array $record, int $index) use ($actor, &$copiedFiles): Inspection {
+                    $equipment = Equipment::query()
+                        ->forOrganization($this->tenant->id())
+                        ->whereKey($record['equipment_id'])
+                        ->lockForUpdate()
+                        ->firstOrFail();
+                    $inspector = User::query()
+                        ->where('organization_id', $this->tenant->id())
+                        ->whereKey($record['inspector_id'])
+                        ->firstOrFail();
 
-                return $inspection;
+                    try {
+                        $inspection = $this->createInspection->handle($actor, $equipment, $record, $copiedFiles);
+                    } catch (ValidationException $exception) {
+                        throw ValidationException::withMessages(collect($exception->errors())
+                            ->mapWithKeys(fn ($messages, $field): array => ["inspections.$index.$field" => $messages])->all());
+                    }
+                    $this->assignResponsible->handle(
+                        $inspection,
+                        $actor,
+                        InspectionResponsibility::Preparer,
+                        $actor,
+                        true,
+                    );
+                    $this->assignResponsible->handle(
+                        $inspection,
+                        $inspector,
+                        InspectionResponsibility::Reviewer,
+                        $actor,
+                        true,
+                    );
+
+                    return $inspection;
+                });
             });
-        });
+        } catch (Throwable $exception) {
+            $this->contentCopier->deleteFiles($copiedFiles);
+
+            throw $exception;
+        }
     }
 
     /** @param array<int, array{equipment_id:int,service_order:?string,planned_start_on:string,planned_end_on:string,inspector_id:int}> $records */

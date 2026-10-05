@@ -10,6 +10,7 @@ const props = defineProps({
     action: { type: String, required: true },
     method: { type: String, required: true },
     cancel_url: { type: String, required: true },
+    equipment_fields: { type: Array, required: true },
 });
 
 const emptyDocument = () => ({ type: 'doc', content: [{ type: 'paragraph' }] });
@@ -37,7 +38,7 @@ function submit() {
 
                 <div>
                     <span class="text-sm font-semibold text-slate-700">Conteúdo *</span>
-                    <div class="mt-1.5"><GeneralAspectsEditor v-model="form.document" /></div>
+                    <div class="mt-1.5"><GeneralAspectsEditor v-model="form.document" :equipment-fields="equipment_fields" /></div>
                     <p class="mt-2 text-xs font-medium text-rose-700">Use a cor vermelha para indicar os trechos que o inspetor deverá preencher antes de salvar.</p>
                     <p class="mt-2 text-xs text-slate-500">Até 100.000 caracteres. A formatação será preservada ao usar o modelo.</p>
                     <p v-if="form.errors.document" class="mt-1 text-xs text-rose-600">{{ form.errors.document }}</p>

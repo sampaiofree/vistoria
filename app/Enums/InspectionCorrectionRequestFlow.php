@@ -8,13 +8,14 @@ enum InspectionCorrectionRequestFlow: string
 {
     case PlannerToInspector = 'planner_to_inspector';
     case ReviewerToInspector = 'reviewer_to_inspector';
+    case ReviewerToPlanner = 'reviewer_to_planner';
     case ReleaserToReviewer = 'releaser_to_reviewer';
 
     public function requesterLabel(): string
     {
         return match ($this) {
             self::PlannerToInspector => 'Planejador',
-            self::ReviewerToInspector => 'Revisor',
+            self::ReviewerToInspector, self::ReviewerToPlanner => 'Revisor',
             self::ReleaserToReviewer => 'Liberador',
         };
     }
@@ -24,6 +25,7 @@ enum InspectionCorrectionRequestFlow: string
         return match ($this) {
             self::PlannerToInspector => 'Inspetor',
             self::ReviewerToInspector => 'Inspetor',
+            self::ReviewerToPlanner => 'Planejador',
             self::ReleaserToReviewer => 'Revisor',
         };
     }

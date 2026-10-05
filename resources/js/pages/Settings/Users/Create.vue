@@ -1,9 +1,11 @@
 <script setup>
+import { watch } from 'vue';
 import { useForm, Link } from '@inertiajs/vue3';
 import AppLayout from '@/components/ui/AppLayout.vue';
 
-const props = defineProps({ action: String, cancel_url: String, account_type_options: Array, operational_role_options: Array });
-const form = useForm({ name: '', email: '', account_type: 'member', operational_role: '' });
+const props = defineProps({ action: String, cancel_url: String, account_type_options: Array, operational_role_options: Array, initial_account_type: String });
+const form = useForm({ name: '', email: '', account_type: props.initial_account_type ?? 'member', operational_role: '' });
+watch(() => form.account_type, () => { form.operational_role = ''; });
 function submit() { form.post(props.action); }
 </script>
 
@@ -15,7 +17,8 @@ function submit() { form.post(props.action); }
                 <label class="block"><span class="text-sm font-semibold text-slate-700">Nome *</span><input v-model="form.name" type="text" maxlength="150" class="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"><p v-if="form.errors.name" class="mt-1 text-xs text-rose-600">{{ form.errors.name }}</p></label>
                 <label class="block"><span class="text-sm font-semibold text-slate-700">E-mail *</span><input v-model="form.email" type="email" maxlength="254" class="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"><p v-if="form.errors.email" class="mt-1 text-xs text-rose-600">{{ form.errors.email }}</p></label>
                 <label class="block"><span class="text-sm font-semibold text-slate-700">Tipo de acesso *</span><select v-model="form.account_type" class="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"><option v-for="option in account_type_options" :key="option.value" :value="option.value">{{ option.label }}</option></select><p v-if="form.errors.account_type" class="mt-1 text-xs text-rose-600">{{ form.errors.account_type }}</p></label>
-                <label class="block"><span class="text-sm font-semibold text-slate-700">Papel operacional *</span><select v-model="form.operational_role" required class="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"><option value="" disabled>Selecione um papel</option><option v-for="option in operational_role_options" :key="option.value" :value="option.value">{{ option.label }}</option></select><p v-if="form.errors.operational_role" class="mt-1 text-xs text-rose-600">{{ form.errors.operational_role }}</p></label>
+                <label v-if="form.account_type !== 'client'" class="block"><span class="text-sm font-semibold text-slate-700">Papel operacional *</span><select v-model="form.operational_role" required class="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"><option value="" disabled>Selecione um papel</option><option v-for="option in operational_role_options" :key="option.value" :value="option.value">{{ option.label }}</option></select><p v-if="form.errors.operational_role" class="mt-1 text-xs text-rose-600">{{ form.errors.operational_role }}</p></label>
+                <p v-if="form.account_type === 'client'" class="text-sm text-slate-500">O acesso ao portal do cliente ainda não está disponível.</p>
                 <div class="flex justify-end gap-3 border-t border-slate-100 pt-5"><Link :href="cancel_url" class="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700">Cancelar</Link><button type="submit" :disabled="form.processing" class="rounded-xl bg-teal-700 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50">Criar usuário</button></div>
             </form>
         </section>

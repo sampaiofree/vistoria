@@ -273,10 +273,10 @@ final class SelectiveReinspectionTest extends TestCase
         $this->assertSame($photoCount, AssessmentPhoto::count());
     }
 
-    public function test_reports_include_history_once_preserve_due_dates_and_start_m2_empty(): void
+    public function test_reports_include_history_once_preserve_due_dates_and_inherit_m2(): void
     {
         $c = $this->context();
-        $oldNote = SapM2Note::query()->create(['organization_id' => $c['organization']->id, 'equipment_id' => $c['equipment']->id, 'sap_number' => 'M2-OLD']);
+        $oldNote = SapM2Note::query()->create(['organization_id' => $c['organization']->id, 'equipment_id' => $c['equipment']->id, 'sap_number' => '12345678']);
         InspectionClassificationM2Link::query()->create(['organization_id' => $c['organization']->id, 'inspection_id' => $c['previous']->id, 'category' => 'CV', 'classification_code' => 'CV-1', 'sap_m2_note_id' => $oldNote->id]);
         $inspection = $this->plan($c, [$c['first']->defect_id]);
         $inspection->update(['status' => InspectionStatus::InProgress, 'inspected_on' => '2026-10-10']);
@@ -296,8 +296,8 @@ final class SelectiveReinspectionTest extends TestCase
         $group = collect($civil['rows'])->firstWhere('classification_code', 'CV-1');
         $this->assertSame(2, $group['defect_count']);
         $this->assertSame('10/01/2025', $group['m2_due_date']);
-        $this->assertNull($group['sap_m2_number']);
-        $this->assertSame(0, $inspection->classificationM2Links()->count());
+        $this->assertSame('12345678', $group['sap_m2_number']);
+        $this->assertSame(1, $inspection->classificationM2Links()->count());
         $maps = app(InspectionLocationReportComposer::class)->compose($inspection);
         $this->assertSame(2, $maps['map_count']);
         $this->assertSame(4, $maps['photo_count']);
@@ -306,6 +306,31 @@ final class SelectiveReinspectionTest extends TestCase
             ->has('content.findings', 2)->has('content.photographic_documentation.blocks', 2)
             ->where('content.findings.1.assessment.id', $c['second']->id)
             ->where('content.findings.1.historical_label', fn ($value): bool => str_contains($value, 'Histórico mantido')));
+    }
+
+    public function test_m2_from_a_different_classification_is_not_shown_on_the_new_group(): void
+    {
+        $c = $this->context();
+        $oldNote = SapM2Note::query()->create([
+            'organization_id' => $c['organization']->id,
+            'equipment_id' => $c['equipment']->id,
+            'sap_number' => '12345678',
+        ]);
+        InspectionClassificationM2Link::query()->create([
+            'organization_id' => $c['organization']->id,
+            'inspection_id' => $c['previous']->id,
+            'category' => 'CV',
+            'classification_code' => 'CV-1',
+            'sap_m2_note_id' => $oldNote->id,
+        ]);
+        $inspection = $this->plan($c, [$c['first']->defect_id]);
+        $current = $this->published($c['first']->defect, $inspection, 3);
+        $current->update(['classification_code' => 'CV-2']);
+
+        $civil = collect(app(BuildInspectionClassificationSummary::class)->build($inspection)['categories'])->firstWhere('code', 'CV');
+
+        $this->assertNull(collect($civil['rows'])->firstWhere('classification_code', 'CV-2')['sap_m2_number']);
+        $this->assertSame('12345678', collect($civil['rows'])->firstWhere('classification_code', 'CV-1')['sap_m2_number']);
     }
 
     public function test_consecutive_partial_reinspections_keep_original_sources_and_later_reassessment_uses_them(): void
@@ -395,7 +420,7 @@ final class SelectiveReinspectionTest extends TestCase
         $inspection = $this->plan($c, [$c['first']->defect_id]);
         $inspection->update(['status' => InspectionStatus::AwaitingM2]);
         $summary = app(BuildInspectionClassificationSummary::class)->build($inspection);
-        $this->assertNull($summary['special_assessment_rows'][0]['note']);
+        $this->assertSame('Nota anterior', $summary['special_assessment_rows'][0]['note']);
         $this->actingAs($c['planner'])->put(route('inspections.classification-m2-links.update', $inspection), [
             'links' => [], 'special_rows' => [[
                 'assessment_public_id' => $c['second']->public_id, 'service' => 'Novo serviço', 'priority' => 'Alta', 'note' => 'Nota nova',
@@ -404,6 +429,53 @@ final class SelectiveReinspectionTest extends TestCase
         $this->assertSame('Nota anterior', $oldNote->fresh()->note);
         $this->assertSame('Nota nova', $inspection->specialAssessmentNotes()->firstOrFail()->note);
         $this->assertSame('Comentário histórico 2', $c['second']->fresh()->comment);
+    }
+
+    public function test_reassessed_defect_receives_its_previous_special_treatment_as_an_editable_copy(): void
+    {
+        $c = $this->context();
+        $source = InspectionSpecialAssessmentNote::query()->create([
+            'organization_id' => $c['organization']->id,
+            'inspection_id' => $c['previous']->id,
+            'defect_assessment_id' => $c['first']->id,
+            'service' => 'Serviço anterior',
+            'priority' => 'Alta',
+            'note' => 'Nota anterior',
+        ]);
+        $inspection = $this->plan($c, [$c['first']->defect_id]);
+        $inspection->update(['status' => InspectionStatus::InProgress]);
+        app(TenantContext::class)->set($c['organization']);
+
+        $assessment = app(AssessExistingDefect::class)->handle(
+            $c['inspector'], $inspection, $c['first']->defect, ['condition' => 'reinspected'],
+        );
+        $copy = $inspection->specialAssessmentNotes()->where('defect_assessment_id', $assessment->id)->firstOrFail();
+
+        $this->assertSame('Serviço anterior', $copy->service);
+        $this->assertSame('Alta', $copy->priority);
+        $this->assertSame('Nota anterior', $copy->note);
+        $copy->update(['note' => 'Nota revisada']);
+        $this->assertSame('Nota anterior', $source->fresh()->note);
+    }
+
+    public function test_existing_reinspection_does_not_start_inheriting_notes_after_the_change(): void
+    {
+        $c = $this->context();
+        InspectionSpecialAssessmentNote::query()->create([
+            'organization_id' => $c['organization']->id,
+            'inspection_id' => $c['previous']->id,
+            'defect_assessment_id' => $c['first']->id,
+            'service' => 'Serviço anterior',
+            'priority' => 'Alta',
+            'note' => 'Nota anterior',
+        ]);
+        $legacy = Inspection::factory()->forEquipment($c['equipment'], $c['previous'])->create(['status' => InspectionStatus::InProgress]);
+        InspectionResponsible::factory()->forInspection($legacy, $c['inspector'])->create(['responsibility' => InspectionResponsibility::Reviewer]);
+        app(TenantContext::class)->set($c['organization']);
+
+        app(AssessExistingDefect::class)->handle($c['inspector'], $legacy, $c['first']->defect, ['condition' => 'reinspected']);
+
+        $this->assertSame(0, $legacy->specialAssessmentNotes()->count());
     }
 
     private function context(): array
@@ -441,7 +513,7 @@ final class SelectiveReinspectionTest extends TestCase
     {
         return array_replace([
             'equipment_id' => $context['equipment']->id, 'inspector_id' => $context['inspector']->id,
-            'planned_start_on' => '2026-10-10', 'planned_end_on' => '2026-10-12', 'service_order' => 'OS-SELETIVA',
+            'planned_start_on' => '2026-10-10', 'planned_end_on' => '2026-10-12', 'service_order' => '0000000001',
         ], $overrides);
     }
 

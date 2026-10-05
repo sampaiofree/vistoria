@@ -5,6 +5,7 @@ import AppLayout from '@/components/ui/AppLayout.vue';
 import AssignmentForm from '@/components/domain/inspections/AssignmentForm.vue';
 import InspectionStatusBadge from '@/components/domain/inspections/InspectionStatusBadge.vue';
 import InspectionTabs from '@/components/domain/view-first/InspectionTabs.vue';
+import UserAvatar from '@/components/ui/UserAvatar.vue';
 
 const props = defineProps({
     inspection: { type: Object, required: true },
@@ -23,16 +24,6 @@ const roleGroups = computed(() => props.assignment_options.roles
         responsibles: props.responsibles.filter((item) => item.responsibility === role.value),
     })));
 
-function initials(name) {
-    return name
-        .split(/\s+/)
-        .filter(Boolean)
-        .slice(0, 2)
-        .map((part) => part[0])
-        .join('')
-        .toUpperCase();
-}
-
 </script>
 
 <template>
@@ -50,7 +41,7 @@ function initials(name) {
             <InspectionTabs :tabs="tabs" :active="active_tab" />
         </div>
 
-        <<section class="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+        <section class="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
             <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <p class="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">{{ responsibles.length }} responsabilidade(s) definida(s)</p>
@@ -88,7 +79,7 @@ function initials(name) {
                 <ul v-if="group.responsibles.length" class="divide-y divide-slate-100">
                     <li v-for="item in group.responsibles" :key="item.id" class="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
                         <div class="flex min-w-0 items-center gap-3">
-                            <span class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-teal-50 text-xs font-bold text-teal-700">{{ initials(item.user.name) }}</span>
+                            <UserAvatar :name="item.user.name" :photo-url="item.user.profile_photo_url" class="h-10 w-10 rounded-full bg-teal-50 text-teal-700" />
                             <div class="min-w-0">
                                 <p class="truncate font-semibold text-slate-950">{{ item.user.name }}</p>
                                 <p class="mt-0.5 text-xs text-slate-500">Atribuído em {{ item.assigned_at || 'data não informada' }}</p>

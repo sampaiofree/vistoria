@@ -8,6 +8,7 @@ use App\Enums\OperationalRole;
 use App\Enums\UserAccountType;
 use App\Models\Inspection;
 use App\Models\User;
+use App\Services\Inspections\ClientInspectionAccess;
 use App\Services\Inspections\InspectionSelfAssignment;
 
 final class InspectionPolicy
@@ -19,6 +20,10 @@ final class InspectionPolicy
 
     public function view(User $user, Inspection $inspection): bool
     {
+        if ($user->isClient()) {
+            return app(ClientInspectionAccess::class)->canView($user, $inspection);
+        }
+
         return $this->activeInOrganization($user)
             && $this->sameOrganization($user, $inspection)
             && (
@@ -72,12 +77,9 @@ final class InspectionPolicy
 
     public function manageClassificationM2(User $user, Inspection $inspection): bool
     {
-        if ($user->account_type !== UserAccountType::Member) {
-            return false;
-        }
-
         return match ($inspection->status) {
-            InspectionStatus::AwaitingM2 => $this->activeWithRoleAndAssignment($user, $inspection, OperationalRole::Planner),
+            InspectionStatus::AwaitingM2 => $user->account_type === UserAccountType::Member
+                && $this->activeWithRoleAndAssignment($user, $inspection, OperationalRole::Planner),
             InspectionStatus::InReview => $this->activeWithRoleAndAssignment($user, $inspection, OperationalRole::Reviewer),
             default => false,
         };
@@ -201,16 +203,17 @@ final class InspectionPolicy
     public function manageReportContent(User $user, Inspection $inspection): bool
     {
         if (! $this->activeInOrganization($user)
-            || $user->account_type !== UserAccountType::Member
             || ! $this->sameOrganization($user, $inspection)) {
             return false;
         }
 
         return match ($inspection->status) {
-            InspectionStatus::InProgress, InspectionStatus::InCorrection => $user->operational_role === OperationalRole::Inspector,
+            InspectionStatus::InProgress, InspectionStatus::InCorrection => $user->account_type === UserAccountType::Member
+                && $user->operational_role === OperationalRole::Inspector
+                && $inspection->hasAnyResponsibilityForUser($user, ...InspectionResponsibility::cases()),
             InspectionStatus::InReview => $this->activeWithRoleAndAssignment($user, $inspection, OperationalRole::Reviewer),
             default => false,
-        } && $inspection->hasAnyResponsibilityForUser($user, ...InspectionResponsibility::cases());
+        };
     }
 
     public function manageFieldContent(User $user, Inspection $inspection): bool
@@ -221,7 +224,6 @@ final class InspectionPolicy
     private function activeWithRoleAndAssignment(User $user, Inspection $inspection, OperationalRole $role): bool
     {
         return $this->activeInOrganization($user)
-            && (! in_array($role, [OperationalRole::Reviewer, OperationalRole::Releaser], true) || $user->account_type === UserAccountType::Member)
             && ($inspection->status !== InspectionStatus::AwaitingM2 || $user->account_type === UserAccountType::Member)
             && $this->sameOrganization($user, $inspection)
             && $user->operational_role === $role

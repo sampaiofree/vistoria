@@ -43,7 +43,7 @@ function refresh() {
 </script>
 
 <template>
-    <article class="overflow-hidden rounded-md border border-slate-200 bg-white">
+    <article class="overview-photo-card overflow-hidden rounded-md border border-slate-200 bg-white">
         <div class="flex aspect-[4/3] items-center justify-center bg-slate-100">
             <img
                 v-if="slot.photo?.thumbnail_url"
@@ -92,3 +92,12 @@ function refresh() {
         </div>
     </article>
 </template>
+
+<style scoped>
+@media screen and (max-width: 639.98px) {
+    .overview-photo-card {
+        min-width: 0;
+        max-width: 100%;
+    }
+}
+</style>

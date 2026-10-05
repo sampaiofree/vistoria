@@ -6,6 +6,7 @@ namespace App\Http\Requests\Equipments;
 
 use App\Models\Equipment;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 final class PreviewEquipmentImportRequest extends FormRequest
 {
@@ -16,7 +17,10 @@ final class PreviewEquipmentImportRequest extends FormRequest
 
     public function rules(): array
     {
-        return ['file' => ['required', 'file', 'mimes:csv,txt', 'max:10240']];
+        return [
+            'file' => ['required', 'file', 'mimes:csv,txt', 'max:10240'],
+            'mode' => ['nullable', Rule::in(['create', 'update'])],
+        ];
     }
 
     public function messages(): array

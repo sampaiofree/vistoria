@@ -50,6 +50,7 @@ final class InspectionRoutesTest extends TestCase
         $response = $this->actingAs($admin)->post(route('inspections.store'), [
             'inspections' => [[
                 'equipment_id' => $equipment->id,
+                'service_order' => '0000000001',
                 'planned_start_on' => '2026-09-20',
                 'planned_end_on' => '2026-09-22',
                 'inspector_id' => $inspector->id,
@@ -129,6 +130,7 @@ final class InspectionRoutesTest extends TestCase
             ->post(route('inspections.store'), [
                 'inspections' => [[
                     'equipment_id' => $equipment->id,
+                    'service_order' => '0000000001',
                     'planned_start_on' => '2026-07-30',
                     'planned_end_on' => '2026-07-30',
                     'inspector_id' => $inspector->id,
@@ -153,7 +155,7 @@ final class InspectionRoutesTest extends TestCase
 
         $this->actingAs($admin)
             ->from(route('inspections.create'))
-            ->post(route('inspections.store'), ['inspections' => [['equipment_id' => $equipment->id]]])
+            ->post(route('inspections.store'), ['inspections' => [['equipment_id' => $equipment->id, 'service_order' => '0000000001']]])
             ->assertRedirect(route('inspections.create'))
             ->assertSessionHasErrors(['inspections.0.planned_start_on', 'inspections.0.planned_end_on', 'inspections.0.inspector_id']);
 
@@ -162,6 +164,7 @@ final class InspectionRoutesTest extends TestCase
             ->post(route('inspections.store'), [
                 'inspections' => [[
                     'equipment_id' => $equipment->id,
+                    'service_order' => '0000000001',
                     'planned_start_on' => '2026-08-20',
                     'planned_end_on' => '2026-08-19',
                 ]],
@@ -186,6 +189,7 @@ final class InspectionRoutesTest extends TestCase
             ->from(route('inspections.create'))
             ->post(route('inspections.store'), ['inspections' => [[
                 'equipment_id' => $equipment->id,
+                'service_order' => '0000000001',
                 'atmospheric_classification' => 'C1',
                 'planned_start_on' => '2026-08-20',
                 'planned_end_on' => '2026-08-20',
@@ -252,7 +256,7 @@ final class InspectionRoutesTest extends TestCase
         $this->actingAs($admin)->put(route('inspections.update', $inspection), [
             'equipment_id' => $otherEquipment->id,
             'inspector_id' => $inspector->id,
-            'service_order' => 'OS-NOVA',
+            'service_order' => '0000000002',
             'atmospheric_classification' => 'c5',
             'planned_start_on' => '2026-08-15',
             'planned_end_on' => '2026-08-20',
@@ -262,7 +266,7 @@ final class InspectionRoutesTest extends TestCase
         $response = $this->actingAs($admin)->put(route('inspections.update', $inspection), [
             'equipment_id' => $otherEquipment->id,
             'inspector_id' => $inspector->id,
-            'service_order' => 'OS-NOVA',
+            'service_order' => '0000000002',
             'atmospheric_classification' => 'c5',
             'planned_start_on' => '2026-08-15',
             'planned_end_on' => '2026-08-20',
@@ -275,7 +279,7 @@ final class InspectionRoutesTest extends TestCase
         $this->assertSame($otherEquipment->id, $inspection->equipment_id);
         $this->assertSame($previousInspection->id, $inspection->previous_inspection_id);
         $this->assertSame(InspectionType::Reinspection, $inspection->inspection_type);
-        $this->assertSame('OS-NOVA', $inspection->service_order);
+        $this->assertSame('0000000002', $inspection->service_order);
         $this->assertSame('REL-ANTIGO', $inspection->external_report_number);
         $this->assertSame('PROC-ANTIGO', $inspection->procedure_number);
         $this->assertSame('C5', $inspection->atmospheric_classification);
@@ -358,6 +362,7 @@ final class InspectionRoutesTest extends TestCase
         $response = $this->actingAs($admin)->post(route('inspections.store'), [
             'inspections' => [[
                 'equipment_id' => $equipment->id,
+                'service_order' => '0000000001',
                 'planned_start_on' => '2026-07-30',
                 'planned_end_on' => '2026-07-30',
                 'inspector_id' => $inspector->id,
@@ -407,6 +412,7 @@ final class InspectionRoutesTest extends TestCase
         $response = $this->actingAs($admin)->post(route('inspections.store'), [
             'inspections' => [[
                 'equipment_id' => $equipment->id,
+                'service_order' => '0000000001',
                 'planned_start_on' => '2026-07-30',
                 'planned_end_on' => '2026-07-30',
                 'inspector_id' => $inspector->id,

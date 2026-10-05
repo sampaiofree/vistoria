@@ -14,14 +14,22 @@ final class AssessmentPhotoCoverageValidator
     {
         $assessments = $inspection->defectAssessments()->with(['photos', 'defect'])->get();
         $pending = $assessments->flatMap(function ($assessment): array {
+            if ($assessment->condition->isCanceled()) {
+                return [];
+            }
+
             $photos = $assessment->photos;
             $requiresEvidence = $assessment->condition->requiresEvidence();
 
-            $hasMinimumPhotos = $photos->count() >= 2;
+            $photoCount = $photos->count();
             $hasReadyAllPhotos = $photos->every(fn ($photo): bool => $photo->processing_status === PhotoProcessingStatus::Ready);
 
-            if ($requiresEvidence && ! $hasMinimumPhotos) {
+            if ($requiresEvidence && $photoCount < 2) {
                 return [($assessment->defect?->code ?? (string) $assessment->getKey()).' (mínimo de 2 fotografias)'];
+            }
+
+            if ($requiresEvidence && $photoCount % 2 !== 0) {
+                return [($assessment->defect?->code ?? (string) $assessment->getKey()).' (fotografias em número ímpar; adicione mais uma)'];
             }
 
             if (! $hasReadyAllPhotos) {
@@ -33,7 +41,7 @@ final class AssessmentPhotoCoverageValidator
 
         if ($pending->isNotEmpty()) {
             throw ValidationException::withMessages([
-                'inspection' => 'Existem avaliações sem cobertura fotográfica pronta: '.$pending->implode(', ').'.',
+                'inspection' => 'Existem avaliações com cobertura fotográfica incompleta: '.$pending->implode(', ').'.',
             ]);
         }
     }

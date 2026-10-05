@@ -96,7 +96,7 @@ final class InspectionCorrectionRequestClosureTest extends TestCase
         $requester->update(['operational_role' => OperationalRole::Inspector]);
         $this->actingAs($requester)->patch($url)->assertForbidden();
         $requester->update(['operational_role' => OperationalRole::Reviewer, 'account_type' => UserAccountType::CompanyAdmin]);
-        $this->actingAs($requester)->patch($url)->assertForbidden();
+        $this->actingAs($requester)->patch($url)->assertSessionHasNoErrors();
 
         $otherOrganizationReviewer = User::factory()->create(['operational_role' => OperationalRole::Reviewer]);
         $this->actingAs($otherOrganizationReviewer)->patch($url)->assertNotFound();

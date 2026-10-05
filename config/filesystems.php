@@ -90,6 +90,17 @@ return [
             'throw' => true,
         ],
 
+        'profile_photos' => $userImagesStorage === 'r2' ? [
+            'driver' => 'scoped',
+            'disk' => 'r2_assets',
+            'prefix' => 'profile-photos',
+            'throw' => true,
+        ] : [
+            'driver' => 'local',
+            'root' => storage_path('app/private/profile-photos'),
+            'throw' => true,
+        ],
+
         'r2_assets' => [
             'driver' => 's3',
             'key' => env('R2_ASSETS_ACCESS_KEY_ID'),

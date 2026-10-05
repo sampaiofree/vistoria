@@ -46,6 +46,7 @@ final class GeneralAspectsTemplateRequest extends FormRequest
                     (int) $this->input('schema_version'),
                     $this->input('document'),
                     allowPendingTextColor: true,
+                    allowEquipmentFields: true,
                 );
 
                 if ($document === null) {

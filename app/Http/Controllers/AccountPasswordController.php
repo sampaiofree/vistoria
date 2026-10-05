@@ -19,6 +19,6 @@ final class AccountPasswordController extends Controller
     {
         $action->handle($request->user(), $request->validated('password'));
 
-        return redirect()->route('dashboard')->with('success', 'Senha atualizada.');
+        return redirect()->route($request->user()->isClient() ? 'inspections.index' : 'dashboard')->with('success', 'Senha atualizada.');
     }
 }

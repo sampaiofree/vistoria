@@ -3,7 +3,9 @@ defineProps({
     entries: { type: Array, default: () => [] },
     continuation: { type: Boolean, default: false },
     measuring: { type: Boolean, default: false },
+    interactive: { type: Boolean, default: false },
 });
+const emit = defineEmits(['navigate']);
 </script>
 
 <template>
@@ -19,6 +21,14 @@ defineProps({
                 <span class="report-summary-label">{{ entry.title }}</span>
                 <span class="report-summary-leader" aria-hidden="true"></span>
                 <span class="report-summary-page-number">{{ entry.page }}</span>
+                <a
+                    v-if="interactive && !measuring"
+                    class="report-summary-link"
+                    :href="`#report-page-${entry.page}`"
+                    :aria-label="`${entry.title} — página ${entry.page}`"
+                    data-html2canvas-ignore
+                    @click.prevent="emit('navigate', entry.page)"
+                ></a>
             </li>
         </ol>
     </section>
@@ -29,10 +39,16 @@ defineProps({
 .report-summary-page-measuring { height: auto; overflow: visible; }
 .report-summary-title { margin: 0 0 12mm; font-size: 16pt; font-weight: 700; line-height: 1.1; }
 .report-summary-list { display: grid; gap: 2.3mm; margin: 0; padding: 0; list-style: none; }
-.report-summary-entry { display: flex; align-items: flex-end; font-size: 12pt; font-weight: 700; line-height: 1.2; }
+.report-summary-entry { position: relative; display: flex; align-items: flex-end; font-size: 12pt; font-weight: 700; line-height: 1.2; }
 .report-summary-entry-subsection { padding-left: 8mm; font-weight: 400; }
 .report-summary-entry-annex { margin-top: 1mm; }
 .report-summary-label { min-width: 0; }
 .report-summary-leader { min-width: 8mm; flex: 1; margin: 0 1.5mm 1.2pt; border-bottom: 1px dotted #111827; }
 .report-summary-page-number { min-width: 7mm; flex: none; text-align: right; }
+/* Overlay links leave the measured and exported typography untouched. */
+.report-summary-link { position: absolute; inset: 0; border-radius: 2px; }
+.report-summary-link:hover { background: rgb(13 148 136 / 8%); }
+.report-summary-link:focus-visible { outline: 2px solid #0d9488; outline-offset: 2px; }
+:global(.report-exporting) .report-summary-link { display: none !important; }
+@media print { .report-summary-link { display: none !important; } }
 </style>

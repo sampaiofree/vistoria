@@ -26,7 +26,7 @@ function mount(t) {
         return form;
     };
     const component = new Function('Vue', 'inertia', `${source}\nreturn component;`)(Vue, { useForm });
-    const props = Vue.reactive({ names: { report_reviewer_name: null, report_releaser_name: null }, action: '/settings/inspection-report/responsibles' });
+    const props = Vue.reactive({ names: { report_verifier_name: null, report_reviewer_name: null, report_releaser_name: null }, action: '/settings/inspection-report/responsibles' });
     const scope = Vue.effectScope();
     const state = scope.run(() => component.setup(props, { expose() {} }));
     t.after(() => scope.stop());
@@ -48,36 +48,39 @@ function elements(vnode, type) {
 test('settings form submits only document names once and displays normalized saved values', t => {
     const { props, state, visits, render } = mount(t);
     const inputs = elements(render(), 'input');
-    assert.equal(inputs.length, 2);
+    assert.equal(inputs.length, 3);
     assert.ok(inputs.every(input => input.props.maxlength === '150' && !input.props.required));
-    inputs[0].props['onUpdate:modelValue']('  João   Silva ');
-    inputs[1].props['onUpdate:modelValue']('Lúcia');
+    inputs[0].props['onUpdate:modelValue']('  Ana   Costa ');
+    inputs[1].props['onUpdate:modelValue']('  João   Silva ');
+    inputs[2].props['onUpdate:modelValue']('Lúcia');
     const submit = elements(render(), 'form')[0].props.onSubmit;
     submit({ preventDefault() {} });
     submit({ preventDefault() {} });
     assert.equal(visits.length, 1);
     assert.equal(visits[0].url, props.action);
-    assert.deepEqual(visits[0].data, { report_reviewer_name: '  João   Silva ', report_releaser_name: 'Lúcia' });
+    assert.deepEqual(visits[0].data, { report_verifier_name: '  Ana   Costa ', report_reviewer_name: '  João   Silva ', report_releaser_name: 'Lúcia' });
     assert.equal(elements(render(), 'button')[0].props.disabled, true);
     assert.equal(elements(render(), 'button')[0].children, 'Salvando…');
-    props.names = { report_reviewer_name: 'João Silva', report_releaser_name: 'Lúcia' };
+    props.names = { report_verifier_name: 'Ana Costa', report_reviewer_name: 'João Silva', report_releaser_name: 'Lúcia' };
     visits[0].options.onSuccess();
     visits[0].options.onFinish();
+    assert.equal(state.form.report_verifier_name, 'Ana Costa');
     assert.equal(state.form.report_reviewer_name, 'João Silva');
     assert.equal(elements(render(), 'button')[0].props.disabled, false);
 });
 
 test('validation failure preserves names and allows correcting and clearing them', t => {
     const { state, visits, render } = mount(t);
-    state.form.report_reviewer_name = 'a'.repeat(151);
+    state.form.report_verifier_name = 'a'.repeat(151);
     state.submit();
-    state.form.errors.report_reviewer_name = 'O nome deve ter até 150 caracteres.';
+    state.form.errors.report_verifier_name = 'O nome deve ter até 150 caracteres.';
     visits[0].options.onFinish();
-    assert.equal(state.form.report_reviewer_name.length, 151);
-    assert.ok(elements(render(), 'span').some(span => span.children === state.form.errors.report_reviewer_name));
+    assert.equal(state.form.report_verifier_name.length, 151);
+    assert.ok(elements(render(), 'span').some(span => span.children === state.form.errors.report_verifier_name));
+    state.form.report_verifier_name = '';
     state.form.report_reviewer_name = '';
     state.form.report_releaser_name = '';
     state.submit();
     assert.equal(visits.length, 2);
-    assert.deepEqual(visits[1].data, { report_reviewer_name: '', report_releaser_name: '' });
+    assert.deepEqual(visits[1].data, { report_verifier_name: '', report_reviewer_name: '', report_releaser_name: '' });
 });

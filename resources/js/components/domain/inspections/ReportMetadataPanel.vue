@@ -22,6 +22,8 @@ const form = useForm({
 
 const canEdit = computed(() => props.metadata.can_edit === true && Boolean(props.metadata.update_url));
 const canEditRestrictedFields = computed(() => props.metadata.can_edit_restricted_fields === true);
+const normalizeServiceOrder = (value) => String(value ?? '').trim().replace(/\s+/gu, ' ');
+const serviceOrderChanged = computed(() => normalizeServiceOrder(form.service_order) !== normalizeServiceOrder(props.metadata.service_order));
 const displayedEmission = computed(() => props.metadata.emission_type
     ? `${props.metadata.emission_type} — ${props.metadata.emission_type_label || ''}`
     : 'Não definido');
@@ -113,7 +115,8 @@ function submit() {
                 </label>
                 <label class="space-y-1.5 text-sm font-medium text-slate-700 md:col-span-2">
                     <span>O.S.</span>
-                    <input v-model="form.service_order" :disabled="!canEditRestrictedFields" type="text" maxlength="100" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 disabled:cursor-not-allowed disabled:bg-slate-100">
+                    <input v-model="form.service_order" :disabled="!canEditRestrictedFields" type="text" inputmode="numeric" autocomplete="off" maxlength="10" :pattern="serviceOrderChanged ? '[0-9]{10}' : undefined" :required="canEditRestrictedFields && serviceOrderChanged" title="Informe exatamente 10 dígitos numéricos" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 disabled:cursor-not-allowed disabled:bg-slate-100">
+                    <span v-if="canEditRestrictedFields" class="block text-xs font-normal text-slate-500">Ao alterar, informe exatamente 10 dígitos numéricos.</span>
                     <span v-if="form.errors.service_order" class="block text-xs text-rose-600">{{ form.errors.service_order }}</span>
                 </label>
                 <label class="space-y-1.5 text-sm font-medium text-slate-700">

@@ -14,6 +14,7 @@ const cloneDocument = (document) => JSON.parse(JSON.stringify(document || emptyD
 const editing = ref(false);
 const selectedTemplatePublicId = ref('');
 const pendingTemplate = ref(null);
+const templateError = ref('');
 const templateSelect = ref(null);
 const cancelTemplateConfirmationButton = ref(null);
 let previousFocus = null;
@@ -39,6 +40,7 @@ function startEditing() {
     syncForm();
     selectedTemplatePublicId.value = '';
     pendingTemplate.value = null;
+    templateError.value = '';
     editing.value = true;
 }
 
@@ -46,6 +48,7 @@ function cancelEditing() {
     editing.value = false;
     selectedTemplatePublicId.value = '';
     pendingTemplate.value = null;
+    templateError.value = '';
     form.reset();
     form.clearErrors();
 }
@@ -55,6 +58,11 @@ function applySelectedTemplate() {
     if (!template) return;
 
     selectedTemplatePublicId.value = '';
+    templateError.value = '';
+    if (template.application_error || !template.document) {
+        templateError.value = template.application_error || 'Este modelo não pôde ser aplicado.';
+        return;
+    }
     pendingTemplate.value = template;
 }
 
@@ -147,6 +155,7 @@ function submit() {
                     </option>
                 </select>
             </div>
+            <p v-if="templateError" role="alert" class="mb-3 text-sm font-medium text-rose-700">{{ templateError }}</p>
             <GeneralAspectsEditor v-model="form.document" />
             <p class="mt-2 text-xs font-medium text-rose-700">Antes de salvar, substitua os trechos em vermelho e retorne-os à cor padrão.</p>
             <p class="mt-2 text-xs text-slate-500">Até 100.000 caracteres. O conteúdo será paginado automaticamente no formato A4.</p>

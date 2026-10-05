@@ -8,6 +8,7 @@ const props = defineProps({
     action: { type: String, required: true },
 });
 const form = useForm({
+    report_verifier_name: props.names.report_verifier_name ?? '',
     report_reviewer_name: props.names.report_reviewer_name ?? '',
     report_releaser_name: props.names.report_releaser_name ?? '',
 });
@@ -21,6 +22,7 @@ function submit() {
             preserveScroll: true,
             onSuccess: () => {
                 form.defaults({
+                    report_verifier_name: props.names.report_verifier_name ?? '',
                     report_reviewer_name: props.names.report_reviewer_name ?? '',
                     report_releaser_name: props.names.report_releaser_name ?? '',
                 });
@@ -36,12 +38,13 @@ function submit() {
 </script>
 
 <template>
-    <AppLayout title="Responsáveis do relatório" subtitle="Nomes de Revisor e Liberador exibidos nos relatórios da empresa.">
+    <AppLayout title="Responsáveis do relatório" subtitle="Nomes de Verificador, Revisor e Liberador exibidos nos relatórios da empresa.">
         <section class="max-w-3xl rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
             <p class="text-sm text-slate-600">Esses nomes aparecem no documento e não definem responsáveis ou permissões no sistema. Não é necessário que essas pessoas tenham uma conta de acesso.</p>
+            <p class="mt-3 text-sm text-slate-600">O nome em “Preparado” vem do Inspetor vinculado à inspeção.</p>
             <p class="mt-3 text-sm text-slate-600">As alterações se aplicam às inspeções abertas. Relatórios de inspeções liberadas ou canceladas mantêm os nomes gravados na finalização.</p>
             <form class="mt-6 space-y-5" @submit.prevent="submit">
-                <label v-for="field in [{ key: 'report_reviewer_name', label: 'Nome do Revisor' }, { key: 'report_releaser_name', label: 'Nome do Liberador' }]" :key="field.key" class="block">
+                <label v-for="field in [{ key: 'report_verifier_name', label: 'Nome do Verificador' }, { key: 'report_reviewer_name', label: 'Nome do Revisor' }, { key: 'report_releaser_name', label: 'Nome do Liberador' }]" :key="field.key" class="block">
                     <span class="text-sm font-semibold text-slate-700">{{ field.label }}</span>
                     <input v-model="form[field.key]" type="text" maxlength="150" :disabled="submitting" class="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm disabled:bg-slate-50">
                     <span v-if="form.errors[field.key]" class="mt-1 block text-xs text-rose-600">{{ form.errors[field.key] }}</span>

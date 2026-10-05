@@ -1,18 +1,60 @@
 <script setup>
-import { computed, onBeforeUnmount, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { EditorContent, useEditor } from '@tiptap/vue-3';
-import { Extension, Mark } from '@tiptap/core';
+import { Extension, Mark, Node } from '@tiptap/core';
+import { Slice } from '@tiptap/pm/model';
 import StarterKit from '@tiptap/starter-kit';
 import TextAlign from '@tiptap/extension-text-align';
 import { plainTextAsHtml } from '@/lib/plainTextPaste';
 
 const props = defineProps({
     modelValue: { type: Object, required: true },
+    equipmentFields: { type: Array, default: () => [] },
 });
 
 const emit = defineEmits(['update:modelValue']);
 
 const PENDING_TEXT_COLOR = '#DC2626';
+const FIELD_CLIPBOARD_TYPE = 'application/x-vistoria-equipment-fields+json';
+const fieldsOpen = ref(false);
+const fieldSearch = ref('');
+const highlightedField = ref(0);
+const fieldSearchInput = ref(null);
+const fieldPicker = ref(null);
+const fieldLabels = computed(() => Object.fromEntries(props.equipmentFields.map(({ key, label }) => [key, label])));
+const filteredFields = computed(() => {
+    const query = normalizeSearch(fieldSearch.value);
+    return props.equipmentFields.filter(({ label }) => normalizeSearch(label).includes(query));
+});
+
+function normalizeSearch(text) {
+    return String(text).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR');
+}
+
+const EquipmentField = Node.create({
+    name: 'equipmentField',
+    group: 'inline',
+    inline: true,
+    atom: true,
+    selectable: true,
+    addAttributes() {
+        return {
+            key: {
+                default: null,
+                parseHTML: (element) => element.getAttribute('data-equipment-field'),
+                renderHTML: ({ key }) => ({ 'data-equipment-field': key }),
+            },
+        };
+    },
+    parseHTML() { return [{ tag: 'span[data-equipment-field]' }]; },
+    renderHTML({ node, HTMLAttributes }) {
+        return ['span', {
+            ...HTMLAttributes,
+            class: 'general-aspects-equipment-field',
+            contenteditable: 'false',
+        }, `[${fieldLabels.value[node.attrs.key] ?? node.attrs.key}]`];
+    },
+});
 
 const PendingTextColor = Mark.create({
     name: 'textColor',
@@ -96,6 +138,7 @@ const editor = useEditor({
         TextAlign.configure({ types: ['heading', 'paragraph'], alignments: ['left', 'center', 'right', 'justify'] }),
         LayoutAttributes,
         PendingTextColor,
+        ...(props.equipmentFields.length ? [EquipmentField] : []),
     ],
     editorProps: {
         attributes: {
@@ -103,12 +146,26 @@ const editor = useEditor({
             spellcheck: 'true',
         },
         handlePaste: (_view, event) => {
+            const fieldSlice = event.clipboardData?.getData(FIELD_CLIPBOARD_TYPE);
+            if (props.equipmentFields.length && fieldSlice) {
+                try {
+                    const slice = Slice.fromJSON(_view.state.schema, JSON.parse(fieldSlice));
+                    _view.dispatch(_view.state.tr.replaceSelection(slice).scrollIntoView());
+                    return true;
+                } catch (_error) {
+                    // Unknown clipboard data is pasted as plain text below.
+                }
+            }
             const text = event.clipboardData?.getData('text/plain');
             if (text === undefined || text === '') return false;
 
             // Do not let HTML copied from Word, Outlook, PDFs, or browser extensions
             // reach the editor. Only our minimal HTML representation is inserted.
             return editor.value?.commands.insertContent(plainTextAsHtml(text)) ?? false;
+        },
+        handleDOMEvents: {
+            copy: (view, event) => copyFieldSelection(view, event, false),
+            cut: (view, event) => copyFieldSelection(view, event, true),
         },
     },
     onUpdate: ({ editor: currentEditor }) => emit('update:modelValue', currentEditor.getJSON()),
@@ -131,6 +188,56 @@ const blockType = computed(() => {
     if (editor.value?.isActive('heading')) return 'heading';
     return 'paragraph';
 });
+
+function copyFieldSelection(view, event, cut) {
+    if (!props.equipmentFields.length || view.state.selection.empty || !event.clipboardData) return false;
+    const slice = view.state.selection.content();
+    const serialized = view.serializeForClipboard(slice);
+    event.preventDefault();
+    event.clipboardData.clearData();
+    event.clipboardData.setData('text/html', serialized.dom.innerHTML);
+    event.clipboardData.setData('text/plain', serialized.text);
+    event.clipboardData.setData(FIELD_CLIPBOARD_TYPE, JSON.stringify(slice.toJSON()));
+    if (cut) view.dispatch(view.state.tr.deleteSelection().scrollIntoView());
+    return true;
+}
+
+async function openFields() {
+    fieldsOpen.value = !fieldsOpen.value;
+    fieldSearch.value = '';
+    highlightedField.value = 0;
+    if (fieldsOpen.value) {
+        await nextTick();
+        fieldSearchInput.value?.focus();
+    }
+}
+
+function insertField(field) {
+    editor.value?.chain().focus().insertContent({ type: 'equipmentField', attrs: { key: field.key } }).run();
+    fieldsOpen.value = false;
+}
+
+function onFieldSearchKeydown(event) {
+    if (event.key === 'Escape') {
+        fieldsOpen.value = false;
+        editor.value?.commands.focus();
+    } else if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        highlightedField.value = Math.min(filteredFields.value.length - 1, highlightedField.value + 1);
+    } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        highlightedField.value = Math.max(0, highlightedField.value - 1);
+    } else if (event.key === 'Enter' && filteredFields.value[highlightedField.value]) {
+        event.preventDefault();
+        insertField(filteredFields.value[highlightedField.value]);
+    }
+}
+
+function onFieldPickerFocusout(event) {
+    if (!fieldPicker.value?.contains(event.relatedTarget)) fieldsOpen.value = false;
+}
+
+watch(fieldSearch, () => { highlightedField.value = 0; });
 
 function setBlockType(event) {
     const value = event.target.value;
@@ -260,6 +367,16 @@ function hasPendingTextColor() {
             <button type="button" class="editor-tool" title="Desfazer" :disabled="!editor.can().undo()" @click="editor.chain().focus().undo().run()">↶</button>
             <button type="button" class="editor-tool" title="Refazer" :disabled="!editor.can().redo()" @click="editor.chain().focus().redo().run()">↷</button>
             <button type="button" class="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100" @click="clearFormatting">Limpar formatação</button>
+            <div v-if="equipmentFields.length" ref="fieldPicker" class="relative" @focusout="onFieldPickerFocusout">
+                <button type="button" class="rounded-lg border border-teal-300 bg-white px-2 py-1.5 text-xs font-semibold text-teal-800 hover:bg-teal-50" :aria-expanded="fieldsOpen" aria-controls="equipment-field-options" @click="openFields">Inserir campo</button>
+                <div v-if="fieldsOpen" id="equipment-field-options" class="absolute left-0 top-full z-30 mt-1 w-72 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
+                    <input ref="fieldSearchInput" v-model="fieldSearch" type="search" aria-label="Pesquisar campo do item de manutenção" placeholder="Pesquisar campo…" class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" @keydown="onFieldSearchKeydown">
+                    <div class="mt-1 max-h-60 overflow-y-auto" role="listbox" aria-label="Campos do item de manutenção">
+                        <button v-for="(field, index) in filteredFields" :key="field.key" type="button" role="option" :aria-selected="index === highlightedField" class="block w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-teal-50" :class="{ 'bg-teal-50': index === highlightedField }" @click="insertField(field)">{{ field.label }}</button>
+                        <p v-if="!filteredFields.length" class="p-2 text-sm text-slate-500">Nenhum campo encontrado.</p>
+                    </div>
+                </div>
+            </div>
         </div>
         <EditorContent :editor="editor" />
     </div>
@@ -290,4 +407,5 @@ function hasPendingTextColor() {
 .general-aspects-editor-content ol { margin: 4pt 0 4pt 7mm; padding-left: 5mm; list-style: decimal; }
 .general-aspects-editor-content li { padding-left: 1.5mm; }
 .general-aspects-editor-content .is-editor-empty:first-child::before { float: left; height: 0; color: #94a3b8; content: 'Descreva os aspectos gerais do equipamento…'; pointer-events: none; }
+.general-aspects-editor-content .general-aspects-equipment-field { display: inline-block; border: 1px solid #5eead4; border-radius: .4rem; background: #ccfbf1; padding: 0 .25rem; color: #115e59; font-weight: 600; white-space: normal; }
 </style>

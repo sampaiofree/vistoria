@@ -40,7 +40,7 @@ final class InspectionReportMetadataTest extends TestCase
             ->put(route('inspections.report-metadata.update', $inspection), [
                 'emission_type' => EquipmentRevisionEmissionType::ForApproval->value,
                 'report_date' => '2026-08-11',
-                'service_order' => 'OS-42',
+                'service_order' => '0000000001',
                 'external_report_number' => '  REL-EXT-42  ',
                 'designer_i_report_number' => '  SM-IIE-1717  ',
                 'first_page_text_template' => 'Equipamento: Bomba de alimentação',
@@ -50,7 +50,7 @@ final class InspectionReportMetadataTest extends TestCase
         $inspection->refresh();
         $this->assertSame(EquipmentRevisionEmissionType::ForApproval, $inspection->emission_type);
         $this->assertSame('2026-08-11', $inspection->report_date?->toDateString());
-        $this->assertSame('OS-42', $inspection->service_order);
+        $this->assertSame('0000000001', $inspection->service_order);
         $this->assertSame('REL-EXT-42', $inspection->external_report_number);
         $this->assertSame('PROJETISTA II', $inspection->report_designer);
         $this->assertSame('SM-IIE-1717', $inspection->designer_i_report_number);
@@ -136,7 +136,7 @@ final class InspectionReportMetadataTest extends TestCase
             ->put(route('inspections.report-metadata.update', $inspection), [
                 'emission_type' => EquipmentRevisionEmissionType::ForApproval->value,
                 'report_date' => '2026-08-12',
-                'service_order' => 'OS-43',
+                'service_order' => '0000000002',
                 'external_report_number' => 'REL-EXT-43',
                 'first_page_text_template' => 'Não deve persistir',
             ])
@@ -219,7 +219,7 @@ final class InspectionReportMetadataTest extends TestCase
             ->put(route('inspections.report-metadata.update', $inspection), [
                 'emission_type' => EquipmentRevisionEmissionType::ForApproval->value,
                 'report_date' => null,
-                'service_order' => 'OS-42',
+                'service_order' => '0000000001',
                 'external_report_number' => null,
                 'designer_i_report_number' => 'SM-IIE-1717',
                 'first_page_text_template' => 'Texto revisado',
@@ -248,7 +248,7 @@ final class InspectionReportMetadataTest extends TestCase
         $payload = [
             'emission_type' => EquipmentRevisionEmissionType::ForApproval->value,
             'report_date' => '2026-09-21',
-            'service_order' => 'OS-REVISADA',
+            'service_order' => '0000000002',
             'external_report_number' => 'REL-REVISADO',
             'designer_i_report_number' => 'SM-IIE-1718',
             'first_page_text_template' => 'Conteúdo revisado',
@@ -324,7 +324,7 @@ final class InspectionReportMetadataTest extends TestCase
         $this->actingAs($inspector)
             ->put(route('inspections.report-metadata.update', $inspection), [
                 ...$unchangedRestrictedFields,
-                'service_order' => 'OS-ALTERADA',
+                'service_order' => '0000000002',
                 'first_page_text_template' => 'Texto atualizado',
             ])
             ->assertSessionHasErrors('service_order');
@@ -349,7 +349,7 @@ final class InspectionReportMetadataTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_company_admin_and_releaser_cannot_edit_report_content_even_when_assigned(): void
+    public function test_assigned_company_admin_reviewer_can_edit_report_content_but_releaser_cannot(): void
     {
         $organization = Organization::factory()->create();
         $admin = User::factory()->for($organization)->create([
@@ -370,22 +370,18 @@ final class InspectionReportMetadataTest extends TestCase
         ]);
 
         $payload = [
-            'emission_type' => null,
+            'emission_type' => EquipmentRevisionEmissionType::ForApproval->value,
             'report_date' => null,
-            'service_order' => null,
+            'service_order' => '0000000003',
             'external_report_number' => null,
-            'first_page_text_template' => 'Conteúdo bloqueado',
+            'designer_i_report_number' => 'SM-IIE-1717',
+            'first_page_text_template' => 'Conteúdo do Revisor administrador',
         ];
 
         $this->actingAs($admin)
             ->put(route('inspections.report-metadata.update', $inspection), $payload)
-            ->assertForbidden();
-        $this->actingAs($admin)
-            ->put(route('inspections.report-overview.blocks.update', [$inspection, 1]), [
-                'comment' => 'Não permitido',
-                'recommendation' => 'Não permitido',
-            ])
-            ->assertForbidden();
+            ->assertSessionHasNoErrors();
+        $this->assertSame('Conteúdo do Revisor administrador', $inspection->fresh()->first_page_text_template);
 
         $inspection->update(['status' => InspectionStatus::AwaitingRelease]);
         $this->actingAs($releaser)
@@ -484,7 +480,7 @@ final class InspectionReportMetadataTest extends TestCase
         $basePayload = [
             'emission_type' => EquipmentRevisionEmissionType::ForApproval->value,
             'report_date' => '2026-08-15',
-            'service_order' => 'OS-42',
+            'service_order' => '0000000001',
             'external_report_number' => 'U0306VT-G-6RI002',
             'designer_i_report_number' => 'SM-IIE-1718',
             'first_page_text_template' => 'Relatório de inspeção',

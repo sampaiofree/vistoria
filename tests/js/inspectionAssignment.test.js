@@ -78,22 +78,34 @@ test('switching queue keeps search and stage, removes responsible filters and re
     assert.deepEqual(visits[2].data, { scope: 'available' });
 });
 
+test('company administrator keeps the company-wide list label while a member sees their own list', t => {
+    const { state, props } = mount(t, 'pages/Inspections/Index.vue', {
+        filters: { scope: 'mine' }, capabilities: { available_queue: true, company_wide_index: true },
+        inspections: { data: [], links: [] }, options: { statuses: [] }, create_url: '/inspections/create',
+    });
+    assert.equal(state.scopeTabs.value[0].label, 'Todas as inspeções');
+    props.capabilities.company_wide_index = false;
+    assert.equal(state.scopeTabs.value[0].label, 'Minhas inspeções');
+});
+
 test('manual assignment offers only the matching operational role and clears an incompatible selection', async t => {
     const users = [
         { id: 1, name: 'Revisor', account_type: 'member', operational_role: 'reviewer' },
         { id: 2, name: 'Liberador', account_type: 'member', operational_role: 'releaser' },
         { id: 3, name: 'Admin', account_type: 'company_admin', operational_role: 'reviewer' },
         { id: 4, name: 'Inspetor', account_type: 'member', operational_role: 'inspector' },
+        { id: 5, name: 'Admin Liberador', account_type: 'company_admin', operational_role: 'releaser' },
+        { id: 6, name: 'Super Admin', account_type: 'super_admin', operational_role: 'reviewer' },
     ];
     const { state } = mount(t, 'components/domain/inspections/AssignmentForm.vue', { users, roles: [], action: '/responsibles' });
     state.form.responsibility = 'approver';
     state.form.user_id = 1;
     await Vue.nextTick();
-    assert.deepEqual(state.eligibleUsers.value.map(user => user.id), [1]);
+    assert.deepEqual(state.eligibleUsers.value.map(user => user.id), [1, 3]);
     assert.equal(state.form.user_id, 1);
     state.form.responsibility = 'releaser';
     await Vue.nextTick();
-    assert.deepEqual(state.eligibleUsers.value.map(user => user.id), [2]);
+    assert.deepEqual(state.eligibleUsers.value.map(user => user.id), [2, 5]);
     assert.equal(state.form.user_id, '');
     assert.deepEqual(eligibleAssignmentUsers(users, 'preparer'), users);
 });

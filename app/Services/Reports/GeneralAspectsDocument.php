@@ -100,7 +100,7 @@ final class GeneralAspectsDocument
      * @param  array<string, mixed>|null  $document
      * @return array{schema_version:int, document:array<string, mixed>}|null
      */
-    public function normalize(int $schemaVersion, ?array $document, bool $allowPendingTextColor = false): ?array
+    public function normalize(int $schemaVersion, ?array $document, bool $allowPendingTextColor = false, bool $allowEquipmentFields = false): ?array
     {
         if ($schemaVersion !== self::SCHEMA_VERSION) {
             throw new InvalidArgumentException('A versão do documento de aspectos gerais não é suportada.');
@@ -129,7 +129,7 @@ final class GeneralAspectsDocument
                 throw new InvalidArgumentException('Um dos blocos do documento é inválido.');
             }
 
-            $normalizedBlocks[] = $this->normalizeBlock($block, $visibleCharacters, 0, $allowPendingTextColor);
+            $normalizedBlocks[] = $this->normalizeBlock($block, $visibleCharacters, 0, $allowPendingTextColor, $allowEquipmentFields);
         }
 
         if ($visibleCharacters > self::MAX_VISIBLE_CHARACTERS) {
@@ -187,7 +187,7 @@ final class GeneralAspectsDocument
     }
 
     /** @param array<string, mixed> $node */
-    private function normalizeBlock(array $node, int &$visibleCharacters, int $listDepth, bool $allowPendingTextColor): array
+    private function normalizeBlock(array $node, int &$visibleCharacters, int $listDepth, bool $allowPendingTextColor, bool $allowEquipmentFields): array
     {
         $type = $node['type'] ?? null;
         if (! is_string($type) || ! in_array($type, self::BLOCK_NODES, true)) {
@@ -195,14 +195,14 @@ final class GeneralAspectsDocument
         }
 
         return match ($type) {
-            'paragraph' => $this->normalizeTextBlock($node, $visibleCharacters, false, $allowPendingTextColor),
-            'heading' => $this->normalizeTextBlock($node, $visibleCharacters, true, $allowPendingTextColor),
-            'bulletList', 'orderedList' => $this->normalizeList($node, $visibleCharacters, $listDepth, $allowPendingTextColor),
+            'paragraph' => $this->normalizeTextBlock($node, $visibleCharacters, false, $allowPendingTextColor, $allowEquipmentFields),
+            'heading' => $this->normalizeTextBlock($node, $visibleCharacters, true, $allowPendingTextColor, $allowEquipmentFields),
+            'bulletList', 'orderedList' => $this->normalizeList($node, $visibleCharacters, $listDepth, $allowPendingTextColor, $allowEquipmentFields),
         };
     }
 
     /** @param array<string, mixed> $node */
-    private function normalizeTextBlock(array $node, int &$visibleCharacters, bool $heading, bool $allowPendingTextColor): array
+    private function normalizeTextBlock(array $node, int &$visibleCharacters, bool $heading, bool $allowPendingTextColor, bool $allowEquipmentFields): array
     {
         $this->assertOnlyKeys($node, ['type', 'attrs', 'content']);
         $attributes = $this->normalizeLayoutAttributes($node['attrs'] ?? [], $heading);
@@ -222,7 +222,7 @@ final class GeneralAspectsDocument
                 throw new InvalidArgumentException('O documento contém texto inválido.');
             }
 
-            $normalizedContent[] = $this->normalizeInlineNode($inlineNode, $visibleCharacters, $allowPendingTextColor);
+            $normalizedContent[] = $this->normalizeInlineNode($inlineNode, $visibleCharacters, $allowPendingTextColor, $allowEquipmentFields);
         }
 
         if ($normalizedContent !== []) {
@@ -233,7 +233,7 @@ final class GeneralAspectsDocument
     }
 
     /** @param array<string, mixed> $node */
-    private function normalizeList(array $node, int &$visibleCharacters, int $listDepth, bool $allowPendingTextColor): array
+    private function normalizeList(array $node, int &$visibleCharacters, int $listDepth, bool $allowPendingTextColor, bool $allowEquipmentFields): array
     {
         if ($listDepth >= 6) {
             throw new InvalidArgumentException('As listas podem ter no máximo seis níveis.');
@@ -290,7 +290,7 @@ final class GeneralAspectsDocument
                     throw new InvalidArgumentException('Um item da lista deve começar por um parágrafo.');
                 }
 
-                $normalizedChildren[] = $this->normalizeBlock($child, $visibleCharacters, $listDepth + 1, $allowPendingTextColor);
+                $normalizedChildren[] = $this->normalizeBlock($child, $visibleCharacters, $listDepth + 1, $allowPendingTextColor, $allowEquipmentFields);
             }
 
             $normalized['content'][] = ['type' => 'listItem', 'content' => $normalizedChildren];
@@ -300,9 +300,31 @@ final class GeneralAspectsDocument
     }
 
     /** @param array<string, mixed> $node */
-    private function normalizeInlineNode(array $node, int &$visibleCharacters, bool $allowPendingTextColor): array
+    private function normalizeInlineNode(array $node, int &$visibleCharacters, bool $allowPendingTextColor, bool $allowEquipmentFields): array
     {
         $type = $node['type'] ?? null;
+        if ($type === 'equipmentField' && $allowEquipmentFields) {
+            $this->assertOnlyKeys($node, ['type', 'attrs', 'marks']);
+            $attributes = $node['attrs'] ?? null;
+            if (! is_array($attributes)) {
+                throw new InvalidArgumentException('O campo do item de manutenção é inválido.');
+            }
+            $this->assertOnlyKeys($attributes, ['key']);
+            $key = $attributes['key'] ?? null;
+            $fields = app(EquipmentTemplateFields::class);
+            if (! is_string($key) || ! $fields->has($key)) {
+                throw new InvalidArgumentException('O modelo contém um campo do item de manutenção desconhecido.');
+            }
+            $visibleCharacters += mb_strlen($fields->label($key));
+            $normalized = ['type' => 'equipmentField', 'attrs' => ['key' => $key]];
+            $marks = $this->normalizeMarks($node['marks'] ?? [], $allowPendingTextColor);
+            if ($marks !== []) {
+                $normalized['marks'] = $marks;
+            }
+
+            return $normalized;
+        }
+
         if ($type === 'hardBreak') {
             $this->assertOnlyKeys($node, ['type']);
 
@@ -316,7 +338,17 @@ final class GeneralAspectsDocument
         $this->assertOnlyKeys($node, ['type', 'text', 'marks']);
         $visibleCharacters += mb_strlen($node['text']);
         $normalized = ['type' => 'text', 'text' => $node['text']];
-        $marks = $node['marks'] ?? [];
+        $normalizedMarks = $this->normalizeMarks($node['marks'] ?? [], $allowPendingTextColor);
+        if ($normalizedMarks !== []) {
+            $normalized['marks'] = $normalizedMarks;
+        }
+
+        return $normalized;
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    private function normalizeMarks(mixed $marks, bool $allowPendingTextColor): array
+    {
         if (! is_array($marks)) {
             throw new InvalidArgumentException('A formatação do texto é inválida.');
         }
@@ -358,11 +390,7 @@ final class GeneralAspectsDocument
             ];
         }
 
-        if ($normalizedMarks !== []) {
-            $normalized['marks'] = $normalizedMarks;
-        }
-
-        return $normalized;
+        return $normalizedMarks;
     }
 
     /** @return array<string, mixed> */

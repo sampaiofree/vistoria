@@ -12,6 +12,7 @@ use App\Enums\UserStatus;
 use App\Http\Requests\Settings\StoreUserRequest;
 use App\Http\Requests\Settings\UpdateUserRequest;
 use App\Http\Requests\Settings\UpdateUserStatusRequest;
+use App\Models\Client;
 use App\Models\User;
 use App\Services\Tenancy\TenantContext;
 use Illuminate\Http\RedirectResponse;
@@ -59,23 +60,26 @@ final class UserSettingsController extends Controller
             'account_type_options' => [
                 ['value' => UserAccountType::Member->value, 'label' => 'Usuário'],
                 ['value' => UserAccountType::CompanyAdmin->value, 'label' => 'Administrador da Empresa'],
+                ['value' => UserAccountType::Client->value, 'label' => 'Cliente'],
             ],
             'operational_role_options' => $this->operationalRoleOptions(),
-            'create_url' => route('settings.users.create'),
+            'create_url' => route('settings.users.create', $accountType === UserAccountType::Client ? ['account_type' => 'client'] : []),
         ]);
     }
 
-    public function create(): InertiaResponse
+    public function create(Request $request, TenantContext $tenant): InertiaResponse
     {
         $this->authorize('create', User::class);
 
+        $accountTypeOptions = $this->accountTypeOptions($tenant);
+        $clientAvailable = collect($accountTypeOptions)->contains('value', UserAccountType::Client->value);
+        $clientRequested = $request->query('account_type') === UserAccountType::Client->value && $clientAvailable;
+
         return Inertia::render('Settings/Users/Create', [
             'action' => route('settings.users.store'),
-            'cancel_url' => route('settings.users.index'),
-            'account_type_options' => [
-                ['value' => UserAccountType::Member->value, 'label' => 'Usuário'],
-                ['value' => UserAccountType::CompanyAdmin->value, 'label' => 'Administrador da Empresa'],
-            ],
+            'cancel_url' => route('settings.users.index', $clientRequested ? ['account_type' => 'client'] : []),
+            'initial_account_type' => $clientRequested ? 'client' : 'member',
+            'account_type_options' => $accountTypeOptions,
             'operational_role_options' => $this->operationalRoleOptions(),
         ]);
     }
@@ -84,7 +88,7 @@ final class UserSettingsController extends Controller
     {
         $result = $action->handle($tenant->organization(), $request->validated());
 
-        return redirect()->route('settings.users.index')->with('temporary_credentials', [
+        return redirect()->route('settings.users.index', $result['user']->isClient() ? ['account_type' => 'client'] : [])->with('temporary_credentials', [
             'name' => $result['user']->name,
             'email' => $result['user']->email,
             'password' => $result['temporary_password'],
@@ -103,11 +107,8 @@ final class UserSettingsController extends Controller
             'reset_password_url' => $request->user()->can('resetPassword', $user)
                 ? route('settings.users.reset-password', $user)
                 : null,
-            'cancel_url' => route('settings.users.index'),
-            'account_type_options' => [
-                ['value' => UserAccountType::Member->value, 'label' => 'Usuário'],
-                ['value' => UserAccountType::CompanyAdmin->value, 'label' => 'Administrador da Empresa'],
-            ],
+            'cancel_url' => route('settings.users.index', $user->isClient() ? ['account_type' => 'client'] : []),
+            'account_type_options' => $this->accountTypeOptions($tenant),
             'operational_role_options' => $this->operationalRoleOptions(),
         ]);
     }
@@ -152,9 +153,13 @@ final class UserSettingsController extends Controller
             'name' => $user->name,
             'email' => $user->email,
             'account_type' => $user->account_type->value,
-            'account_type_label' => $user->isCompanyAdmin() ? 'Administrador da Empresa' : 'Usuário',
+            'account_type_label' => match ($user->account_type) {
+                UserAccountType::CompanyAdmin => 'Administrador da Empresa',
+                UserAccountType::Client => 'Cliente',
+                default => 'Usuário',
+            },
             'operational_role' => $user->operational_role?->value,
-            'operational_role_label' => $user->operationalRoleLabel(),
+            'operational_role_label' => $user->isClient() ? '—' : $user->operationalRoleLabel(),
             'status' => $user->status->value,
             'status_label' => match ($user->status) {
                 UserStatus::Active => 'Ativo',
@@ -179,5 +184,20 @@ final class UserSettingsController extends Controller
             fn (OperationalRole $role): array => ['value' => $role->value, 'label' => $role->label()],
             OperationalRole::cases(),
         );
+    }
+
+    /** @return array<int, array{value: string, label: string}> */
+    private function accountTypeOptions(TenantContext $tenant): array
+    {
+        $options = [
+            ['value' => UserAccountType::Member->value, 'label' => 'Usuário'],
+            ['value' => UserAccountType::CompanyAdmin->value, 'label' => 'Administrador da Empresa'],
+        ];
+
+        if (Client::query()->forOrganization($tenant->id())->exists()) {
+            $options[] = ['value' => UserAccountType::Client->value, 'label' => 'Cliente'];
+        }
+
+        return $options;
     }
 }

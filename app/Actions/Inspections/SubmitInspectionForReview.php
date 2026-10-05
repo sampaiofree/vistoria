@@ -54,6 +54,16 @@ final class SubmitInspectionForReview
             throw ValidationException::withMessages(['inspection' => 'Confira e encerre os apontamentos do Planejador antes de enviar para revisão.']);
         }
 
+        $unansweredReviewerRequests = InspectionCorrectionRequest::query()
+            ->forOrganization($inspection->organization_id)
+            ->where('inspection_id', $inspection->id)
+            ->where('flow', InspectionCorrectionRequestFlow::ReviewerToPlanner->value)
+            ->whereIn('status', [InspectionCorrectionRequestStatus::Marked, InspectionCorrectionRequestStatus::Requested])
+            ->count();
+        if ($unansweredReviewerRequests > 0) {
+            throw ValidationException::withMessages(['inspection' => 'Responda às solicitações do Revisor antes de enviar a inspeção para revisão.']);
+        }
+
         $this->coverageValidator->validate($inspection);
         $this->photoCoverageValidator->validate($inspection);
         $this->overviewCoverageValidator->validate($inspection);

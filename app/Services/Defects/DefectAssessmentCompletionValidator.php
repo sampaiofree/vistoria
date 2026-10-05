@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Services\Defects;
 
 use App\Enums\DefectAssessmentCondition;
-use App\Enums\DefectCategory;
 use App\Enums\InspectionLocationMapProcessingStatus;
 use App\Enums\PhotoProcessingStatus;
 use App\Models\Defect;
@@ -54,8 +53,12 @@ final class DefectAssessmentCompletionValidator
                 $errors['quantity'] = 'Informe o quantitativo antes de publicar a avaliação.';
             }
 
-            if ($assessment->photos->count() < 2) {
+            $photoCount = $assessment->photos->count();
+
+            if ($photoCount < 2) {
                 $errors['photos'] = 'Adicione pelo menos duas fotografias antes de publicar a avaliação.';
+            } elseif ($photoCount % 2 !== 0) {
+                $errors['photos'] = 'Adicione mais uma fotografia para publicar a avaliação com um número par de fotografias.';
             } elseif ($assessment->photos->contains(
                 fn ($photo): bool => $photo->processing_status !== PhotoProcessingStatus::Ready,
             )) {

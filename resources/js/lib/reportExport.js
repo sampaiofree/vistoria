@@ -273,7 +273,10 @@ export async function captureReportPages(elements, onProgress = () => {}) {
         for (let index = 0; index < elements.length; index += 1) {
             onProgress({ current: index + 1, total: elements.length });
             const pageImageDataUrls = await prepareReportPageImages(elements[index], index + 1, imageDataUrls);
+            const dimensions = reportPageDimensions(elements[index].dataset.reportOrientation);
             const canvas = await html2canvas(elements[index], {
+                width: dimensions.widthPx,
+                height: dimensions.heightPx,
                 backgroundColor: '#FFFFFF',
                 scale: 2,
                 useCORS: true,
@@ -284,7 +287,9 @@ export async function captureReportPages(elements, onProgress = () => {}) {
                 onclone: async (clonedDocument, clonedPage) => {
                     clonedDocument.documentElement.style.setProperty('background-color', '#FFFFFF', 'important');
                     clonedDocument.body.style.setProperty('background-color', '#FFFFFF', 'important');
-                    clonedDocument.querySelector('.report-preview-pages')?.classList.add('report-exporting');
+                    const preview = clonedPage.closest('.report-preview-pages');
+                    preview?.classList.add('report-exporting');
+                    if (preview) preview.scrollLeft = 0;
                     await embedReportPageImages(clonedPage, pageImageDataUrls, index + 1);
                 },
             });
