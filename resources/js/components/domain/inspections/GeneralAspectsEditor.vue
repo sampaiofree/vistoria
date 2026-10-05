@@ -71,8 +71,8 @@ const PendingTextColor = Mark.create({
     parseHTML() {
         return [{
             style: 'color',
-            getAttrs: (element) => {
-                const color = element.style.color.replaceAll(' ', '').toUpperCase();
+            getAttrs: (value) => {
+                const color = value.replaceAll(' ', '').toUpperCase();
 
                 return ['#DC2626', 'RGB(220,38,38)'].includes(color)
                     ? { color: PENDING_TEXT_COLOR }
