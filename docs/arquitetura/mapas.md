@@ -29,6 +29,8 @@ Inspetor envia PNG, JPEG ou WebP e informa o número do projeto, aguarda o
 processamento, abre o editor da avaliação, desenha uma ou várias regiões,
 informa uma legenda opcional e salva. Salvar também confirma a localização.
 O Revisor responsável pode corrigir o conteúdo em `in_review`.
+O bloco também permite salvar **Observações do mapa** na avaliação, mesmo antes
+do upload. Esse texto é independente da legenda e permanece ao remover a imagem.
 
 Não há seletor de avaria, criação independente, título/categoria/ordem editáveis,
 cor manual, múltiplas marcações nem seleção manual de fotos. Título, categoria e
@@ -49,11 +51,11 @@ automaticamente.
 
 `new`, `reinspected`, `reclassified` e `treated` nas categorias CV, TAC, REC e
 TEL exigem uma versão pronta, número do projeto e localização confirmada, além
-dos demais requisitos de evidência. ES dispensa mapa. `canceled` e
+de observações do mapa e dos demais requisitos de evidência. ES dispensa mapa. `canceled` e
 `canceled_sr` são dispensadas e não entram na documentação de localização.
 
 Uma reinspeção herda a versão pronta usada pela avaliação anterior e copia sua
-geometria e legenda. A cópia começa sem `confirmed_at`: o Inspetor precisa
+geometria, legenda e observações. A cópia começa sem `confirmed_at`: o Inspetor precisa
 confirmá-la explicitamente antes de publicar.
 
 Substituir a imagem cria nova versão e mantém a geometria como prévia, mas invalida
@@ -94,6 +96,8 @@ O relatório gera uma folha por avaliação completa, localizada e não cancelad
 ordenada pela categoria e sequência da avaria. A folha usa a versão histórica,
 uma geometria e todas as fotos prontas da avaliação. A numeração reinicia por
 categoria; TAC reserva 1 a 4 e começa em 5.
+As observações vêm da avaliação e terminam com a linha `FOTOS: {intervalo}`;
+textos anteriores à mudança são copiados para o novo campo na migração.
 
 Versões referenciadas nunca são removidas. Uma versão falha, removida ou
 substituída só tem registros e arquivos eliminados quando nenhuma avaliação

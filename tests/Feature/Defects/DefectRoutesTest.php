@@ -1196,7 +1196,7 @@ final class DefectRoutesTest extends TestCase
                 'recommendation' => 'Acompanhar conforme programação técnica.',
                 ...$this->gutScores(),
             ])
-            ->assertSessionHasErrors(['quantity', 'photos', 'location_map', 'location']);
+            ->assertSessionHasErrors(['quantity', 'photos', 'location_map', 'location', 'map_observations']);
 
         $this->actingAs($admin)
             ->post(route('defect-assessments.quantities.store', $assessment), [
@@ -1279,6 +1279,21 @@ final class DefectRoutesTest extends TestCase
             'optimized_path' => $fourthPhoto->original_path,
             'thumbnail_path' => $fourthPhoto->original_path,
         ]);
+
+        $this->actingAs($admin)
+            ->post(route('defect-assessments.complete', $assessment), [
+                'condition' => DefectAssessmentCondition::New->value,
+                'comment' => 'Registro inicial.',
+                'recommendation' => 'Acompanhar conforme programação técnica.',
+            ])
+            ->assertSessionHasErrors('map_observations');
+
+        $this->actingAs($admin)
+            ->patch(route('defect-assessments.map-observations.update', $assessment), [
+                'map_observations' => 'Mapeada na face norte.',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
 
         $this->actingAs($admin)
             ->post(route('defect-assessments.complete', $assessment), [

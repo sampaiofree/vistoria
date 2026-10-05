@@ -114,6 +114,9 @@ const mapForm = useForm({
     file: null,
     project_number: props.location_map?.project_number ?? '',
 });
+const mapObservationsForm = useForm({
+    map_observations: props.assessment.map_observations ?? '',
+});
 const mapFileInput = ref(null);
 const mapPreviewUrl = ref(null);
 let mapProcessingPoll = null;
@@ -636,6 +639,15 @@ function saveMapProjectNumber() {
     mapForm.patch(props.location_map.project_number_update_url, {
         preserveScroll: true,
         only: ['location_map', 'assessment', 'capabilities', 'flash'],
+    });
+}
+
+function saveMapObservations() {
+    if (!props.capabilities.map_observations_update_url || mapObservationsForm.processing) return;
+
+    mapObservationsForm.patch(props.capabilities.map_observations_update_url, {
+        preserveScroll: true,
+        only: ['assessment', 'capabilities', 'flash'],
     });
 }
 
@@ -1451,6 +1463,17 @@ onUnmounted(() => {
                         </Link>
                         <button v-if="capabilities.location_map_delete_url && !locationModalOpen" type="button" class="w-full rounded-xl border border-rose-200 bg-white px-4 py-2.5 text-sm font-semibold text-rose-700 hover:border-rose-300 hover:bg-rose-50" @click="removeMap">Remover imagem</button>
                     </div>
+                </div>
+                <div class="mt-5 border-t border-slate-100 pt-5">
+                    <label for="map-observations" class="block">
+                        <span :class="labelClass">Observações do mapa</span>
+                        <textarea id="map-observations" v-model="mapObservationsForm.map_observations" rows="5" maxlength="10000" :class="inputClass" :disabled="!capabilities.map_observations_update_url" placeholder="Descreva as observações que aparecerão na página do mapa do relatório."></textarea>
+                    </label>
+                    <p class="mt-1.5 text-xs text-slate-500">Obrigatórias para publicar a avaliação. Podem ser salvas antes de enviar o mapa.</p>
+                    <p v-if="mapObservationsForm.errors.map_observations" :class="errorClass">{{ mapObservationsForm.errors.map_observations }}</p>
+                    <button v-if="capabilities.map_observations_update_url" type="button" :disabled="mapObservationsForm.processing || !mapObservationsForm.isDirty" class="mt-3 rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-50" @click="saveMapObservations">
+                        {{ mapObservationsForm.processing ? 'Salvando…' : 'Salvar observações do mapa' }}
+                    </button>
                 </div>
             </section>
 

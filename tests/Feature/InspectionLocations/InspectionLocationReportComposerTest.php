@@ -80,6 +80,25 @@ final class InspectionLocationReportComposerTest extends TestCase
         $this->assertSame(5, $report['photo_count']);
     }
 
+    public function test_report_observations_use_the_assessment_text_instead_of_the_map_label(): void
+    {
+        $inspection = $this->inspection();
+        $assessment = $this->assessment($inspection, DefectCategory::Civil, 'CV-001', 1);
+        $this->locateAssessment($assessment);
+        $assessment->location()->update(['label' => 'Legenda da marcação']);
+        $assessment->update(['map_observations' => "Primeira linha.\nSegunda linha."]);
+        $this->photos($assessment, 2);
+
+        $report = app(InspectionLocationReportComposer::class)->compose($inspection);
+        $map = $report['sheets'][0]['maps'][0];
+
+        $this->assertSame("Primeira linha.\nSegunda linha.", $map['observations']);
+        $this->assertSame('Legenda da marcação', $map['markers'][0]['label']);
+        $this->assertSame('1 E 2', $map['damage_rows'][0]['photo_interval']);
+        $snapshot = app(BuildInspectionLocationSnapshot::class)->fromComposition($inspection, $report);
+        $this->assertSame($map['observations'], $snapshot['categories'][0]['maps'][0]['observations']);
+    }
+
     public function test_report_keeps_historical_version_and_automatic_color_without_editable_style(): void
     {
         $inspection = $this->inspection();

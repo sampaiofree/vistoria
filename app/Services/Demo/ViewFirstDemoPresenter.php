@@ -398,6 +398,9 @@ class ViewFirstDemoPresenter
                 'update_url' => $canEdit
                     ? route('defect-assessments.update', $assessment)
                     : null,
+                'map_observations_update_url' => $canEdit && $category->requiresLocationMap()
+                    ? route('defect-assessments.map-observations.update', $assessment)
+                    : null,
                 'complete_url' => $canEdit
                     ? route('defect-assessments.complete', $assessment)
                     : null,
@@ -887,6 +890,7 @@ class ViewFirstDemoPresenter
             'status' => $assessment->status->value,
             'status_label' => $assessment->status->label(),
             'location_description' => $assessment->location_description,
+            'map_observations' => $assessment->map_observations,
             'comment' => $assessment->comment,
             'recommendation' => $assessment->recommendation,
             'reason' => $assessment->reason,

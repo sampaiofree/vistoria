@@ -92,7 +92,7 @@ final class InspectionLocationReportComposer
             'report_title' => $assessment->defect->code.' · '.$assessment->defect->title,
             'historical_label' => app(\App\Services\Defects\InspectionAssessmentResolver::class)->historicalLabel($inspection, $assessment),
             'description' => $assessment->location_description,
-            'observations' => $location->label ?? $assessment->location_description,
+            'observations' => $assessment->map_observations ?? '',
             'position' => (int) $assessment->defect->sequence_number,
             'processing_status' => $version->processing_status->value,
             'geometry_schema_version' => 1,

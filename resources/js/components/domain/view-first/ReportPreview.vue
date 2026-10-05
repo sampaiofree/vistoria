@@ -4,6 +4,7 @@ import { useReportPreviewZoom } from '@/composables/useReportPreviewZoom.js';
 import ReportA4Page from '@/components/domain/view-first/ReportA4Page.vue';
 import InspectionLocationReportMap from '@/components/domain/inspection-locations/InspectionLocationReportMap.vue';
 import ReportMapObservationText from '@/components/domain/view-first/ReportMapObservationText.vue';
+import { reportMapObservation } from '@/lib/reportMapObservation.js';
 import ReportGeneralAspectsPaginator from '@/components/domain/view-first/ReportGeneralAspectsPaginator.vue';
 import ReportSummaryPage from '@/components/domain/view-first/ReportSummaryPage.vue';
 import ReportSummaryPaginator from '@/components/domain/view-first/ReportSummaryPaginator.vue';
@@ -109,7 +110,7 @@ function updateGeneralAspectsPages(value) {
 }
 
 function mapObservation(map) {
-    return String(map?.observations ?? map?.description ?? '');
+    return reportMapObservation(map);
 }
 
 function mapUsesTel(map) {
@@ -1085,7 +1086,7 @@ function visualClass(photo) {
 .report-photo-block.report-overview-block { flex: none; margin-bottom: 2mm; }
 .report-photo-block.report-overview-block:last-child { margin-bottom: 0; }
 .report-overview-block .report-photo-image { height: 43mm; }
-.report-overview-block .report-photo-text-section p { min-height: 0; max-height: 20mm; padding: 2mm 4mm; overflow: hidden; font-size: 7pt; line-height: 1.2; text-align: left; }
+.report-overview-block .report-photo-text-section p { min-height: 0; max-height: 20mm; padding: 2mm 4mm; overflow: hidden; font-size: 7pt; line-height: 1.2; text-align: center; }
 .report-overview-block .report-photo-blue-bar { padding-top: 1mm; padding-bottom: 1mm; }
 .report-cover-layout { position: relative; display: flex; min-height: 0; flex: 1; flex-direction: column; }
 .report-cover-rule { position: relative; z-index: 1; height: 1px; flex: none; margin: 4mm 0 0; background: #111827; }

@@ -34,6 +34,7 @@ final class DefectAssessment extends Model
         'classification_method',
         'status',
         'location_description',
+        'map_observations',
         'comment',
         'recommendation',
         'reason',

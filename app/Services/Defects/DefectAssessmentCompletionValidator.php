@@ -66,6 +66,10 @@ final class DefectAssessmentCompletionValidator
             }
 
             if ($assessment->defect->category->requiresLocationMap()) {
+                if (blank($assessment->map_observations)) {
+                    $errors['map_observations'] = 'Informe as observações do mapa antes de publicar a avaliação.';
+                }
+
                 if ($assessment->locationMapVersion === null) {
                     $errors['location_map'] = 'Envie o mapa de localização antes de publicar a avaliação.';
                 } elseif ($assessment->locationMapVersion->processing_status !== InspectionLocationMapProcessingStatus::Ready

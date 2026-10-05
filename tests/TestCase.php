@@ -34,6 +34,9 @@ abstract class TestCase extends BaseTestCase
         }
 
         if ($assessment->defect->category->requiresLocationMap()) {
+            if (blank($assessment->map_observations)) {
+                $assessment->update(['map_observations' => 'Localização registrada no mapa.']);
+            }
             $this->locateAssessment($assessment);
         }
     }

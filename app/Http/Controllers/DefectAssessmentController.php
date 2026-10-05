@@ -126,6 +126,29 @@ final class DefectAssessmentController extends Controller
             ->with('success', 'Avaliação atualizada.');
     }
 
+    public function updateMapObservations(
+        Request $request,
+        TenantContext $tenant,
+        DefectAssessment $defectAssessment,
+    ): RedirectResponse {
+        $assessment = $this->tenantDefectAssessment($tenant, $defectAssessment);
+        $assessment->loadMissing('defect');
+        $this->authorize('update', $assessment);
+        abort_unless($assessment->defect->category->requiresLocationMap(), 404);
+
+        $data = $request->validate([
+            'map_observations' => ['present', 'nullable', 'string', 'max:10000'],
+        ]);
+        $observations = trim(str_replace(["\r\n", "\r"], "\n", $data['map_observations'] ?? ''));
+
+        $assessment->update([
+            'map_observations' => $observations === '' ? null : $observations,
+            'updated_by' => $request->user()->id,
+        ]);
+
+        return back()->with('success', 'Observações do mapa salvas.');
+    }
+
     public function changeStatus(
         ChangeDefectAssessmentStatusRequest $request,
         TenantContext $tenant,

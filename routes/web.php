@@ -271,6 +271,11 @@ Route::middleware([
             [DefectAssessmentLocationController::class, 'updateProjectNumber'],
         )->name('defect-assessments.location-map.project-number.update');
 
+        Route::patch(
+            'defect-assessments/{defectAssessment}/map-observations',
+            [DefectAssessmentController::class, 'updateMapObservations'],
+        )->name('defect-assessments.map-observations.update');
+
         Route::get(
             'defect-assessments/{defectAssessment}/location/editor',
             [DefectAssessmentLocationController::class, 'editor'],

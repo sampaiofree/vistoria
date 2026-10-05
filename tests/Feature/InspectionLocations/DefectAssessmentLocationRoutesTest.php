@@ -21,11 +21,13 @@ use App\Models\InspectionResponsible;
 use App\Models\Organization;
 use App\Models\User;
 use App\Services\InspectionLocations\InspectionLocationAssetGuard;
+use App\Services\Defects\DefectAssessmentCompletionValidator;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 use Mockery;
 use RuntimeException;
 use Tests\TestCase;
@@ -145,7 +147,15 @@ final class DefectAssessmentLocationRoutesTest extends TestCase
             'status' => DefectAssessmentStatus::Complete,
             'assessed_at' => now(),
             'defect_snapshot' => ['historical' => true],
+            'map_observations' => 'Texto publicado.',
         ]);
+
+        $this->actingAs($user)
+            ->patch(route('defect-assessments.map-observations.update', $assessment), [
+                'map_observations' => 'Alteração sem reabrir.',
+            ])
+            ->assertForbidden();
+        $this->assertSame('Texto publicado.', $assessment->refresh()->map_observations);
 
         $this->actingAs($user)
             ->post(route('defect-assessments.location-map.store', $assessment), [
@@ -189,6 +199,73 @@ final class DefectAssessmentLocationRoutesTest extends TestCase
             ->assertSessionHasErrors('project_number');
 
         $this->assertDatabaseCount('defect_location_map_versions', 0);
+    }
+
+    public function test_map_observations_can_be_saved_before_upload_and_survive_map_removal(): void
+    {
+        Storage::fake('inspection_maps');
+        [$user, , $assessment] = $this->context();
+
+        $this->actingAs($user)
+            ->patch(route('defect-assessments.map-observations.update', $assessment), [
+                'map_observations' => "  Face norte.\r\nTrecho junto à solda.  ",
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame("Face norte.\nTrecho junto à solda.", $assessment->refresh()->map_observations);
+        $this->assertNull($assessment->defect_location_map_version_id);
+
+        $this->locateAssessment($assessment);
+        $this->actingAs($user)
+            ->delete(route('defect-assessments.location-map.destroy', $assessment))
+            ->assertRedirect();
+
+        $this->assertNull($assessment->refresh()->defect_location_map_version_id);
+        $this->assertSame("Face norte.\nTrecho junto à solda.", $assessment->map_observations);
+    }
+
+    public function test_map_observations_are_required_to_publish_a_mapped_assessment(): void
+    {
+        [, , $assessment] = $this->context();
+        $assessment->update([
+            'comment' => 'Avaria observada.',
+            'recommendation' => 'Acompanhar a avaria.',
+        ]);
+        $this->satisfyAssessmentPublicationRequirements($assessment);
+        $assessment->update(['map_observations' => null]);
+
+        try {
+            app(DefectAssessmentCompletionValidator::class)->ensureCanComplete($assessment->refresh()->load(['defect', 'photos']));
+            $this->fail('A publicação deveria exigir as observações do mapa.');
+        } catch (ValidationException $exception) {
+            $this->assertSame(
+                ['Informe as observações do mapa antes de publicar a avaliação.'],
+                $exception->errors()['map_observations'] ?? [],
+            );
+        }
+
+        $assessment->update(['map_observations' => 'Trecho junto à solda.']);
+        app(DefectAssessmentCompletionValidator::class)->ensureCanComplete($assessment->refresh()->load(['defect', 'photos']));
+    }
+
+    public function test_existing_map_observations_are_backfilled_from_label_or_location_description(): void
+    {
+        [, , $withLabel] = $this->context();
+        $this->locateAssessment($withLabel);
+        $withLabel->update(['location_description' => 'Descrição antiga']);
+        $withLabel->location()->update(['label' => 'Legenda antiga']);
+
+        [, , $withoutLabel] = $this->context();
+        $this->locateAssessment($withoutLabel);
+        $withoutLabel->update(['location_description' => 'Localização descrita']);
+
+        $migration = require database_path('migrations/2026_10_05_000069_add_map_observations_to_defect_assessments.php');
+        $migration->down();
+        $migration->up();
+
+        $this->assertSame('Legenda antiga', $withLabel->refresh()->map_observations);
+        $this->assertSame('Localização descrita', $withoutLabel->refresh()->map_observations);
     }
 
     public function test_location_save_confirms_multiple_regions_and_rejects_client_style_and_stale_writes(): void
@@ -253,7 +330,11 @@ final class DefectAssessmentLocationRoutesTest extends TestCase
     public function test_reinspection_inherits_the_version_and_geometry_but_requires_new_confirmation(): void
     {
         [$user, $inspection, $assessment] = $this->context();
-        $assessment->update(['status' => DefectAssessmentStatus::Complete, 'assessed_at' => now()]);
+        $assessment->update([
+            'status' => DefectAssessmentStatus::Complete,
+            'assessed_at' => now(),
+            'map_observations' => 'Trecho a acompanhar na reinspeção.',
+        ]);
         $version = $this->locateAssessment($assessment);
         $nextInspection = Inspection::factory()->reinspection($inspection)->create(['status' => InspectionStatus::InProgress]);
         InspectionResponsible::factory()->forInspection($nextInspection, $user)->create(['responsibility' => InspectionResponsibility::Preparer]);
@@ -270,6 +351,7 @@ final class DefectAssessmentLocationRoutesTest extends TestCase
         $next = DefectAssessment::query()->where('inspection_id', $nextInspection->id)->firstOrFail();
         $this->assertSame($version->id, $next->defect_location_map_version_id);
         $this->assertSame($assessment->location->geometry, $next->location->geometry);
+        $this->assertSame($assessment->map_observations, $next->map_observations);
         $this->assertNull($next->location->confirmed_at);
         $this->assertSame(DefectAssessmentStatus::Draft, $next->status);
     }

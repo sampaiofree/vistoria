@@ -102,6 +102,7 @@ final class AssessExistingDefect
                 'condition' => $condition,
                 'status' => DefectAssessmentStatus::Draft,
                 'location_description' => TextNormalizer::nullableText($data['location_description'] ?? null),
+                'map_observations' => $previousAssessment?->map_observations,
                 'comment' => TextNormalizer::nullableText($data['comment'] ?? null),
                 'recommendation' => TextNormalizer::nullableText($data['recommendation'] ?? null),
                 'reason' => TextNormalizer::nullableText($data['reason'] ?? null),
