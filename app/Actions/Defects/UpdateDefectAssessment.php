@@ -120,6 +120,10 @@ final class UpdateDefectAssessment
                 ]);
             }
 
+            if ($assessment->isEngineeringNoteWithoutQuantity()) {
+                $assessment->clearGutClassification();
+            }
+
             $assessment->save();
 
             if ($wasComplete) {

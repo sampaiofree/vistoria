@@ -93,6 +93,7 @@ final class DefectAssessmentLocationController extends Controller
                 'defect_title' => $assessment->defect->title,
                 'category' => $assessment->defect->category->toArray(),
                 'color' => $colors->forAssessment($assessment),
+                'engineering_note_without_quantity' => $assessment->isEngineeringNoteWithoutQuantity(),
                 'photo_legend' => $numbering->displayLegendForAssessment($assessment, $reportNumbers),
                 'show_url' => route('defect-assessments.show', $assessment),
             ],

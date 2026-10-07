@@ -220,8 +220,12 @@ const hasLocationMap = computed(() => !isSolidaryStructures.value);
 const supportsEngineeringNote = computed(() => ['CV', 'TAC', 'REC'].includes(defectCategory.value));
 const usesEngineeringNote = computed(() => supportsEngineeringNote.value
     && form.classification_method === 'engineering_note');
+const engineeringNoteWithoutQuantity = computed(() => usesEngineeringNote.value
+    && (isCivil.value || isRec.value)
+    && props.quantities.length === 0);
 const requiresClassification = computed(() => ['new', 'reinspected', 'reclassified'].includes(form.condition)
-    && !isSolidaryStructures.value);
+    && !isSolidaryStructures.value
+    && !engineeringNoteWithoutQuantity.value);
 const narrativeStep = computed(() => 2
     + Number(requiresEvidence.value && hasQuantities.value)
     + Number(requiresClassification.value));
@@ -346,7 +350,7 @@ function saveCondition() {
     form.status = 'draft';
     form.patch(props.capabilities.update_url, {
         preserveScroll: true,
-        only: ['assessment', 'classification', 'gut_snapshot', 'quantities', 'quantity_summary', 'capabilities', 'flash'],
+        only: ['assessment', 'classification', 'gut_snapshot', 'quantities', 'quantity_summary', 'location_map', 'capabilities', 'flash'],
         onSuccess: () => { editing.condition = false; },
     });
 }
@@ -375,7 +379,7 @@ function selectClassificationMethod(method) {
     editing.quantity = false;
     form.patch(props.capabilities.update_url, {
         preserveScroll: true,
-        only: ['assessment', 'classification', 'gut_snapshot', 'quantities', 'quantity_summary', 'capabilities', 'flash'],
+        only: ['assessment', 'classification', 'gut_snapshot', 'quantities', 'quantity_summary', 'location_map', 'capabilities', 'flash'],
         onError: () => { form.classification_method = previousMethod; },
     });
 }
@@ -423,7 +427,7 @@ function saveQuantity() {
         }))
         .submit(editingQuantity.value ? 'put' : 'post', action, {
             preserveScroll: true,
-            only: ['assessment', 'quantities', 'quantity_summary', 'capabilities', 'flash'],
+            only: ['assessment', 'classification', 'gut_snapshot', 'quantities', 'quantity_summary', 'location_map', 'capabilities', 'flash'],
             onSuccess: () => cancelEditing('quantity'),
         });
 }
@@ -432,7 +436,7 @@ function removeQuantity(item) {
     if (!item.delete_url) return;
     router.delete(item.delete_url, {
         preserveScroll: true,
-        only: ['assessment', 'quantities', 'quantity_summary', 'capabilities', 'flash'],
+        only: ['assessment', 'classification', 'gut_snapshot', 'quantities', 'quantity_summary', 'location_map', 'capabilities', 'flash'],
         onSuccess: () => {
             if (editingQuantity.value?.public_id === item.public_id) cancelEditing('quantity');
         },
@@ -740,7 +744,7 @@ onUnmounted(() => {
                     <div>
                         <p class="text-xs font-bold uppercase tracking-[0.16em]" :class="usesEngineeringNote ? 'text-teal-800' : 'text-slate-500'">Nota de Engenharia</p>
                         <h2 class="mt-1 text-lg font-semibold text-slate-950">{{ usesEngineeringNote ? 'Nota de Engenharia marcada' : 'Nota de Engenharia não marcada' }}</h2>
-                        <p class="mt-1 text-sm" :class="usesEngineeringNote ? 'text-teal-800' : 'text-slate-500'">A Nota de Engenharia acompanha a avaliação. As notas GUT e o quantitativo continuam obrigatórios para publicar.</p>
+                        <p class="mt-1 text-sm" :class="usesEngineeringNote ? 'text-teal-800' : 'text-slate-500'">Para CIVIL e REC, o quantitativo é opcional. Sem itens, o GUT é dispensado e a localização fica roxa; com itens, o GUT é obrigatório. TAC mantém GUT e quantitativo obrigatórios.</p>
                         <p v-if="form.errors.classification_method" class="mt-2 text-sm font-medium text-rose-700">{{ form.errors.classification_method }}</p>
                     </div>
                 </div>
@@ -886,7 +890,8 @@ onUnmounted(() => {
                             <template v-if="isCivil">Informe as dimensões em metros e a quantidade. O volume será calculado automaticamente.</template>
                             <template v-else-if="isTac">Informe a área total observada em metros quadrados.</template>
                             <template v-else>Escolha o elemento e informe suas dimensões. O peso será calculado quando houver fórmula.</template>
-                            <span> Obrigatório para publicar.</span>
+                            <span v-if="!usesEngineeringNote || isTac"> Obrigatório para publicar.</span>
+                            <span v-else> Opcional para Nota de Engenharia; ao adicionar um item, o GUT passa a ser obrigatório.</span>
                         </p>
                     </div>
                     <button v-if="capabilities.quantity_store_url && !editing.quantity" type="button" class="rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 hover:border-slate-400" @click="editQuantity()">Adicionar item</button>

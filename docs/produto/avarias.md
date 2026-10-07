@@ -16,11 +16,17 @@ das entradas técnicas. ES não possui classificação automática.
 Uma avaliação começa como `draft` e é publicada como `complete`. Condições como
 `new`, `reinspected`, `reclassified` e `treated` exigem comentário,
 recomendação e ao menos duas fotos prontas, em quantidade par. CIVIL, TAC e REC exigem quantitativo;
-TEL e ES não. As três primeiras condições exigem classificação GUT para CIVIL,
+TEL e ES não, com a exceção de Nota de Engenharia CIVIL/REC descrita abaixo.
+As três primeiras condições exigem classificação GUT para CIVIL,
 TAC e REC, ou classificação própria para TEL. `treated` não recebe nova
 classificação. Todas, exceto ES, exigem mapa pronto com número de projeto e
 localização confirmada. Condições canceladas exigem comentário e motivo, mas
 dispensam as evidências.
+
+A Nota de Engenharia em CIVIL ou REC pode ser publicada sem quantitativo e sem
+GUT. Nesse caso, a localização usa roxo (`#7C3AED`) e não há classe nem Nota M2.
+Ao incluir um item de quantitativo, o GUT passa a ser obrigatório. TAC não usa
+essa exceção.
 
 A publicação guarda snapshots da avaria, classificação e quantitativos. GUT é usado
 por CIVIL, TAC e REC; TEL usa sua própria pontuação e snapshot. Publicar sincroniza
@@ -42,6 +48,9 @@ publicação.
 - TAC recebe áreas manuais (`m²`);
 - REC calcula peso nativo ou aceita peso manual nos elementos permitidos (`kg`);
 - TEL e ES não possuem quantitativo técnico.
+
+A Nota de Engenharia CIVIL/REC sem itens não gera linha no anexo de quantitativo
+do relatório, mas continua como linha na planilha XLS, com o valor em branco.
 
 Os cálculos no backend usam aritmética decimal. O resumo converte o total
 agregado para `float` antes de enviá-lo à interface; veja

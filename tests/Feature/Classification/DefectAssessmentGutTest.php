@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Classification;
 
 use App\Actions\Classification\SaveDefectAssessmentGut;
+use App\Actions\Classification\CreateDefectAssessmentQuantity;
 use App\Actions\Defects\CompleteDefectAssessment;
 use App\Actions\Defects\UpdateDefectAssessment;
 use App\Actions\Inspections\SubmitInspectionForPlanning;
@@ -21,10 +22,16 @@ use App\Models\Inspection;
 use App\Models\InspectionOverviewBlock;
 use App\Models\InspectionOverviewPhoto;
 use App\Models\InspectionResponsible;
+use App\Models\InspectionSpecialAssessmentNote;
 use App\Models\Organization;
 use App\Models\User;
 use App\Services\Classification\NativeDefectCatalog;
+use App\Services\Demo\ViewFirstDemoPresenter;
 use App\Services\InspectionLocations\InspectionLocationReportComposer;
+use App\Services\Inspections\InspectionClassificationM2CoverageValidator;
+use App\Services\Reports\BuildInspectionClassificationSummary;
+use App\Services\Reports\BuildInspectionQuantitativeWorksheet;
+use App\Services\Reports\ExportInspectionQuantitativeWorksheet;
 use App\Services\Reports\GutGravityLegend;
 use App\Services\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -577,30 +584,190 @@ final class DefectAssessmentGutTest extends TestCase
                 ->has('quantities', 1)
                 ->where('quantity_snapshot.item_count', 1)
                 ->has('classification_method_options', 2));
+
+        $map = app(InspectionLocationReportComposer::class)->compose($published->inspection)['sheets'][0]['maps'][0];
+        $this->assertFalse($map['engineering_note_without_quantity']);
+        $this->assertSame($published->classification_snapshot['color'], $map['markers'][0]['style']['fill']);
+        $quantityRowsKey = $published->defect->category === DefectCategory::Civil ? 'civil_quantity_rows' : 'rec_quantity_rows';
+        $this->actingAs($actor)->get(route('inspections.report-preview', $published->inspection))
+            ->assertOk()->assertInertia(fn (Assert $page) => $page->has('content.'.$quantityRowsKey, 1));
     }
 
-    public function test_engineering_note_requires_gut_and_quantity_to_publish(): void
+    public function test_removing_the_last_engineering_note_quantity_clears_gut_and_adding_one_requires_it_again(): void
     {
-        [$actor, $assessment] = $this->scenario(DefectCategory::StructuralRecovery);
-        $engineering = app(UpdateDefectAssessment::class)->handle($actor, $assessment, [
-            'condition' => DefectAssessmentCondition::New,
+        [$actor, $assessment] = $this->scenario(DefectCategory::Civil);
+        $assessment = app(SaveDefectAssessmentGut::class)->handle($actor, $assessment, $this->technicalGutPayload(DefectCategory::Civil));
+        $assessment = app(UpdateDefectAssessment::class)->handle($actor, $assessment, [
             'classification_method' => 'engineering_note',
         ]);
-        try {
-            app(CompleteDefectAssessment::class)->handle($actor, $engineering);
-            $this->fail('Publicação sem quantitativo deveria ser rejeitada.');
-        } catch (ValidationException $exception) {
-            $this->assertArrayHasKey('quantity', $exception->errors());
-        }
-        $engineering->refresh();
-        $this->satisfyAssessmentPublicationRequirements($engineering);
-        $this->assertSame(1, $engineering->quantities()->count());
+        $this->assertNull($assessment->gut_score);
+        $this->assertNull($assessment->classification_code);
+        $item = DefectAssessmentQuantity::factory()->forAssessment($assessment)->create();
+        $assessment = app(SaveDefectAssessmentGut::class)->handle($actor, $assessment, $this->technicalGutPayload(DefectCategory::Civil));
+        $this->assertNotNull($assessment->gut_score);
 
+        $this->actingAs($actor)->delete(route('defect-assessment-quantities.destroy', $item))
+            ->assertRedirect()->assertSessionHasNoErrors();
+        $assessment->refresh();
+        $this->assertNull($assessment->gut_score);
+        $this->assertNull($assessment->gut_snapshot);
+        $this->assertNull($assessment->classification_code);
+
+        $this->actingAs($actor)->post(route('defect-assessments.quantities.store', $assessment), [
+            'quantity' => ['length' => 1, 'height' => 1, 'width' => 1, 'quantity' => 1],
+        ])->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame(1, $assessment->quantities()->count());
+        $this->assertNull($assessment->refresh()->gut_score);
+
+        $this->satisfyAssessmentPublicationRequirements($assessment);
+        app(TenantContext::class)->set($assessment->defect->organization);
         try {
-            app(CompleteDefectAssessment::class)->handle($actor, $engineering);
-            $this->fail('Publicação sem GUT deveria ser rejeitada.');
+            app(CompleteDefectAssessment::class)->handle($actor, $assessment->fresh());
+            $this->fail('GUT deveria ser exigido após adicionar quantitativo.');
         } catch (ValidationException $exception) {
             $this->assertArrayHasKey('gravity', $exception->errors());
+        }
+        $assessment = app(SaveDefectAssessmentGut::class)->handle($actor, $assessment, $this->technicalGutPayload(DefectCategory::Civil));
+        $published = app(CompleteDefectAssessment::class)->handle($actor, $assessment);
+        $this->assertTrue($published->isComplete());
+        $this->assertSame(1, $published->quantity_snapshot['item_count']);
+    }
+
+    public function test_rec_engineering_note_with_quantity_uses_gut_color_and_enters_the_report_annex(): void
+    {
+        [$actor, $assessment] = $this->scenario(DefectCategory::StructuralRecovery);
+        $assessment = app(UpdateDefectAssessment::class)->handle($actor, $assessment, [
+            'classification_method' => 'engineering_note',
+        ]);
+        $this->satisfyAssessmentPublicationRequirements($assessment);
+        $assessment = app(SaveDefectAssessmentGut::class)->handle($actor, $assessment, $this->technicalGutPayload(DefectCategory::StructuralRecovery));
+        $published = app(CompleteDefectAssessment::class)->handle($actor, $assessment);
+
+        $map = app(InspectionLocationReportComposer::class)->compose($published->inspection)['sheets'][0]['maps'][0];
+        $this->assertFalse($map['engineering_note_without_quantity']);
+        $this->assertSame($published->classification_snapshot['color'], $map['markers'][0]['style']['fill']);
+        $this->assertNotNull(app(BuildInspectionQuantitativeWorksheet::class)->build($published->inspection)['rows'][0]['cells']['quantity']['value']);
+        $this->actingAs($actor)->get(route('inspections.report-preview', $published->inspection))
+            ->assertOk()->assertInertia(fn (Assert $page) => $page->has('content.rec_quantity_rows', 1));
+    }
+
+    public function test_adding_the_first_quantity_to_a_published_engineering_note_requires_republication_with_gut(): void
+    {
+        foreach ([DefectCategory::Civil, DefectCategory::StructuralRecovery] as $category) {
+            [$actor, $assessment] = $this->scenario($category);
+            $assessment = app(UpdateDefectAssessment::class)->handle($actor, $assessment, [
+                'classification_method' => 'engineering_note',
+            ]);
+            $this->satisfyAssessmentPublicationRequirements($assessment);
+            $assessment->quantities()->delete();
+            app(TenantContext::class)->set($assessment->defect->organization);
+            $published = app(CompleteDefectAssessment::class)->handle($actor, $assessment->fresh());
+
+            $updated = app(CreateDefectAssessmentQuantity::class)->handle($actor, $published, [
+                'quantity' => $category === DefectCategory::Civil
+                    ? ['length' => 1, 'height' => 1, 'width' => 1, 'quantity' => 1]
+                    : ['element' => 'bolted_connection', 'total_weight' => 1],
+            ]);
+
+            $this->assertTrue($updated->isDraft());
+            $this->assertCount(1, $updated->quantities);
+            $this->assertNull($updated->quantity_snapshot);
+            try {
+                app(CompleteDefectAssessment::class)->handle($actor, $updated);
+                $this->fail('A Nota com quantitativo não pode ser republicada sem GUT.');
+            } catch (ValidationException $exception) {
+                $this->assertArrayHasKey('gravity', $exception->errors());
+            }
+        }
+    }
+
+    public function test_civil_and_rec_engineering_notes_publish_without_quantities_or_gut(): void
+    {
+        foreach ([DefectCategory::Civil, DefectCategory::StructuralRecovery] as $category) {
+            [$actor, $assessment] = $this->scenario($category);
+            $engineering = app(UpdateDefectAssessment::class)->handle($actor, $assessment, [
+                'condition' => DefectAssessmentCondition::New,
+                'classification_method' => 'engineering_note',
+            ]);
+            $this->actingAs($actor)->put(route('defect-assessments.gut.update', $engineering), [
+                'condition' => 'new', ...$this->technicalGutPayload($category),
+            ])->assertSessionHasErrors('gut');
+
+            $this->satisfyAssessmentPublicationRequirements($engineering);
+            $engineering->quantities()->delete();
+            app(TenantContext::class)->set($engineering->defect->organization);
+            $published = app(CompleteDefectAssessment::class)->handle($actor, $engineering->fresh());
+
+            $this->assertTrue($published->isComplete());
+            $this->assertNull($published->quantity_snapshot);
+            $this->assertNull($published->gut_score);
+            $this->assertNull($published->gut_snapshot);
+            $this->assertNull($published->classification_code);
+            $this->assertTrue(app(ViewFirstDemoPresenter::class)->reportDefectTechnicalDetails($published)['engineering_note_without_quantity']);
+            $map = app(InspectionLocationReportComposer::class)->compose($published->inspection)['sheets'][0]['maps'][0];
+            $this->assertTrue($map['engineering_note_without_quantity']);
+            $this->assertNull($map['damage_rows'][0]['gut']);
+            $this->assertSame('#7C3AED', $map['markers'][0]['style']['fill']);
+            $this->assertContains(['code' => 'Nota de Engenharia', 'color' => '#7C3AED'], $map['classification_legend']);
+
+            $worksheet = app(BuildInspectionQuantitativeWorksheet::class)->build($published->inspection);
+            $this->assertCount(1, $worksheet['rows']);
+            $this->assertNull($worksheet['rows'][0]['cells']['quantity']['value']);
+            $this->assertNull($worksheet['rows'][0]['cells']['gut_score']['value']);
+            $this->assertNull($worksheet['rows'][0]['cells']['classification']['value']);
+            $book = app(ExportInspectionQuantitativeWorksheet::class)->spreadsheet($worksheet);
+            $this->assertSame($published->defect->code, $book->getActiveSheet()->getCell('D8')->getValue());
+            $this->assertNull($book->getActiveSheet()->getCell('E8')->getValue());
+            $book->disconnectWorksheets();
+
+            $summary = app(BuildInspectionClassificationSummary::class)->build($published->inspection);
+            $section = collect($summary['categories'])->firstWhere('code', $category->value);
+            $this->assertSame(0, collect($section['rows'])->sum('defect_count'));
+            $this->assertSame($published->public_id, $summary['special_assessment_rows'][0]['assessment_public_id']);
+            InspectionSpecialAssessmentNote::query()->create([
+                'organization_id' => $published->organization_id,
+                'inspection_id' => $published->inspection_id,
+                'defect_assessment_id' => $published->id,
+                'service' => 'Avaliar em engenharia',
+                'priority' => 'Alta',
+                'note' => 'Definir solução',
+                'created_by' => $actor->id,
+                'updated_by' => $actor->id,
+            ]);
+            app(InspectionClassificationM2CoverageValidator::class)->validate($published->inspection);
+
+            $quantityRowsKey = $category === DefectCategory::Civil ? 'civil_quantity_rows' : 'rec_quantity_rows';
+            $this->actingAs($actor)->get(route('inspections.report-preview', $published->inspection))
+                ->assertOk()->assertInertia(fn (Assert $page) => $page
+                    ->has('content.'.$quantityRowsKey, 0)
+                    ->where('content.location_documentation.sheets.0.maps.0.engineering_note_without_quantity', true)
+                    ->where('content.findings.0.technical_details.engineering_note_without_quantity', true));
+        }
+    }
+
+    public function test_engineering_note_with_quantities_still_requires_gut_and_tac_keeps_both_requirements(): void
+    {
+        foreach ([DefectCategory::Civil, DefectCategory::StructuralRecovery, DefectCategory::AnticorrosiveTreatment] as $category) {
+            [$actor, $assessment] = $this->scenario($category);
+            $engineering = app(UpdateDefectAssessment::class)->handle($actor, $assessment, [
+                'classification_method' => 'engineering_note',
+            ]);
+            if ($category === DefectCategory::AnticorrosiveTreatment) {
+                try {
+                    app(CompleteDefectAssessment::class)->handle($actor, $engineering);
+                    $this->fail('TAC sem quantitativo deveria ser rejeitado.');
+                } catch (ValidationException $exception) {
+                    $this->assertArrayHasKey('quantity', $exception->errors());
+                }
+            }
+            $this->satisfyAssessmentPublicationRequirements($engineering);
+
+            try {
+                app(CompleteDefectAssessment::class)->handle($actor, $engineering->fresh());
+                $this->fail('Publicação com quantitativo e sem GUT deveria ser rejeitada.');
+            } catch (ValidationException $exception) {
+                $this->assertArrayHasKey('gravity', $exception->errors());
+            }
         }
     }
 

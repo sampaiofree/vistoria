@@ -20,6 +20,9 @@ const startingAssessment = ref(false);
 
 const assessment = computed(() => props.defect.current_assessment ?? props.defect.assessment ?? {});
 const engineeringNote = computed(() => assessment.value.classification_method === 'engineering_note');
+const engineeringNoteWithoutQuantity = computed(() => engineeringNote.value
+    && ['CV', 'REC'].includes(props.defect.category)
+    && !(props.defect.quantities?.length));
 const condition = computed(() => assessment.value.condition ?? props.defect.condition ?? null);
 const status = computed(() => assessment.value.status ?? props.defect.assessment_status ?? 'not_assessed');
 const classification = computed(() => props.defect.classification ?? {});
@@ -154,12 +157,12 @@ const element = computed(() => {
 
             <div class="flex flex-wrap items-center gap-2">
                 <span v-if="engineeringNote" class="rounded-xl bg-teal-50 px-3 py-2 text-sm font-semibold text-teal-800">Nota de Engenharia</span>
-                <CivilClassificationBadge :code="classification.code" :label="classification.label" :historical="classification.historical" large />
+                <CivilClassificationBadge v-if="!engineeringNoteWithoutQuantity" :code="classification.code" :label="classification.label" :historical="classification.historical" large />
             </div>
         </div>
 
         <div class="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <div class="rounded-xl bg-slate-50 px-3.5 py-3">
+            <div v-if="!engineeringNoteWithoutQuantity" class="rounded-xl bg-slate-50 px-3.5 py-3">
                 <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Notas GUT</div>
                 <div class="mt-1 font-semibold text-slate-900">{{ gutSummary || 'Não informadas' }}</div>
                 <div class="mt-0.5 text-xs text-slate-500">Produto pendente de definição</div>

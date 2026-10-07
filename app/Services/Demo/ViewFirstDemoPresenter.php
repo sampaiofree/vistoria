@@ -122,7 +122,7 @@ class ViewFirstDemoPresenter
     {
         $assessment->loadMissing(['defect', 'quantities', 'photos']);
 
-        return $this->reportTechnicalDetails($this->persistedTechnicalData($assessment->defect, $assessment));
+        return $this->reportTechnicalDetails($this->persistedTechnicalData($assessment->defect, $assessment), $assessment);
     }
 
     /**
@@ -1323,11 +1323,15 @@ class ViewFirstDemoPresenter
     }
 
     /** @param array<string, mixed> $technical @return array<string, mixed> */
-    private function reportTechnicalDetails(array $technical): array
+    private function reportTechnicalDetails(array $technical, ?DefectAssessment $assessment = null): array
     {
         $category = $technical['classification_family'] ?? null;
+        $engineeringNoteWithoutQuantity = $assessment?->isEngineeringNoteWithoutQuantity()
+            ?? (in_array($category, [DefectCategory::Civil->value, DefectCategory::StructuralRecovery->value], true)
+                && data_get($technical, 'assessment.classification_method') === DefectAssessmentClassificationMethod::EngineeringNote->value
+                && empty($technical['quantities']));
         $gut = in_array($category, [DefectCategory::RoofCladding->value, DefectCategory::SolidaryStructures->value], true)
-            ? null : ($technical['gut'] ?? null);
+            || $engineeringNoteWithoutQuantity ? null : ($technical['gut'] ?? null);
         $tel = $category === DefectCategory::RoofCladding->value ? ($technical['tel'] ?? null) : null;
         $classification = null;
 
@@ -1371,6 +1375,7 @@ class ViewFirstDemoPresenter
         }
 
         return [
+            'engineering_note_without_quantity' => $engineeringNoteWithoutQuantity,
             'classification' => $classification,
             'quantities' => collect($technical['quantities'] ?? [])->map(fn (array $item): array => [
                 'position' => $item['position'] ?? null,

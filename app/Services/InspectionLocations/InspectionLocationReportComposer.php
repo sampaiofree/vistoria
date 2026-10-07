@@ -83,6 +83,7 @@ final class InspectionLocationReportComposer
         $quantitySnapshot = is_array($assessment->quantity_snapshot)
             ? $this->quantitySnapshots->normalize($assessment->quantity_snapshot)
             : $this->quantitySnapshots->build($assessment->defect->category, $assessment->quantities);
+        $engineeringNoteWithoutQuantity = $assessment->isEngineeringNoteWithoutQuantity();
         $style = $this->colors->styleForAssessment($assessment);
 
         return [
@@ -119,6 +120,7 @@ final class InspectionLocationReportComposer
                 ]),
             ],
             'marker_count' => 1,
+            'engineering_note_without_quantity' => $engineeringNoteWithoutQuantity,
             'damage_rows' => [[
                 'assessment' => ['public_id' => $assessment->public_id],
                 'defect' => [
@@ -129,7 +131,7 @@ final class InspectionLocationReportComposer
                 'photo_numbers' => $numbers,
                 'photo_interval' => $this->photoNumbering->format($numbers),
                 'quantity' => $this->quantityPayload($quantitySnapshot),
-                'gut' => $assessment->defect->category === DefectCategory::RoofCladding ? null : [
+                'gut' => $assessment->defect->category === DefectCategory::RoofCladding || $engineeringNoteWithoutQuantity ? null : [
                     'gravity' => $this->gutCriterionPayload($assessment, 'gravity'),
                     'urgency' => $this->gutCriterionPayload($assessment, 'urgency'),
                     'trend' => $this->gutCriterionPayload($assessment, 'trend'),
@@ -142,9 +144,11 @@ final class InspectionLocationReportComposer
                     'color' => $this->colors->forAssessment($assessment),
                 ],
             ]],
-            'classification_legend' => NativeDefectCatalog::classifications($assessment->defect->category)
-                ->map(fn ($classification): array => ['code' => $classification->code, 'color' => $classification->color])
-                ->values()->all(),
+            'classification_legend' => $engineeringNoteWithoutQuantity
+                ? [['code' => 'Nota de Engenharia', 'color' => DefectLocationColor::ENGINEERING_NOTE]]
+                : NativeDefectCatalog::classifications($assessment->defect->category)
+                    ->map(fn ($classification): array => ['code' => $classification->code, 'color' => $classification->color])
+                    ->values()->all(),
             'markers' => [[
                 'public_id' => $location->public_id,
                 'label' => $location->label,

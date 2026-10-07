@@ -34,6 +34,12 @@ final class SaveDefectAssessmentGut
 
             app(\App\Services\Defects\InspectionAssessmentResolver::class)->ensureMutable($assessment);
 
+            if ($assessment->isEngineeringNoteWithoutQuantity()) {
+                throw ValidationException::withMessages([
+                    'gut' => 'Adicione um item de quantitativo antes de preencher o GUT da Nota de Engenharia.',
+                ]);
+            }
+
             $condition = $assessment->condition;
 
             if (! $condition->requiresGut() || ! $assessment->defect->category->requiresGut()) {
@@ -110,23 +116,9 @@ final class SaveDefectAssessmentGut
 
     private function clear(DefectAssessment $assessment, User $actor): DefectAssessment
     {
-        $assessment->fill([
-            'gravity' => null,
-            'urgency' => null,
-            'trend' => null,
-            'gut_score' => null,
-            'gut_snapshot' => null,
-            'gut_classified_at' => null,
-            'gut_classified_by' => null,
-            'classification_code' => null,
-            'classification_priority' => null,
-            'deadline_months' => null,
-            'recommended_due_date' => null,
-            'classification_snapshot' => null,
-            'classified_at' => null,
-            'classified_by' => null,
-            'updated_by' => $actor->getKey(),
-        ])->save();
+        $assessment->clearGutClassification();
+        $assessment->updated_by = $actor->getKey();
+        $assessment->save();
 
         return $assessment->refresh();
     }

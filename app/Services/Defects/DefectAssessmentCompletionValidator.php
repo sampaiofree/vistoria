@@ -49,6 +49,7 @@ final class DefectAssessmentCompletionValidator
             $assessment->loadMissing(['quantities', 'locationMapVersion', 'location']);
 
             if ($assessment->defect->category->requiresQuantities()
+                && ! $assessment->isEngineeringNoteWithoutQuantity()
                 && $assessment->quantities->isEmpty()) {
                 $errors['quantity'] = 'Informe o quantitativo antes de publicar a avaliação.';
             }

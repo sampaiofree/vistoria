@@ -828,7 +828,22 @@ function visualClass(photo) {
 
                             <div class="report-map-footer">
                                 <div class="report-map-classification-layout">
-                                    <table v-if="mapUsesTel(page.map)" class="report-map-damage-table">
+                                    <table v-if="page.map.engineering_note_without_quantity" class="report-map-damage-table">
+                                        <thead>
+                                            <tr><th colspan="4" class="report-map-table-title">NOTA DE ENGENHARIA</th></tr>
+                                            <tr><th>CÓD.</th><th>PROJETO</th><th>FOTOS</th><th>TRATATIVA</th></tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr v-for="(row, rowIndex) in (page.map.damage_rows || [])" :key="row.assessment?.public_id || row.defect?.public_id || rowIndex">
+                                                <td>{{ row.defect?.code || '—' }}</td>
+                                                <td>{{ row.defect?.project_number || '—' }}</td>
+                                                <td>{{ row.photo_interval || '—' }}</td>
+                                                <td :style="damageColorStyle(row.classification?.color)">Nota de Engenharia</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+
+                                    <table v-else-if="mapUsesTel(page.map)" class="report-map-damage-table">
                                         <colgroup>
                                             <col class="report-map-damage-photos">
                                             <col class="report-map-damage-gut">

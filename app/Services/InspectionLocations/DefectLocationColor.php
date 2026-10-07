@@ -11,8 +11,14 @@ final class DefectLocationColor
 {
     public const NEUTRAL = '#64748B';
 
+    public const ENGINEERING_NOTE = '#7C3AED';
+
     public function forAssessment(DefectAssessment $assessment): string
     {
+        if ($assessment->isEngineeringNoteWithoutQuantity()) {
+            return self::ENGINEERING_NOTE;
+        }
+
         if ($assessment->condition === DefectAssessmentCondition::Treated) {
             return self::NEUTRAL;
         }

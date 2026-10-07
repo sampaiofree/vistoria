@@ -32,6 +32,10 @@ da inspeção anterior. O campo é obrigatório para salvar os dados do relatór
 para avançar em cada etapa até a liberação. Relatórios já liberados sem esse
 valor permanecem sem preenchimento.
 
+Notas de Engenharia CIVIL/REC publicadas sem quantitativo não possuem GUT nem
+classe e, portanto, não entram nas linhas classificadas nem exigem Nota M2.
+Continuam nas tratativas especiais.
+
 ## Vínculos M2 e tratativas especiais
 
 O Planejador membro ativo vinculado como `preparer` pode editar a aba em `awaiting_m2`; o

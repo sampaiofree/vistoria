@@ -25,7 +25,7 @@ final class BuildInspectionQuantitativeWorksheet
                 DefectAssessmentCondition::Reinspected->value,
                 DefectAssessmentCondition::Reclassified->value,
             ])
-            ->with('defect')
+            ->with(['defect', 'quantities'])
             ->get()
             ->filter(fn (DefectAssessment $assessment): bool => in_array($this->category($assessment), [
                 DefectCategory::Civil,
@@ -95,10 +95,11 @@ final class BuildInspectionQuantitativeWorksheet
     private function row(Inspection $inspection, DefectAssessment $assessment, int $line): array
     {
         $category = $this->category($assessment);
-        $usesGut = $category->requiresGut();
+        $engineeringNoteWithoutQuantity = $assessment->isEngineeringNoteWithoutQuantity();
+        $usesGut = $category->requiresGut() && ! $engineeringNoteWithoutQuantity;
         $criteria = $usesGut ? (array) data_get($assessment->gut_snapshot, 'criteria', []) : [];
         $gravity = $usesGut ? (data_get($criteria, 'gravity.score') ?? $assessment->gravity) : null;
-        $classification = $category === DefectCategory::SolidaryStructures
+        $classification = $engineeringNoteWithoutQuantity || $category === DefectCategory::SolidaryStructures
             ? null
             : (data_get($assessment->classification_snapshot, 'code') ?? $assessment->classification_code);
         $score = $usesGut ? (data_get($assessment->gut_snapshot, 'score') ?? $assessment->gut_score) : null;
@@ -116,7 +117,9 @@ final class BuildInspectionQuantitativeWorksheet
                 'discipline' => $this->cell($category === DefectCategory::Civil ? 'CIVIL' : $category->value),
                 'note' => $this->cell(null),
                 'code' => $this->cell(data_get($assessment->defect_snapshot, 'defect.code') ?? $assessment->defect->code),
-                'quantity' => $this->quantityCell($assessment, $category),
+                'quantity' => $engineeringNoteWithoutQuantity
+                    ? [...$this->cell(null), 'unit' => null]
+                    : $this->quantityCell($assessment, $category),
                 'impact' => $this->cell($impact),
                 'gravity' => $this->cell($gravity),
                 'urgency' => $this->cell($usesGut ? (data_get($criteria, 'urgency.score') ?? $assessment->urgency) : null),

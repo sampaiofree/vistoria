@@ -25,9 +25,13 @@ opções estão em [REC](rec.md), [CIVIL](civil.md) e [TEL](tel.md).
 CIVIL, TAC e REC também permitem selecionar o método **Nota de Engenharia** na
 avaliação. A marcação de condição insegura e as avaliações `ES` aparecem no
 quadro de tratativas especiais do relatório; `ES` não exige mapa ou quantitativo.
+Na Nota de Engenharia CIVIL ou REC, o quantitativo é opcional: sem itens não há
+GUT nem classe, e a localização é roxa (`#7C3AED`); com itens, o GUT volta a ser
+obrigatório e determina a cor. TAC mantém quantitativo e GUT obrigatórios.
 Para publicar uma avaliação com evidência são exigidos comentário, recomendação,
 ao menos duas fotos prontas e, exceto em `ES`, mapa pronto com número de projeto e
-localização confirmada. CIVIL, TAC e REC exigem quantitativo; TEL e ES não.
+localização confirmada. CIVIL e REC exigem quantitativo fora da exceção acima;
+TAC sempre exige quantitativo. TEL e ES não exigem.
 
 ## Faixas e recomendações
 

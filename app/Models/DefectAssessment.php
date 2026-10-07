@@ -7,6 +7,7 @@ namespace App\Models;
 use App\Enums\DefectAssessmentCondition;
 use App\Enums\DefectAssessmentClassificationMethod;
 use App\Enums\DefectAssessmentStatus;
+use App\Enums\DefectCategory;
 use App\Models\Concerns\BelongsToOrganization;
 use App\Models\Concerns\HasPublicId;
 use Database\Factories\DefectAssessmentFactory;
@@ -159,5 +160,37 @@ final class DefectAssessment extends Model
     public function requiresReason(): bool
     {
         return $this->condition->requiresReason();
+    }
+
+    public function isEngineeringNoteWithoutQuantity(): bool
+    {
+        if ($this->classification_method !== DefectAssessmentClassificationMethod::EngineeringNote
+            || ! in_array($this->defect->category, [DefectCategory::Civil, DefectCategory::StructuralRecovery], true)) {
+            return false;
+        }
+
+        return $this->relationLoaded('quantities')
+            ? $this->quantities->isEmpty()
+            : ! $this->quantities()->exists();
+    }
+
+    public function clearGutClassification(): void
+    {
+        $this->fill([
+            'gravity' => null,
+            'urgency' => null,
+            'trend' => null,
+            'gut_score' => null,
+            'gut_snapshot' => null,
+            'gut_classified_at' => null,
+            'gut_classified_by' => null,
+            'classification_code' => null,
+            'classification_priority' => null,
+            'deadline_months' => null,
+            'recommended_due_date' => null,
+            'classification_snapshot' => null,
+            'classified_at' => null,
+            'classified_by' => null,
+        ]);
     }
 }

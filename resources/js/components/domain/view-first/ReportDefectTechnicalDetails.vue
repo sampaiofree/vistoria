@@ -10,7 +10,8 @@ defineProps({
 
 <template>
     <div class="space-y-3 text-sm">
-        <details v-if="technical?.classification" class="group rounded-xl border border-slate-200 bg-white">
+        <div v-if="technical?.engineering_note_without_quantity" class="rounded-xl border border-violet-200 bg-violet-50 p-3 font-semibold text-violet-800">Nota de Engenharia · sem classificação GUT</div>
+        <details v-else-if="technical?.classification" class="group rounded-xl border border-slate-200 bg-white">
             <summary class="flex cursor-pointer list-none items-center justify-between gap-3 rounded-xl p-3 font-semibold text-slate-900 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600 [&::-webkit-details-marker]:hidden">
                 <span>Classificação <ReportClassificationBadge :code="classificationCode" :color="classificationColor" /></span>
                 <span aria-hidden="true" class="text-slate-500 group-open:rotate-180">⌄</span>

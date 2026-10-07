@@ -22,7 +22,7 @@ const props = defineProps({
             </div>
             <span class="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm">
                 <span class="h-3.5 w-3.5 rounded-full border border-black/10" :style="{ backgroundColor: assessment.color }"></span>
-                {{ assessment.category.code }} · cor da classificação
+                {{ assessment.category.code }} · {{ assessment.engineering_note_without_quantity ? 'Nota de Engenharia' : 'cor da classificação' }}
             </span>
         </div>
 
