@@ -30,6 +30,7 @@ final class Inspection extends Model
         'status',
         'service_order',
         'external_report_number',
+        'report_equipment_name',
         'report_designer',
         'designer_i_report_number',
         'procedure_number',

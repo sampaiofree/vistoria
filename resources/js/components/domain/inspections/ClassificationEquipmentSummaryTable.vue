@@ -51,7 +51,7 @@ const criticalityStyle = computed(() => {
             </tr>
             <tr class="classification-equipment-labels"><th>EQUIPAMENTO</th><th>TAG</th><th>DESENHO GERAL</th><th>ORDEM</th><th colspan="2">PROC. INSPEÇÃO</th></tr>
             <tr>
-                <td></td><td>{{ header.tag || '—' }}</td>
+                <td>{{ header.equipment || '—' }}</td><td>{{ header.tag || '—' }}</td>
                 <td>{{ header.general_drawing || '—' }}</td>
                 <td>{{ header.work_order || '—' }}</td>
                 <td colspan="2">{{ header.procedure_number || '—' }}</td>

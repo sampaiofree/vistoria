@@ -657,6 +657,7 @@ final class InspectionTransitionRoutesTest extends TestCase
         ?string $blankTextField = null,
         bool $includeGeneralAspects = true,
     ): void {
+        $inspection->update(['report_equipment_name' => 'Equipamento do relatório']);
         if (! $inspection->responsibles()->where('responsibility', 'preparer')->exists()) {
             $planner = User::factory()->create(['organization_id' => $inspection->organization_id, 'operational_role' => OperationalRole::Planner]);
             $this->assignResponsibility($inspection, $planner, InspectionResponsibility::Preparer);

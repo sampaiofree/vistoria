@@ -18,6 +18,7 @@ use App\Services\Defects\ReinspectionCoverageValidator;
 use App\Services\Inspections\GeneralAspectsCoverageValidator;
 use App\Services\Inspections\InspectionOverviewCoverageValidator;
 use App\Services\Inspections\InspectionTechnicalReferencesCoverageValidator;
+use App\Services\Inspections\ReportEquipmentCoverageValidator;
 use Illuminate\Validation\ValidationException;
 
 final class SubmitInspectionForPlanning
@@ -79,6 +80,7 @@ final class SubmitInspectionForPlanning
         $this->overviewCoverageValidator->validate($inspection);
         $this->generalAspectsCoverageValidator->validate($inspection);
         app(InspectionTechnicalReferencesCoverageValidator::class)->validate($inspection);
+        app(ReportEquipmentCoverageValidator::class)->validate($inspection);
 
         $attributes = [];
 

@@ -22,6 +22,46 @@ final class InspectionReportMetadataTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_inspector_must_fill_report_equipment_and_it_appears_in_m2_and_report_preview(): void
+    {
+        $organization = Organization::factory()->create();
+        $inspector = User::factory()->for($organization)->create(['operational_role' => OperationalRole::Inspector]);
+        $equipment = Equipment::factory()->for($organization)->create(['name' => 'Nome do cadastro']);
+        $inspection = Inspection::factory()->forEquipment($equipment)->create([
+            'status' => InspectionStatus::InProgress,
+            'emission_type' => EquipmentRevisionEmissionType::ForKnowledge,
+        ]);
+        InspectionResponsible::factory()->forInspection($inspection, $inspector)->create([
+            'responsibility' => InspectionResponsibility::Reviewer,
+        ]);
+        $url = route('inspections.report-metadata.update', $inspection);
+        $payload = [
+            'emission_type' => EquipmentRevisionEmissionType::ForKnowledge->value,
+            'report_date' => null,
+            'service_order' => null,
+            'external_report_number' => null,
+            'first_page_text_template' => 'Título do relatório',
+        ];
+
+        $this->assertNull($inspection->report_equipment_name);
+        $this->actingAs($inspector)->put($url, [...$payload, 'report_equipment_name' => '   '])
+            ->assertSessionHasErrors('report_equipment_name');
+        $this->actingAs($inspector)->put($url, [...$payload, 'report_equipment_name' => str_repeat('X', 151)])
+            ->assertSessionHasErrors('report_equipment_name');
+        $this->assertNull($inspection->fresh()->report_equipment_name);
+
+        $this->actingAs($inspector)->put($url, [...$payload, 'report_equipment_name' => '  Bomba de alimentação  '])
+            ->assertSessionHasNoErrors();
+        $this->assertSame('Bomba de alimentação', $inspection->fresh()->report_equipment_name);
+
+        $this->actingAs($inspector)->get(route('inspections.show', $inspection))
+            ->assertInertia(fn (Assert $page) => $page->where('report_metadata.report_equipment_name', 'Bomba de alimentação'));
+        $this->actingAs($inspector)->get(route('inspections.classifications', $inspection))
+            ->assertInertia(fn (Assert $page) => $page->where('content.classification_summary.header.equipment', 'Bomba de alimentação'));
+        $this->actingAs($inspector)->get(route('inspections.report-preview', $inspection))
+            ->assertInertia(fn (Assert $page) => $page->where('content.classification_summary.header.equipment', 'Bomba de alimentação'));
+    }
+
     public function test_admin_can_update_report_metadata_and_members_can_only_view_it(): void
     {
         $organization = Organization::factory()->create();
@@ -44,6 +84,7 @@ final class InspectionReportMetadataTest extends TestCase
                 'external_report_number' => '  REL-EXT-42  ',
                 'designer_i_report_number' => '  SM-IIE-1717  ',
                 'first_page_text_template' => 'Equipamento: Bomba de alimentação',
+                'report_equipment_name' => 'Bomba de alimentação',
             ])
             ->assertRedirect(route('inspections.show', $inspection));
 
@@ -54,6 +95,7 @@ final class InspectionReportMetadataTest extends TestCase
         $this->assertSame('REL-EXT-42', $inspection->external_report_number);
         $this->assertSame('PROJETISTA II', $inspection->report_designer);
         $this->assertSame('SM-IIE-1717', $inspection->designer_i_report_number);
+        $this->assertSame('Bomba de alimentação', $inspection->report_equipment_name);
         $this->assertSame($admin->id, $inspection->updated_by);
 
         $this->actingAs($admin)
@@ -122,6 +164,7 @@ final class InspectionReportMetadataTest extends TestCase
             ->put(route('inspections.report-metadata.update', $inspection), [
                 ...$unchangedRestrictedFields,
                 'first_page_text_template' => 'Texto atualizado',
+                'report_equipment_name' => 'Bomba de alimentação',
             ])
             ->assertRedirect(route('inspections.show', $inspection));
 
@@ -139,6 +182,7 @@ final class InspectionReportMetadataTest extends TestCase
                 'service_order' => '0000000002',
                 'external_report_number' => 'REL-EXT-43',
                 'first_page_text_template' => 'Não deve persistir',
+                'report_equipment_name' => 'Bomba de alimentação',
             ])
             ->assertSessionHasErrors([
                 'emission_type',
@@ -152,6 +196,7 @@ final class InspectionReportMetadataTest extends TestCase
                 ...$unchangedRestrictedFields,
                 'designer_i_report_number' => 'SM-IIE-1718',
                 'first_page_text_template' => 'Não deve persistir',
+                'report_equipment_name' => 'Bomba de alimentação',
             ])
             ->assertSessionHasErrors('designer_i_report_number');
 
@@ -190,6 +235,7 @@ final class InspectionReportMetadataTest extends TestCase
                 'service_order' => 'OS-42',
                 'external_report_number' => null,
                 'first_page_text_template' => 'Texto atualizado',
+                'report_equipment_name' => 'Bomba de alimentação',
             ])
             ->assertRedirect(route('inspections.show', $inspection));
 
@@ -223,6 +269,7 @@ final class InspectionReportMetadataTest extends TestCase
                 'external_report_number' => null,
                 'designer_i_report_number' => 'SM-IIE-1717',
                 'first_page_text_template' => 'Texto revisado',
+                'report_equipment_name' => 'Bomba de alimentação',
             ])
             ->assertRedirect(route('inspections.show', $inspection));
 
@@ -252,11 +299,13 @@ final class InspectionReportMetadataTest extends TestCase
             'external_report_number' => 'REL-REVISADO',
             'designer_i_report_number' => 'SM-IIE-1718',
             'first_page_text_template' => 'Conteúdo revisado',
+            'report_equipment_name' => 'Bomba de alimentação',
         ];
 
         $this->actingAs($reviewer)
             ->put(route('inspections.report-metadata.update', $inspection), $payload)
             ->assertRedirect(route('inspections.show', $inspection));
+        $this->assertSame('Bomba de alimentação', $inspection->fresh()->report_equipment_name);
 
         $this->actingAs($reviewer)
             ->get(route('inspections.show', $inspection))
@@ -318,6 +367,7 @@ final class InspectionReportMetadataTest extends TestCase
             ->put(route('inspections.report-metadata.update', $inspection), [
                 ...$unchangedRestrictedFields,
                 'first_page_text_template' => 'Texto atualizado',
+                'report_equipment_name' => 'Bomba de alimentação',
             ])
             ->assertRedirect(route('inspections.show', $inspection));
 
@@ -326,6 +376,7 @@ final class InspectionReportMetadataTest extends TestCase
                 ...$unchangedRestrictedFields,
                 'service_order' => '0000000002',
                 'first_page_text_template' => 'Texto atualizado',
+                'report_equipment_name' => 'Bomba de alimentação',
             ])
             ->assertSessionHasErrors('service_order');
 
@@ -376,6 +427,7 @@ final class InspectionReportMetadataTest extends TestCase
             'external_report_number' => null,
             'designer_i_report_number' => 'SM-IIE-1717',
             'first_page_text_template' => 'Conteúdo do Revisor administrador',
+            'report_equipment_name' => 'Bomba de alimentação',
         ];
 
         $this->actingAs($admin)
@@ -484,6 +536,7 @@ final class InspectionReportMetadataTest extends TestCase
             'external_report_number' => 'U0306VT-G-6RI002',
             'designer_i_report_number' => 'SM-IIE-1718',
             'first_page_text_template' => 'Relatório de inspeção',
+            'report_equipment_name' => 'Bomba de alimentação',
         ];
 
         $this->actingAs($admin)

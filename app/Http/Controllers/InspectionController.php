@@ -1019,6 +1019,7 @@ final class InspectionController extends Controller
             'report_date' => $inspection->report_date?->toDateString(),
             'service_order' => $inspection->service_order,
             'external_report_number' => $inspection->external_report_number,
+            'report_equipment_name' => $inspection->report_equipment_name,
             'report_designer' => $inspection->report_designer,
             'designer_i_report_number' => $inspection->designer_i_report_number,
             'first_page_text_template' => $inspection->first_page_text_template,

@@ -64,6 +64,7 @@ final class UpdateReportMetadata
                 'emission_type' => $data['emission_type'] ?? null,
                 'report_date' => $reportDate,
                 'service_order' => $serviceOrderUnchanged ? $inspection->service_order : $serviceOrder,
+                'report_equipment_name' => trim($data['report_equipment_name']),
                 'first_page_text_template' => blank($data['first_page_text_template'] ?? null)
                     ? null
                     : trim((string) $data['first_page_text_template']),

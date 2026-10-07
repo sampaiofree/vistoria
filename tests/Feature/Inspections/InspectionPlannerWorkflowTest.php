@@ -381,6 +381,7 @@ final class InspectionPlannerWorkflowTest extends TestCase
                 'general_notes' => 'Aspectos gerais preenchidos.',
                 'general_drawing' => 'D-TESTE',
                 'procedure_number' => 'P-TESTE',
+                'report_equipment_name' => 'Equipamento do relatório',
             ]);
         $team = [];
         foreach (['planner' => InspectionResponsibility::Preparer, 'inspector' => InspectionResponsibility::Reviewer, 'reviewer' => InspectionResponsibility::Approver, 'releaser' => InspectionResponsibility::Releaser] as $role => $responsibility) {

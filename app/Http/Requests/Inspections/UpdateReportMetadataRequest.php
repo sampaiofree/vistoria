@@ -29,6 +29,9 @@ final class UpdateReportMetadataRequest extends FormRequest
             'report_date' => blank($this->input('report_date')) ? null : $this->input('report_date'),
             'service_order' => TextNormalizer::nullableText($this->input('service_order')),
             'external_report_number' => TextNormalizer::nullableText($this->input('external_report_number')),
+            'report_equipment_name' => is_string($this->input('report_equipment_name'))
+                ? trim($this->input('report_equipment_name'))
+                : $this->input('report_equipment_name'),
             'first_page_text_template' => blank($this->input('first_page_text_template'))
                 ? null
                 : trim((string) $this->input('first_page_text_template')),
@@ -57,6 +60,7 @@ final class UpdateReportMetadataRequest extends FormRequest
                 ? ['required', 'string', new ValidServiceOrder]
                 : ['nullable', 'string', 'max:100'],
             'external_report_number' => ['nullable', 'string', 'max:150'],
+            'report_equipment_name' => ['required', 'string', 'max:150'],
             'report_designer' => ['prohibited'],
             'designer_i_report_number' => $this->user()?->operational_role === OperationalRole::Reviewer
                 ? ['required', 'string', 'max:100']

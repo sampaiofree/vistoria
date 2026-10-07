@@ -665,7 +665,7 @@ final class InspectionCorrectionRequestTest extends TestCase
         $organization = Organization::factory()->create();
         $inspection = Inspection::factory()
             ->forEquipment(Equipment::factory()->for($organization)->create())
-            ->create(['status' => $status]);
+            ->create(['status' => $status, 'report_equipment_name' => 'Equipamento do relatório']);
         $reviewer = User::factory()->for($organization)->create([
             'operational_role' => OperationalRole::Reviewer,
         ]);
@@ -694,7 +694,7 @@ final class InspectionCorrectionRequestTest extends TestCase
         $organization = Organization::factory()->create();
         $inspection = Inspection::factory()
             ->forEquipment(Equipment::factory()->for($organization)->create())
-            ->create(['status' => $status]);
+            ->create(['status' => $status, 'report_equipment_name' => 'Equipamento do relatório']);
         $reviewer = User::factory()->for($organization)->create(['operational_role' => OperationalRole::Reviewer]);
         $inspector = User::factory()->for($organization)->create(['operational_role' => OperationalRole::Inspector]);
         $releaser = User::factory()->for($organization)->create(['operational_role' => OperationalRole::Releaser]);

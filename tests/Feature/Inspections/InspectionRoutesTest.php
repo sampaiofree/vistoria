@@ -67,6 +67,7 @@ final class InspectionRoutesTest extends TestCase
         $this->assertSame('initial', $inspection->inspection_type->value);
         $this->assertNull($inspection->atmospheric_classification);
         $this->assertSame($equipment->numero_cliente, $inspection->external_report_number);
+        $this->assertNull($inspection->report_equipment_name);
         $this->assertSame('PROJETISTA II', $inspection->report_designer);
         $this->assertSame($equipment->numero_interno, $inspection->designer_i_report_number);
         $this->assertNotEmpty($inspection->number);
@@ -96,6 +97,7 @@ final class InspectionRoutesTest extends TestCase
                 ->where('inspection.planned_start_on', '20/09/2026')
                 ->where('inspection.planned_end_on', '22/09/2026')
                 ->where('report_metadata.external_report_number', $equipment->numero_cliente)
+                ->where('report_metadata.report_equipment_name', null)
                 ->where('report_metadata.designer_i_report_number', $equipment->numero_interno)
                 ->has('inspection.context_snapshot')
                 ->has('inspection.history', 1)
@@ -351,6 +353,7 @@ final class InspectionRoutesTest extends TestCase
             ->create([
                 'status' => InspectionStatus::Released,
                 'released_at' => now(),
+                'report_equipment_name' => 'Nome do relatório anterior',
             ]);
         $foreignReleasedPrevious = Inspection::factory()
             ->forEquipment($otherEquipment)
@@ -381,6 +384,7 @@ final class InspectionRoutesTest extends TestCase
         $this->assertSame('2026-07-30', $reinspection->planned_start_on?->toDateString());
         $this->assertSame('2026-07-30', $reinspection->planned_end_on?->toDateString());
         $this->assertNull($reinspection->general_notes);
+        $this->assertNull($reinspection->report_equipment_name);
         $this->assertNotSame($olderReleasedPrevious->id, $reinspection->previous_inspection_id);
         $this->assertNotSame($foreignReleasedPrevious->id, $reinspection->previous_inspection_id);
         $this->assertDatabaseCount('inspections', 4);

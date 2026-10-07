@@ -25,6 +25,13 @@ existirem. Dados cadastrais da inspeção vêm do snapshot de contexto. Os prazo
 M2 são calculados para CV-1 a CV-3, IE-1 a IE-3 e TA-1 a TA-3; veja
 [Classificações](../referencia/classificacoes.md).
 
+O campo **EQUIPAMENTO** do cabeçalho vem de `inspections.report_equipment_name`,
+preenchido em Visão geral → Dados do relatório pelo Inspetor ou Revisor. É um
+texto próprio da inspeção, sem preenchimento automático a partir do cadastro ou
+da inspeção anterior. O campo é obrigatório para salvar os dados do relatório e
+para avançar em cada etapa até a liberação. Relatórios já liberados sem esse
+valor permanecem sem preenchimento.
+
 ## Vínculos M2 e tratativas especiais
 
 O Planejador membro ativo vinculado como `preparer` pode editar a aba em `awaiting_m2`; o

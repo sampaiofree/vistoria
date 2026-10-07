@@ -378,6 +378,7 @@ final class SelectiveReinspectionTest extends TestCase
             'general_notes' => 'Aspectos gerais preenchidos.',
             'general_drawing' => 'D-TESTE',
             'procedure_number' => 'P-TESTE',
+            'report_equipment_name' => 'Equipamento do relatório',
         ]);
         $reviewer = User::factory()->for($c['organization'])->create(['operational_role' => OperationalRole::Reviewer]);
         $releaser = User::factory()->for($c['organization'])->create(['operational_role' => OperationalRole::Releaser]);

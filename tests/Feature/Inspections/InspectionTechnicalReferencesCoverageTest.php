@@ -73,12 +73,39 @@ final class InspectionTechnicalReferencesCoverageTest extends TestCase
         $this->assertStringContainsString('PROC. INSPEÇÃO', session('errors')->first('inspection'));
     }
 
+    public function test_each_forward_transition_requires_the_report_equipment_name(): void
+    {
+        foreach ([
+            [InspectionStatus::InProgress, 'inspector', 'inspections.submit-for-planning', InspectionStatus::AwaitingM2],
+            [InspectionStatus::InCorrection, 'inspector', 'inspections.submit-for-planning', InspectionStatus::AwaitingM2],
+            [InspectionStatus::AwaitingM2, 'planner', 'inspections.submit-for-review', InspectionStatus::AwaitingReview],
+            [InspectionStatus::InReview, 'reviewer', 'inspections.approve', InspectionStatus::AwaitingRelease],
+            [InspectionStatus::AwaitingRelease, 'releaser', 'inspections.release', InspectionStatus::Released],
+        ] as [$status, $role, $route, $nextStatus]) {
+            [$inspection, $team] = $this->scenario($status);
+            $inspection->update([
+                'general_drawing' => 'D-10',
+                'procedure_number' => 'P-10',
+                'report_equipment_name' => null,
+            ]);
+
+            $this->actingAs($team[$role])->post(route($route, $inspection))
+                ->assertSessionHasErrors('inspection');
+            $this->assertStringContainsString('EQUIPAMENTO', session('errors')->first('inspection'));
+            $this->assertSame($status, $inspection->fresh()->status);
+
+            $inspection->update(['report_equipment_name' => 'Bomba de alimentação']);
+            $this->actingAs($team[$role])->post(route($route, $inspection))->assertSessionHasNoErrors();
+            $this->assertSame($nextStatus, $inspection->fresh()->status);
+        }
+    }
+
     /** @return array{Inspection, array<string, User>} */
     private function scenario(InspectionStatus $status): array
     {
         $organization = Organization::factory()->create();
         $inspection = Inspection::factory()->forEquipment(Equipment::factory()->for($organization)->create())
-            ->create(['status' => $status, 'general_notes' => 'Aspectos gerais preenchidos.']);
+            ->create(['status' => $status, 'general_notes' => 'Aspectos gerais preenchidos.', 'report_equipment_name' => 'Equipamento do relatório']);
         $team = [];
 
         foreach ([

@@ -16,6 +16,7 @@ const form = useForm({
     report_date: props.metadata.report_date ?? '',
     service_order: props.metadata.service_order ?? '',
     external_report_number: props.metadata.external_report_number ?? '',
+    report_equipment_name: props.metadata.report_equipment_name ?? '',
     designer_i_report_number: props.metadata.designer_i_report_number ?? '',
     first_page_text_template: props.metadata.first_page_text_template ?? '',
 });
@@ -35,6 +36,7 @@ function syncForm() {
         report_date: props.metadata.report_date ?? '',
         service_order: props.metadata.service_order ?? '',
         external_report_number: props.metadata.external_report_number ?? '',
+        report_equipment_name: props.metadata.report_equipment_name ?? '',
         designer_i_report_number: props.metadata.designer_i_report_number ?? '',
         first_page_text_template: props.metadata.first_page_text_template ?? '',
     });
@@ -124,6 +126,11 @@ function submit() {
                     <input v-model="form.external_report_number" :disabled="!canEditRestrictedFields" type="text" maxlength="150" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 disabled:cursor-not-allowed disabled:bg-slate-100">
                     <span v-if="form.errors.external_report_number" class="block text-xs text-rose-600">{{ form.errors.external_report_number }}</span>
                 </label>
+                <label class="space-y-1.5 text-sm font-medium text-slate-700">
+                    <span>Nome do Equipamento (item de manutenção)</span>
+                    <input v-model="form.report_equipment_name" type="text" maxlength="150" required class="w-full rounded-xl border border-slate-300 px-3 py-2.5">
+                    <span v-if="form.errors.report_equipment_name" class="block text-xs text-rose-600">{{ form.errors.report_equipment_name }}</span>
+                </label>
                 <label v-if="canEditRestrictedFields" class="space-y-1.5 text-sm font-medium text-slate-700 md:col-span-2">
                     <span>Nº Projetista I</span>
                     <input v-model="form.designer_i_report_number" type="text" maxlength="100" required class="w-full rounded-xl border border-slate-300 px-3 py-2.5">
@@ -150,6 +157,7 @@ function submit() {
             <div><dt class="text-xs font-bold uppercase tracking-wider text-slate-400">Data do relatório</dt><dd class="mt-1 text-sm font-semibold text-slate-900">{{ metadata.report_date ? new Date(`${metadata.report_date}T00:00:00`).toLocaleDateString('pt-BR') : 'Não definida' }}</dd></div>
             <div><dt class="text-xs font-bold uppercase tracking-wider text-slate-400">O.S.</dt><dd class="mt-1 text-sm font-semibold text-slate-900">{{ metadata.service_order || 'Não informada' }}</dd></div>
             <div><dt class="text-xs font-bold uppercase tracking-wider text-slate-400">Relatório externo</dt><dd class="mt-1 text-sm font-semibold text-slate-900">{{ metadata.external_report_number || 'Não informado' }}</dd></div>
+            <div><dt class="text-xs font-bold uppercase tracking-wider text-slate-400">Nome do Equipamento (item de manutenção)</dt><dd class="mt-1 text-sm font-semibold text-slate-900">{{ metadata.report_equipment_name || 'Não informado' }}</dd></div>
             <div><dt class="text-xs font-bold uppercase tracking-wider text-slate-400">Nº Projetista I</dt><dd class="mt-1 text-sm font-semibold text-slate-900">{{ metadata.designer_i_report_number || 'Não informado' }}</dd></div>
             <div class="sm:col-span-2 lg:col-span-4"><dt class="text-xs font-bold uppercase tracking-wider text-slate-400">Título da primeira página</dt><dd class="mt-1 whitespace-pre-line text-sm text-slate-700">{{ resolvedText || 'Nenhum título personalizado.' }}</dd></div>
         </dl>

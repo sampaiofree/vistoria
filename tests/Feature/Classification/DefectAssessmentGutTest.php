@@ -755,6 +755,7 @@ final class DefectAssessmentGutTest extends TestCase
         $inspection = Inspection::factory()->forEquipment($equipment)->create([
             'status' => InspectionStatus::InProgress,
             'atmospheric_classification' => 'C5',
+            'report_equipment_name' => 'Equipamento do relatório',
         ]);
         InspectionResponsible::factory()->forInspection($inspection, $actor)->create(['responsibility' => InspectionResponsibility::Preparer]);
         $defect = Defect::factory()->forEquipment($equipment, $inspection)->create(['category' => $category]);

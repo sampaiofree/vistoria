@@ -122,6 +122,7 @@ final class InspectionServiceOrderValidationTest extends TestCase
             'report_date' => null,
             'designer_i_report_number' => 'PROJ-001',
             'first_page_text_template' => 'Título revisado',
+            'report_equipment_name' => 'Equipamento do relatório',
         ];
 
         $this->actingAs($reviewer)->put(route('inspections.report-metadata.update', $inspection), [

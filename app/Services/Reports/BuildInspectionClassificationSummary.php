@@ -102,7 +102,7 @@ final class BuildInspectionClassificationSummary
                 'abc_code' => $this->displayValue($equipment['abc_code'] ?? null),
                 'inspection_date' => $inspection->inspected_on?->format('d/m/Y') ?? '—',
                 'inspection_date_input' => $inspection->inspected_on?->toDateString(),
-                'equipment' => null,
+                'equipment' => $inspection->report_equipment_name,
                 'tag' => $this->displayValue($equipment['tag'] ?? null),
                 'work_order' => $this->displayValue($inspection->service_order),
                 'general_drawing' => $inspection->general_drawing,
