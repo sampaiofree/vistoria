@@ -3,6 +3,7 @@ import GeneralAspectsNode from '@/components/domain/inspections/GeneralAspectsNo
 
 defineProps({
     document: { type: Object, default: () => ({ type: 'doc', content: [] }) },
+    images: { type: Object, default: () => ({}) },
 });
 </script>
 
@@ -12,6 +13,7 @@ defineProps({
             v-for="(node, index) in (document?.content || [])"
             :key="index"
             :node="node"
+            :images="images"
         />
     </div>
 </template>
@@ -31,4 +33,10 @@ defineProps({
 .general-aspects-list > li { padding-left: 1.5mm; }
 .general-aspects-list-continuation { list-style: none; }
 .general-aspects-list > li > .general-aspects-paragraph { display: inline; margin-left: 0 !important; }
+.general-aspects-image { display: flex; justify-content: center; width: 100%; margin: .75rem 0; break-inside: avoid; }
+.general-aspects-image img { display: block; max-width: 100%; height: auto; }
+.general-aspects-table { width: 100%; table-layout: fixed; border-collapse: collapse; margin: .75rem 0; }
+.general-aspects-table th, .general-aspects-table td { border: 1px solid #64748b; padding: .35rem .45rem; vertical-align: top; overflow-wrap: anywhere; }
+.general-aspects-table th { background: #e2e8f0; font-weight: 700; }
+.general-aspects-table p { margin: 0; }
 </style>

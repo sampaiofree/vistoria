@@ -76,6 +76,7 @@ const summaryReady = ref(false);
 const classificationPages = ref([]);
 const classificationReady = ref(!classificationSummary.value);
 const classificationError = ref(null);
+const generalAspectsError = ref(null);
 const observationLayouts = ref({});
 const previewRoot = ref(null);
 const zoomToolbar = ref(null);
@@ -152,12 +153,17 @@ watch(layoutReady, (ready) => emit('layout-ready', ready), { immediate: true });
 
 function updateQuantityError(type, message) {
     quantityErrors.value = { ...quantityErrors.value, [type]: message };
-    emit('layout-error', classificationError.value || quantityErrors.value.rec || quantityErrors.value.civil);
+    emit('layout-error', generalAspectsError.value || classificationError.value || quantityErrors.value.rec || quantityErrors.value.civil);
 }
 
 function updateClassificationError(message) {
     classificationError.value = message;
-    emit('layout-error', classificationError.value || quantityErrors.value.rec || quantityErrors.value.civil);
+    emit('layout-error', generalAspectsError.value || classificationError.value || quantityErrors.value.rec || quantityErrors.value.civil);
+}
+
+function updateGeneralAspectsError(message) {
+    generalAspectsError.value = message;
+    emit('layout-error', generalAspectsError.value || classificationError.value || quantityErrors.value.rec || quantityErrors.value.civil);
 }
 
 watch(classificationSummary, (summary) => {
@@ -591,8 +597,10 @@ function visualClass(photo) {
             <ReportGeneralAspectsPaginator
                 v-if="generalAspects"
                 :document="numberedGeneralAspects"
+                :images="content.general_aspects?.images || {}"
                 @pages="updateGeneralAspectsPages"
                 @ready="generalAspectsReady = $event"
+                @error="updateGeneralAspectsError"
             />
             <ReportSummaryPaginator
                 :entries="summaryEntries"
@@ -760,7 +768,7 @@ function visualClass(photo) {
                             2. DESCRIÇÃO DOS ASPECTOS GERAIS DO EQUIPAMENTO<span v-if="page.continuation"> — CONTINUAÇÃO</span>
                         </h2>
                         <div class="report-general-aspects-body">
-                            <GeneralAspectsDocument :document="page.document" />
+                            <GeneralAspectsDocument :document="page.document" :images="content.general_aspects?.images || {}" />
                         </div>
                     </div>
                 </template>
@@ -1091,6 +1099,7 @@ function visualClass(photo) {
 .report-general-aspects-page > .report-general-aspects-title { font-size: 12pt; }
 .report-annex-title { font-size: 12pt; }
 .report-general-aspects-body { min-height: 0; flex: 1; overflow: hidden; font-family: Georgia, 'Times New Roman', serif; font-size: 12pt; }
+.report-general-aspects-body :deep(.general-aspects-image img) { max-height: 225mm; object-fit: contain; }
 .report-textual-finding { margin-bottom: 6mm; border: 1px solid #94a3b8; font-family: Georgia, 'Times New Roman', serif; }
 .report-textual-finding-title { display: flex; justify-content: space-between; gap: 4mm; padding: 3mm; background: #e2e8f0; font-size: 9pt; }
 .report-textual-finding-classes { padding: 2.5mm 3mm; border-top: 1px solid #94a3b8; font-size: 8pt; }

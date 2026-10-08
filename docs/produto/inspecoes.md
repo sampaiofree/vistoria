@@ -115,6 +115,12 @@ dois blocos de vista geral e templates de aspectos gerais por organização. A r
 pelo Inspetor responsável nos estados de campo ou pelo Revisor responsável em
 `in_review`. Ela substitui as antigas revisões autônomas de equipamento.
 
+O campo **Aspectos gerais do equipamento** da inspeção permite imagens e tabelas
+simples no mesmo documento. Os modelos por organização também aceitam imagens e
+tabelas, com campos dinâmicos e trechos manuais em vermelho nas células. Ao
+aplicar um modelo, cada imagem é copiada para a inspeção; alterar ou excluir o
+modelo depois não modifica o documento da inspeção.
+
 ## Responsáveis exibidos no relatório
 
 Em **Configurações → Relatório de Inspeção → Responsáveis do relatório**, o

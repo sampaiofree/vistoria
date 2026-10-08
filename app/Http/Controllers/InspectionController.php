@@ -52,6 +52,7 @@ use App\Services\Inspections\InspectionSelfAssignment;
 use App\Services\Inspections\ReinspectionScopePlanner;
 use App\Services\Reports\BuildInspectionClassificationSummary;
 use App\Services\Reports\GeneralAspectsDocument;
+use App\Services\Reports\GeneralAspectsImageUrls;
 use App\Services\Reports\ResolveGeneralAspectsTemplate;
 use App\Services\Tenancy\TenantContext;
 use App\Support\TextNormalizer;
@@ -1042,19 +1043,22 @@ final class InspectionController extends Controller
         $stored = $documents->fromStored($inspection->general_notes);
 
         return [
-            'schema_version' => GeneralAspectsDocument::SCHEMA_VERSION,
+            'schema_version' => GeneralAspectsDocument::INSPECTION_SCHEMA_VERSION,
             'document' => $stored['document'] ?? $documents->emptyDocument(),
+            'images' => app(GeneralAspectsImageUrls::class)->forDocument($inspection, $stored['document'] ?? null),
             'has_content' => $stored !== null,
             'can_edit' => $canEdit,
             'update_url' => $canEdit ? route('inspections.general-aspects.update', $inspection) : null,
+            'upload_url' => $canEdit ? route('inspections.general-aspects.images.store', $inspection) : null,
+            'apply_template_url' => $canEdit ? route('inspections.general-aspects.apply-template', [$inspection, '__template__']) : null,
             'templates' => $canEdit
                 ? GeneralAspectsTemplate::query()
                     ->forOrganization((int) $inspection->organization_id)
                     ->orderBy('name')
-                    ->get(['public_id', 'name', 'document'])
+                    ->get(['public_id', 'name', 'schema_version', 'document'])
                     ->map(function (GeneralAspectsTemplate $template) use ($inspection, $resolver): array {
                         try {
-                            $document = $resolver->resolve($template->document, (array) data_get($inspection->context_snapshot, 'equipment', []));
+                            $document = $resolver->resolve($template->document, (array) data_get($inspection->context_snapshot, 'equipment', []), $template->schema_version);
                             $error = null;
                         } catch (\InvalidArgumentException|\TypeError) {
                             $document = null;

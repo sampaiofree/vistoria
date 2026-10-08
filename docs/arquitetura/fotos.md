@@ -2,11 +2,13 @@
 
 ## Tipos de fotografia
 
-O sistema mantém dois conjuntos independentes:
+O sistema mantém quatro conjuntos independentes:
 
 - fotografias de uma avaliação de avaria (`AssessmentPhoto`);
 - fotografias da vista geral da inspeção, divididas em blocos com dois slots por
-  bloco (`InspectionOverviewPhoto`).
+  bloco (`InspectionOverviewPhoto`);
+- imagens do documento de Aspectos Gerais da inspeção (`InspectionGeneralAspectImage`);
+- imagens dos modelos reutilizáveis de Aspectos Gerais (`GeneralAspectsTemplateImage`).
 
 Fotografias de avaliação podem ter tipo informativo `overview`, `detail`,
 `context`, `repair_evidence` ou `other`, além de legenda e data de captura. Esses
@@ -32,7 +34,7 @@ servidor.
 ## Persistência e processamento
 
 O upload é salvo no disco privado `inspection_photos` em um caminho segregado por
-organização, inspeção, avaliação e fotografia. O registro começa em `pending` e o
+organização, inspeção e tipo de imagem. O registro começa em `pending` e o
 Job é enviado à fila `images` após o commit.
 
 Estados:
@@ -114,6 +116,18 @@ append-only nesta versão.
 
 ## Relação com mapas e relatório
 
+As imagens dos Aspectos Gerais possuem rotas autenticadas para upload, estado,
+miniatura e versão otimizada. O JSON do documento contém apenas `assetId`; o
+servidor valida que a imagem está pronta e pertence à mesma inspeção e empresa
+antes de salvar. A prévia e PDF/DOCX resolvem a URL autorizada fora do JSON.
+O documento aceita até dez imagens. Os modelos reutilizáveis têm registros de
+imagem próprios, inclusive uploads temporários durante a criação. Ao aplicar um
+modelo, as variantes prontas são copiadas para registros da inspeção, com novos
+`assetId`. A referência é reconciliada no salvamento e
+`general-aspects:cleanup-images` elimina arquivos sem referência após sete dias,
+sem atingir imagens em processamento ou presentes no documento salvo de uma
+inspeção ou modelo.
+
 Não existe seleção de fotos na localização. Todas as fotografias prontas da
 avaliação localizada são incluídas automaticamente, seguindo a ordem da galeria.
 A numeração final segue categoria e sequência da avaria; TAC começa em 5.
@@ -125,9 +139,10 @@ fotos no relatório.
 ## Operação
 
 O worker da fila `images` é obrigatório em todos os ambientes que recebem upload.
-Não há comando agendado de limpeza de uploads: os Jobs e as ações de substituição
-ou exclusão removem os arquivos que controlam. Falhas de remoção são registradas
-em log para tratamento operacional.
+Para fotos de avaria e da vista geral, os Jobs e as ações de substituição ou
+exclusão removem os arquivos que controlam. Para imagens dos Aspectos Gerais,
+há limpeza agendada de uploads abandonados e arquivos sem referência. Falhas de
+remoção são registradas em log para tratamento operacional.
 
 ## Cobertura automatizada
 

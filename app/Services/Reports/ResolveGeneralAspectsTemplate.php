@@ -14,10 +14,10 @@ final class ResolveGeneralAspectsTemplate
     ) {}
 
     /** @param array<string, mixed> $template @param array<string, mixed> $snapshot @return array<string, mixed> */
-    public function resolve(array $template, array $snapshot): array
+    public function resolve(array $template, array $snapshot, int $schemaVersion = GeneralAspectsDocument::SCHEMA_VERSION): array
     {
         $validated = $this->documents->normalize(
-            GeneralAspectsDocument::SCHEMA_VERSION,
+            $schemaVersion,
             $template,
             allowPendingTextColor: true,
             allowEquipmentFields: true,
@@ -28,7 +28,7 @@ final class ResolveGeneralAspectsTemplate
 
         $resolved = $this->resolveNode($validated['document'], $snapshot);
         $this->documents->normalize(
-            GeneralAspectsDocument::SCHEMA_VERSION,
+            $schemaVersion,
             $resolved,
             allowPendingTextColor: true,
         );

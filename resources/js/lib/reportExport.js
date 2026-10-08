@@ -290,6 +290,9 @@ export async function captureReportPages(elements, onProgress = () => {}) {
                     const preview = clonedPage.closest('.report-preview-pages');
                     preview?.classList.add('report-exporting');
                     if (preview) preview.scrollLeft = 0;
+                    clonedPage.querySelectorAll('.report-photo-image').forEach((imageFrame) => {
+                        imageFrame.style.backgroundImage = 'none';
+                    });
                     await embedReportPageImages(clonedPage, pageImageDataUrls, index + 1);
                 },
             });

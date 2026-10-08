@@ -4,9 +4,10 @@ import GeneralAspectsDocument from '@/components/domain/inspections/GeneralAspec
 
 const props = defineProps({
     document: { type: Object, default: null },
+    images: { type: Object, default: () => ({}) },
 });
 
-const emit = defineEmits(['pages', 'ready']);
+const emit = defineEmits(['pages', 'ready', 'error']);
 const probe = ref(null);
 const probeDocument = ref({ type: 'doc', content: [] });
 let runId = 0;
@@ -25,9 +26,27 @@ function listAtoms(node) {
 }
 
 function atomsFromDocument(document) {
-    return (document?.content || []).flatMap((node) => (
-        ['orderedList', 'bulletList'].includes(node.type) ? listAtoms(node) : [clone(node)]
+    return (document?.content || []).flatMap((node, index) => (
+        ['orderedList', 'bulletList'].includes(node.type) ? listAtoms(node) : [
+            node.type === 'table' ? { ...clone(node), reportTableId: index } : clone(node),
+        ]
     ));
+}
+
+function appended(nodes, node) {
+    const last = nodes.at(-1);
+    if (node.type !== 'table' || last?.type !== 'table' || last.reportTableId !== node.reportTableId) {
+        return [...nodes, node];
+    }
+    const headerRepeated = node.content?.[0]?.content?.every((cell) => cell.type === 'tableHeader');
+    return [...nodes.slice(0, -1), {
+        ...last,
+        content: [...last.content, ...(headerRepeated ? node.content.slice(1) : node.content)],
+    }];
+}
+
+function tableFragment(node, rows) {
+    return { type: 'table', content: rows, reportTableId: node.reportTableId };
 }
 
 function inlineTokens(node) {
@@ -60,7 +79,83 @@ function textBlockWithTokens(node, tokens) {
 async function fits(nodes) {
     probeDocument.value = { type: 'doc', content: clone(nodes) };
     await nextTick();
+    await Promise.all(Array.from(probe.value?.querySelectorAll('img') || []).map(async (image) => {
+        if (!image.getAttribute('src')) throw new Error('Uma imagem dos Aspectos Gerais não está disponível.');
+        if (!image.complete) await image.decode();
+        if (!image.naturalWidth) throw new Error('Não foi possível carregar uma imagem dos Aspectos Gerais.');
+    }));
+    await nextTick();
     return probe.value ? probe.value.scrollHeight <= probe.value.clientHeight + 1 : true;
+}
+
+function tableRowWithTokens(row, tokenSets) {
+    const result = clone(row);
+    result.content = result.content.map((cell, index) => ({ ...cell, content: [{
+        type: 'paragraph', ...(tokenSets[index].length ? { content: tokenSets[index] } : {}),
+    }] }));
+    return result;
+}
+
+async function splitOversizedTableRow(row, prefix = [], header = null) {
+    const tokenSets = row.content.map((cell) => inlineTokens(cell.content?.[0] || {}));
+    const max = Math.max(...tokenSets.map((tokens) => tokens.length));
+    if (max < 2) return null;
+    let low = 1;
+    let high = max - 1;
+    let best = 0;
+    while (low <= high) {
+        const middle = Math.floor((low + high) / 2);
+        const fragment = tableRowWithTokens(row, tokenSets.map((tokens) => tokens.slice(0, middle)));
+        if (await fits([...prefix, { type: 'table', content: header ? [header, fragment] : [fragment] }])) {
+            best = middle;
+            low = middle + 1;
+        } else high = middle - 1;
+    }
+    if (!best) return null;
+    return [
+        tableRowWithTokens(row, tokenSets.map((tokens) => tokens.slice(0, best))),
+        tableRowWithTokens(row, tokenSets.map((tokens) => tokens.slice(best))),
+    ];
+}
+
+async function splitOversizedTable(node, prefix = []) {
+    if (node.type !== 'table') return null;
+    const rows = node.content || [];
+    const hasHeader = rows[0]?.content?.every((cell) => cell.type === 'tableHeader');
+    const header = hasHeader ? rows[0] : null;
+    const minRows = hasHeader ? 2 : 1;
+    let best = 0;
+    let low = minRows;
+    let high = rows.length - 1;
+    while (low <= high) {
+        const middle = Math.floor((low + high) / 2);
+        if (await fits(appended(prefix, tableFragment(node, rows.slice(0, middle))))) {
+            best = middle;
+            low = middle + 1;
+        } else high = middle - 1;
+    }
+    if (best) return [
+        tableFragment(node, rows.slice(0, best)),
+        tableFragment(node, [...(header ? [clone(header)] : []), ...rows.slice(best)]),
+    ];
+
+    const rowIndex = hasHeader ? 1 : 0;
+    const target = rows[rowIndex];
+    if (target) {
+        const pieces = await splitOversizedTableRow(target, prefix, header);
+        if (pieces) return [
+            tableFragment(node, [...(header ? [clone(header)] : []), pieces[0]]),
+            tableFragment(node, [...(header ? [clone(header)] : []), pieces[1], ...rows.slice(rowIndex + 1)]),
+        ];
+    }
+    if (hasHeader) {
+        const headerPieces = await splitOversizedTableRow(header, prefix);
+        if (headerPieces) return [
+            tableFragment(node, [headerPieces[0]]),
+            tableFragment(node, [headerPieces[1], ...rows.slice(1)]),
+        ];
+    }
+    return null;
 }
 
 async function splitOversizedTextBlock(node, prefix = []) {
@@ -136,13 +231,16 @@ async function splitOversizedList(node, prefix = []) {
 
 async function splitNode(node, prefix = []) {
     return await splitOversizedTextBlock(node, prefix)
-        ?? await splitOversizedList(node, prefix);
+        ?? await splitOversizedList(node, prefix)
+        ?? await splitOversizedTable(node, prefix);
 }
 
 async function paginate() {
     const thisRun = ++runId;
     emit('ready', false);
 
+    emit('error', null);
+    try {
     const queue = atomsFromDocument(props.document);
     if (!queue.length) {
         emit('pages', []);
@@ -155,7 +253,7 @@ async function paginate() {
 
     while (queue.length && thisRun === runId) {
         const node = queue.shift();
-        const candidate = [...current, node];
+        const candidate = appended(current, node);
 
         if (await fits(candidate)) {
             if (node.type === 'heading' && queue.length && !await fits([...candidate, queue[0]]) && current.length) {
@@ -168,6 +266,15 @@ async function paginate() {
         }
 
         if (current.length) {
+            if (node.type === 'table' && current.at(-1)?.reportTableId !== node.reportTableId) {
+                const splitHere = await splitOversizedTable(node, current);
+                if (splitHere) {
+                    result.push({ type: 'doc', content: [...current, splitHere[0]] });
+                    current = [];
+                    queue.unshift(splitHere[1]);
+                    continue;
+                }
+            }
             if (current.length === 1 && current[0].type === 'heading') {
                 const splitAfterHeading = await splitNode(node, current);
                 if (splitAfterHeading) {
@@ -191,8 +298,10 @@ async function paginate() {
             continue;
         }
 
-        // A single indivisible item (for example, a deeply nested list item)
-        // receives its own page. The page remains printable and no content is discarded.
+        if (node.type === 'table' || node.type === 'image') {
+            throw new Error('Uma imagem ou tabela dos Aspectos Gerais não cabe na página A4.');
+        }
+        // A single indivisible legacy list item receives its own page.
         result.push({ type: 'doc', content: [node] });
     }
 
@@ -201,16 +310,21 @@ async function paginate() {
 
     emit('pages', result);
     emit('ready', true);
+    } catch (error) {
+        if (thisRun !== runId) return;
+        emit('pages', []);
+        emit('error', error.message || 'Não foi possível paginar os Aspectos Gerais.');
+    }
 }
 
-watch(() => props.document, paginate, { deep: true });
+watch(() => [props.document, props.images], paginate, { deep: true });
 onMounted(paginate);
 </script>
 
 <template>
     <div class="report-general-aspects-measure" aria-hidden="true">
         <div ref="probe" class="report-general-aspects-probe">
-            <GeneralAspectsDocument :document="probeDocument" />
+            <GeneralAspectsDocument :document="probeDocument" :images="images" />
         </div>
     </div>
 </template>
@@ -218,4 +332,5 @@ onMounted(paginate);
 <style>
 .report-general-aspects-measure { position: fixed; left: -10000px; top: 0; width: 177mm; visibility: hidden; pointer-events: none; }
 .report-general-aspects-probe { width: 177mm; height: 237mm; overflow: auto; color: #111827; font-family: Georgia, 'Times New Roman', serif; font-size: 12pt; }
+.report-general-aspects-probe .general-aspects-image img { max-height: 225mm; object-fit: contain; }
 </style>

@@ -117,6 +117,14 @@ gera PDF ou DOCX; nenhum binário oficial é persistido no backend. Paginação 
 sumário, aspectos gerais, mapas e documentação fotográfica é calculada no cliente
 a partir do read model entregue pelo servidor.
 
+Aspectos Gerais da inspeção usam JSON Tiptap versão 2 para texto, referências de
+imagem e tabelas simples. Modelos reutilizáveis novos ou editados usam a versão 2;
+modelos antigos na versão 1 continuam legíveis. Ao aplicar um modelo, as variantes
+das imagens são copiadas para registros próprios da inspeção. O
+backend valida o documento e a posse das imagens, enquanto o paginador aguarda o
+carregamento das variantes autorizadas e divide tabelas entre páginas. As imagens
+ficam no disco privado `inspection_photos`, inclusive quando ele usa Cloudflare R2.
+
 ## Concorrência e consistência
 
 - criação de inspeções, sequências de avaria, posições e revisões críticas usam

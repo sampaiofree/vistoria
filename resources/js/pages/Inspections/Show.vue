@@ -195,7 +195,7 @@ async function exportReport(format) {
         console.error(error);
         exportError.value = error instanceof ReportImageLoadError
             ? error.message
-            : 'Não foi possível gerar o arquivo. Tente novamente.';
+            : 'Não foi possível gerar o arquivo. Confira as imagens e tente novamente.';
     } finally {
         exportingFormat.value = null;
         exportStatus.value = '';
@@ -491,7 +491,6 @@ async function exportReport(format) {
                         >
                             {{ exportingFormat === 'pdf' ? 'Gerando PDF…' : 'Gerar PDF' }}
                         </button>
-                        <!--
                         <button
                             v-if="content.print_enabled"
                             type="button"
@@ -500,12 +499,11 @@ async function exportReport(format) {
                             :aria-busy="exportingFormat === 'doc'"
                             @click="exportReport('doc')"
                         >
-                            {{ exportingFormat === 'doc' ? 'Gerando DOC…' : 'Gerar DOC' }}
+                            {{ exportingFormat === 'doc' ? 'Gerando DOCX…' : 'Gerar DOCX' }}
                         </button>
-                        -->
                         <template v-if="!content.print_enabled">
                             <button
-                                v-for="label in ['Imprimir prévia', 'Gerar PDF']"
+                                v-for="label in ['Imprimir prévia', 'Gerar PDF', 'Gerar DOCX']"
                                 :key="label"
                                 type="button"
                                 disabled

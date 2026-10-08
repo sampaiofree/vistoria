@@ -11,6 +11,8 @@ final class GeneralAspectsDocument
 {
     public const SCHEMA_VERSION = 1;
 
+    public const INSPECTION_SCHEMA_VERSION = 2;
+
     public const MAX_VISIBLE_CHARACTERS = 100_000;
 
     public const MAX_JSON_BYTES = 1_048_576;
@@ -57,13 +59,13 @@ final class GeneralAspectsDocument
         }
 
         if (! is_array($decoded)
-            || ($decoded['schema_version'] ?? null) !== self::SCHEMA_VERSION
+            || ! in_array($decoded['schema_version'] ?? null, [self::SCHEMA_VERSION, self::INSPECTION_SCHEMA_VERSION], true)
             || ! is_array($decoded['document'] ?? null)) {
             return $this->fromPlainText($stored);
         }
 
         try {
-            return $this->normalize(self::SCHEMA_VERSION, $decoded['document']);
+            return $this->normalize($decoded['schema_version'], $decoded['document']);
         } catch (InvalidArgumentException) {
             return $this->fromPlainText($stored);
         }
@@ -102,7 +104,7 @@ final class GeneralAspectsDocument
      */
     public function normalize(int $schemaVersion, ?array $document, bool $allowPendingTextColor = false, bool $allowEquipmentFields = false): ?array
     {
-        if ($schemaVersion !== self::SCHEMA_VERSION) {
+        if (! in_array($schemaVersion, [self::SCHEMA_VERSION, self::INSPECTION_SCHEMA_VERSION], true)) {
             throw new InvalidArgumentException('A versão do documento de aspectos gerais não é suportada.');
         }
 
@@ -123,31 +125,144 @@ final class GeneralAspectsDocument
         }
 
         $visibleCharacters = 0;
+        $imageCount = 0;
         $normalizedBlocks = [];
         foreach ($blocks as $block) {
             if (! is_array($block)) {
                 throw new InvalidArgumentException('Um dos blocos do documento é inválido.');
             }
 
-            $normalizedBlocks[] = $this->normalizeBlock($block, $visibleCharacters, 0, $allowPendingTextColor, $allowEquipmentFields);
+            if ($schemaVersion === self::INSPECTION_SCHEMA_VERSION && ($block['type'] ?? null) === 'image') {
+                $imageCount++;
+                if ($imageCount > 10) {
+                    throw new InvalidArgumentException('Os aspectos gerais aceitam no máximo 10 imagens.');
+                }
+                $normalizedBlocks[] = $this->normalizeImage($block);
+            } elseif ($schemaVersion === self::INSPECTION_SCHEMA_VERSION && ($block['type'] ?? null) === 'table') {
+                $normalizedBlocks[] = $this->normalizeTable($block, $visibleCharacters, $allowPendingTextColor, $allowEquipmentFields);
+            } else {
+                $normalizedBlocks[] = $this->normalizeBlock($block, $visibleCharacters, 0, $allowPendingTextColor, $allowEquipmentFields);
+            }
         }
 
         if ($visibleCharacters > self::MAX_VISIBLE_CHARACTERS) {
             throw new InvalidArgumentException('O texto dos aspectos gerais deve ter no máximo 100.000 caracteres.');
         }
 
+        if ($visibleCharacters === 0 && $imageCount > 0) {
+            throw new InvalidArgumentException('Inclua texto nos Aspectos Gerais; imagem isolada não conta como conteúdo.');
+        }
         if ($visibleCharacters === 0) {
             return null;
         }
 
         $normalized = [
-            'schema_version' => self::SCHEMA_VERSION,
+            'schema_version' => $schemaVersion,
             'document' => ['type' => 'doc', 'content' => $normalizedBlocks],
         ];
 
         $this->assertJsonSize($normalized);
 
         return $normalized;
+    }
+
+    /** @param array<string, mixed> $node */
+    private function normalizeImage(array $node): array
+    {
+        $this->assertOnlyKeys($node, ['type', 'attrs']);
+        $attrs = $node['attrs'] ?? null;
+        if (! is_array($attrs)) {
+            throw new InvalidArgumentException('A referência da imagem é inválida.');
+        }
+        $this->assertOnlyKeys($attrs, ['assetId']);
+        $id = $attrs['assetId'] ?? null;
+        if (! is_string($id) || ! preg_match('/^[0-9A-HJKMNP-TV-Z]{26}$/', $id)) {
+            throw new InvalidArgumentException('A referência da imagem é inválida.');
+        }
+
+        return ['type' => 'image', 'attrs' => ['assetId' => $id]];
+    }
+
+    /** @param array<string, mixed> $node */
+    private function normalizeTable(array $node, int &$visibleCharacters, bool $allowPendingTextColor, bool $allowEquipmentFields): array
+    {
+        $this->assertOnlyKeys($node, ['type', 'content']);
+        $rows = $node['content'] ?? null;
+        if (! is_array($rows) || count($rows) < 1 || count($rows) > 50) {
+            throw new InvalidArgumentException('A tabela deve ter de 1 a 50 linhas.');
+        }
+        $columns = null;
+        $normalizedRows = [];
+        foreach ($rows as $rowIndex => $row) {
+            if (! is_array($row) || ($row['type'] ?? null) !== 'tableRow') {
+                throw new InvalidArgumentException('Uma linha da tabela é inválida.');
+            }
+            $this->assertOnlyKeys($row, ['type', 'content']);
+            $cells = $row['content'] ?? null;
+            if (! is_array($cells) || count($cells) < 1 || count($cells) > 6 || ($columns !== null && count($cells) !== $columns)) {
+                throw new InvalidArgumentException('A tabela deve ter de 1 a 6 colunas uniformes.');
+            }
+            $columns ??= count($cells);
+            $normalizedCells = [];
+            foreach ($cells as $cell) {
+                if (! is_array($cell) || ! in_array($cell['type'] ?? null, ['tableCell', 'tableHeader'], true)
+                    || ($rowIndex > 0 && $cell['type'] === 'tableHeader')) {
+                    throw new InvalidArgumentException('Uma célula da tabela é inválida.');
+                }
+                $this->assertOnlyKeys($cell, ['type', 'attrs', 'content']);
+                $attrs = $cell['attrs'] ?? [];
+                if (! is_array($attrs)) {
+                    throw new InvalidArgumentException('Os atributos da célula são inválidos.');
+                }
+                $this->assertOnlyKeys($attrs, ['colspan', 'rowspan', 'colwidth', 'align']);
+                if (($attrs['colspan'] ?? 1) !== 1 || ($attrs['rowspan'] ?? 1) !== 1 || ($attrs['colwidth'] ?? null) !== null || ($attrs['align'] ?? null) !== null) {
+                    throw new InvalidArgumentException('Mesclagem e largura manual de células não são permitidas.');
+                }
+                $content = $cell['content'] ?? null;
+                if (! is_array($content) || count($content) !== 1 || ! is_array($content[0]) || ($content[0]['type'] ?? null) !== 'paragraph') {
+                    throw new InvalidArgumentException('Cada célula deve conter apenas um parágrafo.');
+                }
+                $paragraph = $content[0];
+                $this->assertOnlyKeys($paragraph, ['type', 'attrs', 'content']);
+                if ($this->normalizeLayoutAttributes($paragraph['attrs'] ?? [], false) !== []) {
+                    throw new InvalidArgumentException('A célula aceita apenas texto, negrito e itálico.');
+                }
+                if (! is_array($paragraph['content'] ?? [])) {
+                    throw new InvalidArgumentException('O texto da célula é inválido.');
+                }
+                $inline = [];
+                foreach ($paragraph['content'] ?? [] as $child) {
+                    if (! is_array($child) || ! in_array($child['type'] ?? null, $allowEquipmentFields ? ['text', 'hardBreak', 'equipmentField'] : ['text', 'hardBreak'], true)) {
+                        throw new InvalidArgumentException('A célula contém um elemento não permitido.');
+                    }
+                    $normalized = $this->normalizeInlineNode($child, $visibleCharacters, $allowPendingTextColor, $allowEquipmentFields);
+                    if (isset($normalized['marks']) && array_diff(array_column($normalized['marks'], 'type'), $allowPendingTextColor ? ['bold', 'italic', 'textColor'] : ['bold', 'italic']) !== []) {
+                        throw new InvalidArgumentException('A célula contém uma formatação não permitida.');
+                    }
+                    $inline[] = $normalized;
+                }
+                $normalizedCells[] = ['type' => $cell['type'], 'content' => [[
+                    'type' => 'paragraph', ...($inline === [] ? [] : ['content' => $inline]),
+                ]]];
+            }
+            $normalizedRows[] = ['type' => 'tableRow', 'content' => $normalizedCells];
+        }
+        if (count(array_unique(array_column($normalizedRows[0]['content'], 'type'))) > 1) {
+            throw new InvalidArgumentException('O cabeçalho deve ocupar a primeira linha inteira.');
+        }
+
+        return ['type' => 'table', 'content' => $normalizedRows];
+    }
+
+    /** @param array<string, mixed>|null $document
+     * @return list<string>
+     */
+    public function imageAssetIds(?array $document): array
+    {
+        return array_values(array_unique(array_map(
+            fn (array $node): string => $node['attrs']['assetId'],
+            array_filter($document['content'] ?? [], fn (mixed $node): bool => is_array($node) && ($node['type'] ?? null) === 'image'),
+        )));
     }
 
     /**

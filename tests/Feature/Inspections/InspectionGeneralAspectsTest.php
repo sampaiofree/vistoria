@@ -147,7 +147,7 @@ final class InspectionGeneralAspectsTest extends TestCase
         InspectionResponsible::factory()->forInspection($inspection, $admin)->create(['responsibility' => InspectionResponsibility::Approver]);
 
         $invalidDocuments = [
-            ['schema_version' => 2, 'document' => $this->document()],
+            ['schema_version' => 3, 'document' => $this->document()],
             ['schema_version' => 1, 'document' => ['type' => 'doc', 'content' => [['type' => 'image', 'attrs' => ['src' => 'javascript:alert(1)']]]]],
             ['schema_version' => 1, 'document' => ['type' => 'doc', 'content' => [[
                 'type' => 'paragraph',
@@ -158,7 +158,7 @@ final class InspectionGeneralAspectsTest extends TestCase
         foreach ($invalidDocuments as $payload) {
             $this->actingAs($admin)
                 ->put(route('inspections.general-aspects.update', $inspection), $payload)
-                ->assertSessionHasErrors($payload['schema_version'] === 2 ? 'schema_version' : 'document');
+                ->assertSessionHasErrors($payload['schema_version'] === 3 ? 'schema_version' : 'document');
         }
 
         $this->assertNull($inspection->refresh()->general_notes);
@@ -231,7 +231,7 @@ final class InspectionGeneralAspectsTest extends TestCase
         $this->actingAs($admin)
             ->get(route('inspections.show', $inspection))
             ->assertInertia(fn (Assert $page) => $page
-                ->where('general_aspects.schema_version', 1)
+                ->where('general_aspects.schema_version', 2)
                 ->where('general_aspects.has_content', true)
                 ->where('general_aspects.can_edit', false)
                 ->where('general_aspects.update_url', null)

@@ -21,6 +21,7 @@ final class EnsureInternalUser
                 'inspections.quantitative', 'inspections.quantitative.export',
                 'assessment-photos.show',
                 'inspection-overview-photos.show', 'defect-location-map-versions.background',
+                'inspection-general-aspect-images.show',
                 'branding.company', 'branding.client',
             ), 403);
         }

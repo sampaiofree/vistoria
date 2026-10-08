@@ -142,6 +142,11 @@ final class Inspection extends Model
         return $this->hasMany(InspectionOverviewPhoto::class)->orderBy('slot');
     }
 
+    public function generalAspectImages(): HasMany
+    {
+        return $this->hasMany(InspectionGeneralAspectImage::class);
+    }
+
     public function classificationM2Links(): HasMany
     {
         return $this->hasMany(InspectionClassificationM2Link::class);

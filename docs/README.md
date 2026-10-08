@@ -53,6 +53,7 @@ ser refletidas no catálogo, nos testes e aqui.
 | Documento | Assunto |
 |---|---|
 | [Portal do cliente](planejamento/portal-do-cliente.md) | Decisões, experiência de consulta e critérios de aceite para implementação futura |
+| [Imagens e tabelas nos Aspectos Gerais](planejamento/aspectos-gerais-imagens-tabelas.md) | Regras do editor do conteúdo do relatório |
 
 Atualize o documento de domínio junto com alterações funcionais. Evite registrar
 resultados de testes e estados de implantação como fatos permanentes.

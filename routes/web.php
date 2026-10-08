@@ -12,8 +12,11 @@ use App\Http\Controllers\DefectController;
 use App\Http\Controllers\EquipmentController;
 use App\Http\Controllers\EquipmentImportController;
 use App\Http\Controllers\GeneralAspectsTemplateController;
+use App\Http\Controllers\GeneralAspectsTemplateImageController;
+use App\Http\Controllers\ApplyGeneralAspectsTemplateController;
 use App\Http\Controllers\GlobalOrganizationController;
 use App\Http\Controllers\InspectionController;
+use App\Http\Controllers\InspectionGeneralAspectImageController;
 use App\Http\Controllers\InspectionCorrectionRequestController;
 use App\Http\Controllers\InspectionLocationMapAssetController;
 use App\Http\Controllers\BrandingImageController;
@@ -31,6 +34,7 @@ use App\Http\Controllers\ReportDefectHistoryController;
 use App\Http\Controllers\ReportResponsiblesController;
 use App\Http\Controllers\UserSettingsController;
 use Illuminate\Support\Facades\Route;
+
 
 Route::get('/', function () {
     return auth()->check()
@@ -123,6 +127,12 @@ Route::middleware([
             ->parameters(['general-aspects' => 'generalAspectsTemplate'])
             ->names('settings.inspection-report.general-aspects')
             ->except(['show']);
+        Route::post('settings/inspection-report/general-aspects/images', [GeneralAspectsTemplateImageController::class, 'store'])
+            ->name('settings.inspection-report.general-aspects.images.store');
+        Route::get('settings/inspection-report/general-aspects/images/{image}/status', [GeneralAspectsTemplateImageController::class, 'status'])
+            ->name('settings.inspection-report.general-aspects.images.status');
+        Route::get('settings/inspection-report/general-aspects/images/{image}/{variant}', [GeneralAspectsTemplateImageController::class, 'show'])
+            ->whereIn('variant', ['thumbnail', 'optimized'])->name('settings.inspection-report.general-aspects.images.show');
 
         Route::get('equipments/import', [EquipmentImportController::class, 'create'])
             ->name('equipments.import.create');
@@ -360,6 +370,14 @@ Route::middleware([
 
         Route::put('inspections/{inspection}/general-aspects', [InspectionController::class, 'updateGeneralAspects'])
             ->name('inspections.general-aspects.update');
+        Route::post('inspections/{inspection}/general-aspects/apply-template/{template}', ApplyGeneralAspectsTemplateController::class)
+            ->name('inspections.general-aspects.apply-template');
+        Route::post('inspections/{inspection}/general-aspects/images', [InspectionGeneralAspectImageController::class, 'store'])
+            ->name('inspections.general-aspects.images.store');
+        Route::get('inspections/{inspection}/general-aspects/images/{image}/status', [InspectionGeneralAspectImageController::class, 'status'])
+            ->name('inspections.general-aspects.images.status');
+        Route::get('general-aspect-images/{image}/{variant}', [InspectionGeneralAspectImageController::class, 'show'])
+            ->whereIn('variant', ['thumbnail', 'optimized'])->name('inspection-general-aspect-images.show');
 
         Route::get('inspections/{inspection}/team', [InspectionController::class, 'team'])
             ->name('inspections.team');

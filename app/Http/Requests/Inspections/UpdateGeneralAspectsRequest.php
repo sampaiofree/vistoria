@@ -24,7 +24,7 @@ final class UpdateGeneralAspectsRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'schema_version' => ['required', 'integer', 'in:'.GeneralAspectsDocument::SCHEMA_VERSION],
+            'schema_version' => ['required', 'integer', 'in:'.GeneralAspectsDocument::SCHEMA_VERSION.','.GeneralAspectsDocument::INSPECTION_SCHEMA_VERSION],
             'document' => ['present', 'nullable', 'array'],
         ];
     }

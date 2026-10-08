@@ -32,6 +32,7 @@ use App\Services\InspectionLocations\DefectLocationColor;
 use App\Services\InspectionLocations\InspectionLocationPhotoNumbering;
 use App\Services\Reports\EquipmentRevisionChronology;
 use App\Services\Reports\GeneralAspectsDocument;
+use App\Services\Reports\GeneralAspectsImageUrls;
 use App\Services\Reports\GutGravityLegend;
 use App\Services\Reports\InspectionOverviewPresenter;
 use App\Services\Reports\InspectionPhotographicDocumentationComposer;
@@ -52,6 +53,7 @@ class ViewFirstDemoPresenter
         private readonly InspectionPhotographicDocumentationComposer $photographicDocumentation,
         private readonly EquipmentRevisionChronology $revisionChronology,
         private readonly GeneralAspectsDocument $generalAspectsDocuments,
+        private readonly GeneralAspectsImageUrls $generalAspectsImageUrls,
         private readonly InspectionOverviewPresenter $inspectionOverview,
         private readonly InspectionDefectScope $inspectionDefectScope,
         private readonly InspectionAssessmentResolver $assessmentResolver,
@@ -59,6 +61,19 @@ class ViewFirstDemoPresenter
         private readonly DefectLocationColor $defectLocationColor,
         private readonly DefectAssessmentQuantitySnapshot $quantitySnapshots,
     ) {}
+
+    /** @return array<string, mixed>|null */
+    private function reportGeneralAspects(Inspection $inspection): ?array
+    {
+        $stored = $this->generalAspectsDocuments->fromStored($inspection->general_notes);
+        if ($stored === null) {
+            return null;
+        }
+
+        $stored['images'] = $this->generalAspectsImageUrls->forDocument($inspection, $stored['document']);
+
+        return $stored;
+    }
 
     /**
      * @return array{criticality: null|array{value:string, label:string, is_provisional:bool}}
@@ -1932,7 +1947,7 @@ class ViewFirstDemoPresenter
                 'revision_history' => $revisionHistory['rows'],
                 'revision_density' => $revisionHistory['density'],
             ],
-            'general_aspects' => $this->generalAspectsDocuments->fromStored($inspection->general_notes),
+            'general_aspects' => $this->reportGeneralAspects($inspection),
             'overview' => array_merge($overview, [
                 'equipment_label' => trim($equipmentLabel),
                 'title' => 'ANEXO A – LOCALIZAÇÃO E DOCUMENTAÇÃO FOTOGRÁFICA - TAC',

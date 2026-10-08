@@ -7,12 +7,16 @@ namespace App\Http\Controllers;
 use App\Http\Requests\Settings\GeneralAspectsTemplateRequest;
 use App\Models\Client;
 use App\Models\GeneralAspectsTemplate;
+use App\Models\GeneralAspectsTemplateImage;
 use App\Services\Reports\EquipmentTemplateFields;
 use App\Services\Reports\GeneralAspectsDocument;
+use App\Services\Reports\GeneralAspectsTemplateImages;
 use App\Services\Tenancy\TenantContext;
 use App\Support\TextNormalizer;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 
@@ -47,6 +51,8 @@ final class GeneralAspectsTemplateController extends Controller
             'method' => 'post',
             'cancel_url' => route('settings.inspection-report.general-aspects.index'),
             'equipment_fields' => $this->equipmentFields($tenant),
+            'draft_token' => (string) Str::ulid(),
+            'upload_url' => route('settings.inspection-report.general-aspects.images.store'),
         ]);
     }
 
@@ -55,12 +61,18 @@ final class GeneralAspectsTemplateController extends Controller
         $this->authorizeOrganizationUpdate($request, $tenant);
         $data = $this->normalizedData($request->validated());
 
-        GeneralAspectsTemplate::query()->create([
-            ...$data,
-            'organization_id' => $tenant->id(),
-            'created_by' => $request->user()->getKey(),
-            'updated_by' => $request->user()->getKey(),
-        ]);
+        DB::transaction(function () use ($data, $request, $tenant): void {
+            $images = app(GeneralAspectsTemplateImages::class)->validatedImages(
+                $tenant, $data['document'], null, $request->input('draft_token'), $request->user()->getKey(),
+            );
+            $template = GeneralAspectsTemplate::query()->create([
+                ...$data,
+                'organization_id' => $tenant->id(),
+                'created_by' => $request->user()->getKey(),
+                'updated_by' => $request->user()->getKey(),
+            ]);
+            app(GeneralAspectsTemplateImages::class)->reconcile($template, $images);
+        });
 
         return redirect()->route('settings.inspection-report.general-aspects.index')->with('success', 'Modelo criado.');
     }
@@ -78,6 +90,8 @@ final class GeneralAspectsTemplateController extends Controller
             'method' => 'put',
             'cancel_url' => route('settings.inspection-report.general-aspects.index'),
             'equipment_fields' => $this->equipmentFields($tenant),
+            'draft_token' => (string) Str::ulid(),
+            'upload_url' => route('settings.inspection-report.general-aspects.images.store'),
         ]);
     }
 
@@ -86,10 +100,15 @@ final class GeneralAspectsTemplateController extends Controller
         $this->authorizeOrganizationUpdate($request, $tenant);
         $template = $this->tenantTemplate($tenant, $generalAspectsTemplate);
 
-        $template->update([
-            ...$this->normalizedData($request->validated()),
-            'updated_by' => $request->user()->getKey(),
-        ]);
+        $data = $this->normalizedData($request->validated());
+        DB::transaction(function () use ($template, $data, $request, $tenant): void {
+            $template = GeneralAspectsTemplate::query()->forOrganization($tenant->id())->lockForUpdate()->findOrFail($template->id);
+            $images = app(GeneralAspectsTemplateImages::class)->validatedImages(
+                $tenant, $data['document'], $template, $request->input('draft_token'), $request->user()->getKey(),
+            );
+            $template->update([...$data, 'updated_by' => $request->user()->getKey()]);
+            app(GeneralAspectsTemplateImages::class)->reconcile($template, $images);
+        });
 
         return redirect()->route('settings.inspection-report.general-aspects.index')->with('success', 'Modelo atualizado.');
     }
@@ -97,7 +116,12 @@ final class GeneralAspectsTemplateController extends Controller
     public function destroy(Request $request, TenantContext $tenant, GeneralAspectsTemplate $generalAspectsTemplate): RedirectResponse
     {
         $this->authorizeOrganizationUpdate($request, $tenant);
-        $this->tenantTemplate($tenant, $generalAspectsTemplate)->delete();
+        DB::transaction(function () use ($tenant, $generalAspectsTemplate): void {
+            $template = $this->tenantTemplate($tenant, $generalAspectsTemplate);
+            GeneralAspectsTemplateImage::query()->where('template_id', $template->id)
+                ->update(['template_id' => null, 'unreferenced_at' => now()]);
+            $template->delete();
+        });
 
         return redirect()->route('settings.inspection-report.general-aspects.index')->with('success', 'Modelo excluído.');
     }
@@ -152,6 +176,7 @@ final class GeneralAspectsTemplateController extends Controller
             'name' => $template->name,
             'schema_version' => $template->schema_version,
             'document' => $template->document,
+            'images' => app(GeneralAspectsTemplateImages::class)->urlsForTemplate($template),
             'updated_at' => $template->updated_at?->format('d/m/Y H:i'),
             'edit_url' => route('settings.inspection-report.general-aspects.edit', $template),
             'delete_url' => route('settings.inspection-report.general-aspects.destroy', $template),

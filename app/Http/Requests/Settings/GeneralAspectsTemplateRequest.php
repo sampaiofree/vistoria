@@ -29,8 +29,9 @@ final class GeneralAspectsTemplateRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:150'],
-            'schema_version' => ['required', 'integer', 'in:'.GeneralAspectsDocument::SCHEMA_VERSION],
+            'schema_version' => ['required', 'integer', 'in:'.GeneralAspectsDocument::SCHEMA_VERSION.','.GeneralAspectsDocument::INSPECTION_SCHEMA_VERSION],
             'document' => ['required', 'array'],
+            'draft_token' => ['sometimes', 'nullable', 'ulid'],
         ];
     }
 

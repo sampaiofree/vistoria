@@ -6,6 +6,7 @@ defineOptions({ name: 'GeneralAspectsNode' });
 
 const props = defineProps({
     node: { type: Object, required: true },
+    images: { type: Object, default: () => ({}) },
 });
 
 const textTag = computed(() => {
@@ -45,9 +46,23 @@ const layoutStyle = computed(() => ({
         <br v-if="!(node.content || []).length">
     </component>
 
+    <figure v-else-if="node.type === 'image'" class="general-aspects-image">
+        <img :src="images[node.attrs?.assetId]?.optimized || ''" alt="Imagem dos aspectos gerais">
+    </figure>
+
+    <table v-else-if="node.type === 'table'" class="general-aspects-table">
+        <tbody>
+            <tr v-for="(row, rowIndex) in (node.content || [])" :key="rowIndex">
+                <component :is="cell.type === 'tableHeader' ? 'th' : 'td'" v-for="(cell, cellIndex) in (row.content || [])" :key="cellIndex" :style="{ width: `${100 / (row.content?.length || 1)}%` }">
+                    <p><GeneralAspectsInlineNode v-for="(child, childIndex) in (cell.content?.[0]?.content || [])" :key="childIndex" :node="child" /></p>
+                </component>
+            </tr>
+        </tbody>
+    </table>
+
     <ul v-else-if="node.type === 'bulletList'" class="general-aspects-list general-aspects-bullet-list" :class="{ 'general-aspects-list-continuation': node.reportContinuation }">
         <li v-for="(item, index) in (node.content || [])" :key="index">
-            <GeneralAspectsNode v-for="(child, childIndex) in (item.content || [])" :key="childIndex" :node="child" />
+            <GeneralAspectsNode v-for="(child, childIndex) in (item.content || [])" :key="childIndex" :node="child" :images="images" />
         </li>
     </ul>
 
@@ -58,7 +73,7 @@ const layoutStyle = computed(() => ({
         :start="node.attrs?.start || 1"
     >
         <li v-for="(item, index) in (node.content || [])" :key="index">
-            <GeneralAspectsNode v-for="(child, childIndex) in (item.content || [])" :key="childIndex" :node="child" />
+            <GeneralAspectsNode v-for="(child, childIndex) in (item.content || [])" :key="childIndex" :node="child" :images="images" />
         </li>
     </ol>
 </template>

@@ -60,6 +60,20 @@ defineProps({
             <path d="m6.5 16 3.5-3 2.5 2 2.5-2 2.5 3" />
         </template>
 
+        <template v-else-if="name === 'table' || name === 'table-header' || name === 'table-row-add' || name === 'table-row-remove' || name === 'table-column-add' || name === 'table-column-remove'">
+            <rect x="3.5" y="4.5" width="15" height="15" rx="1.5" />
+            <path d="M3.5 9.5h15M3.5 14.5h15M8.5 4.5v15M13.5 4.5v15" />
+            <path v-if="name === 'table-header'" d="M5 7h12" stroke-width="2.8" />
+            <path v-if="name === 'table-row-add'" d="M20.5 12v7m-3.5-3.5h7" />
+            <path v-if="name === 'table-row-remove'" d="M17 15.5h7" />
+            <path v-if="name === 'table-column-add'" d="M20.5 8v7m-3.5-3.5h7" />
+            <path v-if="name === 'table-column-remove'" d="M17 11.5h7" />
+        </template>
+
+        <template v-else-if="name === 'trash'">
+            <path d="M4.5 7h15M9 7V4.5h6V7m3 0-.7 12.5H6.7L6 7M10 10.5v6M14 10.5v6" />
+        </template>
+
         <template v-else-if="name === 'document'">
             <path d="M7 3.75h6.5L18 8.25V20H7Z" />
             <path d="M13.5 3.75v4.5H18M9.5 12h6M9.5 15.5h6" />
