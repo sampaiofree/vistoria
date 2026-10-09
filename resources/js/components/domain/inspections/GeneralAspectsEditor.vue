@@ -8,6 +8,7 @@ import TextAlign from '@tiptap/extension-text-align';
 import { TableKit } from '@tiptap/extension-table';
 import { Plugin } from '@tiptap/pm/state';
 import { plainTextAsHtml } from '@/lib/plainTextPaste';
+import { selectedBlockTypeTransaction } from '@/lib/selectedBlockType';
 import UiIcon from '@/components/ui/UiIcon.vue';
 
 const props = defineProps({
@@ -373,8 +374,17 @@ watch(fieldSearch, () => { highlightedField.value = 0; });
 
 function setBlockType(event) {
     const value = event.target.value;
-    const chain = editor.value?.chain().focus();
-    if (!chain) return;
+    const currentEditor = editor.value;
+    if (!currentEditor) return;
+
+    const selectedTransaction = selectedBlockTypeTransaction(currentEditor.state, value);
+    if (selectedTransaction) {
+        currentEditor.view.dispatch(selectedTransaction);
+        currentEditor.commands.focus();
+        return;
+    }
+
+    const chain = currentEditor.chain().focus();
 
     if (value === 'paragraph') chain.setParagraph().run();
     else chain.setHeading({ level: 1 }).run();
