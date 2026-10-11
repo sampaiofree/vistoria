@@ -350,7 +350,7 @@ final class EquipmentMaintenanceFieldsTest extends TestCase
         foreach (['numero_cliente', 'numero_interno', 'maintenance_plan_code', 'maintenance_item_code', 'area_code', 'area_name', 'subarea_code', 'subarea_name', 'task_list_group', 'task_list_group_counter'] as $field) {
             $this->assertSame($equipment->$field, $inspection->context_snapshot['equipment'][$field]);
         }
-        $this->assertSame(['organization', 'client', 'equipment'], array_keys($inspection->context_snapshot));
+        $this->assertSame(['organization', 'client', 'equipment', 'previous_content_version'], array_keys($inspection->context_snapshot));
         $equipment->update(['maintenance_item_code' => 'NOVO', 'subarea_code' => '09']);
         $this->assertSame('000123', $inspection->refresh()->context_snapshot['equipment']['maintenance_item_code']);
         $this->assertSame($snapshotBefore, $historical->refresh()->context_snapshot);

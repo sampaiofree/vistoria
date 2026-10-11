@@ -30,8 +30,8 @@ final class InspectionResponsibleRoutesTest extends TestCase
             ]);
         $inspection = Inspection::factory()
             ->create(['organization_id' => $organization->id, 'status' => InspectionStatus::AwaitingReview]);
-        $firstUser = User::factory()->for($organization)->create();
-        $secondUser = User::factory()->for($organization)->create();
+        $firstUser = User::factory()->for($organization)->create(['operational_role' => OperationalRole::Planner]);
+        $secondUser = User::factory()->for($organization)->create(['operational_role' => OperationalRole::Planner]);
 
         $this->actingAs($admin)
             ->post(route('inspections.responsibles.store', $inspection), [

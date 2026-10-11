@@ -78,13 +78,11 @@ final class TransitionInspection
             if ($recipient !== null) {
                 $assignments = $inspection->responsibles()->where('responsibility', $recipient[0]->value);
                 $canWaitForAssignment = in_array($toStatus, [InspectionStatus::AwaitingReview, InspectionStatus::AwaitingRelease], true);
-                $eligibleAccountTypes = in_array($recipient[1], [OperationalRole::Reviewer, OperationalRole::Releaser], true)
-                    ? [UserAccountType::Member->value, UserAccountType::CompanyAdmin->value]
-                    : [UserAccountType::Member->value];
+                $eligibleAccountTypes = [UserAccountType::Member->value, UserAccountType::CompanyAdmin->value];
 
                 if ((! $canWaitForAssignment || (clone $assignments)->exists())
                     && ! $assignments->whereHas('user', fn ($query) => $query->where('organization_id', $inspection->organization_id)
-                        ->where('status', 'active')->where('operational_role', $recipient[1]->value)
+                        ->where('status', 'active')->withOperationalRole($recipient[1])
                         ->whereIn('account_type', $eligibleAccountTypes))->exists()) {
                     throw ValidationException::withMessages(['inspection' => 'Vincule um '.$recipient[1]->label().' ativo e habilitado antes de encaminhar a inspeção.']);
                 }

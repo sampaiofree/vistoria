@@ -26,13 +26,14 @@ final class InspectionResponsibleController extends Controller
     public function selfAssign(SelfAssignInspectionRequest $request, TenantContext $tenant, Inspection $inspection, SelfAssignInspectionResponsible $action): RedirectResponse
     {
         $inspection = $this->tenantInspection($tenant, $inspection);
-        $assignment = $action->handle($inspection, $request->user());
-        if ($assignment === null) {
+        $assignments = $action->handle($inspection, $request->user(), $request->validated('responsibilities'));
+        if ($assignments === null) {
             return redirect()->route('inspections.index', ['scope' => 'available'])
-                ->with('error', 'Esta função já foi assumida por outra pessoa. A lista de inspeções disponíveis foi atualizada.');
+                ->with('error', 'Uma das funções selecionadas já foi assumida por outra pessoa. Nenhuma nova atribuição foi criada.');
         }
 
-        return redirect()->route('inspections.show', $inspection)->with('success', 'Você está atribuído como '.$assignment->responsibility->label().'.');
+        $labels = array_map(fn (InspectionResponsible $assignment): string => $assignment->responsibility->label(), $assignments);
+        return redirect()->route('inspections.show', $inspection)->with('success', 'Você está atribuído como '.implode(' e ', $labels).'.');
     }
 
     public function store(

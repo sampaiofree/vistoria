@@ -8,7 +8,6 @@ use App\Enums\DefectAssessmentStatus;
 use App\Enums\InspectionCorrectionRequestFlow;
 use App\Enums\InspectionCorrectionRequestStatus;
 use App\Enums\InspectionStatus;
-use App\Enums\OperationalRole;
 use App\Models\DefectAssessment;
 use App\Models\Inspection;
 use App\Models\InspectionCorrectionRequest;
@@ -189,10 +188,10 @@ final class ManageInspectionCorrectionRequest
             throw ValidationException::withMessages(['request' => 'Você não pode criar apontamentos nesta etapa da inspeção.']);
         }
 
-        return match ([$inspection->status, $actor->operational_role]) {
-            [InspectionStatus::AwaitingM2, OperationalRole::Planner] => InspectionCorrectionRequestFlow::PlannerToInspector,
-            [InspectionStatus::InReview, OperationalRole::Reviewer] => InspectionCorrectionRequestFlow::ReviewerToInspector,
-            [InspectionStatus::AwaitingRelease, OperationalRole::Releaser] => InspectionCorrectionRequestFlow::ReleaserToReviewer,
+        return match ($inspection->status) {
+            InspectionStatus::AwaitingM2 => InspectionCorrectionRequestFlow::PlannerToInspector,
+            InspectionStatus::InReview => InspectionCorrectionRequestFlow::ReviewerToInspector,
+            InspectionStatus::AwaitingRelease => InspectionCorrectionRequestFlow::ReleaserToReviewer,
             default => throw ValidationException::withMessages(['request' => 'O fluxo do apontamento não é válido nesta etapa.']),
         };
     }

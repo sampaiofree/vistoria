@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Organizations;
 
+use App\Enums\OperationalRole;
 use App\Rules\ValidCnpj;
 use App\Support\TextNormalizer;
 use Illuminate\Foundation\Http\FormRequest;
@@ -35,6 +36,8 @@ final class StoreGlobalOrganizationRequest extends FormRequest
             'document' => ['nullable', 'digits:14', new ValidCnpj, Rule::unique('organizations', 'document')],
             'admin_name' => ['required', 'string', 'max:150'],
             'admin_email' => ['required', 'email:rfc', 'max:254', Rule::unique('users', 'email')],
+            'admin_operational_roles' => ['required', 'array', 'min:1', 'max:4'],
+            'admin_operational_roles.*' => ['distinct', Rule::enum(OperationalRole::class)],
         ];
     }
 }

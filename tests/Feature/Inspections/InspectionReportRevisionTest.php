@@ -45,7 +45,7 @@ final class InspectionReportRevisionTest extends TestCase
         $inspector = User::factory()->for($organization)->create(['operational_role' => OperationalRole::Inspector]);
         $inspection->update(['status' => InspectionStatus::InProgress]);
         InspectionResponsible::factory()->forInspection($inspection, $inspector)->create([
-            'responsibility' => InspectionResponsibility::Preparer,
+            'responsibility' => InspectionResponsibility::Reviewer,
             'is_primary' => true,
         ]);
 

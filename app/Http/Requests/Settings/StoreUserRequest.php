@@ -18,6 +18,9 @@ final class StoreUserRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
+        if (! $this->exists('operational_roles') && filled($this->input('operational_role'))) {
+            $this->merge(['operational_roles' => [$this->input('operational_role')]]);
+        }
         $this->merge([
             'name' => TextNormalizer::text((string) $this->input('name')),
             'email' => TextNormalizer::email($this->input('email')),
@@ -34,9 +37,10 @@ final class StoreUserRequest extends FormRequest
                 UserAccountType::CompanyAdmin->value,
                 UserAccountType::Client->value,
             ])],
-            'operational_role' => $this->input('account_type') === UserAccountType::Client->value
+            'operational_roles' => $this->input('account_type') === UserAccountType::Client->value
                 ? ['prohibited']
-                : ['required', Rule::enum(OperationalRole::class)],
+                : ['required', 'array', 'min:1', 'max:4'],
+            'operational_roles.*' => ['distinct', Rule::enum(OperationalRole::class)],
         ];
     }
 }

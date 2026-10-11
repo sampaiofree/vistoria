@@ -23,7 +23,8 @@ final class UserPolicy
 
     public function update(User $actor, User $user): bool
     {
-        return $this->view($actor, $user);
+        return $this->view($actor, $user)
+            && (! $user->isCompanyAdmin() || $actor->getKey() === $user->getKey());
     }
 
     public function changeStatus(User $actor, User $user): bool

@@ -118,7 +118,7 @@ final class InspectionController extends Controller
         }
 
         $availability = app(InspectionSelfAssignment::class);
-        $hasAvailableQueue = $availability->roleFor($request->user()) !== null;
+        $hasAvailableQueue = $availability->rolesFor($request->user()) !== [];
         $availableScope = $request->string('scope')->toString() === 'available';
         abort_if($availableScope && ! $hasAvailableQueue, 403);
 
@@ -376,7 +376,7 @@ final class InspectionController extends Controller
             'report_metadata' => $this->reportMetadataPayload(
                 $inspection,
                 $canManageReportMetadata,
-                $request->user()->operational_role !== OperationalRole::Inspector,
+                $inspection->status === InspectionStatus::InReview,
             ),
             'general_aspects' => $this->generalAspectsPayload($inspection, $canManageGeneralAspects),
             'technical_references' => [
@@ -651,7 +651,7 @@ final class InspectionController extends Controller
             'report_metadata' => $this->reportMetadataPayload(
                 $inspection,
                 $canManageReportMetadata,
-                $request->user()->operational_role !== OperationalRole::Inspector,
+                $inspection->status === InspectionStatus::InReview,
             ),
             'general_aspects' => $this->generalAspectsPayload($inspection, $canManageGeneralAspects),
             'emission_options' => EquipmentRevisionEmissionType::options(),
@@ -868,7 +868,7 @@ final class InspectionController extends Controller
         return User::query()
             ->where('organization_id', $tenant->id())
             ->where('status', UserStatus::Active->value)
-            ->where('operational_role', OperationalRole::Inspector->value)
+            ->withOperationalRole(OperationalRole::Inspector)
             ->orderBy('name')
             ->get(['id', 'public_id', 'name'])
             ->map(fn (User $user): array => [
@@ -887,20 +887,21 @@ final class InspectionController extends Controller
     }
 
     /**
-     * @return array<int, array{id:int, public_id:string, name:string, operational_role:?string, account_type:string}>
+     * @return array<int, array{id:int, public_id:string, name:string, operational_roles:list<string>, account_type:string}>
      */
     private function responsibleAssignmentOptions(TenantContext $tenant): array
     {
         return User::query()
             ->where('organization_id', $tenant->id())
             ->where('status', UserStatus::Active->value)
+            ->with('operationalRoles')
             ->orderBy('name')
-            ->get(['id', 'public_id', 'name', 'operational_role', 'account_type'])
+            ->get(['id', 'public_id', 'name', 'account_type'])
             ->map(fn (User $user): array => [
                 'id' => $user->id,
                 'public_id' => $user->public_id,
                 'name' => $user->name,
-                'operational_role' => $user->operational_role?->value,
+                'operational_roles' => $user->operationalRoleValues(),
                 'account_type' => $user->account_type->value,
             ])
             ->values()

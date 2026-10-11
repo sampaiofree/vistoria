@@ -30,13 +30,13 @@ final class StartInspection
     {
         $this->validateTenant($inspection, $actor);
 
-        if ($actor->operational_role !== OperationalRole::Inspector) {
+        if (! $actor->hasOperationalRole(OperationalRole::Inspector)) {
             throw ValidationException::withMessages([
                 'actor' => 'Somente usuários com papel operacional Inspetor podem iniciar a inspeção.',
             ]);
         }
 
-        $this->ensureActorHasResponsibility($inspection, $actor, ...InspectionResponsibility::cases());
+        $this->ensureActorHasResponsibility($inspection, $actor, InspectionResponsibility::Reviewer);
 
         if (! $inspection->equipment->canReceiveInspection()) {
             throw ValidationException::withMessages([

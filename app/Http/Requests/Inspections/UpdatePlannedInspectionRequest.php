@@ -61,7 +61,10 @@ final class UpdatePlannedInspectionRequest extends FormRequest
                 Rule::exists('users', 'id')->where(fn ($query) => $query
                     ->where('organization_id', $organizationId)
                     ->where('status', UserStatus::Active->value)
-                    ->where('operational_role', OperationalRole::Inspector->value)),
+                    ->whereExists(fn ($roles) => $roles->selectRaw('1')
+                        ->from('user_operational_roles')
+                        ->whereColumn('user_operational_roles.user_id', 'users.id')
+                        ->where('role', OperationalRole::Inspector->value))),
             ],
             'service_order' => $serviceOrderChanged
                 ? ['required', 'string', new ValidServiceOrder]

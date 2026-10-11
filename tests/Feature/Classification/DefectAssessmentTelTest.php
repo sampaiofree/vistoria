@@ -161,7 +161,7 @@ final class DefectAssessmentTelTest extends TestCase
         [$actor, $assessment] = $this->scenario();
         $saved = app(SaveDefectAssessmentTelClassification::class)->handle($actor, $assessment, $this->payload());
         $nextInspection = Inspection::factory()->reinspection($assessment->inspection)->create(['status' => InspectionStatus::InProgress]);
-        InspectionResponsible::factory()->forInspection($nextInspection, $actor)->create(['responsibility' => InspectionResponsibility::Preparer]);
+        InspectionResponsible::factory()->forInspection($nextInspection, $actor)->create(['responsibility' => InspectionResponsibility::Reviewer]);
         $next = DefectAssessment::factory()->forDefect($assessment->defect, $nextInspection)->create([
             'previous_assessment_id' => $saved->id,
             'condition' => DefectAssessmentCondition::Treated,
@@ -191,7 +191,7 @@ final class DefectAssessmentTelTest extends TestCase
         $actor = User::factory()->for($organization)->create(['operational_role' => OperationalRole::Inspector]);
         $equipment = Equipment::factory()->for($organization)->create(['abc_code' => 'A']);
         $inspection = Inspection::factory()->forEquipment($equipment)->create(['status' => InspectionStatus::InProgress]);
-        InspectionResponsible::factory()->forInspection($inspection, $actor)->create(['responsibility' => InspectionResponsibility::Preparer]);
+        InspectionResponsible::factory()->forInspection($inspection, $actor)->create(['responsibility' => InspectionResponsibility::Reviewer]);
         $defect = Defect::factory()->forEquipment($equipment, $inspection)->create(['category' => DefectCategory::RoofCladding]);
         $assessment = DefectAssessment::factory()->forDefect($defect, $inspection)->draft()->create([
             'condition' => DefectAssessmentCondition::New,

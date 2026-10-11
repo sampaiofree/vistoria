@@ -88,7 +88,8 @@ final class CompleteDefectAssessment
             ]);
 
             if (! $assessment->condition->requiresGut()
-                || ! $assessment->defect->category->requiresGut()) {
+                || (! $assessment->defect->category->requiresGut()
+                    && $assessment->defect->category !== DefectCategory::RoofCladding)) {
                 $assessment->fill([
                     'gravity' => null,
                     'urgency' => null,
@@ -128,7 +129,8 @@ final class CompleteDefectAssessment
             $this->validator->ensureCanComplete($assessment);
 
             if ($assessment->condition->requiresGut()
-                && $assessment->defect->category->requiresGut()
+                && ($assessment->defect->category->requiresGut()
+                    || $assessment->defect->category === DefectCategory::RoofCladding)
                 && ! $engineeringNoteWithoutQuantity) {
                 if ($assessment->defect->category === DefectCategory::RoofCladding) {
                     $this->ensureConfiguredTelSelected($assessment);

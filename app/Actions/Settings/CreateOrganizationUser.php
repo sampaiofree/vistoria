@@ -22,16 +22,22 @@ final class CreateOrganizationUser
 
         $temporaryPassword = Str::random(16);
 
-        $user = DB::transaction(fn (): User => User::query()->create([
-            'organization_id' => $organization->getKey(),
-            'name' => $data['name'],
-            'email' => strtolower($data['email']),
-            'password' => $temporaryPassword,
-            'must_change_password' => true,
-            'account_type' => $data['account_type'],
-            'operational_role' => $data['operational_role'] ?? null,
-            'status' => 'active',
-        ]));
+        $user = DB::transaction(function () use ($organization, $data, $temporaryPassword): User {
+            $roles = $data['operational_roles'] ?? [];
+            $user = User::query()->create([
+                'organization_id' => $organization->getKey(),
+                'name' => $data['name'],
+                'email' => strtolower($data['email']),
+                'password' => $temporaryPassword,
+                'must_change_password' => true,
+                'account_type' => $data['account_type'],
+                'operational_role' => $roles[0] ?? null,
+                'status' => 'active',
+            ]);
+            $user->syncOperationalRoles($roles);
+
+            return $user;
+        });
 
         return compact('user', 'temporaryPassword') + ['temporary_password' => $temporaryPassword];
     }

@@ -154,7 +154,7 @@ final class PendingDefectNavigationTest extends TestCase
             'number' => 'INS-002',
         ]);
         InspectionResponsible::factory()->forInspection($inspection, $inspector)
-            ->create(['responsibility' => InspectionResponsibility::Preparer]);
+            ->create(['responsibility' => InspectionResponsibility::Reviewer]);
         InspectionResponsible::factory()->forInspection($inspection, $reviewer)
             ->create(['responsibility' => InspectionResponsibility::Approver]);
         $defect = Defect::factory()->forEquipment($equipment, $previousInspection)->create();

@@ -100,6 +100,7 @@ final class InspectionReportOverviewTest extends TestCase
             'operational_role' => OperationalRole::Inspector,
         ]);
         $unassigned = User::factory()->for($organization)->create();
+        $inspection->responsibles()->where('responsibility', InspectionResponsibility::Reviewer->value)->delete();
         InspectionResponsible::factory()->forInspection($inspection, $assigned)->create([
             'responsibility' => InspectionResponsibility::Reviewer,
         ]);
@@ -136,6 +137,7 @@ final class InspectionReportOverviewTest extends TestCase
         InspectionResponsible::factory()->forInspection($inspection, $reviewer)->create([
             'responsibility' => InspectionResponsibility::Approver,
         ]);
+        $inspection->responsibles()->where('responsibility', InspectionResponsibility::Reviewer->value)->delete();
         InspectionResponsible::factory()->forInspection($inspection, $inspector)->create([
             'responsibility' => InspectionResponsibility::Reviewer,
         ]);
@@ -204,10 +206,6 @@ final class InspectionReportOverviewTest extends TestCase
     public function test_report_blocks_export_until_overview_is_complete_and_exposes_ready_payload(): void
     {
         [, $admin, $inspection] = $this->scenario();
-        InspectionResponsible::factory()->forInspection($inspection, $admin)->create([
-            'responsibility' => InspectionResponsibility::Reviewer,
-            'is_primary' => true,
-        ]);
         $inspection->update([
             'external_report_number' => 'U0306VT-G-6RI002',
             'designer_i_report_number' => 'SM-IIE-1717',
@@ -368,10 +366,6 @@ final class InspectionReportOverviewTest extends TestCase
     public function test_each_report_page_has_independent_texts_and_export_requires_complete_pairs(): void
     {
         [, $admin, $inspection] = $this->scenario();
-        InspectionResponsible::factory()->forInspection($inspection, $admin)->create([
-            'responsibility' => InspectionResponsibility::Reviewer,
-            'is_primary' => true,
-        ]);
         $inspection->update([
             'external_report_number' => 'U0306VT-G-6RI002',
             'designer_i_report_number' => 'SM-IIE-1717',
@@ -482,7 +476,7 @@ final class InspectionReportOverviewTest extends TestCase
             ->create(['status' => InspectionStatus::InProgress]);
 
         InspectionResponsible::factory()->forInspection($inspection, $admin)->create([
-            'responsibility' => InspectionResponsibility::Preparer,
+            'responsibility' => InspectionResponsibility::Reviewer,
         ]);
 
         return [$organization, $admin, $inspection];

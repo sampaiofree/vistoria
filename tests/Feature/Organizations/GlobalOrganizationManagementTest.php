@@ -27,6 +27,7 @@ final class GlobalOrganizationManagementTest extends TestCase
             'document' => '04.252.011/0001-10',
             'admin_name' => '  Ana Administradora ',
             'admin_email' => 'ANA@ALFA.TEST ',
+            'admin_operational_roles' => ['planner', 'inspector'],
         ]);
 
         $response->assertRedirect(route('admin.organizations.index'))
@@ -42,6 +43,7 @@ final class GlobalOrganizationManagementTest extends TestCase
         $this->assertSame(OrganizationStatus::Active, $organization->status);
         $this->assertSame($organization->id, $administrator->organization_id);
         $this->assertSame(UserAccountType::CompanyAdmin, $administrator->account_type);
+        $this->assertEqualsCanonicalizing(['planner', 'inspector'], $administrator->operationalRoleValues());
         $this->assertTrue($administrator->must_change_password);
         $this->assertTrue($administrator->isActive());
         $this->assertIsArray($credentials);

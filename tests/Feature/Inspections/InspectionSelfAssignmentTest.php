@@ -260,7 +260,7 @@ final class InspectionSelfAssignmentTest extends TestCase
             $this->assertTrue($actor->can($ability, $inspection), $ability);
         }
         $this->get(route('inspections.team', $inspection))->assertInertia(fn (Assert $page) => $page
-            ->has('assignment_options.users.0.operational_role')->has('assignment_options.users.0.account_type'));
+            ->has('assignment_options.users.0.operational_roles')->has('assignment_options.users.0.account_type'));
     }
 
     #[DataProvider('staleUserChanges')]
@@ -268,7 +268,11 @@ final class InspectionSelfAssignmentTest extends TestCase
     {
         $actor = $this->user(OperationalRole::Reviewer);
         $inspection = $this->inspection($actor);
-        User::query()->whereKey($actor->id)->update($changes);
+        if (array_key_exists('operational_role', $changes)) {
+            $actor->fresh()->update($changes);
+        } else {
+            User::query()->whereKey($actor->id)->update($changes);
+        }
         app(TenantContext::class)->set($actor->organization);
         try {
             app(SelfAssignInspectionResponsible::class)->handle($inspection, $actor);

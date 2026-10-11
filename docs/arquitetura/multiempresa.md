@@ -35,7 +35,12 @@ Tipos de conta:
 - `client`.
 
 O model impede salvar um superadministrador com organização e impede salvar uma
-conta comum sem organização. Contas `client` não possuem papel operacional.
+conta comum sem organização. Contas `client` não possuem função operacional.
+Membros e administradores da empresa recebem de uma a quatro funções em
+`user_operational_roles` (`planner`, `inspector`, `reviewer`, `releaser`). O tipo
+de conta é independente dessas funções. O campo antigo `users.operational_role`
+permanece temporariamente como espelho da primeira função durante a transição;
+as autorizações e consultas operacionais usam a relação.
 
 ## Resolução do tenant
 
@@ -65,7 +70,8 @@ O superadministrador acessa `/admin/organizations` para:
 - suspender e reativar empresas.
 
 A criação gera uma senha temporária aleatória para o administrador, exibida apenas
-na resposta da operação. Categorias, classificações e critérios GUT são um catálogo
+na resposta da operação. É obrigatório escolher as funções operacionais desse
+primeiro administrador. Categorias, classificações e critérios GUT são um catálogo
 nativo compartilhado; não são provisionados por organização. As regras estão em
 [Classificações técnicas e quantitativos](../referencia/classificacoes.md).
 
@@ -98,6 +104,11 @@ Em `/settings/users`, administradores da empresa podem:
 - editar nome, e-mail e tipo de conta;
 - alterar status;
 - redefinir a senha de outro usuário ativo.
+
+O administrador pode criar outro administrador, mas não pode editar, inativar
+nem redefinir a senha de outro administrador após a criação. Pode editar as
+próprias funções, sem mudar o próprio tipo de conta. A retirada de função é
+bloqueada enquanto houver atribuição correspondente em inspeção aberta.
 
 Criação e redefinição geram senha temporária e ativam `must_change_password`. O
 próprio administrador não pode usar a ação de redefinição sobre sua conta. O

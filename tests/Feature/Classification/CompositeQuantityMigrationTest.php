@@ -39,11 +39,11 @@ final class CompositeQuantityMigrationTest extends TestCase
 
             $organization = Organization::factory()->create();
             $equipment = Equipment::factory()->for($organization)->create();
-            $inspection = Inspection::factory()->forEquipment($equipment)->create();
+            $inspection = $this->persistOnHistoricalSchema(Inspection::factory()->forEquipment($equipment)->make());
             $defect = Defect::factory()->forEquipment($equipment, $inspection)->create([
                 'category' => DefectCategory::Civil,
             ]);
-            $assessment = DefectAssessment::factory()->forDefect($defect, $inspection)->create([
+            $assessment = $this->persistOnHistoricalSchema(DefectAssessment::factory()->forDefect($defect, $inspection)->make([
                 'quantity_snapshot' => [
                     'source' => 'native_quantity_catalog',
                     'category' => 'CV',
@@ -51,7 +51,7 @@ final class CompositeQuantityMigrationTest extends TestCase
                     'total' => '0.6000000000000000',
                     'inputs' => ['length' => '2', 'height' => '0.5', 'width' => '0.3'],
                 ],
-            ]);
+            ]));
             DefectAssessmentQuantity::factory()->forAssessment($assessment)->create(['position' => 1]);
 
             $migration = require database_path('migrations/2026_09_20_000052_allow_multiple_defect_assessment_quantity_items.php');

@@ -43,8 +43,8 @@ final class SubmitInspectionForPlanning
     {
         $this->validateTenant($inspection, $actor);
         if (in_array($inspection->status, [InspectionStatus::InProgress, InspectionStatus::InCorrection], true)) {
-            if ($actor->operational_role !== OperationalRole::Inspector
-                || ! $inspection->hasAnyResponsibilityForUser($actor, ...InspectionResponsibility::cases())) {
+            if (! $actor->hasOperationalRole(OperationalRole::Inspector)
+                || ! $inspection->hasAnyResponsibilityForUser($actor, InspectionResponsibility::Reviewer)) {
                 throw ValidationException::withMessages([
                     'actor' => 'Somente o Inspetor vinculado pode enviar a inspeção para preenchimento de notas.',
                 ]);

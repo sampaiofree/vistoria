@@ -226,6 +226,43 @@ o acesso. Mantenha `APP_URL` coerente com a URL pública.
 
 ## 8. Banco, caches e superadministrador
 
+### Atualização para funções operacionais múltiplas
+
+Faça esta atualização em duas releases. Na primeira, publique **somente**
+`app/Console/Commands/AuditOperationalRoles.php` sobre a versão em produção,
+sem executar a nova migração nem trocar as regras de usuários. Execute:
+
+```bash
+php artisan app:audit-operational-roles
+```
+
+O comando apenas lê dados. Ele lista contas internas sem função e vínculos de
+inspeções abertas com usuário inativo, de outra empresa ou sem a função exigida.
+Código de saída diferente de zero bloqueia a atualização. Regularize pela
+interface vigente: nesta release preparatória, cada administrador pode corrigir
+a própria conta e outros administradores. Repita o comando até obter zero;
+nenhuma função é atribuída automaticamente a contas sem papel.
+
+Na release definitiva, faça backup verificável do banco e dos arquivos,
+ative o modo de manutenção e pare os workers. Execute a auditoria outra vez
+**antes** de `migrate --force`. Se houver pendências, interrompa a atualização
+e regularize na interface da release preparatória. A migração também executa
+a auditoria e falha antes de criar `user_operational_roles` quando houver
+pendências. Com resultado zero, execute:
+
+```bash
+php artisan migrate --force
+php artisan app:audit-operational-roles
+php artisan optimize
+```
+
+Confirme que a segunda auditoria retorna zero, confira uma amostra de usuários
+com uma e várias funções e as atribuições abertas, reinicie os workers e só
+então libere a aplicação. A migração copia cada papel existente para a relação,
+sem inventar funções para contas sem papel. A coluna `users.operational_role`
+continua temporariamente como espelho da primeira função; sua remoção será uma
+atualização separada após eliminar os consumidores legados.
+
 ```bash
 php artisan migrate --force
 php artisan optimize

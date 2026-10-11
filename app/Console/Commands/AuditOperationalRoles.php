@@ -18,6 +18,7 @@ final class AuditOperationalRoles extends Command
     {
         $hasRelation = Schema::hasTable('user_operational_roles');
         $hasLegacyColumn = Schema::hasColumn('users', 'operational_role');
+        $validRoles = array_map(fn (OperationalRole $role): string => $role->value, OperationalRole::cases());
 
         $missingRoles = DB::table('users')
             ->whereIn('account_type', ['member', 'company_admin'])
@@ -26,8 +27,10 @@ final class AuditOperationalRoles extends Command
                 fn ($query) => $query->whereNotExists(fn ($roles) => $roles
                     ->selectRaw('1')
                     ->from('user_operational_roles')
-                    ->whereColumn('user_operational_roles.user_id', 'users.id')),
-                fn ($query) => $query->whereNull('operational_role'),
+                    ->whereColumn('user_operational_roles.user_id', 'users.id')
+                    ->whereIn('role', $validRoles)),
+                fn ($query) => $query->where(fn ($invalid) => $invalid
+                    ->whereNull('operational_role')->orWhereNotIn('operational_role', $validRoles)),
             )
             ->orderBy('organization_id')
             ->orderBy('id')

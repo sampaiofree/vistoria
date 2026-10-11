@@ -34,19 +34,20 @@ final class AssignInspectionResponsible
         }
 
         return DB::transaction(function () use ($inspection, $user, $responsibility, $actor, $completedAt, $organizationId): InspectionResponsible {
+            $user = User::query()->whereKey($user->getKey())->lockForUpdate()->firstOrFail();
             $inspection = Inspection::query()->whereKey($inspection->getKey())->lockForUpdate()->firstOrFail();
-            $user->refresh();
             $this->validateUser($user, $organizationId);
             if ($inspection->status->isFinal()) {
                 throw ValidationException::withMessages(['inspection' => 'Responsáveis não podem ser alterados em inspeções liberadas ou canceladas.']);
             }
             $requiredRole = match ($responsibility) {
+                InspectionResponsibility::Preparer => OperationalRole::Planner,
+                InspectionResponsibility::Reviewer => OperationalRole::Inspector,
                 InspectionResponsibility::Approver => OperationalRole::Reviewer,
                 InspectionResponsibility::Releaser => OperationalRole::Releaser,
-                default => null,
             };
-            if ($requiredRole !== null && ($user->operational_role !== $requiredRole
-                || ! in_array($user->account_type, [UserAccountType::Member, UserAccountType::CompanyAdmin], true))) {
+            if (! $user->hasOperationalRole($requiredRole)
+                || ! in_array($user->account_type, [UserAccountType::Member, UserAccountType::CompanyAdmin], true)) {
                 throw ValidationException::withMessages(['user_id' => 'Selecione um usuário operacional com papel de '.$requiredRole->label().'.']);
             }
             $assignments = InspectionResponsible::query()

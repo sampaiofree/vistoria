@@ -455,7 +455,7 @@ final class DefectAssessmentQuantityTest extends TestCase
             'status' => InspectionStatus::InProgress,
         ]);
         InspectionResponsible::factory()->forInspection($inspection, $actor)->create([
-            'responsibility' => InspectionResponsibility::Preparer,
+            'responsibility' => InspectionResponsibility::Reviewer,
             'is_primary' => true,
         ]);
         $defect = Defect::factory()->forEquipment($equipment, $inspection)->create(['category' => $category]);

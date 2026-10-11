@@ -178,7 +178,7 @@ final class DefectRoutesTest extends TestCase
         InspectionResponsible::factory()
             ->forInspection($otherInspection, $otherAdmin)
             ->create([
-                'responsibility' => InspectionResponsibility::Preparer,
+                'responsibility' => InspectionResponsibility::Reviewer,
                 'is_primary' => true,
             ]);
 
@@ -291,7 +291,7 @@ final class DefectRoutesTest extends TestCase
         InspectionResponsible::factory()
             ->forInspection($inspection, $admin)
             ->create([
-                'responsibility' => InspectionResponsibility::Preparer,
+                'responsibility' => InspectionResponsibility::Reviewer,
                 'is_primary' => true,
             ]);
 
@@ -332,7 +332,7 @@ final class DefectRoutesTest extends TestCase
         InspectionResponsible::factory()
             ->forInspection($secondInspection, $admin)
             ->create([
-                'responsibility' => InspectionResponsibility::Preparer,
+                'responsibility' => InspectionResponsibility::Reviewer,
                 'is_primary' => true,
             ]);
 
@@ -501,7 +501,7 @@ final class DefectRoutesTest extends TestCase
                 'status' => InspectionStatus::InProgress,
             ]);
             InspectionResponsible::factory()->forInspection($nextInspection, $admin)->create([
-                'responsibility' => InspectionResponsibility::Preparer,
+                'responsibility' => InspectionResponsibility::Reviewer,
                 'is_primary' => true,
             ]);
 
@@ -754,11 +754,11 @@ final class DefectRoutesTest extends TestCase
             'status' => InspectionStatus::InReview,
         ]);
         InspectionResponsible::factory()->forInspection($inspection, $reviewer)->create([
-            'responsibility' => InspectionResponsibility::Reviewer,
+            'responsibility' => InspectionResponsibility::Approver,
             'is_primary' => true,
         ]);
         InspectionResponsible::factory()->forInspection($inspection, $inspector)->create([
-            'responsibility' => InspectionResponsibility::Preparer,
+            'responsibility' => InspectionResponsibility::Reviewer,
         ]);
         $defect = Defect::factory()->forEquipment($equipment, $inspection)->create();
         $assessment = DefectAssessment::factory()->forDefect($defect, $inspection)->complete()->create();
@@ -795,7 +795,7 @@ final class DefectRoutesTest extends TestCase
         InspectionResponsible::factory()
             ->forInspection($secondInspection, $admin)
             ->create([
-                'responsibility' => InspectionResponsibility::Preparer,
+                'responsibility' => InspectionResponsibility::Reviewer,
                 'is_primary' => true,
             ]);
 
@@ -833,7 +833,7 @@ final class DefectRoutesTest extends TestCase
         InspectionResponsible::factory()
             ->forInspection($secondInspection, $admin)
             ->create([
-                'responsibility' => InspectionResponsibility::Preparer,
+                'responsibility' => InspectionResponsibility::Reviewer,
                 'is_primary' => true,
             ]);
 
@@ -884,7 +884,7 @@ final class DefectRoutesTest extends TestCase
             'status' => InspectionStatus::Planned,
         ]);
         InspectionResponsible::factory()->forInspection($secondInspection, $admin)->create([
-            'responsibility' => InspectionResponsibility::Preparer,
+            'responsibility' => InspectionResponsibility::Reviewer,
             'is_primary' => true,
         ]);
         $this->actingAs($admin)->post(route('inspections.start', $secondInspection))->assertRedirect();
@@ -921,7 +921,7 @@ final class DefectRoutesTest extends TestCase
             'number' => 'INS-2026-000003',
         ]);
         InspectionResponsible::factory()->forInspection($inspection, $admin)->create([
-            'responsibility' => InspectionResponsibility::Preparer,
+            'responsibility' => InspectionResponsibility::Reviewer,
             'is_primary' => true,
         ]);
 
@@ -956,11 +956,11 @@ final class DefectRoutesTest extends TestCase
             'number' => 'INS-2026-000004',
         ]);
         InspectionResponsible::factory()->forInspection($inspection, $admin)->create([
-            'responsibility' => InspectionResponsibility::Preparer,
+            'responsibility' => InspectionResponsibility::Reviewer,
             'is_primary' => true,
         ]);
         InspectionResponsible::factory()->forInspection($inspection)->create([
-            'responsibility' => InspectionResponsibility::Reviewer,
+            'responsibility' => InspectionResponsibility::Preparer,
         ]);
 
         $this->actingAs($admin)
@@ -989,7 +989,7 @@ final class DefectRoutesTest extends TestCase
                 ->where('reinspection_action.assessment_store_url', fn ($url): bool => is_string($url) && $url !== ''));
 
         $this->actingAs($admin)
-            ->post(route('inspections.submit-for-review', $inspection))
+            ->post(route('inspections.submit-for-planning', $inspection))
             ->assertSessionHasErrors('inspection');
 
         $this->assertSame(InspectionStatus::InProgress, $inspection->refresh()->status);
@@ -1044,12 +1044,12 @@ final class DefectRoutesTest extends TestCase
                 ->where('content.items.0.code', 'VT009-CV-001')
                 ->where('content.items.0.is_repaired', true)
                 ->where('content.items.1.code', 'VT009-CV-002')
-                ->where('content.filters.0.key', 'active')
-                ->where('content.filters.0.count', 1)
-                ->where('content.filters.1.key', 'all')
-                ->where('content.filters.1.count', 2)
-                ->where('content.filters.3.key', 'treated')
-                ->where('content.filters.3.count', 1));
+                ->where('content.filters.situations.0.key', 'active')
+                ->where('content.filters.situations.0.count', 1)
+                ->where('content.filters.situations.1.key', 'all')
+                ->where('content.filters.situations.1.count', 2)
+                ->where('content.filters.situations.3.key', 'treated')
+                ->where('content.filters.situations.3.count', 1));
     }
 
     public function test_reinspection_lists_ten_inherited_defects_with_their_permanent_codes(): void
@@ -1068,7 +1068,7 @@ final class DefectRoutesTest extends TestCase
             'number' => 'INS-002',
         ]);
         InspectionResponsible::factory()->forInspection($reinspection, $admin)->create([
-            'responsibility' => InspectionResponsibility::Preparer,
+            'responsibility' => InspectionResponsibility::Reviewer,
             'is_primary' => true,
         ]);
 
@@ -1325,7 +1325,7 @@ final class DefectRoutesTest extends TestCase
             'number' => 'INS-2026-000099',
         ]);
         InspectionResponsible::factory()->forInspection($inspection, $admin)->create([
-            'responsibility' => InspectionResponsibility::Preparer,
+            'responsibility' => InspectionResponsibility::Reviewer,
             'is_primary' => true,
         ]);
 
@@ -1391,7 +1391,7 @@ final class DefectRoutesTest extends TestCase
         InspectionResponsible::factory()
             ->forInspection($inspection, $admin)
             ->create([
-                'responsibility' => InspectionResponsibility::Preparer,
+                'responsibility' => InspectionResponsibility::Reviewer,
                 'is_primary' => true,
             ]);
 

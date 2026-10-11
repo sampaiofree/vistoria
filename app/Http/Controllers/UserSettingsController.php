@@ -32,6 +32,7 @@ final class UserSettingsController extends Controller
 
         $users = User::query()
             ->where('organization_id', $tenant->id())
+            ->with('operationalRoles')
             ->withCount(['inspectionResponsibles as open_inspections_count' => fn ($query) => $query
                 ->whereHas('inspection', fn ($inspection) => $inspection->whereNotIn('status', ['released', 'canceled']))])
             ->when($search !== '', fn ($query) => $query->where(fn ($nested) => $nested
@@ -39,7 +40,7 @@ final class UserSettingsController extends Controller
                 ->orWhere('email', 'like', "%{$search}%")))
             ->when($status !== null, fn ($query) => $query->where('status', $status->value))
             ->when($accountType !== null, fn ($query) => $query->where('account_type', $accountType->value))
-            ->when($operationalRole !== null, fn ($query) => $query->where('operational_role', $operationalRole->value))
+            ->when($operationalRole !== null, fn ($query) => $query->withOperationalRole($operationalRole))
             ->orderBy('name')
             ->paginate(20)
             ->withQueryString()
@@ -98,7 +99,7 @@ final class UserSettingsController extends Controller
     public function edit(Request $request, TenantContext $tenant, User $user): InertiaResponse
     {
         $user = $this->tenantUser($tenant, $user);
-        $this->authorize('view', $user);
+        $this->authorize('update', $user);
 
         return Inertia::render('Settings/Users/Edit', [
             'user' => $this->payload($user, $request),
@@ -158,7 +159,7 @@ final class UserSettingsController extends Controller
                 UserAccountType::Client => 'Cliente',
                 default => 'Usuário',
             },
-            'operational_role' => $user->operational_role?->value,
+            'operational_roles' => $user->operationalRoleValues(),
             'operational_role_label' => $user->isClient() ? '—' : $user->operationalRoleLabel(),
             'status' => $user->status->value,
             'status_label' => match ($user->status) {
@@ -167,8 +168,8 @@ final class UserSettingsController extends Controller
             },
             'open_inspections_count' => (int) ($user->open_inspections_count ?? 0),
             'is_current_user' => $request->user()?->getKey() === $user->getKey(),
-            'edit_url' => route('settings.users.edit', $user),
-            'status_url' => route('settings.users.status', $user),
+            'edit_url' => $request->user()->can('update', $user) ? route('settings.users.edit', $user) : null,
+            'status_url' => $request->user()->can('changeStatus', $user) ? route('settings.users.status', $user) : null,
         ];
     }
 

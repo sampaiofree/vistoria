@@ -38,7 +38,7 @@ final class ReleaseInspection
     private function perform(Inspection $inspection, User $actor): Inspection
     {
         $this->validateTenant($inspection, $actor);
-        if ($actor->operational_role !== OperationalRole::Releaser || ! $inspection->hasAnyResponsibilityForUser($actor, InspectionResponsibility::Releaser)) {
+        if (! $actor->hasOperationalRole(OperationalRole::Releaser) || ! $inspection->hasAnyResponsibilityForUser($actor, InspectionResponsibility::Releaser)) {
             throw ValidationException::withMessages(['actor' => 'Somente o Liberador vinculado pode liberar a inspeção.']);
         }
 

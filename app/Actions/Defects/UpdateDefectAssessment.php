@@ -6,6 +6,7 @@ namespace App\Actions\Defects;
 
 use App\Enums\DefectAssessmentStatus;
 use App\Enums\DefectAssessmentClassificationMethod;
+use App\Enums\DefectCategory;
 use App\Enums\InspectionStatus;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
@@ -97,7 +98,8 @@ final class UpdateDefectAssessment
             }
 
             if (! $assessment->condition->requiresGut()
-                || ! $assessment->defect->category->requiresGut()) {
+                || (! $assessment->defect->category->requiresGut()
+                    && $assessment->defect->category !== DefectCategory::RoofCladding)) {
                 $assessment->fill([
                     'gravity' => null,
                     'urgency' => null,

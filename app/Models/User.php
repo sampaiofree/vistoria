@@ -152,8 +152,14 @@ class User extends Authenticatable
         });
 
         // Keeps legacy single-role factories and writes consistent during the migration.
-        static::saved(function (self $user): void {
-            if ($user->wasChanged('operational_role')) {
+        static::created(function (self $user): void {
+            if ($user->getConnection()->getSchemaBuilder()->hasTable('user_operational_roles')) {
+                $user->syncOperationalRoles($user->operational_role === null ? [] : [$user->operational_role->value]);
+            }
+        });
+        static::updated(function (self $user): void {
+            if ($user->wasChanged('operational_role')
+                && $user->getConnection()->getSchemaBuilder()->hasTable('user_operational_roles')) {
                 $user->syncOperationalRoles($user->operational_role === null ? [] : [$user->operational_role->value]);
             }
         });

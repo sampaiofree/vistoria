@@ -337,7 +337,7 @@ final class DefectAssessmentLocationRoutesTest extends TestCase
         ]);
         $version = $this->locateAssessment($assessment);
         $nextInspection = Inspection::factory()->reinspection($inspection)->create(['status' => InspectionStatus::InProgress]);
-        InspectionResponsible::factory()->forInspection($nextInspection, $user)->create(['responsibility' => InspectionResponsibility::Preparer]);
+        InspectionResponsible::factory()->forInspection($nextInspection, $user)->create(['responsibility' => InspectionResponsibility::Reviewer]);
 
         $this->actingAs($user)
             ->post(route('inspections.defects.assessments.store', [$nextInspection, $assessment->defect]), [
@@ -364,7 +364,7 @@ final class DefectAssessmentLocationRoutesTest extends TestCase
         $previousVersion = $this->locateAssessment($assessment);
         Storage::disk('inspection_maps')->put($previousVersion->background_path, 'mapa-historico');
         $nextInspection = Inspection::factory()->reinspection($inspection)->create(['status' => InspectionStatus::InProgress]);
-        InspectionResponsible::factory()->forInspection($nextInspection, $user)->create(['responsibility' => InspectionResponsibility::Preparer]);
+        InspectionResponsible::factory()->forInspection($nextInspection, $user)->create(['responsibility' => InspectionResponsibility::Reviewer]);
 
         $this->actingAs($user)
             ->post(route('inspections.defects.assessments.store', [$nextInspection, $assessment->defect]), [
@@ -462,7 +462,7 @@ final class DefectAssessmentLocationRoutesTest extends TestCase
         $user = User::factory()->for($organization)->create(['operational_role' => OperationalRole::Inspector]);
         $equipment = Equipment::factory()->for($organization)->create();
         $inspection = Inspection::factory()->forEquipment($equipment)->create(['status' => InspectionStatus::InProgress]);
-        InspectionResponsible::factory()->forInspection($inspection, $user)->create(['responsibility' => InspectionResponsibility::Preparer]);
+        InspectionResponsible::factory()->forInspection($inspection, $user)->create(['responsibility' => InspectionResponsibility::Reviewer]);
         $defect = Defect::factory()->forEquipment($equipment, $inspection)->create();
         $assessment = DefectAssessment::factory()->forDefect($defect, $inspection)->draft()->create();
 

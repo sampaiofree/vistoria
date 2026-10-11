@@ -14,32 +14,46 @@ use Illuminate\Database\Eloquent\Builder;
 
 final class InspectionSelfAssignment
 {
-    public function roleFor(User $user): ?InspectionResponsibility
+    /** @return list<InspectionResponsibility> */
+    public function rolesFor(User $user): array
     {
         if (! $user->isActive()
             || ! in_array($user->account_type, [UserAccountType::Member, UserAccountType::CompanyAdmin], true)
             || $user->organization_id === null) {
-            return null;
+            return [];
         }
 
-        return match ($user->operational_role) {
-            OperationalRole::Reviewer => InspectionResponsibility::Approver,
-            OperationalRole::Releaser => InspectionResponsibility::Releaser,
-            default => null,
-        };
+        $roles = [];
+        if ($user->hasOperationalRole(OperationalRole::Reviewer)) {
+            $roles[] = InspectionResponsibility::Approver;
+        }
+        if ($user->hasOperationalRole(OperationalRole::Releaser)) {
+            $roles[] = InspectionResponsibility::Releaser;
+        }
+
+        return $roles;
+    }
+
+    public function roleFor(User $user): ?InspectionResponsibility
+    {
+        return $this->rolesFor($user)[0] ?? null;
     }
 
     /** @param Builder<Inspection> $query @return Builder<Inspection> */
     public function availableQuery(Builder $query, User $user): Builder
     {
-        $role = $this->roleFor($user);
-        if ($role === null) {
+        $roles = $this->rolesFor($user);
+        if ($roles === []) {
             return $query->whereRaw('1 = 0');
         }
 
         return $query->forOrganization($user->organization_id)
             ->whereNotIn('status', [InspectionStatus::Released, InspectionStatus::Canceled])
-            ->whereDoesntHave('responsibles', fn (Builder $responsibles) => $responsibles->where('responsibility', $role->value));
+            ->where(function (Builder $vacancies) use ($roles): void {
+                foreach ($roles as $role) {
+                    $vacancies->orWhereDoesntHave('responsibles', fn (Builder $responsibles) => $responsibles->where('responsibility', $role->value));
+                }
+            });
     }
 
     public function isAvailable(User $user, Inspection $inspection): bool
@@ -47,12 +61,27 @@ final class InspectionSelfAssignment
         return $this->availableQuery(Inspection::query()->whereKey($inspection->id), $user)->exists();
     }
 
-    /** @return array{action:string,label:string}|null */
+    /** @return array{action:string,label:string,options:list<array{value:string,label:string}>,requires_selection:bool}|null */
     public function capability(User $user, Inspection $inspection): ?array
     {
-        return $this->isAvailable($user, $inspection) ? [
+        if ($inspection->status->isFinal() || ! $inspection->belongsToOrganization($user->organization_id ?? 0)) {
+            return null;
+        }
+        $options = [];
+        foreach ($this->rolesFor($user) as $role) {
+            if (! $inspection->responsibles()->where('responsibility', $role->value)->exists()) {
+                $options[] = ['value' => $role->value, 'label' => $role->label()];
+            }
+        }
+        if ($options === []) {
+            return null;
+        }
+
+        return [
             'action' => route('inspections.self-assign', $inspection),
-            'label' => 'Assumir como '.$this->roleFor($user)->label(),
-        ] : null;
+            'label' => count($options) === 1 ? 'Assumir como '.$options[0]['label'] : 'Assumir funções',
+            'options' => $options,
+            'requires_selection' => count($this->rolesFor($user)) > 1,
+        ];
     }
 }

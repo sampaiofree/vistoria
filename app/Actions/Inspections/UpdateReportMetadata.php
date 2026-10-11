@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Actions\Inspections;
 
-use App\Enums\OperationalRole;
+use App\Enums\InspectionStatus;
 use App\Models\Inspection;
 use App\Models\User;
 use App\Services\Tenancy\TenantContext;
@@ -39,7 +39,7 @@ final class UpdateReportMetadata
             $serviceOrder = TextNormalizer::nullableText($data['service_order'] ?? null);
             $serviceOrderUnchanged = $serviceOrder === TextNormalizer::nullableText($inspection->service_order);
 
-            if ($actor->operational_role === OperationalRole::Inspector) {
+            if (in_array($inspection->status, [InspectionStatus::InProgress, InspectionStatus::InCorrection], true)) {
                 $restrictedChanges = [
                     'emission_type' => $inspection->emission_type?->value !== ($data['emission_type'] ?? null),
                     'report_date' => $inspection->report_date?->toDateString() !== $reportDate,
@@ -71,7 +71,7 @@ final class UpdateReportMetadata
                 'updated_by' => $actor->getKey(),
             ];
 
-            if ($actor->operational_role === OperationalRole::Reviewer) {
+            if ($inspection->status === InspectionStatus::InReview) {
                 $attributes['designer_i_report_number'] = TextNormalizer::nullableText($data['designer_i_report_number'] ?? null);
             }
 

@@ -5,6 +5,7 @@ namespace Tests\Feature\Inspections;
 use App\Actions\Inspections\AssignInspectionResponsible;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
+use App\Enums\OperationalRole;
 use App\Models\Inspection;
 use App\Models\Organization;
 use App\Models\User;
@@ -68,8 +69,9 @@ class InspectionResponsibleTest extends TestCase
 
     public function test_it_replaces_the_existing_user_for_a_responsibility_and_keeps_it_primary(): void
     {
-        $first = User::factory()->create(['organization_id' => $this->organization]);
-        $second = User::factory()->create(['organization_id' => $this->organization]);
+        $first = User::factory()->create(['organization_id' => $this->organization, 'operational_role' => OperationalRole::Planner]);
+        $first->syncOperationalRoles(['planner', 'inspector']);
+        $second = User::factory()->create(['organization_id' => $this->organization, 'operational_role' => OperationalRole::Planner]);
         $assign = app(AssignInspectionResponsible::class);
 
         $assign->handle($this->inspection, $first, 'preparer', $this->actor);
@@ -88,7 +90,7 @@ class InspectionResponsibleTest extends TestCase
     {
         $responsible = app(AssignInspectionResponsible::class)->handle(
             $this->inspection,
-            User::factory()->create(['organization_id' => $this->organization]),
+            User::factory()->create(['organization_id' => $this->organization, 'operational_role' => OperationalRole::Planner]),
             'preparer',
             $this->actor,
         );

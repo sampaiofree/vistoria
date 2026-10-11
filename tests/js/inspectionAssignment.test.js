@@ -16,11 +16,15 @@ function mount(t, path, inputProps, transport = {}) {
     const visits = [];
     const inertia = {
         router: { get: (url, data, options) => visits.push({ url, data, options }) },
-        useForm: defaults => Vue.reactive({
-            ...defaults,
-            errors: {},
-            post: (url, options) => visits.push({ url, data: defaults, options }),
-        }),
+        useForm: defaults => {
+            const form = Vue.reactive({ ...defaults, errors: {} });
+            form.post = (url, options) => visits.push({
+                url,
+                data: Object.fromEntries(Object.entries(form).filter(([key]) => !['errors', 'post'].includes(key))),
+                options,
+            });
+            return form;
+        },
         ...transport,
     };
     const component = new Function('Vue', 'inertia', 'eligibleAssignmentUsers', `${source}\nreturn component;`)(Vue, inertia, eligibleAssignmentUsers);
@@ -64,6 +68,21 @@ test('missing capability hides and prevents self-assignment', t => {
     assert.equal(render().type, Vue.Comment);
 });
 
+test('dual-role self-assignment sends the selected vacancies', t => {
+    const { state, visits } = mount(t, 'components/domain/inspections/SelfAssignmentButton.vue', {
+        capability: {
+            action: '/inspections/1/self-assign', label: 'Assumir funções', requires_selection: true,
+            options: [{ value: 'approver', label: 'Revisor' }, { value: 'releaser', label: 'Liberador' }],
+        },
+    });
+    state.submit();
+    assert.equal(visits.length, 0);
+    state.toggle('approver');
+    state.toggle('releaser');
+    state.submit();
+    assert.deepEqual(visits[0].data, { responsibilities: ['approver', 'releaser'] });
+});
+
 test('switching queue keeps search and stage, removes responsible filters and resets pagination', t => {
     const { state, props, visits } = mount(t, 'pages/Inspections/Index.vue', {
         filters: { scope: 'mine', search: 'Bomba', status: 'in_review', responsible: '3', responsibility: 'approver', page: 2 },
@@ -90,12 +109,12 @@ test('company administrator keeps the company-wide list label while a member see
 
 test('manual assignment offers only the matching operational role and clears an incompatible selection', async t => {
     const users = [
-        { id: 1, name: 'Revisor', account_type: 'member', operational_role: 'reviewer' },
-        { id: 2, name: 'Liberador', account_type: 'member', operational_role: 'releaser' },
-        { id: 3, name: 'Admin', account_type: 'company_admin', operational_role: 'reviewer' },
-        { id: 4, name: 'Inspetor', account_type: 'member', operational_role: 'inspector' },
-        { id: 5, name: 'Admin Liberador', account_type: 'company_admin', operational_role: 'releaser' },
-        { id: 6, name: 'Super Admin', account_type: 'super_admin', operational_role: 'reviewer' },
+        { id: 1, name: 'Revisor', account_type: 'member', operational_roles: ['reviewer'] },
+        { id: 2, name: 'Liberador', account_type: 'member', operational_roles: ['releaser'] },
+        { id: 3, name: 'Admin', account_type: 'company_admin', operational_roles: ['reviewer', 'planner'] },
+        { id: 4, name: 'Inspetor', account_type: 'member', operational_roles: ['inspector'] },
+        { id: 5, name: 'Admin Liberador', account_type: 'company_admin', operational_roles: ['releaser'] },
+        { id: 6, name: 'Super Admin', account_type: 'super_admin', operational_roles: ['reviewer'] },
     ];
     const { state } = mount(t, 'components/domain/inspections/AssignmentForm.vue', { users, roles: [], action: '/responsibles' });
     state.form.responsibility = 'approver';
@@ -107,5 +126,5 @@ test('manual assignment offers only the matching operational role and clears an 
     await Vue.nextTick();
     assert.deepEqual(state.eligibleUsers.value.map(user => user.id), [2, 5]);
     assert.equal(state.form.user_id, '');
-    assert.deepEqual(eligibleAssignmentUsers(users, 'preparer'), users);
+    assert.deepEqual(eligibleAssignmentUsers(users, 'preparer').map(user => user.id), [3]);
 });

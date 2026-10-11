@@ -41,7 +41,7 @@ final class ApproveInspection
     private function perform(Inspection $inspection, User $actor): Inspection
     {
         $this->validateTenant($inspection, $actor);
-        if ($actor->operational_role !== OperationalRole::Reviewer || ! $inspection->hasAnyResponsibilityForUser($actor, InspectionResponsibility::Approver)) {
+        if (! $actor->hasOperationalRole(OperationalRole::Reviewer) || ! $inspection->hasAnyResponsibilityForUser($actor, InspectionResponsibility::Approver)) {
             throw ValidationException::withMessages(['actor' => 'Somente o Revisor vinculado pode enviar a inspeção para liberação.']);
         }
 

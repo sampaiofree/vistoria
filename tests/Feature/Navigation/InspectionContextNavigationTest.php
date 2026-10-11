@@ -85,7 +85,7 @@ final class InspectionContextNavigationTest extends TestCase
             'status' => InspectionStatus::InProgress,
             'started_at' => now(),
         ]);
-        InspectionResponsible::factory()->forInspection($inspection, $user)->create(['responsibility' => InspectionResponsibility::Preparer]);
+        InspectionResponsible::factory()->forInspection($inspection, $user)->create(['responsibility' => InspectionResponsibility::Reviewer]);
         $defect = Defect::factory()->forEquipment($equipment, $inspection)->create([
             'category' => DefectCategory::Civil,
             'code' => 'VT002-CV-001',

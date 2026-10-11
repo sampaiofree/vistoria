@@ -36,8 +36,10 @@ final class CreateOrganizationWithAdmin
                 'password' => $temporaryPassword,
                 'must_change_password' => true,
                 'account_type' => UserAccountType::CompanyAdmin,
+                'operational_role' => $data['admin_operational_roles'][0],
                 'status' => UserStatus::Active,
             ]);
+            $admin->syncOperationalRoles($data['admin_operational_roles']);
 
             return [
                 'organization' => $organization->refresh(),

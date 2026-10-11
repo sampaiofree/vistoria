@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Requests\Inspections;
 
 use App\Enums\EquipmentRevisionEmissionType;
-use App\Enums\OperationalRole;
+use App\Enums\InspectionStatus;
 use App\Models\Inspection;
 use App\Rules\ValidServiceOrder;
 use App\Support\TextNormalizer;
@@ -62,7 +62,7 @@ final class UpdateReportMetadataRequest extends FormRequest
             'external_report_number' => ['nullable', 'string', 'max:150'],
             'report_equipment_name' => ['required', 'string', 'max:150'],
             'report_designer' => ['prohibited'],
-            'designer_i_report_number' => $this->user()?->operational_role === OperationalRole::Reviewer
+            'designer_i_report_number' => $inspection?->status === InspectionStatus::InReview
                 ? ['required', 'string', 'max:100']
                 : ['prohibited'],
             'first_page_text_template' => ['required', 'nullable', 'string', 'max:5000'],

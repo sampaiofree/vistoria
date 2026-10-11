@@ -144,7 +144,7 @@ final class InspectionReportMetadataTest extends TestCase
                 'first_page_text_template' => 'Texto original',
             ]);
         InspectionResponsible::factory()->forInspection($inspection, $inspector)->create([
-            'responsibility' => InspectionResponsibility::Preparer,
+            'responsibility' => InspectionResponsibility::Reviewer,
         ]);
 
         $this->actingAs($inspector)

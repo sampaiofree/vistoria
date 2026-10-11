@@ -125,7 +125,7 @@ final class CreateInspectionBatch
                 ->whereKey((int) $record['inspector_id'])
                 ->first();
 
-            if ($inspector === null || ! $inspector->isActive() || $inspector->operational_role !== OperationalRole::Inspector) {
+            if ($inspector === null || ! $inspector->isActive() || ! $inspector->hasOperationalRole(OperationalRole::Inspector)) {
                 $errors["inspections.$index.inspector_id"] = 'Selecione um Inspetor ativo da organização.';
             }
         }
@@ -137,7 +137,7 @@ final class CreateInspectionBatch
 
     private function validateActor(User $actor): void
     {
-        if (! $actor->isActive() || $actor->isSuperAdmin() || ! $actor->belongsToOrganization($this->tenant->id()) || $actor->operational_role !== OperationalRole::Planner) {
+        if (! $actor->isActive() || $actor->isSuperAdmin() || ! $actor->belongsToOrganization($this->tenant->id()) || ! $actor->hasOperationalRole(OperationalRole::Planner)) {
             throw ValidationException::withMessages([
                 'actor' => 'Somente usuários ativos com papel Planejador podem criar inspeções.',
             ]);

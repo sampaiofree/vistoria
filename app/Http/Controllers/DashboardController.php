@@ -81,18 +81,16 @@ final class DashboardController extends Controller
                 'dashboard' => route('dashboard'),
                 'organizations_index' => null,
                 'inspections_index' => route('inspections.index', $personalFilters),
-                'available_inspections' => app(InspectionSelfAssignment::class)->roleFor($user) !== null
+                'available_inspections' => app(InspectionSelfAssignment::class)->rolesFor($user) !== []
                     ? route('inspections.index', ['scope' => 'available']) : null,
-                'available_reviews' => match (app(InspectionSelfAssignment::class)->roleFor($user)) {
-                    InspectionResponsibility::Approver => route('inspections.index', [
+                'available_reviews' => match (count(app(InspectionSelfAssignment::class)->rolesFor($user))) {
+                    0 => null,
+                    1 => route('inspections.index', [
                         'scope' => 'available',
-                        'status' => InspectionStatus::AwaitingReview->value,
+                        'status' => app(InspectionSelfAssignment::class)->roleFor($user) === InspectionResponsibility::Approver
+                            ? InspectionStatus::AwaitingReview->value : InspectionStatus::AwaitingRelease->value,
                     ]),
-                    InspectionResponsibility::Releaser => route('inspections.index', [
-                        'scope' => 'available',
-                        'status' => InspectionStatus::AwaitingRelease->value,
-                    ]),
-                    default => null,
+                    default => route('inspections.index', ['scope' => 'available']),
                 },
                 'inspections_create' => $request->user()->can('create', Inspection::class) ? route('inspections.create') : null,
                 'equipments_index' => route('equipments.index'),
@@ -434,20 +432,20 @@ final class DashboardController extends Controller
         User $user,
     ): array {
         $availability = app(InspectionSelfAssignment::class);
-        $responsibility = $availability->roleFor($user);
-        $status = match ($responsibility) {
-            InspectionResponsibility::Approver => InspectionStatus::AwaitingReview,
-            InspectionResponsibility::Releaser => InspectionStatus::AwaitingRelease,
-            default => null,
-        };
-
-        if ($status === null) {
+        $roles = $availability->rolesFor($user);
+        if ($roles === []) {
             return [];
         }
 
+        $statuses = array_map(fn (InspectionResponsibility $role): string => match ($role) {
+            InspectionResponsibility::Approver => InspectionStatus::AwaitingReview->value,
+            InspectionResponsibility::Releaser => InspectionStatus::AwaitingRelease->value,
+            default => throw new \LogicException('Função de autoatribuição inválida.'),
+        }, $roles);
+
         return $availability->availableQuery(Inspection::query(), $user)
             ->where('organization_id', $organizationId)
-            ->where('status', $status->value)
+            ->whereIn('status', $statuses)
             ->with('equipment:id,public_id,name,tag')
             ->orderBy('created_at')
             ->orderBy('id')
@@ -463,10 +461,7 @@ final class DashboardController extends Controller
                     'tag' => $inspection->equipment->tag,
                 ],
                 'schedule' => $inspection->planned_start_on?->format('d/m/Y') ?? 'Sem data',
-                'self_assign' => [
-                    'action' => route('inspections.self-assign', $inspection),
-                    'label' => 'Assumir como '.$responsibility->label(),
-                ],
+                'self_assign' => $availability->capability($user, $inspection),
                 'show_url' => route('inspections.show', $inspection),
             ])
             ->all();

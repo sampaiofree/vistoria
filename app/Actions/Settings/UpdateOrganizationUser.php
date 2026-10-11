@@ -3,6 +3,8 @@
 namespace App\Actions\Settings;
 
 use App\Enums\UserAccountType;
+use App\Enums\OperationalRole;
+use App\Enums\InspectionResponsibility;
 use App\Models\Client;
 use App\Models\InspectionResponsible;
 use App\Models\User;
@@ -15,7 +17,11 @@ final class UpdateOrganizationUser
     {
         return DB::transaction(function () use ($actor, $user, $data): User {
             $actor->organization()->lockForUpdate()->firstOrFail();
-            $user->refresh();
+            $user = User::query()->whereKey($user->getKey())->lockForUpdate()->firstOrFail();
+
+            if ($user->isCompanyAdmin() && $actor->getKey() !== $user->getKey()) {
+                throw ValidationException::withMessages(['account_type' => 'Você não pode alterar outra conta de administrador.']);
+            }
 
             if ($actor->getKey() === $user->getKey() && $data['account_type'] !== $user->account_type->value) {
                 throw ValidationException::withMessages(['account_type' => 'Você não pode alterar o próprio perfil.']);
@@ -39,12 +45,35 @@ final class UpdateOrganizationUser
                 ]);
             }
 
+            $roles = $data['operational_roles'] ?? [];
+            $removed = array_diff($user->operationalRoleValues(), $roles);
+            if ($removed !== []) {
+                $responsibilities = array_map(
+                    fn (string $role): string => match (OperationalRole::from($role)) {
+                        OperationalRole::Planner => InspectionResponsibility::Preparer->value,
+                        OperationalRole::Inspector => InspectionResponsibility::Reviewer->value,
+                        OperationalRole::Reviewer => InspectionResponsibility::Approver->value,
+                        OperationalRole::Releaser => InspectionResponsibility::Releaser->value,
+                    },
+                    $removed,
+                );
+                if (InspectionResponsible::query()->where('user_id', $user->getKey())
+                    ->whereIn('responsibility', $responsibilities)
+                    ->whereHas('inspection', fn ($query) => $query->whereNotIn('status', ['released', 'canceled']))
+                    ->exists()) {
+                    throw ValidationException::withMessages([
+                        'operational_roles' => 'Substitua as responsabilidades em inspeções abertas antes de retirar esta função.',
+                    ]);
+                }
+            }
+
             $user->update([
                 'name' => $data['name'],
                 'email' => strtolower($data['email']),
                 'account_type' => $data['account_type'],
-                'operational_role' => $data['operational_role'] ?? null,
+                'operational_role' => $roles[0] ?? null,
             ]);
+            $user->syncOperationalRoles($roles);
 
             return $user->refresh();
         });

@@ -90,10 +90,8 @@ final class InspectionCorrectionRequestPolicy
             && $user->organization_id !== null
             && $inspection->organization_id === $user->organization_id
             && $inspection->status === $status
-            && $user->operational_role === $role
-            && ($user->account_type === UserAccountType::Member
-                || (in_array($role, [OperationalRole::Reviewer, OperationalRole::Releaser], true)
-                    && $user->account_type === UserAccountType::CompanyAdmin))
+            && $user->hasOperationalRole($role)
+            && in_array($user->account_type, [UserAccountType::Member, UserAccountType::CompanyAdmin], true)
             && $inspection->hasAnyResponsibilityForUser($user, match ($role) {
                 OperationalRole::Planner => InspectionResponsibility::Preparer,
                 OperationalRole::Inspector => InspectionResponsibility::Reviewer,

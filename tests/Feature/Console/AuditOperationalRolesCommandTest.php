@@ -27,6 +27,7 @@ final class AuditOperationalRolesCommandTest extends TestCase
         $wrongRole = User::factory()->for($organization)->create([
             'operational_role' => OperationalRole::Planner,
         ]);
+        $this->assertDatabaseHas('user_operational_roles', ['user_id' => $wrongRole->id, 'role' => 'planner']);
         $inspection = Inspection::factory()->for($organization)->create(['status' => InspectionStatus::InReview]);
         $assignment = InspectionResponsible::factory()->forInspection($inspection, $wrongRole)->create([
             'responsibility' => InspectionResponsibility::Approver,

@@ -35,7 +35,7 @@ final class UpdatePlannedInspection
         if (! $actor->isActive()
             || $actor->isSuperAdmin()
             || ! $actor->belongsToOrganization($this->tenant->id())
-            || $actor->operational_role !== OperationalRole::Planner) {
+            || ! $actor->hasOperationalRole(OperationalRole::Planner)) {
             throw ValidationException::withMessages([
                 'actor' => 'O usuário não pode editar inspeções na organização atual.',
             ]);
@@ -52,7 +52,7 @@ final class UpdatePlannedInspection
                     ->findOrFail($inspection->getKey());
 
                 if ($inspection->status !== InspectionStatus::Planned
-                    || ! $inspection->hasAnyResponsibilityForUser($actor, ...InspectionResponsibility::cases())) {
+                    || ! $inspection->hasAnyResponsibilityForUser($actor, InspectionResponsibility::Preparer)) {
                     throw ValidationException::withMessages([
                         'actor' => 'Somente o Planejador vinculado pode editar o planejamento.',
                     ]);
@@ -87,7 +87,7 @@ final class UpdatePlannedInspection
                     ->where('organization_id', $this->tenant->id())
                     ->whereKey($data['inspector_id'])
                     ->where('status', UserStatus::Active->value)
-                    ->where('operational_role', OperationalRole::Inspector->value)
+                    ->withOperationalRole(OperationalRole::Inspector)
                     ->firstOrFail();
 
                 $previousInspection = Inspection::query()

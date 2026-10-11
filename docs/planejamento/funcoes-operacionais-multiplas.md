@@ -1,7 +1,7 @@
 # Funções operacionais múltiplas
 
-**Estado:** planejamento para implementação futura; o sistema ainda usa um único
-papel operacional por usuário.
+**Estado:** implementação no código; ativação em produção condicionada à
+auditoria e à migração descritas no [runbook de deploy](../operacao/deploy.md).
 
 **Decisões registradas em:** 09/10/2026.
 
@@ -43,8 +43,10 @@ dispensa o vínculo exigido para criar conteúdo, revisar, liberar ou cancelar.
 
 - Trocar o campo único `users.operational_role` por uma relação de funções do
   usuário, com unicidade por usuário e função e consultas eficientes por função.
-  Migrar os valores válidos existentes sem criar funções adicionais. Depois que
-  todas as leituras e gravações usarem a relação, remover o campo antigo.
+  Migrar os valores válidos existentes sem criar funções adicionais. O campo
+  antigo permanece como espelho temporário da primeira função para compatibilidade
+  da transição; sua remoção exige uma migração posterior após atualização dos
+  consumidores e dados legados.
 - Exigir de uma a quatro funções para criar ou atualizar `member` e
   `company_admin`. Rejeitar funções repetidas ou fora das quatro opções.
   Proibir funções para `client` e `super_admin`. Manter o isolamento por
@@ -165,6 +167,5 @@ Verificar com testes de migração e de ponta a ponta:
   disputa concorrente com resultado integral ou nenhum vínculo novo;
 - preservação dos nomes documentais, snapshots e eventos do histórico.
 
-O repositório já pode conter alterações em andamento em arquivos do fluxo de
-inspeções. A implementação futura deve partir do estado então vigente e
-preservar essas alterações.
+Esta implementação partiu do estado existente do repositório e preservou as
+alterações em andamento nos arquivos do fluxo de inspeções.

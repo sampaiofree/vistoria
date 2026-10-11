@@ -42,9 +42,9 @@ final class CivilQuantityMigrationTest extends TestCase
 
             $organization = Organization::factory()->create();
             $equipment = Equipment::factory()->for($organization)->create();
-            $inspection = Inspection::factory()->forEquipment($equipment)->create();
+            $inspection = $this->persistOnHistoricalSchema(Inspection::factory()->forEquipment($equipment)->make());
             $defect = Defect::factory()->forEquipment($equipment, $inspection)->create(['category' => DefectCategory::AnticorrosiveTreatment]);
-            $assessment = DefectAssessment::factory()->forDefect($defect, $inspection)->create();
+            $assessment = $this->persistOnHistoricalSchema(DefectAssessment::factory()->forDefect($defect, $inspection)->make());
             $quantity = DefectAssessmentQuantity::factory()->forAssessment($assessment)->create([
                 'measurement_value' => 2.75, 'measurement_unit' => MeasurementUnit::SquareMeter,
             ]);

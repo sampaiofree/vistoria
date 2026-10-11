@@ -9,10 +9,25 @@ use App\Models\DefectAssessmentQuantity;
 use App\Models\DefectLocationMap;
 use App\Models\DefectLocationMapVersion;
 use App\Enums\DefectCategory;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 
 abstract class TestCase extends BaseTestCase
 {
+    /** Persist a current factory model against a historical schema used by migration tests. */
+    protected function persistOnHistoricalSchema(Model $model): Model
+    {
+        $columns = array_flip($model->getConnection()->getSchemaBuilder()->getColumnListing($model->getTable()));
+        foreach (array_keys($model->getAttributes()) as $attribute) {
+            if (! array_key_exists($attribute, $columns)) {
+                unset($model->{$attribute});
+            }
+        }
+        $model->save();
+
+        return $model;
+    }
+
     protected function satisfyAssessmentPublicationRequirements(DefectAssessment $assessment): void
     {
         $assessment->loadMissing('defect');

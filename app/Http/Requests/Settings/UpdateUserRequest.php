@@ -13,11 +13,19 @@ final class UpdateUserRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()?->can('viewAny', User::class) ?? false;
+        $target = $this->route('user');
+        if ($target instanceof User && $target->organization_id !== $this->user()?->organization_id) {
+            abort(404);
+        }
+
+        return $target instanceof User && ($this->user()?->can('update', $target) ?? false);
     }
 
     protected function prepareForValidation(): void
     {
+        if (! $this->exists('operational_roles') && filled($this->input('operational_role'))) {
+            $this->merge(['operational_roles' => [$this->input('operational_role')]]);
+        }
         $this->merge([
             'name' => TextNormalizer::text((string) $this->input('name')),
             'email' => TextNormalizer::email($this->input('email')),
@@ -37,9 +45,10 @@ final class UpdateUserRequest extends FormRequest
                 UserAccountType::CompanyAdmin->value,
                 UserAccountType::Client->value,
             ])],
-            'operational_role' => $this->input('account_type') === UserAccountType::Client->value
+            'operational_roles' => $this->input('account_type') === UserAccountType::Client->value
                 ? ['prohibited']
-                : ['required', Rule::enum(OperationalRole::class)],
+                : ['required', 'array', 'min:1', 'max:4'],
+            'operational_roles.*' => ['distinct', Rule::enum(OperationalRole::class)],
         ];
     }
 }

@@ -83,17 +83,17 @@ final class ClientUserAccountsTest extends TestCase
         $this->post(route('settings.users.store'), [
             'name' => 'Contato', 'email' => 'contato@cliente.test', 'account_type' => 'client',
             'operational_role' => OperationalRole::Inspector->value,
-        ])->assertSessionHasErrors('operational_role');
+        ])->assertSessionHasErrors('operational_roles');
 
         $this->post(route('settings.users.store'), [
             'name' => 'Interno', 'email' => 'interno@empresa.test', 'account_type' => 'member',
-        ])->assertSessionHasErrors('operational_role');
+        ])->assertSessionHasErrors('operational_roles');
 
         $member = User::factory()->for($organization)->create(['operational_role' => OperationalRole::Inspector]);
         $this->put(route('settings.users.update', $member), [
             'name' => $member->name, 'email' => $member->email, 'account_type' => 'client',
             'operational_role' => OperationalRole::Inspector->value,
-        ])->assertSessionHasErrors('operational_role');
+        ])->assertSessionHasErrors('operational_roles');
         $this->assertSame(UserAccountType::Member, $member->refresh()->account_type);
     }
 
@@ -118,9 +118,8 @@ final class ClientUserAccountsTest extends TestCase
         $otherAdmin = User::factory()->for($organization)->create(['account_type' => UserAccountType::CompanyAdmin]);
 
         $data = ['name' => $otherAdmin->name, 'email' => $otherAdmin->email, 'account_type' => 'client'];
-        $this->actingAs($admin)->put(route('settings.users.update', $otherAdmin), $data)->assertRedirect();
-        $this->assertSame(UserAccountType::Client, $otherAdmin->refresh()->account_type);
-        $this->assertNull($otherAdmin->operational_role);
+        $this->actingAs($admin)->put(route('settings.users.update', $otherAdmin), $data)->assertForbidden();
+        $this->assertSame(UserAccountType::CompanyAdmin, $otherAdmin->refresh()->account_type);
 
         $this->put(route('settings.users.update', $admin), [
             'name' => $admin->name, 'email' => $admin->email, 'account_type' => 'client',

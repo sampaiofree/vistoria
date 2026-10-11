@@ -122,7 +122,7 @@ final class DefectAssessmentAtmosphericClassificationTest extends TestCase
             'atmospheric_classification' => 'C2',
         ]);
         InspectionResponsible::factory()->forInspection($inspection, $inspector)->create([
-            'responsibility' => InspectionResponsibility::Preparer,
+            'responsibility' => InspectionResponsibility::Reviewer,
         ]);
         $defect = Defect::factory()->forEquipment($equipment, $inspection)->create(['category' => $category]);
         $assessment = DefectAssessment::factory()->forDefect($defect, $inspection)->draft()->create();

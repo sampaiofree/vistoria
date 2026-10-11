@@ -6,6 +6,7 @@ namespace App\Http\Requests\Inspections;
 
 use App\Models\Inspection;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 final class SelfAssignInspectionRequest extends FormRequest
 {
@@ -18,6 +19,12 @@ final class SelfAssignInspectionRequest extends FormRequest
 
     public function rules(): array
     {
-        return ['user_id' => ['missing'], 'responsibility' => ['missing'], 'role' => ['missing']];
+        return [
+            'user_id' => ['missing'],
+            'responsibility' => ['missing'],
+            'role' => ['missing'],
+            'responsibilities' => ['sometimes', 'required', 'array', 'min:1', 'max:2'],
+            'responsibilities.*' => ['distinct', Rule::in(['approver', 'releaser'])],
+        ];
     }
 }

@@ -3,12 +3,17 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
     public function up(): void
     {
+        if (Artisan::call('app:audit-operational-roles') !== 0) {
+            throw new RuntimeException('A auditoria de funções operacionais encontrou pendências. Execute app:audit-operational-roles e regularize os dados antes de migrar.');
+        }
+
         Schema::create('user_operational_roles', function (Blueprint $table): void {
             $table->id();
             $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();

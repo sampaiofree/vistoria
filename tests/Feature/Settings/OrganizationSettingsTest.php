@@ -298,10 +298,10 @@ final class OrganizationSettingsTest extends TestCase
         ];
 
         $this->actingAs($admin)->post(route('settings.users.store'), $data)
-            ->assertSessionHasErrors('operational_role');
+            ->assertSessionHasErrors('operational_roles');
 
         $this->post(route('settings.users.store'), [...$data, 'operational_role' => 'invalid'])
-            ->assertSessionHasErrors('operational_role');
+            ->assertSessionHasErrors('operational_roles.0');
     }
 
     public function test_company_admin_can_assign_their_own_operational_role_without_changing_access_type(): void
@@ -363,7 +363,7 @@ final class OrganizationSettingsTest extends TestCase
 
         $this->actingAs($admin)->get(route('settings.users.edit', $legacyUser))
             ->assertInertia(fn ($page) => $page
-                ->where('user.operational_role', null)
+                ->where('user.operational_roles', [])
                 ->where('user.operational_role_label', 'Papel não definido')
                 ->has('operational_role_options', 4));
 

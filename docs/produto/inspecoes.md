@@ -29,9 +29,10 @@ geral.
 
 As responsabilidades técnicas são `preparer` (Planejador), `reviewer`
 (Inspetor), `approver` (Revisor) e `releaser` (Liberador). Há no máximo um
-responsável por função. Elas não substituem o papel operacional: para uma ação de
-fluxo, o usuário deve estar ativo, no tenant, ter o papel correto e estar atribuído
-à inspeção.
+responsável por função em cada inspeção; a mesma pessoa pode ocupar várias.
+Para uma ação de fluxo, o usuário deve estar ativo, no tenant, ter a função
+correta e estar atribuído na responsabilidade correspondente. Administradores
+podem atuar como Planejador ou Inspetor quando também satisfazem essas regras.
 
 ## Autoatribuição de Revisor e Liberador
 
@@ -43,20 +44,22 @@ e também recebem a fila **Disponíveis para mim**. Podem consultar a inspeção
 seu relatório antes de assumir; ações de revisão, liberação e cancelamento exigem
 o vínculo específico. A dashboard oferece um atalho para a fila disponível.
 
-`POST /inspections/{inspection}/self-assign` deriva usuário e função da sessão,
-rejeitando parâmetros para escolher outro usuário ou papel. A operação bloqueia a
-inspeção em transação e preenche somente a vaga correspondente (`approver` para
-Revisor, `releaser` para Liberador), mesmo com a outra função ocupada. Não muda a
-etapa. Repetições pelo mesmo usuário preservam datas e histórico; se outra pessoa
-assumiu, o solicitante retorna à fila com uma mensagem explicativa.
+`POST /inspections/{inspection}/self-assign` deriva o usuário da sessão. Quem
+possui Revisor e Liberador seleciona uma ou ambas as vagas em
+`responsibilities`; quem possui uma só função pode omitir a seleção. O servidor
+valida a função de cada vaga. A operação bloqueia a inspeção e confirma todas
+as vagas selecionadas em uma transação. Se alguma foi ocupada por outra pessoa,
+não grava nenhum vínculo novo. Não muda a etapa. Repetições pelo mesmo usuário
+preservam datas e histórico.
 
 Cada autoatribuição registra autor, função e horário em `inspection_status_histories`,
 com origem igual ao destino e `metadata.event = responsibility_self_assigned`.
 O registro permanece após substituições administrativas. Responsáveis inativos ou
 com papel incompatível continuam ocupando a função até correção administrativa.
-A atribuição manual de Revisor ou Liberador aceita membro ou administrador ativo
-com o papel operacional correspondente, validado no servidor e filtrado no
-formulário. A atribuição manual mantém a substituição do responsável existente.
+A atribuição manual de qualquer das quatro funções aceita membro ou
+administrador ativo com a função operacional correspondente, validada no servidor
+e filtrada no formulário. A atribuição manual substitui apenas o responsável da
+função escolhida.
 
 ## Conteúdo de campo
 
@@ -89,7 +92,7 @@ Liberador. Cada solicitante encerra individualmente os ajustes atendidos antes d
 avançar sua etapa.
 
 Toda saída do Inspetor, inclusive após correções, passa por `awaiting_m2`, mesmo
-sem notas aplicáveis. O Planejador membro vinculado como `preparer` edita o cabeçalho,
+sem notas aplicáveis. O Planejador vinculado como `preparer` edita o cabeçalho,
 M2 e tratativas especiais; não edita avarias. Pode salvar parcialmente, mas deve
 preencher M2 de cada grupo elegível e Serviço, Prioridade e Nota de cada tratativa
 especial antes de encaminhar à revisão. Criação e envio do Inspetor não exigem

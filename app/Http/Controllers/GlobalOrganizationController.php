@@ -6,6 +6,7 @@ use App\Actions\Organizations\CreateOrganizationWithAdmin;
 use App\Actions\Organizations\SetGlobalOrganizationStatus;
 use App\Actions\Organizations\UpdateGlobalOrganization;
 use App\Enums\OrganizationStatus;
+use App\Enums\OperationalRole;
 use App\Enums\UserAccountType;
 use App\Http\Requests\Organizations\StoreGlobalOrganizationRequest;
 use App\Http\Requests\Organizations\UpdateGlobalOrganizationRequest;
@@ -62,6 +63,10 @@ final class GlobalOrganizationController extends Controller
         return Inertia::render('Organizations/Create', [
             'action' => route('admin.organizations.store'),
             'cancel_url' => route('admin.organizations.index'),
+            'operational_role_options' => array_map(
+                fn (OperationalRole $role): array => ['value' => $role->value, 'label' => $role->label()],
+                OperationalRole::cases(),
+            ),
         ]);
     }
 

@@ -1,8 +1,9 @@
 # Documentação do Vistoria
 
 As seções de produto, arquitetura, referência técnica e operação descrevem o
-comportamento presente no repositório em **03/10/2026**. A seção de planejamento
-registra propostas para implementação futura, ainda não disponíveis no sistema.
+comportamento presente no repositório. A seção de planejamento registra decisões
+de implementação; o documento de funções operacionais múltiplas inclui a
+condição de ativação em produção.
 Para regras executáveis, consulte também rotas, policies, migrations, serviços e
 testes. Configurações de produção dependem do ambiente implantado; os guias de
 operação descrevem o que o código exige, sem afirmar que um servidor esteja pronto.

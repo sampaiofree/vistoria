@@ -28,16 +28,16 @@ final class NativeDefectCatalogMigrationTest extends TestCase
         $this->onPreviousSchema(function (Organization $organization): void {
             $user = User::factory()->for($organization)->create();
             $equipment = Equipment::factory()->for($organization)->create();
-            $inspection = Inspection::factory()->forEquipment($equipment)->create();
+            $inspection = $this->persistOnHistoricalSchema(Inspection::factory()->forEquipment($equipment)->make());
             $categoryId = DB::table('defect_categories')->where('organization_id', $organization->id)->where('code', 'CV')->value('id');
             $classificationId = DB::table('defect_classifications')->where('defect_category_id', $categoryId)->where('code', 'CV-1')->value('id');
             $defect = Defect::factory()->forEquipment($equipment, $inspection)->create();
             $secondDefect = Defect::factory()->forEquipment($equipment, $inspection)->create();
             DB::table('defects')->update(['defect_category_id' => $categoryId]);
-            $assessment = DefectAssessment::factory()->forDefect($defect, $inspection)->create();
+            $assessment = $this->persistOnHistoricalSchema(DefectAssessment::factory()->forDefect($defect, $inspection)->make());
             DB::table('defect_assessments')->where('id', $assessment->id)->update(['defect_classification_id' => $classificationId]);
-            $nextInspection = Inspection::factory()->reinspection($inspection)->create();
-            DefectAssessment::factory()->forDefect($defect, $nextInspection)->create(['previous_assessment_id' => $assessment->id]);
+            $nextInspection = $this->persistOnHistoricalSchema(Inspection::factory()->reinspection($inspection)->make());
+            $this->persistOnHistoricalSchema(DefectAssessment::factory()->forDefect($defect, $nextInspection)->make(['previous_assessment_id' => $assessment->id]));
             DefectAssessmentQuantity::factory()->forAssessment($assessment)->create();
             $photo = AssessmentPhoto::factory()->ready()->create([
                 'organization_id' => $organization->id, 'inspection_id' => $inspection->id, 'defect_assessment_id' => $assessment->id,

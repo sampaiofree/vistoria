@@ -159,7 +159,7 @@ final class ViewFirstReadModelTest extends TestCase
                 ->where('content.cover.designer_i_report_number', 'SM-IIE-1717')
                 ->has('content.cover.approval_flow', 4)
                 ->where('content.cover.approval_flow.0.label', 'Preparado')
-                ->where('content.cover.approval_flow.0.name', null)
+                ->where('content.cover.approval_flow.0.name', $admin->name)
                 ->where('content.cover.approval_flow.1.label', 'Verificado')
                 ->where('content.cover.approval_flow.1.name', null)
                 ->where('content.cover.approval_date', '—')
@@ -206,7 +206,7 @@ final class ViewFirstReadModelTest extends TestCase
         InspectionResponsible::factory()
             ->forInspection($inspection, $admin)
             ->create([
-                'responsibility' => InspectionResponsibility::Preparer,
+                'responsibility' => InspectionResponsibility::Reviewer,
                 'is_primary' => true,
             ]);
         $equipment->load('client');
@@ -927,7 +927,7 @@ final class ViewFirstReadModelTest extends TestCase
             ->forEquipment($equipment)
             ->create(['status' => InspectionStatus::InProgress]);
         InspectionResponsible::factory()->forInspection($inspection, $admin)->create([
-            'responsibility' => InspectionResponsibility::Preparer,
+            'responsibility' => InspectionResponsibility::Reviewer,
         ]);
 
         $this->assertSame(
@@ -1199,6 +1199,7 @@ final class ViewFirstReadModelTest extends TestCase
             'report_reviewer_name' => 'Revisor documental',
             'report_releaser_name' => 'Liberador documental',
         ]);
+        $inspection->responsibles()->where('responsibility', InspectionResponsibility::Reviewer->value)->delete();
         InspectionResponsible::factory()->forInspection($inspection, $inspector)->create([
             'responsibility' => InspectionResponsibility::Reviewer,
             'is_primary' => true,
@@ -1236,7 +1237,7 @@ final class ViewFirstReadModelTest extends TestCase
         InspectionResponsible::factory()
             ->forInspection($inspection, $admin)
             ->create([
-                'responsibility' => InspectionResponsibility::Preparer,
+                'responsibility' => InspectionResponsibility::Reviewer,
                 'is_primary' => true,
             ]);
 

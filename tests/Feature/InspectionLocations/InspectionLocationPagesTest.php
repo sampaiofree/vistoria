@@ -101,7 +101,7 @@ final class InspectionLocationPagesTest extends TestCase
         $user = User::factory()->for($organization)->create(['operational_role' => OperationalRole::Inspector]);
         $equipment = Equipment::factory()->for($organization)->create();
         $inspection = Inspection::factory()->forEquipment($equipment)->create(['status' => InspectionStatus::InProgress]);
-        InspectionResponsible::factory()->forInspection($inspection, $user)->create(['responsibility' => InspectionResponsibility::Preparer]);
+        InspectionResponsible::factory()->forInspection($inspection, $user)->create(['responsibility' => InspectionResponsibility::Reviewer]);
 
         return [$user, $inspection];
     }
