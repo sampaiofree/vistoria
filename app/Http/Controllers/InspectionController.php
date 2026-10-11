@@ -597,13 +597,15 @@ final class InspectionController extends Controller
 
         if (in_array($activeTab, ['classifications', 'report'], true)) {
             $classificationSummary = app(BuildInspectionClassificationSummary::class)->build($inspection);
+            $canManageClassifications = $request->user()->can('manageClassificationM2', $inspection);
             $viewFirstPayload['content']['classification_summary'] = [
                 ...$classificationSummary,
-                'can_edit_m2' => $request->user()->can('manageClassificationM2', $inspection),
-                'm2_update_url' => $request->user()->can('manageClassificationM2', $inspection)
+                'can_edit_header' => $canManageClassifications,
+                'can_edit_m2' => $canManageClassifications && ! $inspection->is_m3,
+                'm2_update_url' => $canManageClassifications && ! $inspection->is_m3
                     ? route('inspections.classification-m2-links.update', $inspection)
                     : null,
-                'header_update_url' => $request->user()->can('manageClassificationM2', $inspection)
+                'header_update_url' => $canManageClassifications
                     ? route('inspections.classification-header.update', $inspection)
                     : null,
             ];
@@ -934,6 +936,7 @@ final class InspectionController extends Controller
             'equipment_id' => $inspection->equipment_id,
             'previous_inspection_id' => $inspection->previous_inspection_id,
             'inspection_type' => $inspection->inspection_type->value,
+            'is_m3' => $inspection->is_m3,
             'type' => $inspection->inspection_type->value,
             'inspection_type_label' => $inspection->inspection_type->label(),
             'status' => $inspection->status->value,
@@ -1333,7 +1336,9 @@ final class InspectionController extends Controller
             $transitions[] = [
                 'key' => 'submit_for_planning',
                 'label' => 'Enviar ao planejador',
-                'description' => 'Conclui o trabalho do Inspetor e encaminha para conferência e preenchimento de notas.',
+                'description' => $inspection->is_m3
+                    ? 'Conclui o trabalho do Inspetor e encaminha as classificações ao Planejador.'
+                    : 'Conclui o trabalho do Inspetor e encaminha para conferência e preenchimento de notas.',
                 'action' => route('inspections.submit-for-planning', $inspection),
                 'requires_justification' => false,
             ];
@@ -1343,7 +1348,9 @@ final class InspectionController extends Controller
             $transitions[] = [
                 'key' => 'submit_for_review',
                 'label' => 'Conferir e enviar para revisão',
-                'description' => 'Confirma a conferência das Notas M2 e tratativas especiais e encaminha a inspeção ao Revisor.',
+                'description' => $inspection->is_m3
+                    ? 'Confirma a conferência das classificações e encaminha a inspeção ao Revisor.'
+                    : 'Confirma a conferência das Notas M2 e tratativas especiais e encaminha a inspeção ao Revisor.',
                 'action' => route('inspections.submit-for-review', $inspection),
                 'requires_justification' => false,
             ];

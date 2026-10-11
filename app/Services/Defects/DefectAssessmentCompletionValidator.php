@@ -36,6 +36,10 @@ final class DefectAssessmentCompletionValidator
         if ($assessment->comment === null) {
             $errors['comment'] = 'Informe um comentário para concluir a avaliação.';
         }
+        if ($assessment->inspection->is_m3 && $assessment->condition->requiresGut()
+            && $assessment->recovery_classification_code === null) {
+            $errors['recovery_classification_code'] = 'Escolha a Classificação de Recuperação antes de publicar a avaliação.';
+        }
 
         if ($assessment->condition->requiresReason() && $assessment->reason === null) {
             $errors['reason'] = 'Informe a justificativa para esta condição.';

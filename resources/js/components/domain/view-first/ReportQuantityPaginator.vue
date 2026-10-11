@@ -6,6 +6,7 @@ import { paginateQuantityRows, ReportQuantityRowOverflowError } from '@/lib/repo
 const props = defineProps({
     items: { type: Array, default: () => [] },
     type: { type: String, required: true },
+    isM3: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(['pages', 'ready', 'error']);
@@ -16,6 +17,7 @@ let runId = 0;
 async function fits(items, continuation) {
     probePage.value = {
         type: props.type,
+        is_m3: props.isM3,
         items,
         continuation,
         annexTitle: `ANEXO Z – QUANTITATIVO GERAL – ${props.type === 'civil-quantity' ? 'CIVIL' : 'REC'}`,
@@ -51,6 +53,7 @@ async function paginate() {
 
     emit('pages', result.map((items, index) => ({
         type: props.type,
+        is_m3: props.isM3,
         key: `${props.type}-${index}`,
         category: props.type === 'rec-quantity' ? 'REC' : 'CV',
         items,
@@ -60,7 +63,7 @@ async function paginate() {
     emit('ready', true);
 }
 
-watch(() => [props.items, props.type], paginate, { deep: true });
+watch(() => [props.items, props.type, props.isM3], paginate, { deep: true });
 onMounted(paginate);
 </script>
 

@@ -15,12 +15,19 @@ final class DefectLocationColor
 
     public function forAssessment(DefectAssessment $assessment): string
     {
-        if ($assessment->isEngineeringNoteWithoutQuantity()) {
-            return self::ENGINEERING_NOTE;
-        }
-
         if ($assessment->condition === DefectAssessmentCondition::Treated) {
             return self::NEUTRAL;
+        }
+
+        if ($assessment->inspection->is_m3) {
+            $color = data_get($assessment->recovery_classification_snapshot, 'color');
+
+            return is_string($color) && preg_match('/^#[0-9A-F]{6}$/i', $color) === 1
+                ? strtoupper($color) : self::NEUTRAL;
+        }
+
+        if ($assessment->isEngineeringNoteWithoutQuantity()) {
+            return self::ENGINEERING_NOTE;
         }
 
         $color = data_get($assessment->classification_snapshot, 'color');

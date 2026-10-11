@@ -43,7 +43,9 @@ final class SubmitInspectionForReview
     {
         $this->validateTenant($inspection, $actor);
         if ($inspection->status !== InspectionStatus::AwaitingM2 || ! $actor->can('submitForReview', $inspection)) {
-            throw ValidationException::withMessages(['status' => 'Somente o Planejador vinculado pode encaminhar as notas para revisão nesta etapa.']);
+            throw ValidationException::withMessages(['status' => $inspection->is_m3
+                ? 'Somente o Planejador vinculado pode encaminhar as classificações para revisão nesta etapa.'
+                : 'Somente o Planejador vinculado pode encaminhar as notas para revisão nesta etapa.']);
         }
 
         $pending = InspectionCorrectionRequest::query()
@@ -75,7 +77,9 @@ final class SubmitInspectionForReview
 
         return $this->transition->handle(
             $actor, $inspection, [InspectionStatus::AwaitingM2], InspectionStatus::AwaitingReview,
-            [], 'Notas conferidas pelo Planejador. Inspeção enviada para revisão.',
+            [], $inspection->is_m3
+                ? 'Classificações conferidas pelo Planejador. Inspeção enviada para revisão.'
+                : 'Notas conferidas pelo Planejador. Inspeção enviada para revisão.',
         );
     }
 }

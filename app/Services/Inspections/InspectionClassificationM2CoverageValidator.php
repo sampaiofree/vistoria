@@ -15,6 +15,10 @@ final class InspectionClassificationM2CoverageValidator
 
     public function validate(Inspection $inspection): void
     {
+        if ($inspection->is_m3) {
+            return;
+        }
+
         $summary = $this->summary->build($inspection);
         $pending = collect($summary['categories'])
             ->flatMap(fn (array $category) => collect($category['rows'])

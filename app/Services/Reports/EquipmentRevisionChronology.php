@@ -73,8 +73,7 @@ final class EquipmentRevisionChronology
         $revision = $inspection->report_revision;
         $responsibles = $this->inspectionResponsibleNames($inspection);
         if ($forReport) {
-            $responsibles['preparer'] = $responsibles['reviewer'];
-            $responsibles = array_replace($responsibles, app(ReportResponsibleNames::class)->forInspection($inspection));
+            $responsibles = app(ReportResponsibleNames::class)->coverNamesForInspection($inspection);
         }
 
         return [

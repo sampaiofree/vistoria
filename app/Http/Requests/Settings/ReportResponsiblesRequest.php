@@ -17,7 +17,10 @@ final class ReportResponsiblesRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        foreach (['report_verifier_name', 'report_reviewer_name', 'report_releaser_name'] as $field) {
+        foreach ([
+            'report_verifier_name', 'report_reviewer_name', 'report_releaser_name',
+            'report_m3_verifier_name', 'report_m3_reviewer_name', 'report_m3_releaser_name',
+        ] as $field) {
             if (is_string($this->input($field))) {
                 $this->merge([$field => TextNormalizer::nullableText($this->input($field))]);
             }
@@ -30,6 +33,9 @@ final class ReportResponsiblesRequest extends FormRequest
             'report_verifier_name' => ['present', 'nullable', 'string', 'max:150'],
             'report_reviewer_name' => ['present', 'nullable', 'string', 'max:150'],
             'report_releaser_name' => ['present', 'nullable', 'string', 'max:150'],
+            'report_m3_verifier_name' => ['sometimes', 'nullable', 'string', 'max:150'],
+            'report_m3_reviewer_name' => ['sometimes', 'nullable', 'string', 'max:150'],
+            'report_m3_releaser_name' => ['sometimes', 'nullable', 'string', 'max:150'],
         ];
     }
 
@@ -39,6 +45,9 @@ final class ReportResponsiblesRequest extends FormRequest
             'report_verifier_name' => 'nome do Verificador',
             'report_reviewer_name' => 'nome do Revisor',
             'report_releaser_name' => 'nome do Liberador',
+            'report_m3_verifier_name' => 'nome do Verificador M3',
+            'report_m3_reviewer_name' => 'nome do Revisor M3',
+            'report_m3_releaser_name' => 'nome do Liberador M3',
         ];
     }
 }

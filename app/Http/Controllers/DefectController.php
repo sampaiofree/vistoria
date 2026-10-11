@@ -36,7 +36,8 @@ final class DefectController extends Controller
 
         $this->authorize('create', [Defect::class, $inspection]);
 
-        $categories = DefectCategory::options();
+        $categories = array_values(array_filter(DefectCategory::options(),
+            fn (array $category): bool => ! $inspection->is_m3 || in_array($category['code'], ['CV', 'REC'], true)));
 
         return Inertia::render('Defects/Create', [
             'inspection' => [

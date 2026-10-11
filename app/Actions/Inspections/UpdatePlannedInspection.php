@@ -97,6 +97,12 @@ final class UpdatePlannedInspection
                     ->orderByDesc('released_at')
                     ->orderByDesc('id')
                     ->first();
+                $isM3 = (bool) ($data['is_m3'] ?? $inspection->is_m3);
+                if ($isM3 && $previousInspection !== null && ! $previousInspection->is_m3) {
+                    throw ValidationException::withMessages([
+                        'is_m3' => 'A modalidade M3 só pode ser escolhida se a inspeção anterior também for M3.',
+                    ]);
+                }
 
                 InspectionResponsible::query()
                     ->where('inspection_id', $inspection->getKey())
@@ -130,6 +136,7 @@ final class UpdatePlannedInspection
                     'equipment_id' => $equipment->getKey(),
                     'previous_inspection_id' => $previousInspection?->getKey(),
                     'inspection_type' => $previousInspection === null ? InspectionType::Initial : InspectionType::Reinspection,
+                    'is_m3' => $isM3,
                     'service_order' => $serviceOrder === TextNormalizer::nullableText($inspection->service_order)
                         ? $inspection->service_order
                         : $serviceOrder,

@@ -41,6 +41,7 @@ final class CreateInspectionBatchRequest extends FormRequest
                     'planned_start_on' => $inspection['planned_start_on'] ?? null,
                     'planned_end_on' => $inspection['planned_end_on'] ?? null,
                     'inspector_id' => blank($inspection['inspector_id'] ?? null) ? null : (int) $inspection['inspector_id'],
+                    'is_m3' => $inspection['is_m3'] ?? false,
                 ];
             })
             ->all();
@@ -76,6 +77,7 @@ final class CreateInspectionBatchRequest extends FormRequest
                     ->where('status', UserStatus::Active->value)
                     ->where('operational_role', OperationalRole::Inspector->value)),
             ],
+            'inspections.*.is_m3' => ['required', 'boolean'],
         ];
     }
 }

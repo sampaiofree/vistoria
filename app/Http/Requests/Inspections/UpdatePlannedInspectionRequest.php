@@ -71,6 +71,7 @@ final class UpdatePlannedInspectionRequest extends FormRequest
             'external_report_number' => ['prohibited'],
             'procedure_number' => ['prohibited'],
             'atmospheric_classification' => ['nullable', Rule::enum(AtmosphericCorrosivity::class)],
+            'is_m3' => ['sometimes', 'boolean'],
         ];
     }
 }

@@ -52,7 +52,10 @@ final class StoreDefectRequest extends FormRequest
     {
         return UpdateDefectAssessmentGutRequest::technicalRules()
             + UpdateDefectAssessmentTelRequest::technicalRules() + [
-            'category' => ['nullable', Rule::enum(DefectCategory::class)],
+            'category' => ['nullable', Rule::enum(DefectCategory::class),
+                ...($this->route('inspection')?->is_m3
+                    ? [Rule::in([DefectCategory::Civil->value, DefectCategory::StructuralRecovery->value])]
+                    : [])],
             'title' => ['required', 'string', 'max:200'],
             'origin_description' => ['nullable', 'string', 'max:10000'],
             'location_description' => ['nullable', 'string', 'max:500'],

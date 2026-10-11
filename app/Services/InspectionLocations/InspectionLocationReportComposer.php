@@ -6,6 +6,7 @@ namespace App\Services\InspectionLocations;
 
 use App\Enums\DefectAssessmentStatus;
 use App\Enums\DefectCategory;
+use App\Enums\RecoveryClassification;
 use App\Models\AssessmentPhoto;
 use App\Models\DefectAssessment;
 use App\Models\Inspection;
@@ -26,7 +27,7 @@ final class InspectionLocationReportComposer
     {
         $assessments = app(\App\Services\Defects\InspectionAssessmentResolver::class)->query($inspection)
             ->where('status', DefectAssessmentStatus::Complete->value)
-            ->with(['defect', 'quantities', 'photos', 'location', 'locationMapVersion.map'])
+            ->with(['inspection', 'defect', 'quantities', 'photos', 'location', 'locationMapVersion.map'])
             ->get()
             ->filter(fn (DefectAssessment $assessment): bool => ! $assessment->condition->isCanceled()
                 && $assessment->locationMapVersion?->isReady()
@@ -120,6 +121,7 @@ final class InspectionLocationReportComposer
                 ]),
             ],
             'marker_count' => 1,
+            'is_m3' => (bool) $inspection->is_m3,
             'engineering_note_without_quantity' => $engineeringNoteWithoutQuantity,
             'damage_rows' => [[
                 'assessment' => ['public_id' => $assessment->public_id],
@@ -141,14 +143,21 @@ final class InspectionLocationReportComposer
                     : null,
                 'classification' => [
                     'code' => data_get($assessment->classification_snapshot, 'code') ?? $assessment->classification_code,
-                    'color' => $this->colors->forAssessment($assessment),
+                    'color' => $engineeringNoteWithoutQuantity
+                        ? DefectLocationColor::ENGINEERING_NOTE
+                        : data_get($assessment->classification_snapshot, 'color'),
                 ],
+                'recovery_classification' => $inspection->is_m3
+                    ? $this->recoveryClassificationPayload($assessment)
+                    : null,
             ]],
-            'classification_legend' => $engineeringNoteWithoutQuantity
+            'classification_legend' => $assessment->inspection->is_m3
+                ? $this->recoveryLegend($assessment)
+                : ($engineeringNoteWithoutQuantity
                 ? [['code' => 'Nota de Engenharia', 'color' => DefectLocationColor::ENGINEERING_NOTE]]
                 : NativeDefectCatalog::classifications($assessment->defect->category)
                     ->map(fn ($classification): array => ['code' => $classification->code, 'color' => $classification->color])
-                    ->values()->all(),
+                    ->values()->all()),
             'markers' => [[
                 'public_id' => $location->public_id,
                 'label' => $location->label,
@@ -172,6 +181,36 @@ final class InspectionLocationReportComposer
                 'photos' => $this->photoPayloads($assessment, $numbering),
             ]],
         ];
+    }
+
+    /** @return array{label:string,color:string}|null */
+    private function recoveryClassificationPayload(DefectAssessment $assessment): ?array
+    {
+        $label = data_get($assessment->recovery_classification_snapshot, 'label');
+        $color = data_get($assessment->recovery_classification_snapshot, 'color');
+
+        if (! is_string($label) || trim($label) === ''
+            || ! is_string($color) || preg_match('/^#[0-9A-F]{6}$/i', $color) !== 1) {
+            return null;
+        }
+
+        return ['label' => $label, 'color' => $color];
+    }
+
+    /** @return list<array{code:string,color:string}> */
+    private function recoveryLegend(DefectAssessment $assessment): array
+    {
+        $snapshot = $assessment->recovery_classification_snapshot;
+
+        return array_map(function (array $option) use ($assessment, $snapshot): array {
+            if ($option['code'] === $assessment->recovery_classification_code
+                && is_string($snapshot['label'] ?? null)
+                && is_string($snapshot['color'] ?? null)) {
+                return ['code' => $snapshot['label'], 'color' => $snapshot['color']];
+            }
+
+            return ['code' => $option['label'], 'color' => $option['color']];
+        }, RecoveryClassification::options());
     }
 
     /** @param array<string,mixed>|null $snapshot @return array<string,mixed>|null */

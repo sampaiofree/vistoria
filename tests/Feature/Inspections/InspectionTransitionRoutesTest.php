@@ -33,7 +33,11 @@ final class InspectionTransitionRoutesTest extends TestCase
 
     public function test_linked_operational_roles_can_run_the_approved_transition_flow(): void
     {
-        $organization = Organization::factory()->create();
+        $organization = Organization::factory()->create([
+            'report_verifier_name' => 'Verificador documental',
+            'report_reviewer_name' => 'Revisor documental',
+            'report_releaser_name' => 'Liberador documental',
+        ]);
         $inspector = User::factory()->for($organization)->create([
             'operational_role' => OperationalRole::Inspector,
         ]);
@@ -95,6 +99,14 @@ final class InspectionTransitionRoutesTest extends TestCase
         $this->assertSame(InspectionStatus::AwaitingRelease, $inspection->status);
         $this->assertNotNull($inspection->approved_at);
 
+        $organization->update(['report_reviewer_name' => null]);
+        $this->actingAs($releaser)
+            ->post(route('inspections.release', $inspection))
+            ->assertSessionHasErrors('inspection');
+        $this->assertSame(InspectionStatus::AwaitingRelease, $inspection->fresh()->status);
+        $this->assertNull($inspection->fresh()->report_responsibles_snapshot);
+        $organization->update(['report_reviewer_name' => 'Revisor documental']);
+
         $this->actingAs($releaser)
             ->post(route('inspections.release', $inspection))
             ->assertRedirect();
@@ -103,7 +115,11 @@ final class InspectionTransitionRoutesTest extends TestCase
         $this->assertSame(InspectionStatus::Released, $inspection->status);
         $this->assertNotNull($inspection->released_at);
         $this->assertSame($inspection->released_at->toDateString(), $inspection->report_date?->toDateString());
-        $this->assertSame(['reviewer' => null, 'approver' => null, 'releaser' => null], $inspection->report_responsibles_snapshot);
+        $this->assertSame([
+            'reviewer' => 'Verificador documental',
+            'approver' => 'Revisor documental',
+            'releaser' => 'Liberador documental',
+        ], $inspection->report_responsibles_snapshot);
         $this->assertSame(6, $inspection->statusHistories()->count());
     }
 
@@ -221,7 +237,11 @@ final class InspectionTransitionRoutesTest extends TestCase
 
     public function test_release_transition_preserves_an_existing_report_date(): void
     {
-        $organization = Organization::factory()->create();
+        $organization = Organization::factory()->create([
+            'report_verifier_name' => 'Verificador documental',
+            'report_reviewer_name' => 'Revisor documental',
+            'report_releaser_name' => 'Liberador documental',
+        ]);
         app(TenantContext::class)->set($organization);
         $actor = User::factory()->for($organization)->create();
         $inspection = Inspection::factory()
@@ -230,6 +250,7 @@ final class InspectionTransitionRoutesTest extends TestCase
                 'status' => InspectionStatus::AwaitingRelease,
                 'report_date' => '2026-09-01',
             ]);
+        $this->assignResponsibility($inspection, $actor, InspectionResponsibility::Reviewer);
 
         app(TransitionInspection::class)->handle(
             $actor,

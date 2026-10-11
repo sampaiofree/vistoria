@@ -69,6 +69,55 @@ final class ReportResponsiblesSettingsTest extends TestCase
         $this->assertSame(str_repeat('á', 150), $admin->organization->fresh()->report_verifier_name);
     }
 
+    public function test_m3_names_are_independent_optional_and_legacy_requests_keep_them(): void
+    {
+        $admin = User::factory()->create(['account_type' => UserAccountType::CompanyAdmin]);
+        $other = Organization::factory()->create(['report_m3_verifier_name' => 'Outra empresa']);
+        $url = route('settings.inspection-report.responsibles.update');
+        $standard = [
+            'report_verifier_name' => 'Verificador padrão',
+            'report_reviewer_name' => 'Revisor padrão',
+            'report_releaser_name' => 'Liberador padrão',
+        ];
+
+        $this->actingAs($admin)->put($url, [
+            ...$standard,
+            'organization_id' => $other->id,
+            'report_m3_verifier_name' => "  Verificador   M3  ",
+            'report_m3_reviewer_name' => "  Revisora\n M3 ",
+            'report_m3_releaser_name' => 'Liberador M3',
+        ])->assertSessionHasNoErrors();
+        $this->assertSame('Outra empresa', $other->fresh()->report_m3_verifier_name);
+        $this->assertSame('Verificador M3', $admin->organization->fresh()->report_m3_verifier_name);
+        $this->assertSame('Revisora M3', $admin->organization->fresh()->report_m3_reviewer_name);
+        $this->get(route('settings.inspection-report.responsibles.edit'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('names.report_verifier_name', 'Verificador padrão')
+                ->where('names.report_m3_verifier_name', 'Verificador M3')
+                ->where('names.report_m3_reviewer_name', 'Revisora M3')
+                ->where('names.report_m3_releaser_name', 'Liberador M3'));
+
+        $this->put($url, $standard)->assertSessionHasNoErrors();
+        $this->assertSame('Verificador M3', $admin->organization->fresh()->report_m3_verifier_name);
+
+        $this->put($url, [
+            ...$standard,
+            'report_m3_verifier_name' => ' ',
+            'report_m3_reviewer_name' => '',
+            'report_m3_releaser_name' => null,
+        ])->assertSessionHasNoErrors();
+        $this->assertNull($admin->organization->fresh()->report_m3_verifier_name);
+        $this->assertNull($admin->organization->fresh()->report_m3_reviewer_name);
+        $this->assertNull($admin->organization->fresh()->report_m3_releaser_name);
+        $this->assertSame('Verificador padrão', $admin->organization->fresh()->report_verifier_name);
+
+        $this->put($url, [
+            ...$standard,
+            'report_m3_verifier_name' => str_repeat('á', 151),
+            'report_m3_reviewer_name' => ['invalid'],
+        ])->assertSessionHasErrors(['report_m3_verifier_name', 'report_m3_reviewer_name']);
+    }
+
     public function test_only_active_company_admins_can_access_the_configuration(): void
     {
         $edit = route('settings.inspection-report.responsibles.edit');

@@ -173,7 +173,7 @@ final class InspectionContextNavigation
                 ],
                 [
                     'key' => 'classifications',
-                    'label' => 'Nota M2',
+                    'label' => $inspection->is_m3 ? 'Classificações' : 'Nota M2',
                     'href' => route('inspections.classifications', $inspection),
                     'icon' => 'classification',
                     'active' => $classificationsActive,

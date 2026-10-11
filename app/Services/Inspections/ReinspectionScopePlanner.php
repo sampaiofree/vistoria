@@ -94,6 +94,7 @@ final class ReinspectionScopePlanner
         return [
             'inspection_type' => $previous === null ? 'initial' : 'reinspection',
             'previous_inspection_id' => $previous?->id,
+            'm3_available' => $previous === null || $previous->is_m3,
             'previous_inspection_number' => $previous?->number,
             'selected_ids' => $selected,
             'defects' => $candidates->map(function (array $item): array {

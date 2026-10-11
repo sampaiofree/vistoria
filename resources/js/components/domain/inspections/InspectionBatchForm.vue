@@ -30,6 +30,8 @@ function blankInspection() {
         planned_start_on: '',
         planned_end_on: '',
         inspector_id: '',
+        is_m3: false,
+        m3_available: null,
         reinspection_defect_ids: [],
         reinspection_base_id: null,
         scope_status: 'ready',
@@ -167,11 +169,17 @@ function selectEquipment(row, equipment) {
 
     const equipmentChanged = row.equipment_id !== (equipment?.id ?? '');
     row.equipment_id = equipment?.id ?? '';
+    row.m3_available = null;
     if (equipmentChanged) row.scope_status = equipment ? 'loading' : 'ready';
     row.equipment_search = '';
     equipmentOptionsByRow.value[row.row_key] = [];
     clearPendingEquipmentSearch(row);
     loadingEquipmentByRow.value[row.row_key] = false;
+}
+
+function updateM3Availability(row, available) {
+    row.m3_available = available;
+    if (available === false) row.is_m3 = false;
 }
 
 function addInspection() {
@@ -331,6 +339,14 @@ function createBatch() {
                         </button>
                     </div>
                 </div>
+                <label class="mt-4 flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
+                    <input v-model="inspection.is_m3" type="checkbox" :disabled="inspection.m3_available !== true" class="mt-0.5 rounded border-slate-300 text-violet-700">
+                    <span><strong class="block text-slate-900">Modalidade M3</strong>
+                        <span class="block text-slate-600">Avarias CIVIL e REC terão Classificação de Recuperação e cor própria no mapa.</span>
+                        <span v-if="inspection.m3_available === false" class="block font-medium text-amber-800">A inspeção anterior deste equipamento não é M3.</span>
+                    </span>
+                </label>
+                <p v-if="fieldError(index, 'is_m3')" class="mt-1 text-xs text-rose-600">{{ fieldError(index, 'is_m3') }}</p>
                 <ReinspectionDefectSelect
                     v-if="inspection.equipment_id"
                     v-model="inspection.reinspection_defect_ids"
@@ -340,6 +356,7 @@ function createBatch() {
                     :error="fieldError(index, 'reinspection_defect_ids')"
                     @base-change="inspection.reinspection_base_id = $event"
                     @status="inspection.scope_status = $event"
+                    @m3-availability="updateM3Availability(inspection, $event)"
                 />
             </section>
         </div>

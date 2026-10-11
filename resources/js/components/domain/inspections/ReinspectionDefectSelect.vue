@@ -9,7 +9,7 @@ const props = defineProps({
     initialOptions: { type: Object, default: null },
     error: { type: String, default: null },
 });
-const emit = defineEmits(['update:modelValue', 'base-change', 'status']);
+const emit = defineEmits(['update:modelValue', 'base-change', 'status', 'm3-availability']);
 const options = ref(null);
 const state = ref('ready');
 const search = ref('');
@@ -33,6 +33,7 @@ function setState(value) {
 
 function applyOptions(payload) {
     options.value = payload;
+    emit('m3-availability', payload.m3_available === true);
     emit('base-change', payload.previous_inspection_id);
     emit('update:modelValue', payload.selected_ids);
     setState('ready');
@@ -42,6 +43,7 @@ async function load() {
     controller?.abort();
     search.value = '';
     options.value = null;
+    emit('m3-availability', null);
     if (!props.equipmentId) {
         emit('update:modelValue', []);
         emit('base-change', null);

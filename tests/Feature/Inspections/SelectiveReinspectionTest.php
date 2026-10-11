@@ -481,7 +481,11 @@ final class SelectiveReinspectionTest extends TestCase
 
     private function context(): array
     {
-        $organization = Organization::factory()->create();
+        $organization = Organization::factory()->create([
+            'report_verifier_name' => 'Verificador documental',
+            'report_reviewer_name' => 'Revisor documental',
+            'report_releaser_name' => 'Liberador documental',
+        ]);
         $planner = User::factory()->for($organization)->create(['account_type' => UserAccountType::Member, 'operational_role' => OperationalRole::Planner]);
         $inspector = User::factory()->for($organization)->create(['account_type' => UserAccountType::Member, 'operational_role' => OperationalRole::Inspector]);
         $equipment = Equipment::factory()->for($organization)->create();

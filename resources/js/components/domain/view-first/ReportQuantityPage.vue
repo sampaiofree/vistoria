@@ -14,10 +14,16 @@ function colorStyle(color) {
 
     return { backgroundColor: color, color: brightness >= 150 ? '#111827' : '#ffffff' };
 }
+
+function recommendationStyle(recommendation) {
+    return recommendation?.label && /^#[0-9A-F]{6}$/i.test(String(recommendation?.color || ''))
+        ? colorStyle(recommendation.color)
+        : { backgroundColor: '#e2e8f0', color: '#111827' };
+}
 </script>
 
 <template>
-    <div class="report-quantity-page" :class="{ 'report-quantity-measuring': measuring }">
+    <div class="report-quantity-page" :class="{ 'report-quantity-measuring': measuring, 'report-quantity-page-m3': page.is_m3 }">
         <h2 class="report-quantity-title">
             {{ page.annexTitle || (page.type === 'civil-quantity' ? 'QUANTITATIVO GERAL – CIVIL' : 'QUANTITATIVO GERAL – REC') }}<span v-if="page.continuation"> — CONTINUAÇÃO</span>
         </h2>
@@ -26,7 +32,7 @@ function colorStyle(color) {
                 <tr>
                     <th>CÓD.</th><th>DATA DE CADASTRO</th><th>PROJETO</th><th>FOTO</th>
                     <th>ITEM / SUBITEM</th><th>ELEMENTO</th><th>QTD.</th><th>{{ page.type === 'civil-quantity' ? 'M³ TOTAL' : 'PESO TOTAL' }}</th>
-                    <th>G</th><th>U</th><th>T</th><th>PONT. TOTAL</th><th>CLASS.</th>
+                    <th>G</th><th>U</th><th>T</th><th>PONT. TOTAL</th><th>CLASS.</th><th v-if="page.is_m3">RECOMENDAÇÃO</th>
                 </tr>
             </thead>
             <tbody>
@@ -38,6 +44,7 @@ function colorStyle(color) {
                     <td class="report-quantity-trend"><div><span>{{ item.trend.label }}</span><strong :style="colorStyle(item.trend.color)">{{ item.trend.score ?? '—' }}</strong></div></td>
                     <td class="report-quantity-score">{{ item.gut_score }}</td>
                     <td class="report-quantity-class" :style="colorStyle(item.classification.color)">{{ item.classification.code }}</td>
+                    <td v-if="page.is_m3" class="report-quantity-recommendation" :style="recommendationStyle(item.recommendation)">{{ item.recommendation?.label || '—' }}</td>
                 </tr>
             </tbody>
         </table>
@@ -61,4 +68,8 @@ function colorStyle(color) {
 .report-quantity-urgency > strong { color: inherit; }
 .report-quantity-score { background: #dbeafe; color: #0759a0; font-size: 7pt; font-weight: 800; }
 .report-quantity-class { font-size: 7pt; font-weight: 800; }
+.report-quantity-page-m3 .report-quantity-table { font-size: 5.2pt; }
+.report-quantity-page-m3 .report-quantity-table th,
+.report-quantity-page-m3 .report-quantity-table td { padding-right: .5mm; padding-left: .5mm; }
+.report-quantity-recommendation { min-width: 22mm; max-width: 28mm; font-size: 6pt; font-weight: 700; white-space: normal; }
 </style>

@@ -691,7 +691,11 @@ final class InspectionCorrectionRequestTest extends TestCase
     /** @return array{Inspection, User, User, User} */
     private function inspectionWithReleaseTeam(InspectionStatus $status): array
     {
-        $organization = Organization::factory()->create();
+        $organization = Organization::factory()->create([
+            'report_verifier_name' => 'Verificador documental',
+            'report_reviewer_name' => 'Revisor documental',
+            'report_releaser_name' => 'Liberador documental',
+        ]);
         $inspection = Inspection::factory()
             ->forEquipment(Equipment::factory()->for($organization)->create())
             ->create(['status' => $status, 'report_equipment_name' => 'Equipamento do relatório']);

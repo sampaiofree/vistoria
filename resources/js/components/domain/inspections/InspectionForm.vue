@@ -19,6 +19,7 @@ const props = defineProps({
 const form = useForm({
     equipment_id: props.inspection.equipment_id ?? '',
     inspector_id: props.selectedInspectorId ?? '',
+    is_m3: props.inspection.is_m3 ?? false,
     service_order: props.inspection.service_order ?? '',
     atmospheric_classification: props.inspection.atmospheric_classification ?? '',
     planned_start_on: props.inspection.planned_start_on_input ?? '',
@@ -27,6 +28,11 @@ const form = useForm({
     reinspection_base_id: props.reinspectionOptions?.previous_inspection_id ?? null,
 });
 const scopeStatus = ref('ready');
+const m3Available = ref(props.reinspectionOptions?.m3_available ?? null);
+function updateM3Availability(available) {
+    m3Available.value = available;
+    if (available === false) form.is_m3 = false;
+}
 const normalizeServiceOrder = (value) => String(value ?? '').trim().replace(/\s+/gu, ' ');
 const serviceOrderChanged = computed(() => normalizeServiceOrder(form.service_order) !== normalizeServiceOrder(props.inspection.service_order));
 
@@ -91,6 +97,11 @@ function submit() {
                     <span v-if="form.errors.planned_end_on" class="block text-xs text-rose-600">{{ form.errors.planned_end_on }}</span>
                 </label>
             </div>
+            <label class="mt-5 flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
+                <input v-model="form.is_m3" type="checkbox" :disabled="m3Available !== true" class="mt-0.5 rounded border-slate-300 text-violet-700">
+                <span><strong class="block text-slate-900">Modalidade M3</strong><span class="block text-slate-600">Avarias CIVIL e REC terão Classificação de Recuperação.</span><span v-if="m3Available === false" class="block text-amber-800">A inspeção anterior deste equipamento não é M3.</span></span>
+            </label>
+            <p v-if="form.errors.is_m3" class="text-xs text-rose-600">{{ form.errors.is_m3 }}</p>
         </section>
 
         <ReinspectionDefectSelect
@@ -102,6 +113,7 @@ function submit() {
             :error="form.errors.reinspection_defect_ids"
             @base-change="form.reinspection_base_id = $event"
             @status="scopeStatus = $event"
+            @m3-availability="updateM3Availability"
         />
 
         <div class="flex justify-end gap-3 border-t border-slate-200 pt-5">

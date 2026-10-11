@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature\ViewFirst;
 
-use App\Enums\DefectAssessmentCondition;
 use App\Enums\DefectAssessmentClassificationMethod;
+use App\Enums\DefectAssessmentCondition;
 use App\Enums\DefectAssessmentStatus;
 use App\Enums\DefectCategory;
 use App\Enums\InspectionResponsibility;
@@ -13,6 +13,7 @@ use App\Enums\InspectionStatus;
 use App\Enums\InspectionType;
 use App\Enums\OperationalRole;
 use App\Enums\PhotoProcessingStatus;
+use App\Enums\RecoveryClassification;
 use App\Enums\UserAccountType;
 use App\Models\AssessmentPhoto;
 use App\Models\Defect;
@@ -243,6 +244,7 @@ final class ViewFirstReadModelTest extends TestCase
     public function test_report_export_is_disabled_when_external_report_number_is_missing(): void
     {
         [, $admin, , $inspection] = $this->viewFirstScenario();
+        $this->completeReportNames($inspection, $admin);
         $inspection->update(['external_report_number' => null]);
 
         $this->actingAs($admin)
@@ -265,6 +267,7 @@ final class ViewFirstReadModelTest extends TestCase
     public function test_report_export_is_disabled_when_designer_i_report_number_is_missing(): void
     {
         [, $admin, , $inspection] = $this->viewFirstScenario();
+        $this->completeReportNames($inspection, $admin);
         $inspection->update(['designer_i_report_number' => null]);
 
         $this->actingAs($admin)
@@ -287,6 +290,7 @@ final class ViewFirstReadModelTest extends TestCase
     public function test_report_export_accumulates_missing_external_and_designer_numbers(): void
     {
         [, $admin, , $inspection] = $this->viewFirstScenario();
+        $this->completeReportNames($inspection, $admin);
         $inspection->update([
             'external_report_number' => null,
             'designer_i_report_number' => null,
@@ -311,6 +315,7 @@ final class ViewFirstReadModelTest extends TestCase
     public function test_report_keeps_canceled_defects_in_text_without_exporting_remaining_photos(): void
     {
         [$organization, $admin, $equipment, $inspection, $assessment] = $this->viewFirstScenario();
+        $this->completeReportNames($inspection, $admin);
         $assessment->update([
             'status' => DefectAssessmentStatus::Complete,
             'condition' => DefectAssessmentCondition::Canceled,
@@ -352,6 +357,7 @@ final class ViewFirstReadModelTest extends TestCase
     public function test_report_numbers_treated_photos_with_confirmed_location(): void
     {
         [$organization, $admin, $equipment, $inspection, $assessment] = $this->viewFirstScenario();
+        $this->completeReportNames($inspection, $admin);
         $assessment->update([
             'status' => DefectAssessmentStatus::Complete,
             'condition' => DefectAssessmentCondition::Canceled,
@@ -813,6 +819,45 @@ final class ViewFirstReadModelTest extends TestCase
                 ->where('content.civil_quantity_rows.0.classification.code', 'CV-3'));
     }
 
+    public function test_m3_quantity_annex_repeats_saved_recommendation_for_each_item_and_handles_legacy_missing_value(): void
+    {
+        [, $admin, $equipment, $inspection] = $this->viewFirstScenario();
+        $inspection->update(['is_m3' => true]);
+        foreach ([
+            [DefectCategory::StructuralRecovery, 'REC-001', RecoveryClassification::Punctual, 'Reparo Pontual histórico', '#123456', 2],
+            [DefectCategory::Civil, 'CV-001', RecoveryClassification::Opportunity, 'Reparo por Oportunidade', '#D8C2E8', 1],
+            [DefectCategory::Civil, 'CV-002', null, null, null, 1],
+        ] as [$category, $code, $classification, $label, $color, $itemCount]) {
+            $defect = Defect::factory()->forEquipment($equipment, $inspection)->create(['category' => $category, 'code' => $code]);
+            DefectAssessment::factory()->forDefect($defect, $inspection)->complete()->create([
+                'condition' => DefectAssessmentCondition::New,
+                'recovery_classification_code' => $classification?->value,
+                'recovery_classification_snapshot' => $classification === null ? null : [
+                    'code' => $classification->value, 'label' => $label, 'color' => $color,
+                ],
+                'quantity_snapshot' => [
+                    'snapshot_version' => 2,
+                    'category' => $category->value,
+                    'measurement_unit' => $category === DefectCategory::Civil ? 'm3' : 'kg',
+                    'total' => (string) $itemCount,
+                    'items' => collect(range(1, $itemCount))->map(fn (int $position): array => [
+                        'position' => $position, 'description' => 'Item '.$position,
+                        'quantity' => '1', 'total' => '1',
+                    ])->all(),
+                ],
+            ]);
+        }
+
+        $this->actingAs($admin)->get(route('inspections.report-preview', $inspection))->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('content.rec_quantity_rows', 2)
+                ->where('content.rec_quantity_rows.0.recommendation.label', 'Reparo Pontual histórico')
+                ->where('content.rec_quantity_rows.1.recommendation.color', '#123456')
+                ->has('content.civil_quantity_rows', 2)
+                ->where('content.civil_quantity_rows.0.recommendation.label', 'Reparo por Oportunidade')
+                ->where('content.civil_quantity_rows.1.recommendation', null));
+    }
+
     public function test_report_quantity_items_use_defect_title_when_description_is_blank(): void
     {
         [, $admin, $equipment, $inspection] = $this->viewFirstScenario();
@@ -1145,6 +1190,19 @@ final class ViewFirstReadModelTest extends TestCase
         $this->assertSame('CV-1', $assessment->classification_code);
         $this->assertNotNull($assessment->assessed_at);
         $this->assertSame($assessment->defect->code, data_get($assessment->defect_snapshot, 'defect.code'));
+    }
+
+    private function completeReportNames(Inspection $inspection, User $inspector): void
+    {
+        $inspection->organization->update([
+            'report_verifier_name' => 'Verificador documental',
+            'report_reviewer_name' => 'Revisor documental',
+            'report_releaser_name' => 'Liberador documental',
+        ]);
+        InspectionResponsible::factory()->forInspection($inspection, $inspector)->create([
+            'responsibility' => InspectionResponsibility::Reviewer,
+            'is_primary' => true,
+        ]);
     }
 
     /**

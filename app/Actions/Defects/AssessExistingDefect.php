@@ -62,6 +62,9 @@ final class AssessExistingDefect
                     'defect' => 'A avaria não pertence ao equipamento desta inspeção.',
                 ]);
             }
+            if ($inspection->is_m3 && ! in_array($defect->category, [DefectCategory::Civil, DefectCategory::StructuralRecovery], true)) {
+                throw ValidationException::withMessages(['defect' => 'Na modalidade M3, apenas avarias CIVIL e REC são permitidas.']);
+            }
 
             if ($defect->status !== DefectStatus::Active) {
                 throw ValidationException::withMessages([

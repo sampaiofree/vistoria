@@ -7,6 +7,7 @@ namespace App\Services\Reports;
 use App\Enums\DefectAssessmentStatus;
 use App\Enums\DefectAssessmentClassificationMethod;
 use App\Enums\DefectCategory;
+use App\Enums\RecoveryClassification;
 use App\Models\DefectAssessment;
 use App\Models\Inspection;
 use App\Services\InspectionLocations\InspectionLocationPhotoNumbering;
@@ -32,12 +33,15 @@ final class BuildInspectionClassificationSummary
             fn ($link): string => $link->category.'|'.$link->classification_code,
         );
 
-        $categories = collect([
-            DefectCategory::AnticorrosiveTreatment,
-            DefectCategory::StructuralRecovery,
-            DefectCategory::Civil,
-            DefectCategory::RoofCladding,
-        ])->map(function (DefectCategory $category) use ($assessments, $inspection, $links): array {
+        $categoryDefinitions = $inspection->is_m3
+            ? [DefectCategory::StructuralRecovery, DefectCategory::Civil]
+            : [
+                DefectCategory::AnticorrosiveTreatment,
+                DefectCategory::StructuralRecovery,
+                DefectCategory::Civil,
+                DefectCategory::RoofCladding,
+            ];
+        $categories = collect($categoryDefinitions)->map(function (DefectCategory $category) use ($assessments, $inspection, $links): array {
             $categoryAssessments = $assessments->filter(
                 fn (DefectAssessment $assessment): bool => $assessment->defect->category === $category,
             );
@@ -95,6 +99,7 @@ final class BuildInspectionClassificationSummary
         $reportAnnexPlan = $this->reportAnnexPlan($inspection);
 
         return [
+            'is_m3' => $inspection->is_m3,
             'header' => [
                 'area' => $this->displayValue($equipment['area_name'] ?? null),
                 'subarea' => $this->displayValue($equipment['subarea_name'] ?? null),
@@ -122,9 +127,51 @@ final class BuildInspectionClassificationSummary
                 'inspection_procedure' => $inspection->procedure_number ?? '—',
             ],
             'categories' => $categories,
+            'recovery_rows' => $inspection->is_m3 ? $this->recoveryRows($inspection) : [],
             'special_assessment_rows' => $this->specialAssessmentRows($inspection, $reportAnnexPlan),
             'report_annex_plan' => $reportAnnexPlan,
         ];
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function recoveryRows(Inspection $inspection): array
+    {
+        $assessments = app(\App\Services\Defects\InspectionAssessmentResolver::class)->query($inspection)
+            ->where('status', DefectAssessmentStatus::Complete->value)
+            ->with('defect:id,category')
+            ->get()
+            ->filter(fn (DefectAssessment $assessment): bool => $assessment->condition->requiresGut()
+                && in_array($assessment->defect->category, [DefectCategory::StructuralRecovery, DefectCategory::Civil], true));
+        $rows = [];
+
+        foreach ([DefectCategory::StructuralRecovery, DefectCategory::Civil] as $category) {
+            foreach (RecoveryClassification::cases() as $classification) {
+                $group = $assessments->filter(fn (DefectAssessment $assessment): bool =>
+                    $assessment->defect->category === $category
+                    && $assessment->recovery_classification_code === $classification->value);
+                if ($group->isEmpty()) {
+                    continue;
+                }
+
+                $quantified = $group->filter(fn (DefectAssessment $assessment): bool =>
+                    is_numeric(data_get($assessment->quantity_snapshot, 'total')));
+                $sum = $quantified->reduce(fn (BigDecimal $total, DefectAssessment $assessment): BigDecimal =>
+                    $total->plus(BigDecimal::of((string) data_get($assessment->quantity_snapshot, 'total'))), BigDecimal::zero());
+                $unit = $this->displayUnit($category);
+                $rows[] = [
+                    'category' => $category->value,
+                    'classification_code' => $classification->value,
+                    'label' => mb_strtoupper($classification->label()).' '.($category === DefectCategory::Civil ? 'CIVIL' : 'REC'),
+                    'color' => $classification->color(),
+                    'text_color' => $classification->toArray()['text_color'],
+                    'defect_count' => $group->count(),
+                    'total_label' => 'Total '.($category === DefectCategory::Civil ? 'CIVIL' : 'REC').' ['.$unit.']',
+                    'quantity' => $quantified->isEmpty() ? 'N/A' : number_format((float) (string) $sum, 2, ',', '.'),
+                ];
+            }
+        }
+
+        return $rows;
     }
 
     /**
@@ -149,7 +196,7 @@ final class BuildInspectionClassificationSummary
             ->values();
         $numbering = $this->photoNumbering->buildForReport($inspection);
 
-        return $assessments->map(function (DefectAssessment $assessment) use ($notes, $numbering, $reportAnnexPlan): array {
+        return $assessments->map(function (DefectAssessment $assessment) use ($notes, $numbering, $reportAnnexPlan, $inspection): array {
             $category = $assessment->defect->category;
             $letter = $category === DefectCategory::SolidaryStructures
                 ? $reportAnnexPlan['solidary_structures']
@@ -163,9 +210,9 @@ final class BuildInspectionClassificationSummary
                 'assessment_public_id' => $assessment->public_id,
                 'code' => $assessment->defect->code,
                 'photos' => $letter === null || $interval === '—' ? '—' : "ANEXO {$letter} - {$interval}",
-                'service' => $manual?->service,
-                'priority' => $manual?->priority,
-                'note' => $manual?->note,
+                'service' => $inspection->is_m3 ? 'Análise de Engenharia' : $manual?->service,
+                'priority' => $inspection->is_m3 ? null : $manual?->priority,
+                'note' => $inspection->is_m3 ? null : $manual?->note,
             ];
         })->all();
     }

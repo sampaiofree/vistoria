@@ -328,16 +328,16 @@ checkout simples, a sequência de aplicação é:
 
 ```bash
 cd /var/www/vistoria
-php artisan down --retry=60
+php artisan down --retry=60 //Coloca o site em manutenção e informa aos clientes que podem tentar novamente após 60 segundos.
 git fetch --all --tags --prune
 git checkout <TAG_OU_BRANCH_APROVADA>
-composer install --no-dev --optimize-autoloader --no-interaction
-npm ci
-npm run build
-php artisan migrate --force
-php artisan optimize
-php artisan horizon:terminate
-php artisan up
+composer install --no-dev --optimize-autoloader --no-interaction //Instala as dependências PHP do composer.lock, sem pacotes de desenvolvimento.
+npm ci //Reinstala as dependências JavaScript conforme o package-lock.json. É o passo que deve trazer o pacote de tabela que faltou no seu build.
+npm run build //Compila os arquivos CSS e JavaScript usados pelo site.
+php artisan migrate --force //Aplica as migrações pendentes no banco de produção.
+php artisan optimize //Recria os caches de configuração, rotas e outros recursos do Laravel.
+php artisan horizon:terminate //Pede que os workers do Horizon reiniciem com o código novo; o Supervisor os inicia novamente.
+php artisan up //Retira o site do modo de manutenção.
 ```
 
 O Supervisor reinicia Horizon com o código novo. Confirme imediatamente:

@@ -9,6 +9,18 @@ export function normalizeMarkerColor(value, fallback = DEFAULT_MARKER_COLOR) {
     return isMarkerColor(value) ? value.trim().toUpperCase() : fallback;
 }
 
+export function markerLegendTextColor(backgroundColor) {
+    const color = normalizeMarkerColor(backgroundColor);
+    const channels = [1, 3, 5].map((index) => {
+        const value = Number.parseInt(color.slice(index, index + 2), 16) / 255;
+
+        return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+    });
+    const luminance = (0.2126 * channels[0]) + (0.7152 * channels[1]) + (0.0722 * channels[2]);
+
+    return luminance <= 0.179 ? '#FFFFFF' : '#000000';
+}
+
 export function markerSupportsOptionalBorder(geometry) {
     const shapes = geometry?.shapes || [];
 

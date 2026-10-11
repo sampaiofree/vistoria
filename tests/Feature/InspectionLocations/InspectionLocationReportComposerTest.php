@@ -47,7 +47,7 @@ final class InspectionLocationReportComposerTest extends TestCase
             collect($report['sheets'])->pluck('maps.0.damage_rows.0.defect.code')->all(),
         );
         $this->assertSame(
-            [null, 'PRJ-CV-001', null],
+            ['PRJ-TESTE-001', 'PRJ-CV-001', 'PRJ-TESTE-001'],
             collect($report['sheets'])->pluck('maps.0.damage_rows.0.defect.project_number')->all(),
         );
         $this->assertCount(3, $report['sheets']);
@@ -115,6 +115,8 @@ final class InspectionLocationReportComposerTest extends TestCase
 
         $report = app(InspectionLocationReportComposer::class)->compose($inspection);
         $map = $report['sheets'][0]['maps'][0];
+        $this->assertFalse($map['is_m3']);
+        $this->assertNull($map['damage_rows'][0]['recovery_classification']);
         $this->assertSame($historical->version, $map['source']['version']);
         $this->assertSame('#FFC000', $map['markers'][0]['style']['fill']);
         $this->assertSame('#FFC000', $map['damage_rows'][0]['classification']['color']);

@@ -49,16 +49,16 @@ function updateM2(category, classificationCode, event) {
 </script>
 
 <template>
-    <table class="classification-summary-table" :class="`classification-summary-table-${variant}`">
+    <table class="classification-summary-table" :class="[`classification-summary-table-${variant}`, { 'classification-summary-table-m3': summary.is_m3 }]">
         <colgroup>
             <col class="classification-summary-prioritization">
             <col class="classification-summary-classification">
             <col class="classification-summary-count">
             <col class="classification-summary-date">
             <col class="classification-summary-quantity">
-            <col class="classification-summary-m2">
+            <col v-if="!summary.is_m3" class="classification-summary-m2">
         </colgroup>
-        <thead><tr><th>RESUMO DA PRIORIZAÇÃO</th><th>CLASSIFICAÇÃO</th><th>QTDE. AVARIAS</th><th>DATA</th><th>QUANTITATIVO</th><th>NOTA M2 (SAP)</th></tr></thead>
+        <thead><tr><th>RESUMO DA PRIORIZAÇÃO</th><th>CLASSIFICAÇÃO</th><th>QTDE. AVARIAS</th><th>DATA</th><th>QUANTITATIVO</th><th v-if="!summary.is_m3">NOTA M2 (SAP)</th></tr></thead>
         <tbody v-for="category in displayedCategories" :key="category.code">
             <tr v-for="(row, index) in category.report_rows" :key="row.classification_code">
                 <td v-if="index === 0" :rowspan="category.report_rows.length" class="classification-summary-prioritization-cell">{{ category.report_name }}</td>
@@ -66,7 +66,7 @@ function updateM2(category, classificationCode, event) {
                 <td>{{ row.defect_count || '—' }}</td>
                 <td>{{ row.m2_due_date || '' }}</td>
                 <td>{{ category.code === 'TEL' ? '—' : (row.quantity?.display || '—') }}</td>
-                <td>
+                <td v-if="!summary.is_m3">
                     <template v-if="editable && row.defect_count > 0">
                         <input
                             :value="m2Value(category.code, row.classification_code)"
@@ -84,7 +84,7 @@ function updateM2(category, classificationCode, event) {
             <tr class="classification-summary-total">
                 <td colspan="2">Classificação do dano mais crítico:</td>
                 <td :style="colorStyle(category.most_critical_color)">{{ category.most_critical || '—' }}</td>
-                <td colspan="2">Total {{ category.report_name }}<template v-if="category.report_total.unit"> [{{ category.report_total.unit }}]</template></td>
+                <td :colspan="summary.is_m3 ? 1 : 2">Total {{ category.report_name }}<template v-if="category.report_total.unit"> [{{ category.report_total.unit }}]</template></td>
                 <td>{{ category.report_total.value === null ? '' : category.report_total.display }}</td>
             </tr>
         </tbody>
@@ -107,6 +107,8 @@ function updateM2(category, classificationCode, event) {
 .classification-summary-table-report { font-size: 7pt; }.classification-summary-table-report th, .classification-summary-table-report td { font-size: 7pt; line-height: 1.25; vertical-align: middle; }
 .classification-summary-table-report .classification-summary-classification { width: 25mm; }
 .classification-summary-table-report .classification-summary-m2 { width: 38mm; }
+.classification-summary-table-report.classification-summary-table-m3 .classification-summary-quantity { width: 65mm; }
 .classification-summary-table-report thead th:nth-child(2) { white-space: nowrap; }
 .classification-summary-table-workspace { min-width: 58rem; font-size: .875rem; }.classification-summary-table-workspace th, .classification-summary-table-workspace td { padding: .7rem .75rem; }.classification-summary-table-workspace th { font-family: inherit; font-size: .75rem; }.classification-summary-table-workspace .classification-summary-prioritization-cell { font-family: inherit; font-size: .875rem; }.classification-summary-table-workspace .classification-summary-classification-cell { font-family: inherit; font-size: .875rem; }.classification-summary-m2-input { width: 100%; min-width: 8rem; border: 1px solid #94a3b8; border-radius: .375rem; padding: .4rem .5rem; font-family: inherit; text-align: center; }
+.classification-summary-table-workspace.classification-summary-table-m3 { min-width: 46rem; }
 </style>

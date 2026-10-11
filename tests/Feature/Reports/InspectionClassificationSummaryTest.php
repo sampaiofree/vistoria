@@ -11,6 +11,7 @@ use App\Enums\DefectCategory;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
 use App\Enums\OperationalRole;
+use App\Enums\RecoveryClassification;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
 use App\Models\AssessmentPhoto;
@@ -42,6 +43,7 @@ final class InspectionClassificationSummaryTest extends TestCase
         $this->assessment($other, $equipment, DefectCategory::AnticorrosiveTreatment, 'TA-2', 2, '100');
 
         $summary = app(BuildInspectionClassificationSummary::class)->build($inspection);
+        $this->assertSame([], $summary['recovery_rows']);
         $tac = collect($summary['categories'])->firstWhere('code', 'TAC');
         $ta2 = collect($tac['rows'])->firstWhere('classification_code', 'TA-2');
         $civil = collect($summary['categories'])->firstWhere('code', 'CV');
@@ -123,6 +125,103 @@ final class InspectionClassificationSummaryTest extends TestCase
 
         $inspection->update(['status' => InspectionStatus::AwaitingReview]);
         $this->actingAs($actor)->put(route('inspections.classification-m2-links.update', $inspection), $payload)->assertForbidden();
+    }
+
+    public function test_m3_summary_shows_only_rec_and_civil_with_automatic_engineering_service(): void
+    {
+        [$actor, $inspection, $equipment] = $this->scenario();
+        $inspection->update(['is_m3' => true]);
+        $this->assessment($inspection, $equipment, DefectCategory::StructuralRecovery, 'IE-2', 2, '12');
+        $this->assessment($inspection, $equipment, DefectCategory::Civil, 'CV-3', 3, '2');
+        $this->assessment($inspection, $equipment, DefectCategory::AnticorrosiveTreatment, 'TA-2', 2, '5');
+        $this->assessment($inspection, $equipment, DefectCategory::RoofCladding, 'TE-1', 1, null);
+        $special = $this->specialAssessment($inspection, $equipment, DefectCategory::Civil, 'VT-CI-M3', 10, [
+            'is_unsafe_condition' => true,
+        ]);
+        InspectionSpecialAssessmentNote::query()->create([
+            'organization_id' => $inspection->organization_id,
+            'inspection_id' => $inspection->id,
+            'defect_assessment_id' => $special->id,
+            'service' => 'Serviço legado',
+            'priority' => 'Alta',
+            'note' => 'Nota legada',
+        ]);
+
+        $summary = app(BuildInspectionClassificationSummary::class)->build($inspection);
+        $this->assertTrue($summary['is_m3']);
+        $this->assertSame(['REC', 'CV'], array_column($summary['categories'], 'code'));
+        $this->assertSame('Análise de Engenharia', collect($summary['special_assessment_rows'])
+            ->firstWhere('assessment_public_id', $special->public_id)['service']);
+        $this->assertNull(collect($summary['special_assessment_rows'])
+            ->firstWhere('assessment_public_id', $special->public_id)['priority']);
+        $this->assertSame('Serviço legado', InspectionSpecialAssessmentNote::query()->sole()->service);
+
+        $this->actingAs($actor)->get(route('inspections.classifications', $inspection))
+            ->assertInertia(fn (\Inertia\Testing\AssertableInertia $page) => $page
+                ->where('content.classification_summary.is_m3', true)
+                ->where('content.classification_summary.can_edit_header', true)
+                ->where('content.classification_summary.can_edit_m2', false)
+                ->where('content.classification_summary.m2_update_url', null)
+                ->where('content.classification_summary.header_update_url', route('inspections.classification-header.update', $inspection))
+                ->where('content.classification_summary.categories.0.code', 'REC')
+                ->where('content.classification_summary.categories.1.code', 'CV')
+                ->has('content.classification_summary.categories', 2));
+
+        $this->actingAs($actor)->put(route('inspections.classification-m2-links.update', $inspection), [
+            'links' => [],
+            'special_rows' => [],
+        ])->assertSessionHasErrors('inspection');
+        $this->assertSame(0, $inspection->classificationM2Links()->count());
+        $this->assertSame('Serviço legado', InspectionSpecialAssessmentNote::query()->sole()->service);
+    }
+
+    public function test_m3_recovery_summary_orders_six_groups_and_counts_each_active_assessment_once(): void
+    {
+        [, $inspection, $equipment] = $this->scenario();
+        $inspection->update(['is_m3' => true]);
+        $cases = [
+            [DefectCategory::StructuralRecovery, RecoveryClassification::Total, '10.25'],
+            [DefectCategory::StructuralRecovery, RecoveryClassification::Total, null],
+            [DefectCategory::StructuralRecovery, RecoveryClassification::Punctual, null],
+            [DefectCategory::StructuralRecovery, RecoveryClassification::Opportunity, '0'],
+            [DefectCategory::Civil, RecoveryClassification::Total, '2.5'],
+            [DefectCategory::Civil, RecoveryClassification::Punctual, null],
+            [DefectCategory::Civil, RecoveryClassification::Opportunity, '3.25'],
+        ];
+        foreach ($cases as [$category, $classification, $quantity]) {
+            $defect = Defect::factory()->forEquipment($equipment, $inspection)->create(['category' => $category]);
+            DefectAssessment::factory()->forDefect($defect, $inspection)->complete()->create([
+                'condition' => DefectAssessmentCondition::New,
+                'classification_method' => $category === DefectCategory::Civil && $classification === RecoveryClassification::Opportunity
+                    ? DefectAssessmentClassificationMethod::EngineeringNote : DefectAssessmentClassificationMethod::Gut,
+                'classification_code' => $category === DefectCategory::Civil && $classification === RecoveryClassification::Opportunity
+                    ? null : ($category === DefectCategory::Civil ? 'CV-3' : 'IE-3'),
+                'recovery_classification_code' => $classification->value,
+                'recovery_classification_snapshot' => ['version' => 1, ...$classification->toArray()],
+                'quantity_snapshot' => $quantity === null ? null : ['total' => $quantity, 'items' => [['total' => $quantity]]],
+            ]);
+        }
+        foreach ([['draft', DefectAssessmentCondition::New], ['complete', DefectAssessmentCondition::Treated], ['complete', DefectAssessmentCondition::Canceled]] as [$status, $condition]) {
+            $defect = Defect::factory()->forEquipment($equipment, $inspection)->create(['category' => DefectCategory::StructuralRecovery]);
+            DefectAssessment::factory()->forDefect($defect, $inspection)->create([
+                'status' => $status,
+                'condition' => $condition,
+                'recovery_classification_code' => RecoveryClassification::Total->value,
+                'recovery_classification_snapshot' => RecoveryClassification::Total->toArray(),
+                'quantity_snapshot' => ['total' => '999'],
+            ]);
+        }
+
+        $rows = app(BuildInspectionClassificationSummary::class)->build($inspection)['recovery_rows'];
+        $this->assertSame([
+            'RECUPERAÇÃO TOTAL REC', 'REPARO PONTUAL REC', 'REPARO POR OPORTUNIDADE REC',
+            'RECUPERAÇÃO TOTAL CIVIL', 'REPARO PONTUAL CIVIL', 'REPARO POR OPORTUNIDADE CIVIL',
+        ], array_column($rows, 'label'));
+        $this->assertSame([2, 1, 1, 1, 1, 1], array_column($rows, 'defect_count'));
+        $this->assertSame(['10,25', 'N/A', '0,00', '2,50', 'N/A', '3,25'], array_column($rows, 'quantity'));
+        $this->assertSame(['Total REC [kg]', 'Total CIVIL [m³]'], [$rows[0]['total_label'], $rows[3]['total_label']]);
+        $this->assertSame('#111827', $rows[2]['text_color']);
+        $this->assertSame('#FFFFFF', $rows[0]['text_color']);
     }
 
     public function test_it_sums_civil_quantities_from_published_snapshots_and_ignores_missing_values(): void

@@ -312,6 +312,11 @@ Route::middleware([
         )->name('defect-assessments.gut.update');
 
         Route::put(
+            'defect-assessments/{defectAssessment}/recovery-classification',
+            [DefectAssessmentController::class, 'updateRecoveryClassification'],
+        )->name('defect-assessments.recovery-classification.update');
+
+        Route::put(
             'defect-assessments/{defectAssessment}/tel',
             [DefectAssessmentController::class, 'updateTel'],
         )->name('defect-assessments.tel.update');

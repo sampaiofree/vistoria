@@ -36,6 +36,7 @@ final class BuildInspectionLocationSnapshot
                     'description' => $map['description'],
                     'observations' => $map['observations'],
                     'position' => $map['position'],
+                    'is_m3' => $map['is_m3'],
                     'geometry_schema_version' => $map['geometry_schema_version'],
                     'source' => $map['source'],
                     'background' => collect($map['background'])->except('url')->all(),

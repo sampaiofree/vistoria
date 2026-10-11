@@ -74,12 +74,18 @@ final class CreateInspection
                 $type = $previousInspection === null
                     ? InspectionType::Initial
                     : InspectionType::Reinspection;
+                if (($data['is_m3'] ?? false) && $previousInspection !== null && ! $previousInspection->is_m3) {
+                    throw ValidationException::withMessages([
+                        'is_m3' => 'A modalidade M3 só pode ser escolhida se a inspeção anterior também for M3.',
+                    ]);
+                }
 
                 $inspection = Inspection::query()->create([
                     'organization_id' => $this->tenant->id(),
                     'equipment_id' => $equipment->getKey(),
                     'previous_inspection_id' => $previousInspection?->getKey(),
                     'inspection_type' => $type,
+                    'is_m3' => (bool) ($data['is_m3'] ?? false),
                     'status' => InspectionStatus::Planned,
                     'report_revision' => $this->nextReportRevision($equipment),
                     'emission_type' => EquipmentRevisionEmissionType::ForKnowledge,

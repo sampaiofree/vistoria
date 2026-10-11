@@ -1,12 +1,14 @@
 <script setup>
 import ClassificationEquipmentSummaryTable from '@/components/domain/inspections/ClassificationEquipmentSummaryTable.vue';
 import ClassificationSummaryTable from '@/components/domain/inspections/ClassificationSummaryTable.vue';
+import ClassificationRecoveryTable from '@/components/domain/inspections/ClassificationRecoveryTable.vue';
 import ClassificationSpecialAssessmentTable from '@/components/domain/inspections/ClassificationSpecialAssessmentTable.vue';
 
 defineProps({
     summary: { type: Object, required: true },
     includeHeader: { type: Boolean, default: false },
     categories: { type: Array, default: () => [] },
+    showRecovery: { type: Boolean, default: false },
     specialRows: { type: Array, default: () => [] },
     showSpecial: { type: Boolean, default: false },
     classificationContinuation: { type: Boolean, default: false },
@@ -26,9 +28,11 @@ defineProps({
             <ClassificationSummaryTable :summary="summary" :categories="categories" variant="report" />
         </template>
 
+        <ClassificationRecoveryTable v-if="showRecovery" class="classification-report-recovery" :rows="summary.recovery_rows || []" />
+
         <template v-if="showSpecial">
             <h3 class="classification-report-table-title">Tabela 3 – END’S, TRABALHOS DE ENGENHARIA E CI’S.<span v-if="specialContinuation"> — CONTINUAÇÃO</span></h3>
-            <ClassificationSpecialAssessmentTable :rows="specialRows" variant="report" />
+            <ClassificationSpecialAssessmentTable :rows="specialRows" :m3="summary.is_m3" variant="report" />
         </template>
     </div>
 </template>
@@ -37,4 +41,5 @@ defineProps({
 .classification-report-tables { font-family: Georgia, 'Times New Roman', serif; }
 .classification-report-heading { margin: 0 0 5mm; font-size: 10pt; font-weight: 700; text-align: left; }
 .classification-report-table-title { margin: 4mm 0 2mm; font-size: 9pt; font-weight: 400; text-align: center; }
+.classification-report-recovery { margin-top: 4mm; }
 </style>

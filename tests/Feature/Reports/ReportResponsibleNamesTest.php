@@ -10,6 +10,8 @@ use App\Enums\InspectionStatus;
 use App\Enums\UserAccountType;
 use App\Models\Equipment;
 use App\Models\Inspection;
+use App\Models\InspectionOverviewBlock;
+use App\Models\InspectionOverviewPhoto;
 use App\Models\InspectionResponsible;
 use App\Models\Organization;
 use App\Models\User;
@@ -18,6 +20,7 @@ use App\Services\Reports\ReportResponsibleNames;
 use App\Services\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Inertia\Testing\AssertableInertia as Assert;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
@@ -25,6 +28,126 @@ use Tests\TestCase;
 final class ReportResponsibleNamesTest extends TestCase
 {
     use RefreshDatabase;
+
+    #[DataProvider('missingCoverNames')]
+    public function test_release_rejects_each_missing_cover_name_in_both_modalities(bool $isM3, string $missingRole, string $missingLabel): void
+    {
+        $attributes = [
+            'report_verifier_name' => 'Verificador padrão',
+            'report_reviewer_name' => 'Revisor padrão',
+            'report_releaser_name' => 'Liberador padrão',
+            'report_m3_verifier_name' => 'Verificador M3',
+            'report_m3_reviewer_name' => 'Revisor M3',
+            'report_m3_releaser_name' => 'Liberador M3',
+        ];
+        if ($missingRole !== 'preparer') {
+            $field = ($isM3 ? 'report_m3_' : 'report_').[
+                'reviewer' => 'verifier_name',
+                'approver' => 'reviewer_name',
+                'releaser' => 'releaser_name',
+            ][$missingRole];
+            $attributes[$field] = '   ';
+        }
+        $organization = Organization::factory()->create($attributes);
+        $actor = User::factory()->for($organization)->create(['name' => 'Inspetor vinculado']);
+        $inspection = Inspection::factory()->forEquipment(Equipment::factory()->for($organization)->create())->create([
+            'status' => InspectionStatus::AwaitingRelease,
+            'is_m3' => $isM3,
+        ]);
+        if ($missingRole !== 'preparer') {
+            InspectionResponsible::factory()->forInspection($inspection, $actor)->create([
+                'responsibility' => InspectionResponsibility::Reviewer,
+                'is_primary' => true,
+            ]);
+        }
+
+        app(TenantContext::class)->set($organization);
+        try {
+            app(TransitionInspection::class)->handle($actor, $inspection, [InspectionStatus::AwaitingRelease], InspectionStatus::Released);
+            $this->fail('A liberação sem '.$missingLabel.' deveria falhar.');
+        } catch (ValidationException $exception) {
+            $this->assertStringContainsString($missingLabel, $exception->errors()['inspection'][0]);
+        } finally {
+            app(TenantContext::class)->clear();
+        }
+
+        $this->assertSame(InspectionStatus::AwaitingRelease, $inspection->fresh()->status);
+        $this->assertNull($inspection->fresh()->report_responsibles_snapshot);
+        $this->assertSame(0, $inspection->statusHistories()->count());
+    }
+
+    #[DataProvider('modalities')]
+    public function test_open_report_requires_names_for_export_but_legacy_finalized_report_remains_exportable(bool $isM3): void
+    {
+        $organization = Organization::factory()->create();
+        $admin = User::factory()->for($organization)->create(['account_type' => UserAccountType::CompanyAdmin]);
+        $inspection = Inspection::factory()->forEquipment(Equipment::factory()->for($organization)->create())->create([
+            'status' => InspectionStatus::InProgress,
+            'is_m3' => $isM3,
+            'external_report_number' => 'REL-TESTE',
+            'designer_i_report_number' => 'PROJ-TESTE',
+        ]);
+        $block = InspectionOverviewBlock::factory()->forInspection($inspection, 1)->create([
+            'comment' => 'Vista geral',
+            'recommendation' => 'Acompanhar',
+        ]);
+        foreach ([1, 2] as $slot) {
+            InspectionOverviewPhoto::factory()->forBlock($block, $slot)->ready()->create();
+        }
+
+        $preview = route('inspections.report-preview', $inspection);
+        $this->actingAs($admin)->get($preview)->assertInertia(fn (Assert $page) => $page
+            ->where('content.print_enabled', false)
+            ->where('content.export_disabled_reason', fn ($reason): bool => str_contains((string) $reason, 'Preparado')
+                && str_contains((string) $reason, 'Verificado, Aprovado, Liberado')));
+
+        InspectionResponsible::factory()->forInspection($inspection, $admin)->create([
+            'responsibility' => InspectionResponsibility::Reviewer,
+            'is_primary' => true,
+        ]);
+        $prefix = $isM3 ? 'report_m3_' : 'report_';
+        $organization->update([
+            $prefix.'verifier_name' => 'Verificador documental',
+            $prefix.'reviewer_name' => 'Revisor documental',
+            $prefix.'releaser_name' => 'Liberador documental',
+        ]);
+        $this->get($preview)->assertInertia(fn (Assert $page) => $page->where('content.print_enabled', true));
+
+        $inspection->update(['status' => InspectionStatus::Released, 'report_responsibles_snapshot' => null]);
+        $inspection->responsibles()->delete();
+        $this->get($preview)->assertInertia(fn (Assert $page) => $page
+            ->where('content.cover.approval_flow.0.name', null)
+            ->where('content.cover.approval_flow.1.name', null)
+            ->where('content.print_enabled', true));
+    }
+
+    public static function missingCoverNames(): array
+    {
+        $cases = [];
+        foreach (['preparer' => 'Preparado', 'reviewer' => 'Verificado', 'approver' => 'Aprovado', 'releaser' => 'Liberado'] as $role => $label) {
+            $cases['padrão '.$role] = [false, $role, $label];
+            $cases['M3 '.$role] = [true, $role, $label];
+        }
+
+        return $cases;
+    }
+
+    public static function modalities(): array
+    {
+        return ['padrão' => [false], 'M3' => [true]];
+    }
+
+    public function test_release_validation_checks_the_name_as_displayed_on_the_cover(): void
+    {
+        $missing = app(ReportResponsibleNames::class)->missingCoverLabels([
+            'preparer' => 'Inspetor',
+            'reviewer' => '— Identificação profissional',
+            'approver' => 'Revisor',
+            'releaser' => 'Liberador',
+        ]);
+
+        $this->assertSame(['Verificado'], $missing);
+    }
 
     public function test_open_reports_use_company_names_in_cover_and_revisions_instead_of_assigned_users(): void
     {
@@ -74,6 +197,126 @@ final class ReportResponsibleNamesTest extends TestCase
         $this->assertNull($inspection->fresh()->report_responsibles_snapshot);
     }
 
+    public function test_m3_report_uses_its_own_names_and_preserves_each_previous_revisions_modality(): void
+    {
+        $organization = Organization::factory()->create([
+            'report_verifier_name' => 'Verificador padrão',
+            'report_reviewer_name' => 'Revisor padrão',
+            'report_releaser_name' => 'Liberador padrão',
+            'report_m3_verifier_name' => 'Verificador M3',
+            'report_m3_reviewer_name' => 'Revisor M3',
+            'report_m3_releaser_name' => 'Liberador M3',
+        ]);
+        $admin = User::factory()->for($organization)->create(['account_type' => UserAccountType::CompanyAdmin]);
+        $inspector = User::factory()->for($organization)->create(['name' => 'Inspetora de Campo']);
+        $equipment = Equipment::factory()->for($organization)->create();
+        $common = Inspection::factory()->forEquipment($equipment)->create([
+            'status' => InspectionStatus::Released,
+            'is_m3' => false,
+            'report_revision' => 0,
+            'report_responsibles_snapshot' => [
+                'reviewer' => 'Verificador padrão antigo',
+                'approver' => 'Revisor padrão antigo',
+                'releaser' => 'Liberador padrão antigo',
+            ],
+        ]);
+        $previousM3 = Inspection::factory()->forEquipment($equipment, $common)->create([
+            'status' => InspectionStatus::Released,
+            'is_m3' => true,
+            'report_revision' => 1,
+            'report_responsibles_snapshot' => [
+                'reviewer' => 'Verificador M3 antigo',
+                'approver' => 'Revisor M3 antigo',
+                'releaser' => 'Liberador M3 antigo',
+            ],
+        ]);
+        $current = Inspection::factory()->forEquipment($equipment, $previousM3)->create([
+            'is_m3' => true,
+            'report_revision' => 2,
+        ]);
+        InspectionResponsible::factory()->forInspection($current, $inspector)->create([
+            'responsibility' => InspectionResponsibility::Reviewer,
+            'is_primary' => true,
+        ]);
+
+        $this->actingAs($admin)->get(route('inspections.report-preview', $current))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('content.cover.approval_flow.0.name', 'Inspetora de Campo')
+                ->where('content.cover.approval_flow.1.name', 'Verificador M3')
+                ->where('content.cover.approval_flow.2.name', 'Revisor M3')
+                ->where('content.cover.approval_flow.3.name', 'Liberador M3')
+                ->where('content.cover.revision_history.0.full_responsibles.reviewer', 'Verificador M3')
+                ->where('content.cover.revision_history.1.full_responsibles.reviewer', 'Verificador M3 antigo')
+                ->where('content.cover.revision_history.2.full_responsibles.reviewer', 'Verificador padrão antigo'));
+
+        $organization->update(['report_m3_verifier_name' => null]);
+        $this->assertNull(app(ReportResponsibleNames::class)->forInspection($current->fresh())['reviewer']);
+        $this->assertSame('Verificador padrão', app(ReportResponsibleNames::class)->forOrganization($organization->id)['reviewer']);
+        $this->assertSame('Verificador M3 antigo', app(ReportResponsibleNames::class)->forInspection($previousM3->fresh())['reviewer']);
+        $this->get(route('inspections.report-preview', $current))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('content.cover.approval_flow.1.name', null)
+                ->where('content.cover.revision_history.1.full_responsibles.reviewer', 'Verificador M3 antigo')
+                ->where('content.cover.revision_history.2.full_responsibles.reviewer', 'Verificador padrão antigo')
+                ->where('content.export_disabled_reason', fn ($reason): bool => str_contains((string) $reason, 'Verificado')));
+    }
+
+    #[DataProvider('finalizations')]
+    public function test_m3_finalization_captures_its_own_names(InspectionStatus $target, bool $configured): void
+    {
+        $organization = Organization::factory()->create([
+            'report_verifier_name' => 'Verificador padrão',
+            'report_reviewer_name' => 'Revisor padrão',
+            'report_releaser_name' => 'Liberador padrão',
+            'report_m3_verifier_name' => $configured ? 'Verificador M3' : null,
+            'report_m3_reviewer_name' => $configured ? 'Revisor M3' : null,
+            'report_m3_releaser_name' => $configured ? 'Liberador M3' : null,
+        ]);
+        $actor = User::factory()->for($organization)->create();
+        $inspection = Inspection::factory()->create([
+            'organization_id' => $organization->id,
+            'status' => InspectionStatus::AwaitingRelease,
+            'is_m3' => true,
+        ]);
+        if ($target === InspectionStatus::Released) {
+            InspectionResponsible::factory()->forInspection($inspection, $actor)->create([
+                'responsibility' => InspectionResponsibility::Reviewer,
+                'is_primary' => true,
+            ]);
+        }
+        app(TenantContext::class)->set($organization);
+        try {
+            if ($target === InspectionStatus::Released && ! $configured) {
+                try {
+                    app(TransitionInspection::class)->handle($actor, $inspection, [InspectionStatus::AwaitingRelease], $target);
+                    $this->fail('A liberação sem nomes M3 deveria falhar.');
+                } catch (ValidationException $exception) {
+                    $this->assertStringContainsString('Verificado, Aprovado, Liberado', $exception->errors()['inspection'][0]);
+                    $this->assertSame(InspectionStatus::AwaitingRelease, $inspection->fresh()->status);
+                    $this->assertNull($inspection->fresh()->report_responsibles_snapshot);
+                }
+
+                return;
+            }
+            app(TransitionInspection::class)->handle($actor, $inspection, [InspectionStatus::AwaitingRelease], $target);
+        } finally {
+            app(TenantContext::class)->clear();
+        }
+        $expected = [
+            'reviewer' => $configured ? 'Verificador M3' : null,
+            'approver' => $configured ? 'Revisor M3' : null,
+            'releaser' => $configured ? 'Liberador M3' : null,
+        ];
+        $this->assertSame($expected, $inspection->fresh()->report_responsibles_snapshot);
+
+        $organization->update([
+            'report_m3_verifier_name' => 'Novo verificador',
+            'report_m3_reviewer_name' => 'Novo revisor',
+            'report_m3_releaser_name' => 'Novo liberador',
+        ]);
+        $this->assertSame($expected, app(ReportResponsibleNames::class)->forInspection($inspection->fresh()));
+    }
+
     #[DataProvider('finalizations')]
     public function test_finalization_captures_names_including_empty_values(InspectionStatus $target, bool $configured): void
     {
@@ -84,6 +327,12 @@ final class ReportResponsibleNamesTest extends TestCase
         ]);
         $actor = User::factory()->for($organization)->create();
         $inspection = Inspection::factory()->create(['organization_id' => $organization->id, 'status' => InspectionStatus::AwaitingRelease]);
+        if ($target === InspectionStatus::Released) {
+            InspectionResponsible::factory()->forInspection($inspection, $actor)->create([
+                'responsibility' => InspectionResponsibility::Reviewer,
+                'is_primary' => true,
+            ]);
+        }
         $expected = [
             'reviewer' => $organization->report_verifier_name,
             'approver' => $organization->report_reviewer_name,
@@ -91,6 +340,18 @@ final class ReportResponsibleNamesTest extends TestCase
         ];
         app(TenantContext::class)->set($organization);
         try {
+            if ($target === InspectionStatus::Released && ! $configured) {
+                try {
+                    app(TransitionInspection::class)->handle($actor, $inspection, [InspectionStatus::AwaitingRelease], $target);
+                    $this->fail('A liberação sem nomes documentais deveria falhar.');
+                } catch (ValidationException $exception) {
+                    $this->assertStringContainsString('Verificado, Aprovado, Liberado', $exception->errors()['inspection'][0]);
+                    $this->assertSame(InspectionStatus::AwaitingRelease, $inspection->fresh()->status);
+                    $this->assertNull($inspection->fresh()->report_responsibles_snapshot);
+                }
+
+                return;
+            }
             app(TransitionInspection::class)->handle($actor, $inspection, [InspectionStatus::AwaitingRelease], $target);
         } finally {
             app(TenantContext::class)->clear();
@@ -199,9 +460,17 @@ final class ReportResponsibleNamesTest extends TestCase
 
     public function test_failed_finalization_rolls_back_names_and_status_together(): void
     {
-        $organization = Organization::factory()->create(['report_reviewer_name' => 'Nome para captura']);
+        $organization = Organization::factory()->create([
+            'report_verifier_name' => 'Verificador para captura',
+            'report_reviewer_name' => 'Nome para captura',
+            'report_releaser_name' => 'Liberador para captura',
+        ]);
         $actor = User::factory()->for($organization)->create();
         $inspection = Inspection::factory()->create(['organization_id' => $organization->id, 'status' => InspectionStatus::AwaitingRelease]);
+        InspectionResponsible::factory()->forInspection($inspection, $actor)->create([
+            'responsibility' => InspectionResponsibility::Reviewer,
+            'is_primary' => true,
+        ]);
         app(TenantContext::class)->set($organization);
         try {
             DB::transaction(function () use ($actor, $inspection): void {

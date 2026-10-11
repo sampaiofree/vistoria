@@ -11,6 +11,7 @@ use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use LogicException;
@@ -60,6 +61,41 @@ class User extends Authenticatable
         return $this->hasMany(InspectionResponsible::class);
     }
 
+    public function operationalRoles(): HasMany
+    {
+        return $this->hasMany(UserOperationalRole::class);
+    }
+
+    public function hasOperationalRole(OperationalRole $role): bool
+    {
+        if ($this->relationLoaded('operationalRoles')) {
+            return $this->operationalRoles->contains(fn (UserOperationalRole $item): bool => $item->role === $role);
+        }
+
+        return $this->operationalRoles()->where('role', $role->value)->exists();
+    }
+
+    /** @return list<string> */
+    public function operationalRoleValues(): array
+    {
+        return $this->operationalRoles->pluck('role')->map(fn (OperationalRole $role): string => $role->value)->all();
+    }
+
+    public function scopeWithOperationalRole(Builder $query, OperationalRole $role): Builder
+    {
+        return $query->whereHas('operationalRoles', fn (Builder $roles) => $roles->where('role', $role->value));
+    }
+
+    /** @param list<string> $roles */
+    public function syncOperationalRoles(array $roles): void
+    {
+        $this->operationalRoles()->whereNotIn('role', $roles)->delete();
+        foreach ($roles as $role) {
+            $this->operationalRoles()->firstOrCreate(['role' => $role]);
+        }
+        $this->unsetRelation('operationalRoles');
+    }
+
     public function isSuperAdmin(): bool
     {
         return $this->account_type === UserAccountType::SuperAdmin;
@@ -77,7 +113,11 @@ class User extends Authenticatable
 
     public function operationalRoleLabel(): string
     {
-        return $this->operational_role?->label() ?? 'Papel não definido';
+        $labels = $this->operationalRoles->pluck('role')
+            ->map(fn (OperationalRole $role): string => $role->label())
+            ->all();
+
+        return $labels === [] ? 'Papel não definido' : implode(', ', $labels);
     }
 
     public function isActive(): bool
@@ -108,6 +148,13 @@ class User extends Authenticatable
 
             if (! $user->isSuperAdmin() && blank($user->organization_id)) {
                 throw new LogicException('Non-super-admin users must belong to an organization.');
+            }
+        });
+
+        // Keeps legacy single-role factories and writes consistent during the migration.
+        static::saved(function (self $user): void {
+            if ($user->wasChanged('operational_role')) {
+                $user->syncOperationalRoles($user->operational_role === null ? [] : [$user->operational_role->value]);
             }
         });
     }

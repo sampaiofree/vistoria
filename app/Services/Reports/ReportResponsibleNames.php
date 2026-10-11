@@ -4,21 +4,25 @@ declare(strict_types=1);
 
 namespace App\Services\Reports;
 
+use App\Enums\InspectionResponsibility;
 use App\Models\Inspection;
 use App\Models\Organization;
 
 final class ReportResponsibleNames
 {
     /** @return array{reviewer:?string,approver:?string,releaser:?string} */
-    public function forOrganization(int $organizationId): array
+    public function forOrganization(int $organizationId, bool $isM3 = false): array
     {
         // Read all names together, independently of any cached model relation.
-        $organization = Organization::query()->findOrFail($organizationId, ['report_verifier_name', 'report_reviewer_name', 'report_releaser_name']);
+        $prefix = $isM3 ? 'report_m3_' : 'report_';
+        $organization = Organization::query()->findOrFail($organizationId, [
+            $prefix.'verifier_name', $prefix.'reviewer_name', $prefix.'releaser_name',
+        ]);
 
         return [
-            'reviewer' => $organization->report_verifier_name,
-            'approver' => $organization->report_reviewer_name,
-            'releaser' => $organization->report_releaser_name,
+            'reviewer' => $organization->{$prefix.'verifier_name'},
+            'approver' => $organization->{$prefix.'reviewer_name'},
+            'releaser' => $organization->{$prefix.'releaser_name'},
         ];
     }
 
@@ -34,6 +38,40 @@ final class ReportResponsibleNames
             ];
         }
 
-        return $this->forOrganization($inspection->organization_id);
+        return $this->forOrganization($inspection->organization_id, $inspection->is_m3);
+    }
+
+    /** @return array{preparer:?string,reviewer:?string,approver:?string,releaser:?string} */
+    public function coverNamesForInspection(Inspection $inspection): array
+    {
+        $inspection->loadMissing(['responsibles.user']);
+        $inspectors = $inspection->responsibles->where('responsibility', InspectionResponsibility::Reviewer);
+        $inspector = $inspectors->firstWhere('is_primary', true) ?? $inspectors->first();
+        $name = $inspector?->user?->name;
+
+        return [
+            'preparer' => $name === null ? null : trim((string) preg_replace('/\s*—.*$/u', '', $name)),
+            ...$this->forInspection($inspection),
+        ];
+    }
+
+    /**
+     * @param  array{preparer:?string,reviewer:?string,approver:?string,releaser:?string}  $names
+     * @return list<string>
+     */
+    public function missingCoverLabels(array $names): array
+    {
+        $labels = [
+            'preparer' => 'Preparado',
+            'reviewer' => 'Verificado',
+            'approver' => 'Aprovado',
+            'releaser' => 'Liberado',
+        ];
+
+        return array_values(array_filter($labels, function (string $label, string $role) use ($names): bool {
+            $name = $names[$role] ?? null;
+
+            return blank($name) || blank(trim((string) preg_replace('/\s*—.*$/u', '', $name)));
+        }, ARRAY_FILTER_USE_BOTH));
     }
 }

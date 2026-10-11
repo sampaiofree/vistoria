@@ -82,6 +82,9 @@ final class CreateRelatedDefect
         if ($source->equipment_id !== $inspection->equipment_id) {
             throw ValidationException::withMessages(['defect' => 'A avaria não pertence ao equipamento desta inspeção.']);
         }
+        if ($inspection->is_m3 && ! in_array($source->category, [\App\Enums\DefectCategory::Civil, \App\Enums\DefectCategory::StructuralRecovery], true)) {
+            throw ValidationException::withMessages(['defect' => 'Na modalidade M3, apenas avarias CIVIL e REC são permitidas.']);
+        }
 
         if (! $actor->can('manageFieldContent', $inspection)) {
             throw ValidationException::withMessages(['inspection' => 'A inspeção não está em estado editável.']);

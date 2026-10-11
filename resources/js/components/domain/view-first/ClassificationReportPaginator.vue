@@ -9,18 +9,20 @@ const probePage = ref(null);
 let runId = 0;
 
 function emptyPage(includeHeader = false) {
-    return { includeHeader, categories: [], specialRows: [], showSpecial: false };
+    return { includeHeader, categories: [], showRecovery: false, specialRows: [], showSpecial: false };
 }
 
 function append(page, atom) {
     const next = {
         includeHeader: page.includeHeader,
         categories: [...page.categories],
+        showRecovery: page.showRecovery,
         specialRows: [...page.specialRows],
         showSpecial: page.showSpecial,
     };
 
     if (atom.type === 'category') next.categories.push(atom.value);
+    if (atom.type === 'recovery') next.showRecovery = true;
     if (atom.type === 'special') next.specialRows.push(atom.value);
     if (atom.type === 'special' || atom.type === 'special-empty') next.showSpecial = true;
 
@@ -57,6 +59,7 @@ async function paginate() {
     emit('error', null);
     const atoms = [
         ...(props.summary.categories || []).map((value) => ({ type: 'category', value })),
+        ...((props.summary.is_m3 && (props.summary.recovery_rows || []).length) ? [{ type: 'recovery' }] : []),
         ...((props.summary.special_assessment_rows || []).length
             ? props.summary.special_assessment_rows.map((value) => ({ type: 'special', value }))
             : [{ type: 'special-empty' }]),
@@ -97,7 +100,7 @@ async function paginate() {
         }
     }
 
-    if (current.includeHeader || current.categories.length || current.specialRows.length || current.showSpecial) pages.push(current);
+    if (current.includeHeader || current.categories.length || current.showRecovery || current.specialRows.length || current.showSpecial) pages.push(current);
     if (thisRun !== runId) return;
 
     emit('pages', finalize(pages));

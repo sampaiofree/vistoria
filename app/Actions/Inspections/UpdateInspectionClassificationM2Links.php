@@ -30,6 +30,12 @@ final class UpdateInspectionClassificationM2Links
         DB::transaction(function () use ($actor, $inspection, $data): void {
             $inspection = Inspection::query()->forOrganization($this->tenant->id())->lockForUpdate()->findOrFail($inspection->id);
             Gate::forUser($actor->fresh())->authorize('manageClassificationM2', $inspection);
+            if ($inspection->is_m3) {
+                throw ValidationException::withMessages([
+                    'inspection' => 'Notas M2 e tratativas manuais não se aplicam à Modalidade M3.',
+                ]);
+            }
+
             $audit = app(RecordClassificationChange::class);
             $before = $audit->notes($inspection);
             $eligibleGroups = collect($this->summary->build($inspection)['categories'])

@@ -69,6 +69,9 @@ final class CreateDefectWithAssessment
             if ($category === null) {
                 throw ValidationException::withMessages(['category' => 'Escolha uma categoria nativa válida.']);
             }
+            if ($inspection->is_m3 && ! in_array($category, [DefectCategory::Civil, DefectCategory::StructuralRecovery], true)) {
+                throw ValidationException::withMessages(['category' => 'Na modalidade M3, escolha CIVIL ou REC.']);
+            }
 
             $generated = $this->codeGenerator->next($equipment, $category);
 

@@ -12,6 +12,7 @@ use App\Enums\InspectionCorrectionRequestFlow;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
 use App\Enums\OperationalRole;
+use App\Enums\RecoveryClassification;
 use App\Enums\UserAccountType;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
@@ -71,6 +72,35 @@ final class InspectionPlannerWorkflowTest extends TestCase
         $this->actingAs($team['releaser'])->post(route('inspections.release', $inspection))->assertSessionHasNoErrors();
 
         $this->assertSame(InspectionStatus::Released, $inspection->fresh()->status);
+    }
+
+    public function test_m3_advances_without_m2_or_manual_special_treatment_notes(): void
+    {
+        [$inspection, $team] = $this->scenario(InspectionStatus::AwaitingM2);
+        $inspection->update(['is_m3' => true]);
+        $defect = Defect::factory()->forEquipment($inspection->equipment, $inspection)->create([
+            'category' => DefectCategory::Civil,
+        ]);
+        $assessment = DefectAssessment::factory()->forDefect($defect, $inspection)->complete()->create([
+            'condition' => DefectAssessmentCondition::New,
+            'classification_code' => 'CV-2',
+            'classification_priority' => 2,
+            'is_unsafe_condition' => true,
+            'recovery_classification_code' => RecoveryClassification::Punctual->value,
+            'recovery_classification_snapshot' => ['version' => 1, ...RecoveryClassification::Punctual->toArray()],
+        ]);
+        $this->satisfyAssessmentPublicationRequirements($assessment);
+
+        $this->actingAs($team['planner'])->post(route('inspections.submit-for-review', $inspection))
+            ->assertSessionHasNoErrors();
+        $this->actingAs($team['reviewer'])->post(route('inspections.start-review', $inspection))
+            ->assertSessionHasNoErrors();
+        $this->actingAs($team['reviewer'])->post(route('inspections.approve', $inspection))
+            ->assertSessionHasNoErrors();
+        $this->actingAs($team['releaser'])->post(route('inspections.release', $inspection))
+            ->assertSessionHasNoErrors();
+        $this->assertSame(InspectionStatus::Released, $inspection->fresh()->status);
+        $this->assertSame(0, $inspection->specialAssessmentNotes()->count());
     }
 
     public function test_m2_is_only_required_when_planner_submits_and_partial_saves_are_allowed(): void
@@ -373,7 +403,14 @@ final class InspectionPlannerWorkflowTest extends TestCase
 
     private function scenario(InspectionStatus $status = InspectionStatus::InProgress): array
     {
-        $organization = Organization::factory()->create();
+        $organization = Organization::factory()->create([
+            'report_verifier_name' => 'Verificador padrão',
+            'report_reviewer_name' => 'Revisor padrão',
+            'report_releaser_name' => 'Liberador padrão',
+            'report_m3_verifier_name' => 'Verificador M3',
+            'report_m3_reviewer_name' => 'Revisor M3',
+            'report_m3_releaser_name' => 'Liberador M3',
+        ]);
         app(TenantContext::class)->set($organization);
         $inspection = Inspection::factory()->forEquipment(Equipment::factory()->for($organization)->create())
             ->create([

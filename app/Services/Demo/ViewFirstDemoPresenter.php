@@ -14,6 +14,7 @@ use App\Enums\InspectionCorrectionRequestStatus;
 use App\Enums\InspectionResponsibility;
 use App\Enums\InspectionStatus;
 use App\Enums\MeasurementUnit;
+use App\Enums\RecoveryClassification;
 use App\Models\AssessmentPhoto;
 use App\Models\Defect;
 use App\Models\DefectAssessment;
@@ -325,6 +326,8 @@ class ViewFirstDemoPresenter
             'classification_method_options' => $category->allowsEngineeringNote()
                 ? DefectAssessmentClassificationMethod::options()
                 : [],
+            'recovery_classification_options' => $assessment->inspection->is_m3
+                ? RecoveryClassification::options() : [],
             'reinspection_action' => $historical || $user->isClient() ? null : $this->reinspectionAction($assessment, $user),
             'correction_requests' => $historical ? null : $this->correctionRequestsPayload(
                 $assessment->correctionRequests,
@@ -425,6 +428,10 @@ class ViewFirstDemoPresenter
                 'gut_url' => $canEdit
                     && $category->requiresGut()
                     ? route('defect-assessments.gut.update', $assessment)
+                    : null,
+                'recovery_classification_url' => $canEdit && $assessment->isDraft()
+                    && $assessment->inspection->is_m3
+                    ? route('defect-assessments.recovery-classification.update', $assessment)
                     : null,
                 'tel_url' => $canEdit && $category === DefectCategory::RoofCladding
                     ? route('defect-assessments.tel.update', $assessment)
@@ -925,6 +932,8 @@ class ViewFirstDemoPresenter
             'tel_classified_at' => $assessment->tel_classified_at?->format('d/m/Y H:i'),
             'classification_code' => $assessment->classification_code,
             'classification_snapshot' => $assessment->classification_snapshot,
+            'recovery_classification_code' => $assessment->recovery_classification_code,
+            'recovery_classification' => $assessment->recovery_classification_snapshot,
             'classification_priority' => $assessment->classification_priority,
             'deadline_months' => $assessment->deadline_months,
             'recommended_due_date' => $assessment->recommended_due_date?->format('d/m/Y'),
@@ -938,6 +947,7 @@ class ViewFirstDemoPresenter
                 'public_id' => $assessment->inspection->public_id,
                 'number' => $assessment->inspection->number,
                 'status' => $assessment->inspection->status->value,
+                'is_m3' => $assessment->inspection->is_m3,
                 'status_label' => $assessment->inspection->status->label(),
                 'show_url' => route('inspections.show', $assessment->inspection),
             ],
@@ -1874,7 +1884,11 @@ class ViewFirstDemoPresenter
         }
 
         if (blank($approvalFlow->firstWhere('key', 'prepared')['name'])) {
-            $blockedIssues[] = 'Vincule um Inspetor à inspeção para preencher Preparado.';
+            $preparedIssue = 'Vincule um Inspetor à inspeção para preencher Preparado.';
+            $blockedIssues[] = $preparedIssue;
+            if (! $inspection->status->isFinal()) {
+                $exportBlockingIssues[] = $preparedIssue;
+            }
         }
 
         $missingDocumentNames = $approvalFlow
@@ -1883,7 +1897,11 @@ class ViewFirstDemoPresenter
             ->values();
 
         if ($missingDocumentNames->isNotEmpty()) {
-            $blockedIssues[] = 'Nomes documentais não definidos para: '.$missingDocumentNames->implode(', ').'.';
+            $documentNamesIssue = 'Nomes documentais não definidos para: '.$missingDocumentNames->implode(', ').'.';
+            $blockedIssues[] = $documentNamesIssue;
+            if (! $inspection->status->isFinal()) {
+                $exportBlockingIssues[] = $documentNamesIssue;
+            }
         }
 
         if ($summary['pending'] > 0) {
@@ -2155,6 +2173,7 @@ class ViewFirstDemoPresenter
                                 'code' => data_get($item, 'classification.code') ?? '—',
                                 'color' => data_get($item, 'classification.color'),
                             ],
+                            'recommendation' => $this->reportRecoveryClassification($item),
                         ];
                     })
                     ->all();
@@ -2223,12 +2242,25 @@ class ViewFirstDemoPresenter
                                 'code' => data_get($item, 'classification.code') ?? '—',
                                 'color' => data_get($item, 'classification.color'),
                             ],
+                            'recommendation' => $this->reportRecoveryClassification($item),
                         ];
                     })
                     ->all();
             })
             ->values()
             ->all();
+    }
+
+    /** @param array<string, mixed> $item @return array{label:string,color:string}|null */
+    private function reportRecoveryClassification(array $item): ?array
+    {
+        $label = data_get($item, 'assessment.recovery_classification.label');
+        $color = data_get($item, 'assessment.recovery_classification.color');
+
+        return is_string($label) && trim($label) !== ''
+            && is_string($color) && preg_match('/^#[0-9a-f]{6}$/i', $color)
+            ? ['label' => $label, 'color' => $color]
+            : null;
     }
 
     /**

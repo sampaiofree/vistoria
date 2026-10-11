@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue';
-import { markerPresentationStyle } from '@/components/domain/inspection-locations/inspectionLocationMarkerStyle.js';
+import { markerLegendTextColor, markerPresentationStyle } from '@/components/domain/inspection-locations/inspectionLocationMarkerStyle.js';
 
 const props = defineProps({
     marker: { type: Object, required: true },
@@ -20,6 +20,7 @@ const presentation = computed(() => markerPresentationStyle(
     props.marker.geometry,
     props.viewWidth,
 ));
+const legendTextColor = computed(() => markerLegendTextColor(presentation.value.color));
 
 function points(values = []) {
     return values.map(([x, y]) => `${x * props.viewWidth},${y * props.viewHeight}`).join(' ');
@@ -140,7 +141,7 @@ function selectShape(event, index) {
             text-anchor="middle"
             font-size="14"
             font-weight="700"
-            fill="#000000"
+            :fill="legendTextColor"
         >
             {{ layout.photoLegend }}
         </text>
@@ -151,7 +152,7 @@ function selectShape(event, index) {
             text-anchor="middle"
             font-size="12"
             font-weight="500"
-            fill="#000000"
+            :fill="legendTextColor"
         >
             <tspan
                 v-for="(line, index) in layout.additionalLines"

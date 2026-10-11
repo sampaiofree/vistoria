@@ -110,6 +110,14 @@ final class CompleteDefectAssessment
                     'classified_by' => null,
                 ]);
             }
+            if (! $assessment->condition->requiresGut()) {
+                $assessment->fill([
+                    'recovery_classification_code' => null,
+                    'recovery_classification_snapshot' => null,
+                    'recovery_classified_at' => null,
+                    'recovery_classified_by' => null,
+                ]);
+            }
 
             $this->validator->ensureConditionAllowed(
                 $assessment->defect,

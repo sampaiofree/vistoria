@@ -204,6 +204,10 @@ final class InspectionReportOverviewTest extends TestCase
     public function test_report_blocks_export_until_overview_is_complete_and_exposes_ready_payload(): void
     {
         [, $admin, $inspection] = $this->scenario();
+        InspectionResponsible::factory()->forInspection($inspection, $admin)->create([
+            'responsibility' => InspectionResponsibility::Reviewer,
+            'is_primary' => true,
+        ]);
         $inspection->update([
             'external_report_number' => 'U0306VT-G-6RI002',
             'designer_i_report_number' => 'SM-IIE-1717',
@@ -364,6 +368,10 @@ final class InspectionReportOverviewTest extends TestCase
     public function test_each_report_page_has_independent_texts_and_export_requires_complete_pairs(): void
     {
         [, $admin, $inspection] = $this->scenario();
+        InspectionResponsible::factory()->forInspection($inspection, $admin)->create([
+            'responsibility' => InspectionResponsibility::Reviewer,
+            'is_primary' => true,
+        ]);
         $inspection->update([
             'external_report_number' => 'U0306VT-G-6RI002',
             'designer_i_report_number' => 'SM-IIE-1717',
@@ -461,7 +469,11 @@ final class InspectionReportOverviewTest extends TestCase
     /** @return array{Organization, User, Inspection} */
     private function scenario(): array
     {
-        $organization = Organization::factory()->create();
+        $organization = Organization::factory()->create([
+            'report_verifier_name' => 'Verificador documental',
+            'report_reviewer_name' => 'Revisor documental',
+            'report_releaser_name' => 'Liberador documental',
+        ]);
         $admin = User::factory()->for($organization)->create([
             'operational_role' => OperationalRole::Inspector,
         ]);

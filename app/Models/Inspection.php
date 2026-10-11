@@ -27,6 +27,7 @@ final class Inspection extends Model
         'reinspection_scope_version',
         'number',
         'inspection_type',
+        'is_m3',
         'status',
         'service_order',
         'external_report_number',
@@ -63,6 +64,7 @@ final class Inspection extends Model
         // created_at e updated_at são mantidos automaticamente pelo Eloquent.
         return [
             'inspection_type' => InspectionType::class,
+            'is_m3' => 'boolean',
             'reinspection_scope_version' => 'integer',
             'status' => InspectionStatus::class,
             'planned_start_on' => 'date',

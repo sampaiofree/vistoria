@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
 use App\Actions\Classification\CreateDefectAssessmentQuantity;
 use App\Actions\Classification\DeleteDefectAssessmentQuantity;
 use App\Actions\Classification\SaveDefectAssessmentGut;
+use App\Actions\Classification\SaveRecoveryClassification;
 use App\Actions\Classification\SaveDefectAssessmentTelClassification;
 use App\Actions\Classification\UpdateDefectAssessmentQuantity;
 use App\Actions\Defects\AssessExistingDefect;
@@ -23,6 +24,7 @@ use App\Http\Requests\Defects\ChangeDefectAssessmentStatusRequest;
 use App\Http\Requests\Defects\CompleteDefectAssessmentRequest;
 use App\Http\Requests\Defects\StoreExistingDefectAssessmentRequest;
 use App\Http\Requests\Defects\UpdateDefectAssessmentGutRequest;
+use App\Http\Requests\Defects\UpdateRecoveryClassificationRequest;
 use App\Http\Requests\Defects\UpdateDefectAssessmentQuantityRequest;
 use App\Http\Requests\Defects\UpdateDefectAssessmentRequest;
 use App\Http\Requests\Defects\UpdateDefectAssessmentTelRequest;
@@ -243,6 +245,18 @@ final class DefectAssessmentController extends Controller
         $action->handle($request->user(), $defectAssessment, $request->validated());
 
         return back()->with('success', 'Classificação GUT atualizada.');
+    }
+
+    public function updateRecoveryClassification(
+        UpdateRecoveryClassificationRequest $request,
+        TenantContext $tenant,
+        DefectAssessment $defectAssessment,
+        SaveRecoveryClassification $action,
+    ): RedirectResponse {
+        $assessment = $this->tenantDefectAssessment($tenant, $defectAssessment);
+        $action->handle($request->user(), $assessment, $request->validated('recovery_classification_code'));
+
+        return back()->with('success', 'Classificação de Recuperação atualizada.');
     }
 
     public function updateTel(

@@ -545,6 +545,12 @@ function damageColorStyle(color) {
     };
 }
 
+function recoveryColorStyle(classification) {
+    return classification?.label && validHexColor(classification?.color)
+        ? damageColorStyle(classification.color)
+        : { backgroundColor: '#e2e8f0', color: '#111827' };
+}
+
 function legendColorStyle(color) {
     return validHexColor(color) ? { backgroundColor: color } : {};
 }
@@ -618,6 +624,7 @@ function visualClass(photo) {
             <ReportQuantityPaginator
                 :items="recQuantityRows"
                 type="rec-quantity"
+                :is-m3="Boolean(classificationSummary?.is_m3)"
                 @pages="recQuantityPages = $event"
                 @ready="recQuantityReady = $event"
                 @error="updateQuantityError('rec', $event)"
@@ -625,6 +632,7 @@ function visualClass(photo) {
             <ReportQuantityPaginator
                 :items="civilQuantityRows"
                 type="civil-quantity"
+                :is-m3="Boolean(classificationSummary?.is_m3)"
                 @pages="civilQuantityPages = $event"
                 @ready="civilQuantityReady = $event"
                 @error="updateQuantityError('civil', $event)"
@@ -836,10 +844,17 @@ function visualClass(photo) {
 
                             <div class="report-map-footer">
                                 <div class="report-map-classification-layout">
-                                    <table v-if="page.map.engineering_note_without_quantity" class="report-map-damage-table">
+                                    <table v-if="page.map.engineering_note_without_quantity" class="report-map-damage-table" :class="{ 'report-map-damage-table-m3 report-map-damage-table-m3-engineering': page.map.is_m3 }">
+                                        <colgroup v-if="page.map.is_m3">
+                                            <col class="report-map-damage-code">
+                                            <col class="report-map-damage-project">
+                                            <col class="report-map-damage-photos">
+                                            <col class="report-map-damage-engineering-note">
+                                            <col class="report-map-damage-recommendation">
+                                        </colgroup>
                                         <thead>
-                                            <tr><th colspan="4" class="report-map-table-title">NOTA DE ENGENHARIA</th></tr>
-                                            <tr><th>CÓD.</th><th>PROJETO</th><th>FOTOS</th><th>TRATATIVA</th></tr>
+                                            <tr><th :colspan="page.map.is_m3 ? 5 : 4" class="report-map-table-title">NOTA DE ENGENHARIA</th></tr>
+                                            <tr><th>CÓD.</th><th>PROJETO</th><th>FOTOS</th><th>TRATATIVA</th><th v-if="page.map.is_m3">RECOMENDAÇÃO</th></tr>
                                         </thead>
                                         <tbody>
                                             <tr v-for="(row, rowIndex) in (page.map.damage_rows || [])" :key="row.assessment?.public_id || row.defect?.public_id || rowIndex">
@@ -847,7 +862,9 @@ function visualClass(photo) {
                                                 <td>{{ row.defect?.project_number || '—' }}</td>
                                                 <td>{{ row.photo_interval || '—' }}</td>
                                                 <td :style="damageColorStyle(row.classification?.color)">Nota de Engenharia</td>
+                                                <td v-if="page.map.is_m3" :style="recoveryColorStyle(row.recovery_classification)">{{ row.recovery_classification?.label || '—' }}</td>
                                             </tr>
+                                            <tr v-if="page.map.is_m3 && !(page.map.damage_rows || []).length"><td colspan="5">—</td></tr>
                                         </tbody>
                                     </table>
 
@@ -878,7 +895,7 @@ function visualClass(photo) {
                                         </tbody>
                                     </table>
 
-                                    <table v-else class="report-map-damage-table">
+                                    <table v-else class="report-map-damage-table" :class="{ 'report-map-damage-table-m3 report-map-damage-table-m3-gut': page.map.is_m3 }">
                                         <colgroup>
                                             <col v-if="mapShowsDefectCode(page.category)" class="report-map-damage-code">
                                             <col v-if="mapShowsDefectCode(page.category)" class="report-map-damage-project">
@@ -890,11 +907,12 @@ function visualClass(photo) {
                                             <col v-if="mapShowsTrendDetail(page.category)" class="report-map-damage-trend-score">
                                             <col v-else class="report-map-damage-gut">
                                             <col class="report-map-damage-classification">
+                                            <col v-if="page.map.is_m3" class="report-map-damage-recommendation">
                                         </colgroup>
                                         <thead>
-                                            <tr><th :colspan="mapShowsTrendDetail(page.category) ? 9 : 6" class="report-map-table-title">CLASSIFICAÇÃO GUT</th></tr>
+                                            <tr><th :colspan="(mapShowsTrendDetail(page.category) ? 9 : 6) + (page.map.is_m3 ? 1 : 0)" class="report-map-table-title">CLASSIFICAÇÃO GUT</th></tr>
                                             <tr>
-                                                <th v-if="mapShowsDefectCode(page.category)">CÓD.</th><th v-if="mapShowsDefectCode(page.category)">PROJETO</th><th>FOTOS</th><th>{{ mapQuantityHeader(page.map) }}</th><th>GRAV.</th><th>URG.</th><th v-if="mapShowsTrendDetail(page.category)" colspan="2">T</th><th v-else>TEND.</th><th>GRAV. DANO</th>
+                                                <th v-if="mapShowsDefectCode(page.category)">CÓD.</th><th v-if="mapShowsDefectCode(page.category)">PROJETO</th><th>FOTOS</th><th>{{ mapQuantityHeader(page.map) }}</th><th>G.</th><th>U.</th><th v-if="mapShowsTrendDetail(page.category)" colspan="2">T</th><th v-else>TEND.</th><th>GRAV. DANO</th><th v-if="page.map.is_m3">RECOMENDAÇÃO</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -911,9 +929,10 @@ function visualClass(photo) {
                                                 <td v-if="mapShowsTrendDetail(page.category)">{{ row.gut?.trend?.group?.label || '—' }}</td>
                                                 <td :style="damageColorStyle(row.gut?.trend?.color)">{{ row.gut?.trend?.score ?? '—' }}</td>
                                                 <td :style="damageColorStyle(row.classification?.color)">{{ row.classification?.code || '—' }}</td>
+                                                <td v-if="page.map.is_m3" :style="recoveryColorStyle(row.recovery_classification)">{{ row.recovery_classification?.label || '—' }}</td>
                                             </tr>
                                             <tr v-if="!(page.map.damage_rows || []).length">
-                                                <td v-if="mapShowsDefectCode(page.category)">—</td><td v-if="mapShowsDefectCode(page.category)">—</td><td>—</td><td>—</td><td>—</td><td>—</td><td v-if="mapShowsTrendDetail(page.category)">—</td><td>—</td><td>—</td>
+                                                <td v-if="mapShowsDefectCode(page.category)">—</td><td v-if="mapShowsDefectCode(page.category)">—</td><td>—</td><td>—</td><td>—</td><td>—</td><td v-if="mapShowsTrendDetail(page.category)">—</td><td>—</td><td>—</td><td v-if="page.map.is_m3" :style="recoveryColorStyle(null)">—</td>
                                             </tr>
                                         </tbody>
                                     </table>
@@ -1207,6 +1226,24 @@ function visualClass(photo) {
 .report-map-damage-code ~ .report-map-damage-quantity { width: 10%; }
 .report-map-damage-code ~ .report-map-damage-gut { width: 9%; }
 .report-map-damage-code ~ .report-map-damage-classification { width: 11%; }
+.report-map-damage-table-m3 th,
+.report-map-damage-table-m3 td { overflow-wrap: anywhere; white-space: normal; }
+.report-map-damage-table-m3 thead tr:nth-child(2) th:last-child,
+.report-map-damage-table-m3 tbody td:last-child { padding-right: .6mm; padding-left: .6mm; font-size: 6.5pt; }
+.report-map-damage-table-m3-gut .report-map-damage-code { width: 9%; }
+.report-map-damage-table-m3-gut .report-map-damage-project { width: 11%; }
+.report-map-damage-table-m3-gut .report-map-damage-photos { width: 9%; }
+.report-map-damage-table-m3-gut .report-map-damage-quantity { width: 8%; }
+.report-map-damage-table-m3-gut .report-map-damage-gut { width: 5%; }
+.report-map-damage-table-m3-gut .report-map-damage-trend-label { width: 13%; }
+.report-map-damage-table-m3-gut .report-map-damage-trend-score { width: 5%; }
+.report-map-damage-table-m3-gut .report-map-damage-classification { width: 8%; }
+.report-map-damage-table-m3-gut .report-map-damage-recommendation { width: 27%; }
+.report-map-damage-table-m3-engineering .report-map-damage-code { width: 11%; }
+.report-map-damage-table-m3-engineering .report-map-damage-project { width: 17%; }
+.report-map-damage-table-m3-engineering .report-map-damage-photos { width: 15%; }
+.report-map-damage-table-m3-engineering .report-map-damage-engineering-note { width: 25%; }
+.report-map-damage-table-m3-engineering .report-map-damage-recommendation { width: 32%; }
 .report-map-damage-table .report-map-table-title { height: 6mm; padding: 1mm 2mm; background: #062b68; color: #fff; font-size: 8pt; font-weight: 800; }
 .report-map-legend { width: 100%; overflow: hidden; border: 1px solid #111827; font-family: Georgia, 'Times New Roman', serif; font-size: 7pt; }
 .report-map-legend > strong { display: flex; min-height: 6mm; align-items: center; padding: 1mm 2mm; border-bottom: 1px solid #111827; font-size: 8pt; }

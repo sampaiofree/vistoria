@@ -103,7 +103,11 @@ final class InspectionTechnicalReferencesCoverageTest extends TestCase
     /** @return array{Inspection, array<string, User>} */
     private function scenario(InspectionStatus $status): array
     {
-        $organization = Organization::factory()->create();
+        $organization = Organization::factory()->create([
+            'report_verifier_name' => 'Verificador documental',
+            'report_reviewer_name' => 'Revisor documental',
+            'report_releaser_name' => 'Liberador documental',
+        ]);
         $inspection = Inspection::factory()->forEquipment(Equipment::factory()->for($organization)->create())
             ->create(['status' => $status, 'general_notes' => 'Aspectos gerais preenchidos.', 'report_equipment_name' => 'Equipamento do relatório']);
         $team = [];

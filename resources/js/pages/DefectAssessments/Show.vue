@@ -49,6 +49,7 @@ const props = defineProps({
     classification: { type: Object, default: null },
     condition_options: { type: Array, default: () => [] },
     classification_method_options: { type: Array, default: () => [] },
+    recovery_classification_options: { type: Array, default: () => [] },
     origin_type: { type: String, default: 'new' },
     previous_assessment_summary: { type: Object, default: null },
     assessment_history: { type: Array, default: () => [] },
@@ -99,6 +100,7 @@ function gutDefaults() {
 }
 
 const gutForm = useForm(gutDefaults());
+const recoveryForm = useForm({ recovery_classification_code: props.assessment.recovery_classification_code ?? '' });
 const telForm = useForm({
     condition: props.assessment.condition,
     height_m: props.tel_snapshot?.height_m ?? '',
@@ -106,7 +108,7 @@ const telForm = useForm({
     damage_option_code: props.tel_snapshot?.damage_option?.code ?? '',
 });
 
-const editing = reactive({ condition: false, quantity: false, gut: false, tel: false, narrative: false });
+const editing = reactive({ condition: false, quantity: false, gut: false, recovery: false, tel: false, narrative: false });
 const historyOpen = ref(false);
 const locationModalOpen = ref(false);
 const startingReinspection = ref(false);
@@ -226,6 +228,8 @@ const engineeringNoteWithoutQuantity = computed(() => usesEngineeringNote.value
 const requiresClassification = computed(() => ['new', 'reinspected', 'reclassified'].includes(form.condition)
     && !isSolidaryStructures.value
     && !engineeringNoteWithoutQuantity.value);
+const requiresRecoveryClassification = computed(() => props.assessment.inspection?.is_m3
+    && ['new', 'reinspected', 'reclassified'].includes(form.condition));
 const narrativeStep = computed(() => 2
     + Number(requiresEvidence.value && hasQuantities.value)
     + Number(requiresClassification.value));
@@ -352,6 +356,18 @@ function saveCondition() {
         preserveScroll: true,
         only: ['assessment', 'classification', 'gut_snapshot', 'quantities', 'quantity_summary', 'location_map', 'capabilities', 'flash'],
         onSuccess: () => { editing.condition = false; },
+    });
+}
+
+function saveRecoveryClassification() {
+    if (!props.capabilities.recovery_classification_url) return;
+    recoveryForm.put(props.capabilities.recovery_classification_url, {
+        preserveScroll: true,
+        only: ['assessment', 'location_map', 'capabilities', 'flash'],
+        onSuccess: () => {
+            recoveryForm.defaults({ recovery_classification_code: recoveryForm.recovery_classification_code });
+            editing.recovery = false;
+        },
     });
 }
 
@@ -485,6 +501,11 @@ function startEditing(card) {
             gutForm.setError('trend_group_code', 'Selecione novamente a tendência para o contexto de urgência informado.');
         }
     }
+    if (card === 'recovery') {
+        recoveryForm.defaults({ recovery_classification_code: props.assessment.recovery_classification_code ?? '' });
+        recoveryForm.reset();
+        recoveryForm.clearErrors();
+    }
     if (card === 'tel') {
         telForm.defaults({
             condition: props.assessment.condition,
@@ -579,6 +600,7 @@ function cancelEditing(card) {
         quantityForm.clearErrors();
     }
     if (card === 'gut') { gutForm.reset(); gutForm.clearErrors(); }
+    if (card === 'recovery') { recoveryForm.reset(); recoveryForm.clearErrors(); }
     if (card === 'tel') { telForm.reset(); telForm.clearErrors(); }
     if (card === 'narrative') { form.reset(); form.clearErrors(); }
     if (card === 'condition') { form.reset('condition', 'reason'); form.clearErrors('condition', 'reason'); }
@@ -1292,6 +1314,36 @@ onUnmounted(() => {
                 </div>
             </section>
 
+            <section v-if="requiresRecoveryClassification" class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <p class="text-xs font-bold uppercase tracking-[0.16em] text-slate-600">Modalidade M3</p>
+                        <h2 class="mt-2 text-xl font-semibold text-slate-950">Classificação de Recuperação</h2>
+                        <p class="mt-1 text-sm text-slate-500">Define a cor da localização da avaria independentemente da classificação GUT.</p>
+                    </div>
+                    <button v-if="capabilities.recovery_classification_url && !editing.recovery" type="button" class="rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 hover:border-slate-400" @click="startEditing('recovery')">Editar</button>
+                </div>
+                <div v-if="editing.recovery && capabilities.recovery_classification_url" class="mt-5 space-y-4 border-t border-slate-100 pt-5">
+                    <fieldset class="space-y-2">
+                        <legend class="sr-only">Escolha a Classificação de Recuperação</legend>
+                        <label v-for="option in recovery_classification_options" :key="option.code" class="flex cursor-pointer items-center gap-3 rounded-xl border p-3 text-sm font-medium text-slate-800" :class="recoveryForm.recovery_classification_code === option.code ? 'border-slate-400 bg-slate-50' : 'border-slate-200 bg-white hover:border-slate-300'">
+                            <input v-model="recoveryForm.recovery_classification_code" type="radio" :value="option.code" name="recovery_classification_code" class="border-slate-300 text-slate-800 focus:ring-slate-500">
+                            <span class="h-5 w-5 shrink-0 rounded border border-slate-300" :style="{ backgroundColor: option.color }" aria-hidden="true"></span>
+                            <span>{{ option.label }}</span>
+                        </label>
+                    </fieldset>
+                    <p v-if="recoveryForm.errors.recovery_classification_code" :class="errorClass">{{ recoveryForm.errors.recovery_classification_code }}</p>
+                    <div class="flex justify-end gap-3">
+                        <button type="button" :disabled="recoveryForm.processing" class="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 disabled:opacity-50" @click="cancelEditing('recovery')">Cancelar</button>
+                        <button type="button" :disabled="recoveryForm.processing || !recoveryForm.recovery_classification_code" class="rounded-xl bg-slate-800 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50" @click="saveRecoveryClassification">Salvar classificação</button>
+                    </div>
+                </div>
+                <div v-else class="mt-5 flex items-center gap-3 border-t border-slate-100 pt-5">
+                    <span v-if="assessment.recovery_classification?.color" class="h-6 w-6 shrink-0 rounded border border-slate-300" :style="{ backgroundColor: assessment.recovery_classification.color }" aria-hidden="true"></span>
+                    <span class="text-sm font-semibold text-slate-900">{{ assessment.recovery_classification?.label || 'Não definida' }}</span>
+                </div>
+            </section>
+
             <section v-if="requiresClassification && isTel" class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
                 <div class="flex flex-wrap items-start justify-between gap-3">
                     <div>
@@ -1409,7 +1461,7 @@ onUnmounted(() => {
                     </div>
                     <span class="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700">
                         <span class="h-3 w-3 rounded-full border border-black/10" :style="{ backgroundColor: location_map?.color || '#64748B' }"></span>
-                        Cor automática da classificação
+                        {{ assessment.inspection?.is_m3 ? 'Cor da Classificação de Recuperação' : 'Cor automática da classificação' }}
                     </span>
                 </div>
 

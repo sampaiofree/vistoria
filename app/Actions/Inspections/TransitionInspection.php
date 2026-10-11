@@ -94,8 +94,21 @@ final class TransitionInspection
                 unset($attributes['report_date']);
             }
 
-            if ($toStatus->isFinal()) {
-                $attributes['report_responsibles_snapshot'] = app(ReportResponsibleNames::class)->forOrganization($inspection->organization_id);
+            if ($toStatus === InspectionStatus::Released) {
+                $names = app(ReportResponsibleNames::class);
+                $coverNames = $names->coverNamesForInspection($inspection);
+                $missing = $names->missingCoverLabels($coverNames);
+                if ($missing !== []) {
+                    throw ValidationException::withMessages([
+                        'inspection' => 'Preencha os nomes do relatório antes de liberar: '.implode(', ', $missing).'.',
+                    ]);
+                }
+                $attributes['report_responsibles_snapshot'] = Arr::only($coverNames, ['reviewer', 'approver', 'releaser']);
+            } elseif ($toStatus->isFinal()) {
+                $attributes['report_responsibles_snapshot'] = app(ReportResponsibleNames::class)->forOrganization(
+                    $inspection->organization_id,
+                    $inspection->is_m3,
+                );
             }
 
             $inspection->update(array_merge($attributes, [
