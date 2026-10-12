@@ -289,7 +289,10 @@ final class InspectionSelfAssignmentTest extends TestCase
         $actor = $this->user(OperationalRole::Reviewer);
         $inspections = collect(range(1, 22))->map(function ($day) use ($actor) {
             $inspection = $this->inspection($actor);
-            $inspection->forceFill(['created_at' => now()->subDays(30 - $day)])->save();
+            $inspection->forceFill([
+                'created_at' => now()->subDays(30 - $day),
+                'is_m3' => $day <= 21,
+            ])->save();
 
             return $inspection;
         });
@@ -301,6 +304,22 @@ final class InspectionSelfAssignmentTest extends TestCase
         $this->get(route('inspections.index', ['scope' => 'available', 'status' => 'planned', 'page' => 2]))
             ->assertInertia(fn (Assert $page) => $page->has('inspections.data', 2)
                 ->where('inspections.data.1.public_id', $inspections->last()->public_id));
+
+        $this->get(route('inspections.index', ['scope' => 'available', 'status' => 'planned', 'modality' => 'm3']))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('filters.scope', 'available')
+                ->where('filters.modality', 'm3')
+                ->where('inspections.total', 21)
+                ->has('inspections.data', 20)
+                ->where('inspections.data.0.public_id', $inspections->first()->public_id)
+                ->where('inspections.next_page_url', fn ($url) => str_contains($url, 'scope=available')
+                    && str_contains($url, 'status=planned')
+                    && str_contains($url, 'modality=m3')));
+
+        $this->get(route('inspections.index', ['scope' => 'available', 'status' => 'planned', 'modality' => 'm3', 'page' => 2]))
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('inspections.data', 1)
+                ->where('inspections.data.0.public_id', $inspections[20]->public_id));
     }
 
     public function test_inactive_user_cannot_claim_or_read_a_vacant_inspection(): void

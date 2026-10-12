@@ -57,6 +57,49 @@ final class ClientInspectionReadTest extends TestCase
         $this->get(route('inspections.report-preview', $foreign))->assertNotFound();
     }
 
+    public function test_client_can_filter_released_inspections_by_modality_and_search(): void
+    {
+        [$user, $equipment] = $this->clientScenario();
+        $m3 = Inspection::factory()->forEquipment($equipment)->create([
+            'status' => InspectionStatus::Released,
+            'number' => 'M3-001',
+            'is_m3' => true,
+        ]);
+        $standard = Inspection::factory()->forEquipment($equipment)->create([
+            'status' => InspectionStatus::Released,
+            'number' => 'STD-001',
+            'is_m3' => false,
+        ]);
+        Inspection::factory()->forEquipment($equipment)->create([
+            'status' => InspectionStatus::InProgress,
+            'number' => 'M3-OPEN',
+            'is_m3' => true,
+        ]);
+
+        $this->actingAs($user)->get(route('inspections.index', ['modality' => 'm3']))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('filters.modality', 'm3')
+                ->has('inspections.data', 1)
+                ->where('inspections.data.0.public_id', $m3->public_id)
+                ->where('inspections.data.0.is_m3', true));
+
+        $this->get(route('inspections.index', ['modality' => 'standard', 'search' => 'STD-001']))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('filters.modality', 'standard')
+                ->where('filters.search', 'STD-001')
+                ->has('inspections.data', 1)
+                ->where('inspections.data.0.public_id', $standard->public_id)
+                ->where('inspections.data.0.is_m3', false));
+
+        $this->get(route('inspections.index', ['modality' => 'standard', 'search' => 'M3-001']))
+            ->assertInertia(fn (Assert $page) => $page->has('inspections.data', 0));
+
+        $this->get(route('inspections.index', ['modality' => 'invalid']))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('filters.modality', '')
+                ->has('inspections.data', 2));
+    }
+
     public function test_client_can_read_only_report_and_quantitative_without_internal_navigation(): void
     {
         [$user, $equipment] = $this->clientScenario();

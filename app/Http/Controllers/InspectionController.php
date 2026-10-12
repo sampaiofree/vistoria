@@ -75,11 +75,13 @@ final class InspectionController extends Controller
         if ($request->user()->isClient()) {
             $clientId = app(ClientInspectionAccess::class)->clientId($request->user());
             $search = $this->filterValue($request, 'search', 'number');
+            $modality = $this->inspectionModalityFilter($request);
             $inspections = Inspection::query()
                 ->forOrganization($tenant->id())
                 ->when($clientId === null, fn ($query) => $query->whereRaw('1 = 0'))
                 ->where('status', InspectionStatus::Released->value)
                 ->whereHas('equipment', fn ($equipment) => $equipment->where('client_id', $clientId))
+                ->when($modality !== '', fn ($query) => $query->where('is_m3', $modality === 'm3'))
                 ->with('equipment')
                 ->when($search !== '', function ($query) use ($search): void {
                     $tag = TextNormalizer::equipmentTag($search);
@@ -100,6 +102,7 @@ final class InspectionController extends Controller
                 ->through(fn (Inspection $inspection): array => [
                     'public_id' => $inspection->public_id,
                     'number' => $inspection->number,
+                    'is_m3' => $inspection->is_m3,
                     'inspection_type_label' => $inspection->inspection_type->label(),
                     'status' => $inspection->status->value,
                     'inspected_on' => $inspection->inspected_on?->format('d/m/Y'),
@@ -109,7 +112,7 @@ final class InspectionController extends Controller
 
             return Inertia::render('Inspections/Index', [
                 'inspections' => $inspections,
-                'filters' => ['search' => $search],
+                'filters' => ['search' => $search, 'modality' => $modality],
                 'options' => [],
                 'capabilities' => ['create' => false, 'available_queue' => false, 'company_wide_index' => true],
                 'create_url' => '',
@@ -128,6 +131,7 @@ final class InspectionController extends Controller
             'number' => $this->filterValue($request, 'number', 'search'),
             'equipment' => trim((string) $request->string('equipment')),
             'status' => trim((string) $request->string('status')),
+            'modality' => $this->inspectionModalityFilter($request),
             'type' => $this->filterValue($request, 'type', 'inspection_type'),
             'inspection_type' => $this->filterValue($request, 'inspection_type', 'type'),
             'responsible' => trim((string) $request->string('responsible')),
@@ -178,6 +182,7 @@ final class InspectionController extends Controller
             })
             ->when($filters['equipment'] !== '', fn ($query) => $query->where('equipment_id', (int) $filters['equipment']))
             ->when(InspectionStatus::tryFrom($filters['status']) !== null, fn ($query) => $query->where('status', $filters['status']))
+            ->when($filters['modality'] !== '', fn ($query) => $query->where('is_m3', $filters['modality'] === 'm3'))
             ->when(InspectionType::tryFrom($filters['type']) !== null, fn ($query) => $query->where('inspection_type', $filters['type']))
             ->when($filters['responsible'] !== '', function ($query) use ($filters): void {
                 $query->whereHas('responsibles', function ($responsibles) use ($filters): void {
@@ -1104,6 +1109,7 @@ final class InspectionController extends Controller
             'id' => $inspection->id,
             'public_id' => $inspection->public_id,
             'number' => $inspection->number,
+            'is_m3' => $inspection->is_m3,
             'inspection_type' => $inspection->inspection_type->value,
             'type' => $inspection->inspection_type->value,
             'inspection_type_label' => $inspection->inspection_type->label(),
@@ -1471,5 +1477,12 @@ final class InspectionController extends Controller
         }
 
         return $value;
+    }
+
+    private function inspectionModalityFilter(Request $request): string
+    {
+        $modality = trim((string) $request->string('modality'));
+
+        return in_array($modality, ['m3', 'standard'], true) ? $modality : '';
     }
 }

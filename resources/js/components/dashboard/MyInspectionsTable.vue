@@ -1,6 +1,7 @@
 <script setup>
 import { Link } from '@inertiajs/vue3';
 import InspectionStatusBadge from '@/components/domain/inspections/InspectionStatusBadge.vue';
+import InspectionModalityBadge from '@/components/domain/inspections/InspectionModalityBadge.vue';
 
 defineProps({
     rows: {
@@ -87,9 +88,12 @@ const skeletonRows = [1, 2, 3, 4, 5, 6, 7, 8];
                 <tbody class="divide-y divide-slate-200">
                     <tr v-for="inspection in rows" :key="inspection.public_id" class="align-top">
                         <th scope="row" class="px-5 py-4 text-left font-normal">
-                            <Link :href="inspection.next_action.href" class="font-semibold text-slate-900 transition hover:text-slate-600">
-                                {{ inspection.number }}
-                            </Link>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <Link :href="inspection.next_action.href" class="font-semibold text-slate-900 transition hover:text-slate-600">
+                                    {{ inspection.number }}
+                                </Link>
+                                <InspectionModalityBadge v-if="inspection.is_m3" />
+                            </div>
                             <div class="mt-1 text-xs text-slate-500">
                                 {{ inspection.inspection_type_label }} · criada em {{ inspection.created_at }}
                             </div>

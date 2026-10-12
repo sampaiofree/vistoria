@@ -172,6 +172,7 @@ final class DashboardController extends Controller
      * @return null|array{
      *     public_id:string,
      *     number:string,
+     *     is_m3:bool,
      *     inspection_type:string,
      *     inspection_type_label:string,
      *     status:string,
@@ -213,6 +214,7 @@ final class DashboardController extends Controller
         return [
             'public_id' => $inspection->public_id,
             'number' => $inspection->number ?? 'Inspeção em andamento',
+            'is_m3' => $inspection->is_m3,
             'inspection_type' => $inspection->inspection_type->value,
             'inspection_type_label' => $inspection->inspection_type->label(),
             'status' => $inspection->status->value,
@@ -307,6 +309,7 @@ final class DashboardController extends Controller
      * @return array<int, array{
      *     public_id:string,
      *     number:string,
+     *     is_m3:bool,
      *     inspection_type:string,
      *     inspection_type_label:string,
      *     status:string,
@@ -386,6 +389,7 @@ final class DashboardController extends Controller
             return [
                 'public_id' => $inspection->public_id,
                 'number' => $inspection->number,
+                'is_m3' => $inspection->is_m3,
                 'inspection_type' => $inspection->inspection_type->value,
                 'inspection_type_label' => $inspection->inspection_type->label(),
                 'status' => $inspection->status->value,

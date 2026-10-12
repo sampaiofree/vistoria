@@ -3,6 +3,7 @@ import { computed } from 'vue';
 import { Link } from '@inertiajs/vue3';
 import AssessmentProgress from '@/components/domain/view-first/AssessmentProgress.vue';
 import UiIcon from '@/components/ui/UiIcon.vue';
+import InspectionModalityBadge from '@/components/domain/inspections/InspectionModalityBadge.vue';
 
 const props = defineProps({
     inspection: {
@@ -47,7 +48,10 @@ const actionLabel = computed(() => (
                     <span v-if="inspection.equipment?.tag" class="font-semibold text-slate-900">
                         TAG {{ inspection.equipment.tag }}
                     </span>
-                    <span>{{ inspection.number }}</span>
+                    <span class="inline-flex items-center gap-2">
+                        {{ inspection.number }}
+                        <InspectionModalityBadge v-if="inspection.is_m3" />
+                    </span>
                     <span v-if="inspection.service_order">OS {{ inspection.service_order }}</span>
                 </div>
 

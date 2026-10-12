@@ -4,6 +4,7 @@ import { Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/components/ui/AppLayout.vue';
 import Pagination from '@/components/ui/Pagination.vue';
 import InspectionStatusBadge from '@/components/domain/inspections/InspectionStatusBadge.vue';
+import InspectionModalityBadge from '@/components/domain/inspections/InspectionModalityBadge.vue';
 import SelfAssignmentButton from '@/components/domain/inspections/SelfAssignmentButton.vue';
 
 const props = defineProps({
@@ -32,6 +33,7 @@ const props = defineProps({
 
 const filterForm = reactive({
     search: props.filters.search ?? '',
+    modality: props.filters.modality ?? '',
     status: props.filters.status ?? '',
     scheduled_from: props.filters.scheduled_from ?? '',
     scheduled_to: props.filters.scheduled_to ?? '',
@@ -46,6 +48,7 @@ const scopeTabs = computed(() => [
 watch(() => props.filters, (filters) => {
     Object.assign(filterForm, {
         search: filters.search ?? '',
+        modality: filters.modality ?? '',
         status: filters.status ?? '',
         scheduled_from: filters.scheduled_from ?? '',
         scheduled_to: filters.scheduled_to ?? '',
@@ -54,7 +57,8 @@ watch(() => props.filters, (filters) => {
 
 function applyFilters() {
     if (props.client_view) {
-        router.get('/inspections', filterForm.search ? { search: filterForm.search } : {}, { preserveScroll: true, preserveState: true, replace: true });
+        const filters = Object.fromEntries(Object.entries({ search: filterForm.search, modality: filterForm.modality }).filter(([, value]) => value !== ''));
+        router.get('/inspections', filters, { preserveScroll: true, preserveState: true, replace: true });
         return;
     }
     const filters = Object.fromEntries(Object.entries(filterForm).filter(([, value]) => value !== ''));
@@ -71,11 +75,13 @@ function applyFilters() {
 function clearFilters() {
     if (props.client_view) {
         filterForm.search = '';
+        filterForm.modality = '';
         router.get('/inspections', {}, { preserveScroll: true, preserveState: true, replace: true });
         return;
     }
     Object.assign(filterForm, {
         search: '',
+        modality: '',
         status: '',
         scheduled_from: '',
         scheduled_to: '',
@@ -106,10 +112,18 @@ function changeScope(scope) {
         </nav>
         <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                <form class="grid flex-1 gap-3 sm:grid-cols-2" :class="client_view ? 'max-w-2xl' : 'xl:grid-cols-[minmax(15rem,1fr)_13rem_10rem_10rem_auto]'" @submit.prevent="applyFilters">
+                <form class="grid flex-1 gap-3 sm:grid-cols-2" :class="client_view ? 'max-w-2xl' : 'xl:grid-cols-[minmax(15rem,1fr)_10rem_13rem_10rem_10rem_auto]'" @submit.prevent="applyFilters">
                     <label class="space-y-1.5">
                         <span class="text-xs font-semibold uppercase tracking-wide text-slate-500">Buscar</span>
                         <input v-model="filterForm.search" type="search" placeholder="Número, OS, item, TAG ou equipamento" class="min-h-10 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-100">
+                    </label>
+                    <label class="space-y-1.5">
+                        <span class="text-xs font-semibold uppercase tracking-wide text-slate-500">Modalidade</span>
+                        <select v-model="filterForm.modality" class="min-h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 focus:border-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-100">
+                            <option value="">Todas</option>
+                            <option value="m3">M3</option>
+                            <option value="standard">Padrão</option>
+                        </select>
                     </label>
                     <label v-if="!client_view" class="space-y-1.5">
                         <span class="text-xs font-semibold uppercase tracking-wide text-slate-500">Status</span>
@@ -128,7 +142,7 @@ function changeScope(scope) {
                     </label>
                     <div class="flex items-end gap-2">
                         <button type="submit" class="min-h-10 rounded-lg bg-teal-700 px-4 text-sm font-semibold text-white transition hover:bg-teal-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500">Filtrar</button>
-                        <button v-if="client_view ? filterForm.search : hasFilters" type="button" class="min-h-10 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50" @click="clearFilters">Limpar</button>
+                        <button v-if="hasFilters" type="button" class="min-h-10 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50" @click="clearFilters">Limpar</button>
                     </div>
                 </form>
                 <Link v-if="capabilities.create" :href="create_url" class="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white">
@@ -159,7 +173,12 @@ function changeScope(scope) {
                     </thead>
                     <tbody class="divide-y divide-slate-200">
                         <tr v-for="inspection in inspections.data" :key="inspection.public_id">
-                            <td class="px-5 py-4 font-semibold text-slate-900">{{ inspection.number }}</td>
+                            <td class="px-5 py-4 font-semibold text-slate-900">
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <span>{{ inspection.number }}</span>
+                                    <InspectionModalityBadge v-if="inspection.is_m3" />
+                                </div>
+                            </td>
                             <td class="px-5 py-4">
                                 <strong>{{ inspection.equipment.tag }}</strong>
                                 <div class="text-slate-500">{{ inspection.equipment.name }}</div>

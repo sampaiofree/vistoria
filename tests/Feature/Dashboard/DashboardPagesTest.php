@@ -47,6 +47,7 @@ final class DashboardPagesTest extends TestCase
             now()->subDays(2),
             now()->subHours(5),
         );
+        $planned->update(['is_m3' => true]);
 
         $review = $this->createInspectionWithResponsibility(
             $equipment,
@@ -109,11 +110,13 @@ final class DashboardPagesTest extends TestCase
                             ->where('priority_counts.awaiting_release', 1)
                             ->has('my_inspections', 4)
                             ->where('my_inspections.0.number', $planned->number)
+                            ->where('my_inspections.0.is_m3', true)
                             ->missing('my_inspections.0.client')
                             ->where('my_inspections.0.user_responsibilities.0.label', 'Planejador')
                             ->where('my_inspections.0.schedule.label', '2 dias atrasada')
                             ->where('my_inspections.0.next_action.label', 'Ver planejamento')
                             ->where('my_inspections.1.number', $correction->number)
+                            ->where('my_inspections.1.is_m3', false)
                             ->where('my_inspections.2.number', $review->number)
                             ->where('my_inspections.2.user_responsibilities.0.label', 'Inspetor')
                             ->where('my_inspections.3.number', $release->number)
@@ -186,12 +189,14 @@ final class DashboardPagesTest extends TestCase
         ]);
         $previous = Inspection::factory()->forEquipment($equipment)->create([
             'number' => 'INS-2025-000001',
+            'is_m3' => true,
             'status' => InspectionStatus::Released,
             'released_at' => now()->subYear(),
             'created_by' => $user->id,
         ]);
         $current = Inspection::factory()->forEquipment($equipment, $previous)->create([
             'number' => 'INS-2026-000001',
+            'is_m3' => true,
             'status' => InspectionStatus::InProgress,
             'service_order' => 'OS-2026-0815',
             'started_at' => now()->subHour(),
@@ -224,6 +229,7 @@ final class DashboardPagesTest extends TestCase
             ->assertInertia(function (Assert $page) use ($current, $equipment): void {
                 $page
                     ->where('featured_inspection.public_id', $current->public_id)
+                    ->where('featured_inspection.is_m3', true)
                     ->where('featured_inspection.inspection_type', 'reinspection')
                     ->where('featured_inspection.equipment.tag', 'U03-06VT002')
                     ->where('featured_inspection.equipment.show_url', route('equipments.show', $equipment))

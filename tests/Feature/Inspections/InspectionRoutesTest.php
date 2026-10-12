@@ -591,6 +591,68 @@ final class InspectionRoutesTest extends TestCase
                 ->where('filters.scheduled_to', ''));
     }
 
+    public function test_modality_filter_combines_with_existing_filters_and_ignores_unknown_values(): void
+    {
+        $organization = Organization::factory()->create();
+        $admin = User::factory()->for($organization)->create([
+            'account_type' => UserAccountType::CompanyAdmin->value,
+        ]);
+        $equipment = Equipment::factory()->for($organization)->create();
+        $m3 = Inspection::factory()->forEquipment($equipment)->create([
+            'is_m3' => true,
+            'status' => InspectionStatus::Planned,
+            'service_order' => 'OS-ALVO',
+            'planned_start_on' => '2026-08-10',
+        ]);
+        $standard = Inspection::factory()->forEquipment($equipment)->create([
+            'is_m3' => false,
+            'status' => InspectionStatus::Planned,
+            'service_order' => 'OS-ALVO',
+            'planned_start_on' => '2026-08-10',
+        ]);
+        Inspection::factory()->forEquipment($equipment)->create([
+            'is_m3' => true,
+            'status' => InspectionStatus::Released,
+            'service_order' => 'OS-ALVO',
+            'planned_start_on' => '2026-08-10',
+        ]);
+        Inspection::factory()->forEquipment($equipment)->create([
+            'is_m3' => true,
+            'status' => InspectionStatus::Planned,
+            'service_order' => 'OS-ALVO',
+            'planned_start_on' => '2026-09-10',
+        ]);
+
+        $filters = [
+            'search' => 'OS-ALVO',
+            'status' => InspectionStatus::Planned->value,
+            'scheduled_from' => '2026-08-01',
+            'scheduled_to' => '2026-08-31',
+        ];
+
+        $this->actingAs($admin)->get(route('inspections.index', $filters + ['modality' => 'm3']))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('filters.modality', 'm3')
+                ->has('inspections.data', 1)
+                ->where('inspections.data.0.id', $m3->id)
+                ->where('inspections.data.0.is_m3', true));
+
+        $this->get(route('inspections.index', $filters + ['modality' => 'standard']))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('filters.modality', 'standard')
+                ->has('inspections.data', 1)
+                ->where('inspections.data.0.id', $standard->id)
+                ->where('inspections.data.0.is_m3', false));
+
+        foreach (['unknown', ''] as $modality) {
+            $this->get(route('inspections.index', $filters + ['modality' => $modality]))
+                ->assertInertia(fn (Assert $page) => $page
+                    ->where('filters.modality', '')
+                    ->has('inspections.data', 2));
+        }
+    }
+
     public function test_list_exposes_the_temporal_milestone_that_corresponds_to_each_status(): void
     {
         $organization = Organization::factory()->create();
